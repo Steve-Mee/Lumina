@@ -1,0 +1,575 @@
+birth.cloud.fixture ticks=213,120 days=88 source=synthetic_cloud_fixture holdout_regimes=['NEUTRAL', 'TREND_DOWN', 'TREND_UP']
+fabric_secret.read heal env→fabric_json env_len=0 json_len=10 mismatch=False
+2026-09-02 20:06:02,494,WARNING,[ConfigLoader] Missing env var (non-strict mode): XAI_API_KEY
+2026-09-02 20:06:02,494,WARNING,[ConfigLoader] Missing env var (non-strict mode): LUMINA_JWT_SECRET_KEY
+2026-09-02 20:06:02,494,WARNING,[ConfigLoader] Placeholder/default API key active in security.api_keys: '${LUMINA_ADMIN_API_KEY}'
+2026-09-02 20:06:02,494,WARNING,speech_recognition library not available; voice input disabled
+birth.cloud.engine_constructed class=BirthPhaseEngineV2
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:06:04,957,WARNING,milestone.send_failed id=birth_started
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:06:04,958,WARNING,milestone.send_failed id=maturation:birth_started
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:06:08,476,WARNING,milestone.send_failed id=history_loaded
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:06:08,476,WARNING,milestone.send_failed id=regime_map_ready
+2026-09-02 20:06:20,642,WARNING,birth.stage.not_passed stage=stage1_trend trades=0 blockers=foundation_fail:trades 0 < 150;median_loss_r=None missing_or_gt_1.5 settle=warmup median_loss_r=None net_rr=2.4437651559883733
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:06:22,015,WARNING,birth.curriculum soft_constitution_violation principle=birth_constitution_guard count=1
+2026-09-02 20:06:22,015,WARNING,birth.constitution.soft_violation principle=birth_constitution_guard severity=warning count=1 detail=risk_exceeds_1pct
+2026-09-02 20:06:22,017,WARNING,birth.curriculum soft_constitution_violation principle=birth_constitution_guard count=2
+2026-09-02 20:06:22,017,WARNING,birth.constitution.soft_violation principle=birth_constitution_guard severity=warning count=2 detail=risk_exceeds_1pct
+2026-09-02 20:06:22,019,WARNING,birth.curriculum soft_constitution_violation principle=birth_constitution_guard count=3
+2026-09-02 20:06:22,019,WARNING,birth.constitution.soft_violation principle=birth_constitution_guard severity=warning count=3 detail=risk_exceeds_1pct
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:06:23,662,WARNING,milestone.send_failed id=curriculum_stage1_trend_passed
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:07:04,418,WARNING,birth.stage.not_passed stage=stage2_range trades=0 blockers=foundation_fail:trades 0 < 250;median_loss_r=None missing_or_gt_1.5;occupancy=None not_in_30%-70%;round_trips 0 < 25 settle=warmup median_loss_r=None net_rr=1.7904484367298905
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:07:27,906,WARNING,milestone.send_failed id=best_policy_updated
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:07:39,073,WARNING,milestone.send_failed id=curriculum_stage2_range_passed
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:07:51,517,WARNING,birth.stage.not_passed stage=stage3_mixed trades=0 blockers=foundation_fail:trades 0 < 400;median_loss_r=None missing_or_gt_1.5;occupancy=None not_in_25%-75%;policy_sample 0 < 150 settle=warmup median_loss_r=None net_rr=1.8278398127327382
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:08:03,685,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=50 wins=27 wr_hist=0.54 flat=0.678 signals=9044
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:08:26,400,WARNING,birth.stage.not_passed stage=stage3_mixed trades=100 blockers=foundation_fail:trades 100 < 400;policy_sample 99 < 150 settle=warmup median_loss_r=1.021741636006443 net_rr=1.8278398127327382
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:08:36,888,WARNING,milestone.send_failed id=learning_breakthrough
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:08:38,936,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=125 wins=72 wr_hist=0.576 flat=0.510 signals=23269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:08:47,658,WARNING,milestone.send_failed id=learning_breakthrough
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:08:58,449,WARNING,milestone.send_failed id=learning_breakthrough
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:08:58,648,WARNING,birth.stage.not_passed stage=stage3_mixed trades=151 blockers=foundation_fail:trades 151 < 400 settle=warmup median_loss_r=1.0218308349871408 net_rr=1.8278398127327382
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:08:59,803,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=151 wins=90 wr_hist=0.5960264900662252 flat=0.551 signals=33269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:09:08,475,WARNING,milestone.send_failed id=learning_breakthrough
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:09:09,814,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=151 wins=90 wr_hist=0.5960264900662252 flat=0.610 signals=38269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:09:18,539,WARNING,milestone.send_failed id=learning_breakthrough
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:09:19,880,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=151 wins=90 wr_hist=0.5960264900662252 flat=0.655 signals=43269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:09:28,614,WARNING,milestone.send_failed id=learning_breakthrough
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:09:28,814,WARNING,birth.stage.not_passed stage=stage3_mixed trades=151 blockers=foundation_fail:trades 151 < 400 settle=warmup median_loss_r=1.0218308349871408 net_rr=1.8278398127327382
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:09:29,975,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=151 wins=90 wr_hist=0.5960264900662252 flat=0.690 signals=48269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:09:38,685,WARNING,milestone.send_failed id=learning_breakthrough
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:09:40,021,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=151 wins=90 wr_hist=0.5960264900662252 flat=0.720 signals=53269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:09:48,648,WARNING,milestone.send_failed id=learning_breakthrough
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:10:53,993,WARNING,milestone.send_failed id=learning_breakthrough
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:10:54,198,WARNING,birth.stage.not_passed stage=stage3_mixed trades=156 blockers=foundation_fail:trades 156 < 400 settle=warmup median_loss_r=1.0218257813860148 net_rr=1.8278398127327382
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:11:04,948,WARNING,milestone.send_failed id=learning_breakthrough
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:11:15,987,WARNING,milestone.send_failed id=learning_breakthrough
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:11:18,126,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=173 wins=107 wr_hist=0.6184971098265896 flat=0.719 signals=73269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:11:27,051,WARNING,milestone.send_failed id=learning_breakthrough
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:11:27,258,WARNING,birth.stage.not_passed stage=stage3_mixed trades=173 blockers=foundation_fail:trades 173 < 400 settle=warmup median_loss_r=1.0218046908010394 net_rr=1.8278398127327382
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:11:38,137,WARNING,milestone.send_failed id=learning_breakthrough
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:11:49,107,WARNING,milestone.send_failed id=learning_breakthrough
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:12:00,090,WARNING,milestone.send_failed id=learning_breakthrough
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:12:00,296,WARNING,birth.stage.not_passed stage=stage3_mixed trades=187 blockers=foundation_fail:trades 187 < 400 settle=warmup median_loss_r=1.0217916616665224 net_rr=1.8278398127327382
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:12:11,078,WARNING,milestone.send_failed id=learning_breakthrough
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:12:13,468,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=198 wins=127 wr_hist=0.6414141414141414 flat=0.720 signals=98269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:12:22,423,WARNING,milestone.send_failed id=learning_breakthrough
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:12:24,957,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=204 wins=131 wr_hist=0.6421568627450981 flat=0.720 signals=103269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:12:34,865,WARNING,milestone.send_failed id=learning_breakthrough
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:12:34,869,WARNING,milestone.send_failed id=best_policy_updated
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:12:35,072,WARNING,birth.stage.not_passed stage=stage3_mixed trades=204 blockers=foundation_fail:trades 204 < 400 settle=warmup median_loss_r=1.0216371012856922 net_rr=1.8278398127327382
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:12:36,128,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=213 wins=135 wr_hist=0.6338028169014085 flat=0.720 signals=108269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:12:47,170,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=221 wins=139 wr_hist=0.6289592760180995 flat=0.719 signals=113269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:13:07,949,WARNING,birth.stage.not_passed stage=stage3_mixed trades=225 blockers=foundation_fail:trades 225 < 400 settle=warmup median_loss_r=1.021560247050635 net_rr=1.8278398127327382
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:13:08,980,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=230 wins=146 wr_hist=0.6347826086956522 flat=0.720 signals=123269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:13:19,570,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=235 wins=148 wr_hist=0.6297872340425532 flat=0.719 signals=128269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:13:31,257,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=242 wins=152 wr_hist=0.628099173553719 flat=0.719 signals=133269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:13:41,633,WARNING,birth.stage.not_passed stage=stage3_mixed trades=242 blockers=foundation_fail:trades 242 < 400 settle=warmup median_loss_r=1.0215318023065232 net_rr=1.8278398127327382
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:13:42,700,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=246 wins=155 wr_hist=0.6300813008130082 flat=0.718 signals=138269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:13:54,259,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=252 wins=159 wr_hist=0.6309523809523809 flat=0.720 signals=143269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:14:05,924,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=260 wins=165 wr_hist=0.6346153846153846 flat=0.719 signals=148269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:14:16,776,WARNING,birth.stage.not_passed stage=stage3_mixed trades=260 blockers=foundation_fail:trades 260 < 400 settle=warmup median_loss_r=1.0214496256208738 net_rr=1.8278398127327382
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:14:17,890,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=264 wins=168 wr_hist=0.6363636363636364 flat=0.720 signals=153269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:14:29,952,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=274 wins=172 wr_hist=0.6277372262773723 flat=0.719 signals=158269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:14:52,666,WARNING,birth.stage.not_passed stage=stage3_mixed trades=278 blockers=foundation_fail:trades 278 < 400 settle=warmup median_loss_r=1.0209615683116773 net_rr=1.8278398127327382
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:15:04,955,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=293 wins=186 wr_hist=0.6348122866894198 flat=0.719 signals=173269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:15:16,228,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=298 wins=189 wr_hist=0.6342281879194631 flat=0.720 signals=178269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:15:27,271,WARNING,birth.stage.not_passed stage=stage3_mixed trades=298 blockers=foundation_fail:trades 298 < 400 settle=warmup median_loss_r=1.0204955788440504 net_rr=1.8278398127327382
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:15:39,667,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=312 wins=195 wr_hist=0.625 flat=0.720 signals=188269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:15:51,890,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=318 wins=198 wr_hist=0.6226415094339622 flat=0.720 signals=193269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:16:03,074,WARNING,birth.stage.not_passed stage=stage3_mixed trades=318 blockers=foundation_fail:trades 318 < 400 settle=warmup median_loss_r=1.0122820688244278 net_rr=1.8278398127327382
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:16:04,150,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=321 wins=201 wr_hist=0.6261682242990654 flat=0.720 signals=198269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:16:15,783,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=330 wins=206 wr_hist=0.6242424242424243 flat=0.719 signals=203269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:16:28,200,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=337 wins=211 wr_hist=0.6261127596439169 flat=0.719 signals=208269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:16:39,705,WARNING,birth.stage.not_passed stage=stage3_mixed trades=337 blockers=foundation_fail:trades 337 < 400 settle=warmup median_loss_r=1.0059155172024252 net_rr=1.8278398127327382
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:16:52,762,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=350 wins=221 wr_hist=0.6314285714285715 flat=0.720 signals=218269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:17:04,552,WARNING,milestone.send_failed id=best_policy_updated
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:17:05,814,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=356 wins=226 wr_hist=0.6348314606741573 flat=0.720 signals=223269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:17:16,439,WARNING,milestone.send_failed id=best_policy_updated
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:17:16,644,WARNING,birth.stage.not_passed stage=stage3_mixed trades=356 blockers=foundation_fail:trades 356 < 400 settle=warmup median_loss_r=1.005880511414445 net_rr=1.8278398127327382
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:17:17,708,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=362 wins=230 wr_hist=0.6353591160220995 flat=0.720 signals=228269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:17:29,181,WARNING,milestone.send_failed id=best_policy_updated
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:17:41,220,WARNING,milestone.send_failed id=best_policy_updated
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:17:53,170,WARNING,milestone.send_failed id=best_policy_updated
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:17:53,375,WARNING,birth.stage.not_passed stage=stage3_mixed trades=371 blockers=foundation_fail:trades 371 < 400 settle=warmup median_loss_r=1.0058804409746256 net_rr=1.8278398127327382
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:18:05,143,WARNING,milestone.send_failed id=best_policy_updated
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:18:06,408,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=385 wins=248 wr_hist=0.6441558441558441 flat=0.719 signals=248269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:18:17,120,WARNING,milestone.send_failed id=best_policy_updated
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:18:29,115,WARNING,milestone.send_failed id=best_policy_updated
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:18:29,322,WARNING,birth.stage.not_passed stage=stage3_mixed trades=390 blockers=foundation_fail:trades 390 < 400 settle=warmup median_loss_r=1.0058800002694006 net_rr=1.8278398127327382
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:18:30,365,WARNING,twin.evaluate_rejection
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:18:41,982,WARNING,milestone.send_failed id=best_policy_updated
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:18:42,932,WARNING,twin.evaluate_rejection
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:18:54,659,WARNING,milestone.send_failed id=best_policy_updated
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:18:54,952,WARNING,milestone.send_failed id=curriculum_stage3_mixed_passed
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:19:06,987,WARNING,birth.stage.not_passed stage=stage4_viable_plant trades=0 blockers=foundation_fail:trades 0 < 100;median_loss_r=None missing_or_gt_1.5;occupancy=None not_in_25%-75%;policy_sample 0 < 150;mean_r_or_e_mech_missing settle=warmup median_loss_r=None net_rr=1.7589123928954724
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:19:35,101,WARNING,milestone.send_failed id=learning_breakthrough
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:20:33,000,WARNING,birth.stage.not_passed stage=stage4_viable_plant trades=150 blockers=foundation_fail:policy_sample 149 < 150 settle=ok median_loss_r=1.013477041457795 net_rr=1.7589123928954724
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:20:45,740,WARNING,milestone.send_failed id=curriculum_stage4_viable_passed
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:20:58,074,WARNING,birth.stage.not_passed stage=stage5_probe_handoff trades=0 blockers=foundation_fail:trades 0 < 50;median_loss_r=None missing_or_gt_1.5;occupancy=None not_in_25%-75%;policy_sample 0 < 150 settle=warmup median_loss_r=None net_rr=1.7674031413396907
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:21:08,313,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=58 wins=24 wr_hist=0.41379310344827586 flat=0.654 signals=9665
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:21:21,396,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=91 wins=35 wr_hist=0.38461538461538464 flat=0.720 signals=24923
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:08,814,WARNING,birth.stage.not_passed stage=stage5_probe_handoff trades=91 blockers=foundation_fail:policy_sample 74 < 150;oos_dd=55.51132716010684 > 25.0 settle=ok median_loss_r=1.0228557641844405 net_rr=1.7674031413396907
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:09,025,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=99 wins=39 wr_hist=0.3939393939393939 flat=0.722 signals=26211
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:12,066,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=107 wins=42 wr_hist=0.3925233644859813 flat=0.720 signals=29269
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:18,226,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=148 wins=54 wr_hist=0.36486486486486486 flat=0.722 signals=35493
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:21,312,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=198 wins=69 wr_hist=0.3484848484848485 flat=0.721 signals=38904
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:24,329,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=248 wins=81 wr_hist=0.32661290322580644 flat=0.727 signals=41310
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:22:24,384,WARNING,milestone.send_failed id=best_policy_updated
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:24,457,WARNING,birth.beyond_gate.force_train_lap trades=248 wr=32.66% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=1 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:27,216,WARNING,birth.beyond_gate.force_train_lap trades=248 wr=32.66% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=0 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:27,557,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=298 wins=99 wr_hist=0.33221476510067116 flat=0.729 signals=43604
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:22:27,612,WARNING,milestone.send_failed id=best_policy_updated
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:27,685,WARNING,birth.beyond_gate.force_train_lap trades=298 wr=33.22% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=1 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:30,392,WARNING,birth.beyond_gate.force_train_lap trades=298 wr=33.22% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=0 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:30,659,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=348 wins=113 wr_hist=0.32471264367816094 flat=0.728 signals=45079
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:30,786,WARNING,birth.beyond_gate.force_train_lap trades=348 wr=32.47% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=1 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:33,665,WARNING,birth.beyond_gate.force_train_lap trades=348 wr=32.47% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=0 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:34,033,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=398 wins=126 wr_hist=0.3165829145728643 flat=0.725 signals=47721
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:34,161,WARNING,birth.beyond_gate.force_train_lap trades=398 wr=31.66% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=1 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:36,881,WARNING,birth.beyond_gate.force_train_lap trades=398 wr=31.66% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=0 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:37,144,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=448 wins=138 wr_hist=0.3080357142857143 flat=0.723 signals=49114
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:37,273,WARNING,birth.beyond_gate.force_train_lap trades=448 wr=30.80% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=1 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:40,288,WARNING,birth.beyond_gate.force_train_lap trades=448 wr=30.80% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=0 — skip recovery spam
+2026-09-02 20:22:40,321,WARNING,birth.stage.not_passed stage=stage5_probe_handoff trades=448 blockers=foundation_fail:policy_sample 120 < 150;oos_dd=385.0217513081108 > 25.0 settle=ok median_loss_r=1.058416395016133 net_rr=1.7674031413396907
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:40,763,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=498 wins=151 wr_hist=0.3032128514056225 flat=0.718 signals=52895
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:40,893,WARNING,birth.beyond_gate.force_train_lap trades=498 wr=30.32% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=1 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:43,647,WARNING,birth.beyond_gate.force_train_lap trades=498 wr=30.32% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=0 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:44,199,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=548 wins=166 wr_hist=0.3029197080291971 flat=0.717 signals=57700
+2026-09-02 20:22:44,255,WARNING,birth.plateau.entered trades=548 winrate=30.29% best_at_cycle_start=33.22%
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 20:22:44,255,WARNING,milestone.send_failed id=plateau_entered
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:44,395,WARNING,birth.beyond_gate.force_train_lap trades=548 wr=30.29% plateau=True evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=1 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:47,302,WARNING,birth.beyond_gate.force_train_lap trades=548 wr=30.29% plateau=True evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=0 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:51,172,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=578 wins=176 wr_hist=0.3044982698961938 flat=0.702 signals=62700
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:51,302,WARNING,birth.beyond_gate.force_train_lap trades=578 wr=30.45% plateau=True evo_step=0 rollouts_this_step=1/12 rollouts_since_adapt=1 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:54,144,WARNING,birth.beyond_gate.force_train_lap trades=578 wr=30.45% plateau=True evo_step=0 rollouts_this_step=1/12 rollouts_since_adapt=0 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:54,629,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=581 wins=177 wr_hist=0.3046471600688468 flat=0.720 signals=67700
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:54,754,WARNING,birth.beyond_gate.force_train_lap trades=581 wr=30.46% plateau=True evo_step=0 rollouts_this_step=2/12 rollouts_since_adapt=1 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:57,465,WARNING,birth.beyond_gate.force_train_lap trades=581 wr=30.46% plateau=True evo_step=0 rollouts_this_step=2/12 rollouts_since_adapt=0 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:57,905,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=631 wins=189 wr_hist=0.29952456418383516 flat=0.721 signals=71405
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:22:58,031,WARNING,birth.beyond_gate.force_train_lap trades=631 wr=29.95% plateau=True evo_step=0 rollouts_this_step=3/12 rollouts_since_adapt=1 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:00,753,WARNING,birth.beyond_gate.force_train_lap trades=631 wr=29.95% plateau=True evo_step=0 rollouts_this_step=3/12 rollouts_since_adapt=0 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:01,121,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=681 wins=201 wr_hist=0.29515418502202645 flat=0.720 signals=74117
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:01,246,WARNING,birth.beyond_gate.force_train_lap trades=681 wr=29.52% plateau=True evo_step=0 rollouts_this_step=4/12 rollouts_since_adapt=1 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:04,072,WARNING,birth.beyond_gate.force_train_lap trades=681 wr=29.52% plateau=True evo_step=0 rollouts_this_step=4/12 rollouts_since_adapt=0 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:04,622,WARNING,birth.beyond_gate.force_train_lap trades=731 wr=29.55% plateau=True evo_step=0 rollouts_this_step=5/12 rollouts_since_adapt=1 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:07,379,WARNING,birth.beyond_gate.force_train_lap trades=731 wr=29.55% plateau=True evo_step=0 rollouts_this_step=5/12 rollouts_since_adapt=0 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:07,822,WARNING,birth.beyond_gate.force_train_lap trades=781 wr=30.09% plateau=True evo_step=0 rollouts_this_step=6/12 rollouts_since_adapt=1 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:10,597,WARNING,birth.beyond_gate.force_train_lap trades=781 wr=30.09% plateau=True evo_step=0 rollouts_this_step=6/12 rollouts_since_adapt=0 — skip recovery spam
+2026-09-02 20:23:10,630,WARNING,birth.stage.not_passed stage=stage5_probe_handoff trades=781 blockers=foundation_fail:oos_edge=-0.10125243257072061 < -0.03;oos_dd=628.4596614187112 > 25.0 settle=ok median_loss_r=1.058789199183301 net_rr=1.7674031413396907
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:11,294,WARNING,birth.beyond_gate.force_train_lap trades=831 wr=30.93% plateau=True evo_step=0 rollouts_this_step=7/12 rollouts_since_adapt=1 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:14,089,WARNING,birth.beyond_gate.force_train_lap trades=831 wr=30.93% plateau=True evo_step=0 rollouts_this_step=7/12 rollouts_since_adapt=0 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:14,552,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=831 wins=257 wr_hist=0.309265944645006 flat=0.708 signals=90536
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:14,625,WARNING,birth.beyond_gate.force_train_lap trades=831 wr=30.93% plateau=True evo_step=0 rollouts_this_step=8/12 rollouts_since_adapt=1 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:17,350,WARNING,birth.beyond_gate.force_train_lap trades=831 wr=30.93% plateau=True evo_step=0 rollouts_this_step=8/12 rollouts_since_adapt=0 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:17,925,WARNING,birth.beyond_gate.force_train_lap trades=833 wr=31.09% plateau=True evo_step=0 rollouts_this_step=9/12 rollouts_since_adapt=1 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:20,751,WARNING,birth.beyond_gate.force_train_lap trades=833 wr=31.09% plateau=True evo_step=0 rollouts_this_step=9/12 rollouts_since_adapt=0 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:21,850,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=850 wins=264 wr_hist=0.31058823529411766 flat=0.722 signals=100536
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:21,976,WARNING,birth.beyond_gate.force_train_lap trades=850 wr=31.06% plateau=True evo_step=0 rollouts_this_step=10/12 rollouts_since_adapt=1 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:24,822,WARNING,birth.beyond_gate.force_train_lap trades=850 wr=31.06% plateau=True evo_step=0 rollouts_this_step=10/12 rollouts_since_adapt=0 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:25,323,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=900 wins=278 wr_hist=0.3088888888888889 flat=0.721 signals=104709
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:25,451,WARNING,birth.beyond_gate.force_train_lap trades=900 wr=30.89% plateau=True evo_step=0 rollouts_this_step=11/12 rollouts_since_adapt=1 — skip recovery spam
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:28,253,WARNING,birth.beyond_gate.force_train_lap trades=900 wr=30.89% plateau=True evo_step=0 rollouts_this_step=11/12 rollouts_since_adapt=0 — skip recovery spam
+2026-09-02 20:23:28,502,WARNING,birth.curriculum soft_constitution_violation principle=birth_constitution_guard count=500
+2026-09-02 20:23:28,502,WARNING,birth.constitution.soft_violation principle=birth_constitution_guard severity=warning count=500 detail=risk_exceeds_1pct
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+Failed to schedule notification 'attention:birth:interrupted': 'Job identifier (notif:attention:birth:interrupted:1788418800.0) conflicts with an existing job'
+2026-09-02 20:23:28,728,WARNING,birth.beyond_gate.force_train_lap trades=950 wr=30.84% plateau=True evo_step=0 rollouts_this_step=12/12 rollouts_since_adapt=1 — skip recovery spam
+2026-09-02 20:23:28,762,WARNING,twin.evaluate_rejection
+2026-09-02 20:23:28,763,WARNING,birth.phoenix.cycle_started count=1 action=expand_data reason=phoenix_cycle
+2026-09-02 20:23:28,764,WARNING,twin.evaluate_rejection
+2026-09-02 20:23:31,474,CRITICAL,birth.fail_closed.host_stop reason=stage_stalled — stage loop will exit
+birth.cloud.engine_result={"status": "stage_stalled", "failure_reason": "stage_metrics", "total_trades": 1901, "ppo_steps": 104000, "training_mode": "certified"}
+birth.cloud.exit=2 birth_exit_ok=False timed_out=False
