@@ -5,6 +5,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 from lumina_core.birth.curriculum import CurriculumStage
+from lumina_core.birth.foundation_occupancy_envelope import (
+    foundation_envelope_controller_spec,
+    foundation_occupancy_envelope_enabled,
+)
 from lumina_core.birth.plateau_escalator import (
     EvolutionAction,
     detect_hold_trap,
@@ -171,19 +175,12 @@ class StageLoopRolloutPreCapsMixin:
         position_flat_floor: float | None = None
         is_s2 = self.stage == CurriculumStage.STAGE2_RANGE
         is_s3 = self.stage == CurriculumStage.STAGE3_MIXED
-        range_patience_active = is_s2 or is_s3
-        # Stage-2/3 Participation Envelope: hard occupancy physics (capital preservation).
-        # Live forensics Stage-3: flat~3% with envelope OFF → permanent in-market, WR~22%.
-        participation_envelope_enabled = bool(
-            (
-                is_s2
-                and getattr(self.cur_cfg, "stage2_participation_envelope_enabled", True)
-            )
-            or (
-                is_s3
-                and getattr(self.cur_cfg, "stage3_participation_envelope_enabled", True)
-            )
+        # Airframe: occupancy envelope for every foundation stage that grades it (S2–S5).
+        participation_envelope_enabled = foundation_occupancy_envelope_enabled(
+            self.stage, self.cur_cfg
         )
+        # sim_runner ANDs envelope with range_patience_active — S4/S5 must not skip.
+        range_patience_active = bool(participation_envelope_enabled)
         # Occupancy envelope is airframe (FORCE_FLAT/OPEN). Quality lock may freeze
         # PPO and block explore_boost; it must never disable the envelope.
         # In-band PASSTHROUGH is already decide_stage2_participation's nominal law.
@@ -366,40 +363,8 @@ class StageLoopRolloutPreCapsMixin:
                     self.stage.value,
                     pre_rollout_hold * 100.0,
                 )
-        # Stage-3: wide PASSTHROUGH (0.28–0.72, zero hysteresis) — no 0.32 sticky pin.
-        # Do not use `or 0.02`: hysteresis 0.0 is a valid Stage-3 law.
-        hyst_default = 0.0 if is_s3 else 0.02
-        lo_default = 0.28 if is_s3 else 0.30
-        hi_default = 0.72 if is_s3 else 0.70
-        hyst_raw = getattr(
-            self.cur_cfg,
-            "stage3_participation_hysteresis" if is_s3 else "stage2_participation_hysteresis",
-            hyst_default,
-        )
-        participation_hysteresis = float(hyst_default if hyst_raw is None else hyst_raw)
-        rel_attr = (
-            "stage3_participation_under_band_release_hysteresis"
-            if is_s3
-            else "stage2_participation_under_band_release_hysteresis"
-        )
-        rel_default = 0.0 if is_s3 else 0.02
-        rel_raw = getattr(self.cur_cfg, rel_attr, rel_default)
-        participation_release_hyst = float(rel_default if rel_raw is None else rel_raw)
-        # Stage-2: 0.0 release hyst pins occupancy at 0.2996 (PID 19776). Floor 0.02.
-        if not is_s3 and participation_release_hyst < 0.02 - 1e-12:
-            participation_release_hyst = 0.02
-        lo_raw = getattr(
-            self.cur_cfg,
-            "stage3_participation_band_lo" if is_s3 else "stage2_participation_band_lo",
-            lo_default,
-        )
-        hi_raw = getattr(
-            self.cur_cfg,
-            "stage3_participation_band_hi" if is_s3 else "stage2_participation_band_hi",
-            hi_default,
-        )
-        participation_band_lo = float(lo_default if lo_raw is None else lo_raw)
-        participation_band_hi = float(hi_default if hi_raw is None else hi_raw)
+        # S2 controller stays S2. S3/S4/S5 share the S3 controller (not exam floors).
+        spec = foundation_envelope_controller_spec(self.stage, self.cur_cfg)
         return RolloutPreState(
             explore_steps=explore_steps,
             reward_override=reward_override,
@@ -411,38 +376,17 @@ class StageLoopRolloutPreCapsMixin:
             progress_cb=progress_cb,
             participation_envelope_enabled=participation_envelope_enabled,
             participation_min_signals=int(
-                getattr(
-                    self.cur_cfg,
-                    "stage3_participation_min_signals"
-                    if is_s3
-                    else "stage2_participation_min_signals",
-                    50,
-                )
-                or 50
+                getattr(self.cur_cfg, spec.min_signals_attr, 50) or 50
             ),
             participation_min_dwell_bars=int(
-                getattr(
-                    self.cur_cfg,
-                    "stage3_participation_min_dwell_bars"
-                    if is_s3
-                    else "stage2_participation_min_dwell_bars",
-                    8,
-                )
-                or 8
+                getattr(self.cur_cfg, spec.min_dwell_attr, 8) or 8
             ),
-            participation_band_lo=participation_band_lo,
-            participation_band_hi=participation_band_hi,
-            participation_hysteresis=participation_hysteresis,
-            participation_under_band_release_hysteresis=participation_release_hyst,
+            participation_band_lo=spec.band_lo,
+            participation_band_hi=spec.band_hi,
+            participation_hysteresis=spec.hysteresis,
+            participation_under_band_release_hysteresis=spec.release_hysteresis,
             occupancy_control_window_bars=int(
-                getattr(
-                    self.cur_cfg,
-                    "stage3_occupancy_control_window_bars"
-                    if is_s3
-                    else "stage2_occupancy_control_window_bars",
-                    500,
-                )
-                or 500
+                getattr(self.cur_cfg, spec.window_attr, 500) or 500
             ),
             participation_stop_pct=float(
                 getattr(self, "_birth_trade_stop_pct", None)

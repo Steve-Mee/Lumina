@@ -1,21 +1,8 @@
-"""S3 in-band idle IMU — PASSTHROUGH must produce a policy sample.
+"""S3/S4/S5 in-band idle IMU — PASSTHROUGH must produce a policy sample.
 
-WHY: S1/S2/early-S3 trained under FORCE_* so π* collapsed to HOLD. When the
-envelope hands the stick back (exam-in-band PASSTHROUGH), deterministic greedy
-stays empty forever. In-band flat_bonus even *pays* the empty book. The exam
-grades ``policy_trades >= 150``. Control must move that quantity.
-
-This is the pilot, not the airframe:
-- Envelope bands / FORCE_OPEN / FORCE_FLAT / ``cumulative_in_band_passthrough`` stay.
-- HOLD is taxed while armed; after ``min_idle_hold_bars`` a HOLD-mask injects a
-  constitution-clipped entry that is **policy-tagged** (not plant).
-- Plant tag remains FORCE_OPEN only.
-- Floors unchanged. Birth SIM only. Stops ≤ 1%. Live ``hit_stop``.
-
-S4 Gate B2 (same tape): envelope is off for ``stage4_viable_plant``, so the book
-is PASSTHROUGH at flat=1.0. S3 idle stayed dead (regime-gated + in-band). The
-one measured follow-up is stage-local: arm the same tax/mask on S4 PASSTHROUGH
-even when over-flat. S2 dual IMU and S3 in-band law are unchanged.
+Pilot, not airframe: tax + HOLD-mask while PASSTHROUGH + flat + exam-in-band +
+policy<150. Over-flat is the envelope (FORCE_OPEN plant). Plant tag = FORCE_OPEN
+only. Floors unchanged. Birth SIM. Stops ≤ 1%. Live ``hit_stop``.
 """
 
 from __future__ import annotations
@@ -35,9 +22,11 @@ from lumina_core.birth.foundation_metrics import POLICY_EDGE_MIN_TRADES
 from lumina_core.birth.stage2_participation_envelope import MODE_PASSTHROUGH
 
 S3_INBAND_REGIMES = frozenset({"mixed", "stage3_mixed", "stage3"})
-# S4 envelope is off (pre_caps is_s2/is_s3 only). Idle must still produce a
-# policy sample under PASSTHROUGH — including over-flat HOLD collapse.
 S4_IDLE_REGIMES = frozenset({"stage4_viable_plant", "stage4", "viable_plant"})
+S5_INBAND_REGIMES = frozenset({"stage5_probe_handoff", "stage5", "probe_handoff"})
+# Shared in-band idle for every foundation stage that grades policy edge.
+# S4 no longer skips the exam-band check (PR #9 over-flat kruk is removed).
+FOUNDATION_INBAND_IDLE_REGIMES = S3_INBAND_REGIMES | S4_IDLE_REGIMES | S5_INBAND_REGIMES
 S3_INBAND_HOLD_MASK_REASON = "s3_inband_hold_mask_explore"
 S3_INBAND_DEFAULT_HOLD_TAX = 0.01
 S3_INBAND_DEFAULT_MIN_IDLE_HOLD_BARS = 32
@@ -59,24 +48,24 @@ def s3_inband_idle_armed(
     policy_trades: int,
     policy_edge_min_trades: int = POLICY_EDGE_MIN_TRADES,
 ) -> bool:
-    """True iff S3 in-band or S4 PASSTHROUGH, flat, thin policy sample."""
+    """True iff S3/S4/S5 PASSTHROUGH, flat, exam-in-band, thin policy sample.
+
+    S4 no longer skips the band check. Over-flat is the envelope's job.
+    """
     regime = str(curriculum_regime or "").strip().lower()
-    s4_idle = regime in S4_IDLE_REGIMES
-    if regime not in S3_INBAND_REGIMES and not s4_idle:
+    if regime not in FOUNDATION_INBAND_IDLE_REGIMES:
         return False
     if str(participation_mode or "").strip().upper() != MODE_PASSTHROUGH:
         return False
     if int(position) != 0:
         return False
-    # S3: envelope owns over/under. S4: no envelope — PASSTHROUGH is the book.
-    if not s4_idle:
-        lo = float(band_lo)
-        hi = float(band_hi)
-        if lo > hi:
-            lo, hi = hi, lo
-        flat = float(cumulative_flat)
-        if flat + 1e-12 < lo or flat - 1e-12 > hi:
-            return False
+    lo = float(band_lo)
+    hi = float(band_hi)
+    if lo > hi:
+        lo, hi = hi, lo
+    flat = float(cumulative_flat)
+    if flat + 1e-12 < lo or flat - 1e-12 > hi:
+        return False
     if int(policy_trades) >= int(policy_edge_min_trades):
         return False
     return True
@@ -383,6 +372,8 @@ __all__ = [
     "S3_INBAND_HOLD_MASK_REASON",
     "S3_INBAND_REGIMES",
     "S4_IDLE_REGIMES",
+    "S5_INBAND_REGIMES",
+    "FOUNDATION_INBAND_IDLE_REGIMES",
     "SHORT_SIDE",
     "S3InbandIdleState",
     "apply_passthrough_hold_mask",

@@ -178,11 +178,13 @@ class StageLoopIterationPassMixin:
             oos_sharpe=(
                 stage_val_sharpe
                 if self.stage == CurriculumStage.STAGE5_PROBE_HANDOFF
+                and bool(self.stage_val_pnl)
                 else None
             ),
             oos_dd_pct=(
                 stage_val_max_dd
                 if self.stage == CurriculumStage.STAGE5_PROBE_HANDOFF
+                and bool(self.stage_val_pnl)
                 else None
             ),
             settlement_ssot_pending=bool(

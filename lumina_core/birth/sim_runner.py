@@ -365,11 +365,11 @@ def run_policy_rollout(
     plant_wins = 0
     closes_unknown = 0
     last_force_open_stop_pct = 0.0
-    occupancy_all_ticks = str(curriculum_regime or "").lower() in {
-        "mixed",
-        "stage3_mixed",
-        "stage3",
-    }
+    from lumina_core.birth.foundation_occupancy_envelope import (
+        foundation_cumulative_in_band_passthrough,
+    )
+
+    occupancy_all_ticks = foundation_cumulative_in_band_passthrough(curriculum_regime)
     occ_win = occupancy_control_window
     occ_cap = max(50, int(occupancy_control_window_bars or 500))
     envelope_flat_bars = max(0, int(stage_range_flat_bars))

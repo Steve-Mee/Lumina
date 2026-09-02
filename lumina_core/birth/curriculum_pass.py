@@ -12,6 +12,32 @@ from lumina_core.birth.foundation_pass import evaluate_foundation_pass
 from lumina_core.birth.foundation_stages import is_foundation_stage, is_legacy_intra_birth_stage
 
 
+def _resolve_s5_holdout_oos(
+    *,
+    oos_sharpe: float | None,
+    oos_dd_pct: float | None,
+    pnl_series: list[float] | None,
+) -> tuple[float | None, float | None]:
+    """S5 OOS from the fixture holdout window. Never invent 0.0 / 100.0.
+
+    S5 stage ticks are the reserved holdout (``ticks_for_foundation_stage``).
+    PnL on that window is holdout, not the S1–S4 in-sample train split.
+    Empty holdout PnL stays ``None`` (honest fail).
+    """
+    sharpe = oos_sharpe
+    dd = oos_dd_pct
+    series = list(pnl_series) if pnl_series else []
+    if (sharpe is None or dd is None) and series:
+        from lumina_core.birth.runway import risk_metrics_from_pnl
+
+        computed_s, computed_d = risk_metrics_from_pnl(series)
+        if sharpe is None:
+            sharpe = float(computed_s)
+        if dd is None:
+            dd = float(computed_d)
+    return sharpe, dd
+
+
 def _settlement_pass_leg(
     cfg: BirthCurriculumConfig | None,
     *,
@@ -122,6 +148,8 @@ def evaluate_stage_pass(
         oracle_soft_min_patterns,
         stage_total_pnl,
         target_trades,
+        stage_val_sharpe,
+        stage_val_max_drawdown_pct,
     )
     occ = occupancy
     # S1 occupancy is plant-flat, not HOLD%. Do not invent 0.0 from trend signals.
@@ -158,8 +186,11 @@ def evaluate_stage_pass(
     from lumina_core.birth.foundation_metrics import build_foundation_snapshot
 
     if stage == CurriculumStage.STAGE5_PROBE_HANDOFF:
-        oos_s = oos_sharpe if oos_sharpe is not None else float(stage_val_sharpe)
-        oos_d = oos_dd_pct if oos_dd_pct is not None else float(stage_val_max_drawdown_pct)
+        oos_s, oos_d = _resolve_s5_holdout_oos(
+            oos_sharpe=oos_sharpe,
+            oos_dd_pct=oos_dd_pct,
+            pnl_series=pnl_series,
+        )
     else:
         oos_s = oos_sharpe
         oos_d = oos_dd_pct

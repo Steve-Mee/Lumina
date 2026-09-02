@@ -146,8 +146,8 @@ def test_a_predicate_s2_range_disarmed() -> None:
     )
 
 
-def test_a_s4_passthrough_over_flat_thin_policy_armed() -> None:
-    """Gate B2: S4 envelope is off; idle must arm at flat=1.0 under PASSTHROUGH."""
+def test_a_s4_over_flat_passthrough_disarmed() -> None:
+    """PR #9 kruk removed: S4 over-flat is the envelope, not idle."""
     assert "stage4_viable_plant" not in S3_INBAND_REGIMES
     assert "stage4_viable_plant" in S4_IDLE_REGIMES
     assert (
@@ -157,7 +157,7 @@ def test_a_s4_passthrough_over_flat_thin_policy_armed() -> None:
                 cumulative_flat=1.0,
             )
         )
-        is True
+        is False
     )
 
 
@@ -317,7 +317,8 @@ def test_c_hold_mask_off_under_force_open() -> None:
     assert action is None
 
 
-def test_d_s4_over_flat_replica_mask_replaces_hold_by_bar_32() -> None:
+def test_d_s4_over_flat_replica_idle_does_not_claim() -> None:
+    """Over-flat S4 PASSTHROUGH: idle must not replace HOLD (envelope FORCE_OPEN owns it)."""
     rows = simulate_passthrough_hold_mask_bars(
         n_bars=40,
         min_idle_hold_bars=32,
@@ -327,12 +328,8 @@ def test_d_s4_over_flat_replica_mask_replaces_hold_by_bar_32() -> None:
         participation_mode=MODE_PASSTHROUGH,
         position=0,
     )
-    first_entry = next((i for i, (side, _plant, _r) in enumerate(rows) if side in {1, 2}), None)
-    assert first_entry == 31
-    side, is_plant, reason = rows[31]
-    assert side in {1, 2}
-    assert is_plant is False
-    assert reason == S3_INBAND_HOLD_MASK_REASON
+    assert len(rows) == 40
+    assert all(side == 0 for side, _plant, _r in rows)
 
 
 def test_d_cloud_failure_replica_mask_replaces_hold_by_bar_32() -> None:

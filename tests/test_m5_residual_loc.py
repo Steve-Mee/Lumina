@@ -83,7 +83,7 @@ M5_OVER_400_CEILINGS: dict[str, int] = {
     "lumina_core/evolution/twin_discipline.py": 482,
     "lumina_core/birth/stage_scorecard.py": 473,
     "lumina_core/birth/recovery_compress.py": 473,
-    "lumina_core/birth/stage_loop_rollout_pre_caps.py": 471,
+    "lumina_core/birth/stage_loop_rollout_pre_caps.py": 415,
     "lumina_core/evolution/twin_escalation.py": 468,
     "lumina_launcher/services/fabric_link_health.py": 467,
     "lumina_core/evolution/twin_base_training.py": 464,
@@ -160,6 +160,7 @@ def test_m5_residual_split_modules_exist() -> None:
         "lumina_core/birth/synthetic_cloud_fixture_persist.py",
         "lumina_core/birth/stage3_inband_ssot.py",
         "lumina_core/birth/stage3_inband_gym.py",
+        "lumina_core/birth/foundation_occupancy_envelope.py",
     ]
     missing = [c for c in companions if not (ROOT / c).is_file()]
     assert not missing, f"missing M5 companion modules: {missing}"
