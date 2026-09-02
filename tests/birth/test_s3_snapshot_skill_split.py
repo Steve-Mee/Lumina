@@ -172,15 +172,17 @@ def test_d_build_foundation_snapshot_skill_clock() -> None:
 
 def test_e_s2_volume_clock_no_policy_sample() -> None:
     def _s2(**overrides: object):
-        payload = _physics(
-            trades=815,
-            wins=250,
-            occupancy=0.50,
-            range_round_trips=100,
-            target_trades=250,
-            **overrides,
+        payload = {
+            "trades": 815,
+            "wins": 250,
+            "occupancy": 0.50,
+            "range_round_trips": 100,
+            "target_trades": 250,
+        }
+        payload.update(overrides)
+        return evaluate_stage_pass(
+            CurriculumStage.STAGE2_RANGE, **_physics(**payload)  # type: ignore[arg-type]
         )
-        return evaluate_stage_pass(CurriculumStage.STAGE2_RANGE, **payload)  # type: ignore[arg-type]
 
     with_pilot = _s2(policy_trades=253, policy_wins=80)
     assert "trades 0 < 250" not in with_pilot.message

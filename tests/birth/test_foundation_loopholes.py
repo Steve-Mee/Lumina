@@ -384,8 +384,8 @@ def _v2_receipt(stage: str, **kwargs: object) -> StagePassReceipt:
         "stage1_trend": 160,
         "stage2_range": 250,
         "stage3_mixed": 400,
-        "stage4_viable_plant": 120,
-        "stage5_probe_handoff": 60,
+        "stage4_viable_plant": 150,
+        "stage5_probe_handoff": 150,
     }
     trades = int(kwargs.get("trades", floors.get(stage, 200)) or 200)
     wins = int(kwargs.get("wins", max(40, int(trades * 0.40))) or 40)
