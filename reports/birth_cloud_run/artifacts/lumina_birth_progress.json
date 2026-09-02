@@ -1,405 +1,33 @@
 {
-  "timestamp": "2026-09-02T11:42:59.470403+00:00",
-  "stage": "stage_stalled",
-  "phase": "stage_stalled",
-  "message": "Stage stage2_range stalled: foundation_fail:median_loss_r=None missing_or_gt_1.5;occupancy=0.9034568021242375 not_in_30%-70%;replay_cap trades=7881 days=0",
+  "timestamp": "2026-09-02T13:37:05.898759+00:00",
+  "stage": "training_running",
+  "phase": "ppo_training",
+  "message": "PPO batch start \u00b7 702/400 trades \u00b7 winrate 92.6% \u00b7 patronen 340,160",
   "target_trades": 8000,
-  "trades_done": 8031,
-  "cumulative_trades": 8031,
-  "total_trades": 8031,
-  "ppo_steps": 0,
-  "progress_pct": 37.6,
-  "elapsed_sec": 840.77,
-  "birth_start_time": 1788348538.697825,
-  "stage_trades": 7881,
-  "stage_target_trades": 250,
-  "stage_training_budget_trades": 3000,
-  "stage_wins": 3198,
-  "stage_winrate": 0.4058,
-  "stage_hold_ratio": 0.0348,
-  "stage_hold_signals": 62279,
-  "stage_total_signals": 1790007,
-  "curriculum_index": 2,
-  "curriculum_total": 5,
-  "stage_pass_now": false,
-  "median_loss_r": 1.012261054007168,
-  "mean_r": 2.04715482346342,
-  "occupancy": 0.9034568021242375,
-  "edge_vs_first_touch": -0.08263904690225732,
-  "pass_criteria_id": "selectivity",
-  "pass_criteria_label": ">=250 pass gate (3000 budget) \u00b7 occupancy 30\u201370% \u00b7 median loss R \u2264 1.5 \u00b7 round-trips \u00b7 settlement",
-  "pass_metric_label": "Occupancy",
-  "pass_metric_target": null,
-  "pass_metric_min": 0.3,
-  "pass_metric_max": 0.7,
-  "stage_display_name": "Selectivity",
-  "sub_phase": "stall_remediation",
-  "sub_phase_label": "Stall Remediation",
-  "is_advancing": false,
-  "patterns_mined": 219023,
-  "learning_attempt": 1,
-  "exploration_active": false,
-  "oracle_wins": 219023,
-  "escalation_level": 2,
-  "gen0_provisional": false,
-  "data_days_loaded": 88,
-  "requested_days": 90,
-  "actual_calendar_days": 88,
-  "requested_instrument": null,
-  "resolved_instrument": null,
-  "rolled": null,
-  "stitched": false,
-  "instruments": [
-    "NQ SEP26"
-  ],
-  "stitched_from": [],
-  "expansion_step": 1,
-  "stage_range_hold_signals": 62279,
-  "stage_range_total_signals": 1790007,
-  "stage_range_flat_bars": 1617194,
-  "stage_range_round_trips": 7881,
-  "stage_range_flat_ratio": 0.9035,
-  "occupancy_control_flat": 0.49,
-  "stage_wall_remaining_sec": 14348,
-  "volume_gate_status": "PASSED",
-  "winrate_trend_slope": 0.000213,
-  "last_adaptation": {
-    "timestamp": 1788349327.2793667,
-    "reason": "metrics_not_improving_within_wall",
-    "chunk_target": 50,
-    "escalation": 2,
-    "tier": 3,
-    "winrate": 0.40328129134691715,
-    "failure_key": "metrics_not_improving_within_wall"
-  },
-  "retries_this_stage": 0,
-  "adaptation_tier": 3,
-  "max_adaptation_tiers": 4,
-  "max_stage_retries": 3,
-  "auto_recovery_active": true,
-  "adaptation_enabled": true,
-  "wall_behavior": "adaptive",
-  "learning_velocity_combined": 0.000213,
-  "strong_recovery_mode": true,
-  "velocity_stall_attempts": 356,
-  "strong_recovery_attempts": 0,
-  "provisional_pass_considered": false,
-  "meta_primary_strategy": "pattern_inject",
-  "meta_learning_health": "flat",
-  "meta_pattern_quality": 1.0,
-  "meta_reward_tweak_active": true,
-  "meta_reward_expectancy_coeff": 0.75,
-  "meta_review_trigger": "stall",
-  "meta_explore_multiplier": 0.5,
-  "meta_rollouts_since_review": 0,
-  "meta_last_rationale": "pass_vector_selective_quality_open",
-  "meta_strategy_history": [
-    {
-      "primary": "pattern_inject",
-      "secondary": [
-        "explore_reduce",
-        "reward_shaping_tweak"
-      ],
-      "rationale": "pass_vector_selective_quality_open"
-    },
-    {
-      "primary": "pattern_inject",
-      "secondary": [
-        "explore_reduce",
-        "reward_shaping_tweak"
-      ],
-      "rationale": "pass_vector_selective_quality_open"
-    },
-    {
-      "primary": "pattern_inject",
-      "secondary": [
-        "explore_reduce",
-        "reward_shaping_tweak"
-      ],
-      "rationale": "pass_vector_selective_quality_open"
-    },
-    {
-      "primary": "pattern_inject",
-      "secondary": [
-        "explore_reduce",
-        "reward_shaping_tweak"
-      ],
-      "rationale": "pass_vector_selective_quality_open"
-    },
-    {
-      "primary": "pattern_inject",
-      "secondary": [
-        "explore_reduce",
-        "reward_shaping_tweak"
-      ],
-      "rationale": "pass_vector_selective_quality_open"
-    },
-    {
-      "primary": "pattern_inject",
-      "secondary": [
-        "explore_reduce",
-        "reward_shaping_tweak"
-      ],
-      "rationale": "pass_vector_selective_quality_open"
-    },
-    {
-      "primary": "pattern_inject",
-      "secondary": [
-        "explore_reduce",
-        "reward_shaping_tweak"
-      ],
-      "rationale": "pass_vector_selective_quality_open"
-    },
-    {
-      "primary": "pattern_inject",
-      "secondary": [
-        "explore_reduce",
-        "reward_shaping_tweak"
-      ],
-      "rationale": "pass_vector_selective_quality_open"
-    },
-    {
-      "primary": "pattern_inject",
-      "secondary": [
-        "explore_reduce",
-        "reward_shaping_tweak"
-      ],
-      "rationale": "pass_vector_selective_quality_open"
-    },
-    {
-      "primary": "adaptation_retry",
-      "secondary": [
-        "adaptation_retry",
-        "pattern_inject",
-        "data_expansion"
-      ],
-      "rationale": "adaptation_stage2_metric"
-    },
-    {
-      "primary": "pattern_inject",
-      "secondary": [
-        "explore_reduce",
-        "reward_shaping_tweak"
-      ],
-      "rationale": "pass_vector_selective_quality_open"
-    },
-    {
-      "primary": "pattern_inject",
-      "secondary": [
-        "explore_reduce",
-        "reward_shaping_tweak"
-      ],
-      "rationale": "pass_vector_selective_quality_open"
-    },
-    {
-      "primary": "pattern_inject",
-      "secondary": [
-        "explore_reduce",
-        "reward_shaping_tweak"
-      ],
-      "rationale": "pass_vector_selective_quality_open"
-    },
-    {
-      "primary": "pattern_inject",
-      "secondary": [
-        "explore_reduce",
-        "reward_shaping_tweak"
-      ],
-      "rationale": "pass_vector_selective_quality_open"
-    },
-    {
-      "primary": "pattern_inject",
-      "secondary": [
-        "explore_reduce",
-        "reward_shaping_tweak"
-      ],
-      "rationale": "pass_vector_selective_quality_open"
-    },
-    {
-      "primary": "pattern_inject",
-      "secondary": [
-        "explore_reduce",
-        "reward_shaping_tweak"
-      ],
-      "rationale": "pass_vector_selective_quality_open"
-    },
-    {
-      "primary": "pattern_inject",
-      "secondary": [
-        "explore_reduce",
-        "reward_shaping_tweak"
-      ],
-      "rationale": "pass_vector_selective_quality_open"
-    },
-    {
-      "primary": "pattern_inject",
-      "secondary": [
-        "explore_reduce",
-        "reward_shaping_tweak"
-      ],
-      "rationale": "pass_vector_selective_quality_open"
-    },
-    {
-      "primary": "pattern_inject",
-      "secondary": [
-        "explore_reduce",
-        "reward_shaping_tweak"
-      ],
-      "rationale": "pass_vector_selective_quality_open"
-    },
-    {
-      "primary": "pattern_inject",
-      "secondary": [
-        "explore_reduce",
-        "reward_shaping_tweak"
-      ],
-      "rationale": "pass_vector_selective_quality_open"
-    }
-  ],
-  "birth_trade_stop_pct": 0.002075,
-  "birth_trade_target_pct": 0.003826,
-  "birth_trade_geometry_source": "move_distribution",
-  "geometry_time_ordered": true,
-  "geometry_p40_raw": 0.00244154,
-  "geometry_hold_bars": 120,
-  "geometry_pool_size": 124852,
-  "geometry_macro_rejected": false,
-  "geometry_floor_bound": false,
-  "geometry_net_rr": 1.7904484367298905,
-  "e_mech": -0.022832655844171934,
-  "first_touch_p_ft": 0.3501829065513801,
-  "foundation_schema": "foundation_v2",
-  "foundation_replay_ok": true,
-  "foundation_unique_calendar_days": 88,
-  "geometry_net_rr_after_cost": 1.7904,
-  "geometry_breakeven_wr_after_cost": 0.3584,
-  "geometry_cost_usd": 5.0,
-  "geometry_ref_price": 25211.25,
-  "first_touch_target_hit_rate": 0.3502,
-  "edge_vs_random": 0.069,
-  "geometry_econ_proxy_mismatch": false,
-  "pass_vector_flat": 0.9035,
-  "pass_vector_expectancy": -0.2325,
-  "pass_vector_exp_floor": -0.15,
-  "pass_vector_edge_vs_random": 0.069,
-  "pass_vector_occupancy_over_gap": 0.0,
-  "pass_vector_occupancy_under_gap": 0.2035,
-  "pass_vector_exp_gap": 0.0825,
-  "pass_vector_edge_gap": 0.0,
-  "pass_vector_dominant": "mixed_quality",
-  "pass_vector_action": "selective_quality_open",
-  "pass_vector_in_flat_band": false,
-  "pass_vector_beat_random": true,
-  "stage2_bootstrap_patterns": 10000,
-  "stage2_bootstrap_updates": 5000,
-  "stage2_action_head_reinit": true,
-  "participation_force_exit": 86,
+  "trades_done": 1902,
+  "cumulative_trades": 1902,
+  "total_trades": 1902,
+  "ppo_steps": 140000,
+  "progress_pct": 58.8,
+  "elapsed_sec": 1384.01,
+  "birth_start_time": 1788354841.8851624,
   "stage1_foundation_target_wr": 0.3,
-  "stage1_foundation_winrate": 0.38,
+  "stage1_foundation_winrate": 0.4,
   "stage1_foundation_learning_gap": 0.0,
   "stage1_foundation_pressure": false,
   "stage1_anti_thrash": false,
   "stage1_survival_ok": true,
-  "stage1_edge_vs_random": -0.1236,
-  "stage1_transfer_handoff_ok": true,
-  "stage1_transfer_purge_mode": "full_clear",
-  "stage1_transfer_reinit_ok": true,
-  "stage_policy_trades": 3420,
-  "stage_policy_wins": 915,
-  "stage_plant_trades": 4461,
-  "stage_plant_wins": 2283,
-  "skill_metric_policy_only": true,
-  "skill_metric_eligible": true,
-  "skill_metric_trades": 3420,
-  "skill_metric_wins": 915,
-  "skill_metric_winrate": 0.2675,
-  "skill_metric_expectancy": -0.2325,
-  "total_metric_winrate": 0.4058,
-  "total_metric_expectancy": -0.0942,
-  "skill_pass_wr_floor": 0.35,
-  "economic_be_wr": 0.3584,
-  "skill_wr_vs_economic_be": -0.0908,
-  "economic_training_pressure": 0.0908,
-  "closes_stop": 35,
-  "closes_target": 15,
-  "closes_flatten": 0,
-  "closes_time_stop": 0,
-  "closes_unknown": 0,
-  "stage_closes_stop_cum": 4651,
-  "stage_closes_target_cum": 3145,
-  "stage_closes_flatten_cum": 0,
-  "stage_closes_time_stop_cum": 85,
-  "stage_closes_unknown_cum": 0,
-  "stage_settlement_share": 1.0,
-  "stage_stop_target_ratio": 1.479,
-  "mean_entry_stop_pct": 0.002075,
-  "mean_entry_target_pct": 0.003826,
-  "expectancy_quality_step": 0,
-  "expectancy_quality_step_source": "",
-  "expectancy_stall_detected": false,
-  "oracle_last_stop_pct": 0.002075,
-  "oracle_last_target_pct": 0.003826,
-  "birth_diag_contract": "quality_geom_v4",
-  "birth_code_fingerprint": "19e8339f02370839",
-  "birth_runtime_pid": 3578,
-  "birth_runtime_python": "/workspace/.venv/bin/python",
-  "birth_runtime_cwd": "/workspace/reports/birth_cloud_run/workspace",
-  "birth_code_has_quality_failclosed": true,
-  "birth_code_has_geom_enrich": true,
-  "birth_code_has_coerce": true,
-  "birth_code_has_geometry_time_guard": true,
-  "birth_code_collected_at": "2026-09-02T11:28:58",
-  "birth_code_identity_ok": true,
-  "birth_code_identity_defects": [],
-  "meta_self_eval_phase": "idle",
-  "meta_self_eval_current_strategy": "",
-  "meta_self_eval_committed_strategy": "",
-  "meta_self_eval_best_velocity_delta": 0.0,
-  "meta_self_eval_probes_completed": 0,
-  "evolution_step_label": "Plateau detected",
-  "evolution_actions_remaining": 4,
+  "stage1_edge_vs_random": -0.0969,
+  "trade_budget_cap": 8000,
+  "trade_budget_remaining": 6098,
+  "trade_budget_source": "start_arg.target_trades",
   "evolution_actions_total": 4,
-  "evolution_actions_completed": 0,
+  "evolution_actions_completed": 3,
   "evolution_phantom_steps": 0,
-  "plateau_elapsed_sec": 415.9650857448578,
-  "trades_beyond_gate": 7631,
-  "plateau_forced_recoveries_count": 0,
-  "plateau_best_winrate": 0.422182,
-  "attention_reason_code": "plateau_evolution_exhausted",
-  "attention_summary": "Terminal recovery: plateau_evolution_exhausted \u2014 next_action=expand_data_or_wipe_genesis",
-  "attention_recommended_actions": [
-    "expand_data",
-    "wipe_and_retry",
-    "human_review"
-  ],
-  "attention_notified_at": "2026-09-02T11:29:17.403231+00:00",
-  "user_initiated_stop": false,
+  "plateau_best_winrate": 0.313,
+  "attention_notified_at": "2026-09-02T13:14:18.994202+00:00",
   "prior_stage": "training_running",
-  "prior_phase": "stall_remediation",
-  "policy_entropy": 5.725113,
-  "entropy_alive": true,
-  "edgescore": 0.25,
-  "expectancy_proxy": -0.2325,
-  "starship_exploration_burst_active": false,
-  "swarm_tournament_lift_ok": true,
-  "swarm_tournament_at_start": 0.22022471910112362,
-  "swarm_edgescore_lift_ok": true,
-  "swarm_edgescore_at_start": 0.22022471910112362,
-  "swarm_rejected_no_lift": false,
-  "best_edgescore": null,
-  "best_edgescore_at_trade": 0,
-  "best_edgescore_policy_path": "",
-  "edgescore_champion_min_trades": 250,
-  "edgescore_champion_locked": false,
-  "rolling_winrate_500": 0.41914,
-  "rolling_winrate_source": "true_window",
-  "rolling_window_trades_covered": 150,
-  "hygiene_wr_floor": 0.35,
-  "hygiene_wr_lifetime": 0.405786,
-  "hygiene_wr_rolling": 0.41914,
-  "hygiene_wr_effective": 0.41914,
-  "hygiene_wr_source": "lifetime",
-  "rolling_wr_eligible": true,
+  "prior_phase": "curriculum_learning",
   "data_manifest": {
     "train_hash": "7e86c2bb1c71d514",
     "raw_ticks_hash": "2466d3f41d60657b",
@@ -428,72 +56,554 @@
     "split_cache_path": "",
     "reused_manifest": true
   },
-  "trade_budget_cap": 8000,
-  "trade_budget_remaining": 0,
-  "trade_budget_source": "start_arg.target_trades",
-  "terminal_stall_reason": "plateau_evolution_exhausted",
   "constitution_violations": 0,
   "constitution_violations_session": 0,
   "constitution_violations_cumulative": 0,
-  "constitution_soft_blocks": 1612703,
-  "constitution_soft_blocks_session": 1612703,
+  "constitution_soft_blocks": 83815,
+  "constitution_soft_blocks_session": 83815,
   "soft_block_reasons_hist": {
-    "risk_exceeds_1pct": 1612703
+    "risk_exceeds_1pct": 83815
   },
   "birth_risk_clips_applied": 0,
-  "phoenix_loop_active": false,
-  "phoenix_count": 0,
-  "phoenix_last_action": "",
-  "phoenix_last_cycle_at": 0.0,
-  "phoenix_history": [],
-  "death_spiral_repeat_count": 1,
-  "death_spiral_last_signature": "stage2_range|median_loss_r|0.00",
-  "death_spiral_circuit_breaker": false,
-  "death_spiral_novelty_budget": 3,
-  "death_spiral_history": [
+  "stage_wins": 650,
+  "stage_winrate": 0.9259,
+  "stage_hold_ratio": 0.6546,
+  "curriculum_index": 3,
+  "curriculum_total": 5,
+  "stages_passed": [
+    "stage1_trend",
+    "stage2_range"
+  ],
+  "pass_criteria_id": "mixed_regimes",
+  "pass_criteria_label": ">=400 pass gate (5000 budget) \u00b7 occupancy 25\u201375% \u00b7 edge \u2265 \u22125pp vs first-touch \u00b7 median loss R \u2264 1.5",
+  "pass_metric_label": "Edge vs first-touch",
+  "pass_metric_target": null,
+  "pass_metric_min": -0.05,
+  "pass_metric_max": null,
+  "stage_display_name": "Mixed regimes",
+  "sub_phase": "ppo_training",
+  "sub_phase_label": "PPO batch training",
+  "is_advancing": true,
+  "stage_target_trades": 400,
+  "stage_training_budget_trades": 5000,
+  "stage_blocker_metric": null,
+  "stage_blocker_value": null,
+  "pass_reason": null,
+  "stage_pass_now": false,
+  "foundation_schema": "foundation_v2",
+  "median_loss_r": 1.0054735206569512,
+  "mean_r": 1.3130977104926655,
+  "occupancy": 0.5762264487635136,
+  "first_touch_p_ft": 0.33948278702026025,
+  "geometry_net_rr": 1.8278398127327382,
+  "e_mech": -0.0399970591266392,
+  "edge_vs_first_touch": -0.33948278702026025,
+  "foundation_skill_wr": 0.0,
+  "foundation_replay_ok": true,
+  "foundation_unique_calendar_days": 88,
+  "oos_sharpe": null,
+  "oos_dd_pct": null,
+  "geometry_net_rr_after_cost": 1.8278,
+  "volume_gate_status": "PASSED",
+  "winrate_trend_slope": -0.000133,
+  "learning_velocity_combined": -18.308745,
+  "strong_recovery_mode": false,
+  "velocity_stall_attempts": 77,
+  "strong_recovery_attempts": 0,
+  "provisional_pass_considered": false,
+  "last_adaptation": {},
+  "retries_this_stage": 0,
+  "adaptation_tier": 0,
+  "max_adaptation_tiers": 4,
+  "max_stage_retries": 3,
+  "auto_recovery_active": true,
+  "adaptation_enabled": true,
+  "wall_behavior": "adaptive",
+  "meta_primary_strategy": "explore_reduce",
+  "meta_learning_health": "declining",
+  "meta_pattern_quality": 1.0,
+  "meta_reward_tweak_active": false,
+  "meta_review_trigger": "stall",
+  "meta_explore_multiplier": 0.5,
+  "wall_triggers_total": 0,
+  "autonomous_recovery_attempts": 0,
+  "autonomous_recovery_successes": 0,
+  "autonomous_recovery_rate_pct": 0.0,
+  "evolution_phase": "none",
+  "evolution_step": 0,
+  "evolution_step_label": "",
+  "evolution_actions_remaining": 4,
+  "plateau_elapsed_sec": 0.0,
+  "trades_beyond_gate": 302,
+  "plateau_forced_recoveries_count": 0,
+  "plateau_active": false,
+  "evolution_history": [],
+  "best_winrate": 0.9286846275752774,
+  "best_winrate_at_trade": 631,
+  "best_policy_path": "/workspace/reports/birth_cloud_run/workspace/lumina_agents/ppo/birth_best_stage3_mixed.zip",
+  "trades_beyond_gate_max": 1200,
+  "forced_recoveries_count": 0,
+  "forced_recoveries_max": 12,
+  "full_recovery_cycles": 0,
+  "live_winrate": 0.9259,
+  "hold_trap_detected": false,
+  "over_trading_detected": false,
+  "under_activity_detected": false,
+  "expectancy_stall_detected": false,
+  "evolution_ladder_blocked_reason": "plateau_inactive",
+  "recommended_recovery_action": "policy_rollback",
+  "terminal_plateau_recommended": false,
+  "terminal_stall_reason": null,
+  "stall_remediation_cycle": 0,
+  "stall_remediation_step": 0,
+  "stall_remediation_max_steps": 5,
+  "stall_remediation_max_cycles": 3,
+  "recovery": {
+    "schema": "recovery_compress_v1",
+    "active": "adaptation",
+    "layers": [
+      "adaptation"
+    ],
+    "productive": true,
+    "theater": false,
+    "theater_reasons": [],
+    "next_action": "let_engine_recover",
+    "escalation": {
+      "level": 1,
+      "adaptation_tier": 0,
+      "max_adaptation_tiers": 4,
+      "retries_this_stage": 0,
+      "max_stage_retries": 3,
+      "plateau_evolution_step": 0,
+      "plateau_full_recovery_cycles": 0,
+      "remediation_step": 0,
+      "remediation_cycle": 0,
+      "phoenix_cycles": 0,
+      "autonomous_recovery_count": 0
+    },
+    "flags": {
+      "plateau_active": false,
+      "remediation_active": false,
+      "remediation_exhausted": false,
+      "swarm_active": false,
+      "swarm_rejected_no_lift": false,
+      "needs_attention": false,
+      "champion_freeze": false,
+      "strong_recovery_mode": false,
+      "provisional_graduation": false,
+      "terminal_stall_reason": null,
+      "trade_budget_remaining": 6098,
+      "phase": "ppo_training"
+    },
+    "policy": {
+      "single_active_surface": true,
+      "parallel_layers_reported_not_executed": true,
+      "theater_means_spin_without_lift": true,
+      "champion_freeze_suppresses_ladder_theater": true
+    }
+  },
+  "stage1_winrate_gate": 0.45,
+  "stage1_winrate_recommended": 0.45,
+  "policy_entropy": 5.693345,
+  "entropy_alive": true,
+  "starship_exploration_burst_active": false,
+  "expectancy_proxy": 0.4342,
+  "edgescore": 1.0,
+  "swarm_tournament_lift_ok": false,
+  "swarm_tournament_at_start": -1.0,
+  "swarm_edgescore_lift_ok": false,
+  "swarm_edgescore_at_start": -1.0,
+  "swarm_rejected_no_lift": false,
+  "best_edgescore": null,
+  "best_edgescore_at_trade": 0,
+  "best_edgescore_policy_path": "",
+  "edgescore_champion_min_trades": 400,
+  "edgescore_champion_locked": false,
+  "stage_pass_gate_trades": 400,
+  "stage_budget_trades": 5000,
+  "plateau_min_stage_trades": 400,
+  "rolling_winrate_500": 0.934167,
+  "rolling_winrate_source": "true_window",
+  "rolling_window_trades_covered": 300,
+  "hygiene_wr_floor": 0.35,
+  "hygiene_wr_lifetime": 0.925926,
+  "hygiene_wr_rolling": 0.934167,
+  "hygiene_wr_effective": 0.934167,
+  "hygiene_wr_source": "lifetime",
+  "rolling_wr_eligible": true,
+  "rollouts_since_last_adaptation": 81,
+  "last_adaptation_stage_trades": -1,
+  "plateau_quarantine_active": false,
+  "plateau_quarantine_rollouts_remaining": 0,
+  "plateau_quarantine_trades_remaining": 0,
+  "plateau_quarantine_trades_at_resume": 0,
+  "plateau_quarantine_trades_new": 0,
+  "plateau_quarantine_trades_remaining_count": 0,
+  "plateau_quarantine_blocking": false,
+  "sim_ticks_processed_cumulative": 403482,
+  "wall_clock_rollout_sec_avg": 1.58,
+  "wall_clock_trades_per_min": 328.9,
+  "soft_block_rate_per_1k_signals": 207.7,
+  "meta_patterns_last_inject": 5000,
+  "meta_oracle_wins_last_inject": 5000,
+  "meta_strategy_history": [
     {
-      "timestamp": 1788349379.458505,
-      "signature": "stage2_range|median_loss_r|0.00",
-      "repeat_count": 1
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
+    },
+    {
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
+    },
+    {
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
+    },
+    {
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
+    },
+    {
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
+    },
+    {
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
+    },
+    {
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
+    },
+    {
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
+    },
+    {
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
+    },
+    {
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
+    },
+    {
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
+    },
+    {
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
+    },
+    {
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
+    },
+    {
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
+    },
+    {
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
+    },
+    {
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
+    },
+    {
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
+    },
+    {
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
+    },
+    {
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
+    },
+    {
+      "primary": "explore_reduce",
+      "secondary": [
+        "pattern_inject",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "stage3_stall_quality_not_explore_boost"
     }
   ],
-  "autonomous_recovery_count": 1,
-  "last_recommended_action": "",
-  "recommended_recovery_action": "resume_stalled_stage",
-  "autonomous_recovery_pending": true,
-  "autonomy_message": "Explore-pass CONTINUE (twin shadow conf=50.00%, mode=shadow)",
-  "curriculum_stage": "stage2_range",
-  "stages_passed": [
-    "stage1_trend"
+  "meta_reward_expectancy_coeff": 0.5,
+  "meta_rollouts_since_review": 0,
+  "meta_self_eval_history": [],
+  "meta_self_eval_phase": "idle",
+  "meta_self_eval_current_strategy": "",
+  "meta_self_eval_committed_strategy": "",
+  "meta_self_eval_best_velocity_delta": 0.0,
+  "meta_self_eval_probes_completed": 0,
+  "meta_self_eval_cooldown_until_attempt": 0,
+  "meta_self_eval_probe_results": [],
+  "meta_last_rationale": "stage3_stall_quality_not_explore_boost",
+  "stage2_participation_envelope_enabled": true,
+  "participation_force_open": 1386,
+  "participation_force_hold": 4809,
+  "participation_force_flat": 30528,
+  "participation_force_exit": 221,
+  "participation_overrides_total": 36944,
+  "participation_last_mode": "FORCE_FLAT",
+  "occupancy_control_flat": 0.278,
+  "expectancy_quality_step": 0,
+  "stage2_bootstrap_patterns": 0,
+  "stage2_bootstrap_updates": 0,
+  "stage2_action_head_reinit": false,
+  "stage1_transfer_handoff_ok": true,
+  "stage1_transfer_purge_mode": "full_clear",
+  "stage1_transfer_reinit_ok": true,
+  "stage_policy_trades": 0,
+  "stage_policy_wins": 0,
+  "stage_plant_trades": 702,
+  "stage_plant_wins": 650,
+  "skill_metric_policy_only": true,
+  "skill_metric_eligible": false,
+  "skill_metric_trades": 0,
+  "skill_metric_wins": 0,
+  "skill_metric_winrate": 0.0,
+  "skill_metric_expectancy": -0.5,
+  "total_metric_winrate": 0.9259,
+  "total_metric_expectancy": 0.4259,
+  "skill_pass_wr_floor": 0.35,
+  "economic_be_wr": 0.3536,
+  "skill_wr_vs_economic_be": -0.3536,
+  "economic_training_pressure": 0.3536,
+  "expectancy_proxy_source": "total_or_rolling",
+  "birth_trade_stop_pct": 0.00297,
+  "birth_trade_target_pct": 0.005539,
+  "birth_trade_geometry_source": "move_distribution",
+  "closes_stop": 1,
+  "closes_target": 5,
+  "closes_flatten": 0,
+  "closes_time_stop": 3,
+  "closes_unknown": 0,
+  "mean_entry_stop_pct": 0.00297,
+  "mean_entry_target_pct": 0.005539,
+  "geometry_time_ordered": true,
+  "geometry_p40_raw": 0.00349462,
+  "geometry_hold_bars": 120,
+  "geometry_pool_size": 166620,
+  "geometry_macro_rejected": false,
+  "geometry_floor_bound": false,
+  "geometry_breakeven_wr_after_cost": 0.3536,
+  "geometry_cost_usd": 5.0,
+  "geometry_ref_price": 25836.0,
+  "geometry_econ_proxy_mismatch": false,
+  "first_touch_target_hit_rate": 0.3395,
+  "edge_vs_random": 0.5947,
+  "skill_wr_vs_first_touch": 0.5864,
+  "first_touch_training_pressure": 0.0,
+  "pass_vector_flat": 0.5762,
+  "pass_vector_expectancy": 0.4342,
+  "pass_vector_exp_floor": -0.15,
+  "pass_vector_edge_vs_random": 0.5947,
+  "pass_vector_occupancy_over_gap": 0.0,
+  "pass_vector_occupancy_under_gap": 0.0,
+  "pass_vector_exp_gap": 0.0,
+  "pass_vector_edge_gap": 0.0,
+  "pass_vector_dominant": "none",
+  "pass_vector_action": "hold_pass_path",
+  "pass_vector_in_flat_band": true,
+  "pass_vector_beat_random": true,
+  "pass_expectancy": 0.4342,
+  "pass_wr_equiv": 0.9342,
+  "pass_expectancy_source": "total_or_rolling",
+  "stage2_peak_winrate": 0.0,
+  "stage2_peak_expectancy": -1.0,
+  "stage2_peak_at_trade": 0,
+  "stage2_peak_policy_path": "",
+  "stage2_peak_flat": 0.0,
+  "stage2_peak_edge_vs_random": 0.0,
+  "stage2_near_miss_active": false,
+  "stage2_near_miss_count": 0,
+  "stage2_peak_restore_count": 0,
+  "stage2_peak_last_restore_reason": "",
+  "stage2_swarm_blocked_reason": "",
+  "stage2_phoenix_blocked_reason": "",
+  "stage2_quality_rollouts_since_restore": 0,
+  "stage2_peak_grad_armed": false,
+  "stage2_peak_grad_armed_at_trade": 0,
+  "stage2_volume_rechallenge_done": false,
+  "stage2_finish_mode_active": false,
+  "stage2_finish_stable": false,
+  "stage2_consecutive_rolling_pass_windows": 0,
+  "stage2_flash_green": false,
+  "stage2_flash_green_wr": 0.0,
+  "stage2_flash_green_at_trade": 0,
+  "stage2_flash_green_durable": false,
+  "stage2_consecutive_green_chunks": 0,
+  "stage2_quality_lock_active": false,
+  "stage2_quality_lock_wr": 0.0,
+  "stage2_quality_lock_at_trade": 0,
+  "stage_participation_force_exit_cum": 221,
+  "stage_target_share_decisive": 0.0,
+  "stage_closes_stop_cum": 51,
+  "stage_closes_target_cum": 431,
+  "stage_closes_flatten_cum": 0,
+  "stage_closes_time_stop_cum": 220,
+  "stage_closes_unknown_cum": 0,
+  "stage_stop_target_ratio": 0.118,
+  "stage_settlement_share": 1.0,
+  "expectancy_quality_step_source": "",
+  "birth_diag_contract": "quality_geom_v4",
+  "birth_code_fingerprint": "19e8339f02370839",
+  "birth_runtime_pid": 4598,
+  "birth_runtime_python": "/workspace/.venv/bin/python",
+  "birth_runtime_cwd": "/workspace/reports/birth_cloud_run/workspace",
+  "birth_code_has_quality_failclosed": true,
+  "birth_code_has_geom_enrich": true,
+  "birth_code_has_coerce": true,
+  "birth_code_has_geometry_time_guard": true,
+  "birth_code_collected_at": "2026-09-02T13:14:01",
+  "birth_code_identity_ok": true,
+  "birth_code_identity_defects": [],
+  "certificate_present": false,
+  "evolution_proof_present": false,
+  "perfect_birth_flag_present": false,
+  "certificate_path": "/workspace/reports/birth_cloud_run/workspace/state/lumina_birth_certificate.json",
+  "evolution_proof_path": "/workspace/reports/birth_cloud_run/workspace/state/lumina_evolution_proof.json",
+  "perfect_birth_flag_path": "/workspace/reports/birth_cloud_run/workspace/state/perfect_birth_complete.flag",
+  "curriculum_stages_passed_count": 2,
+  "certificate_path_ready": false,
+  "certificate_readiness_blockers": [
+    "curriculum_stages_2/5",
+    "certificate_absent"
   ],
-  "stage_blocker_metric": "median_loss_r",
-  "stage_blocker_value": 0.0,
-  "pass_reason": "foundation_fail:median_loss_r=None missing_or_gt_1.5;occupancy=0.9034568021242375 not_in_30%-70%;replay_cap trades=7881 days=0",
-  "retryable": true,
+  "perfect_birth_would_pass": false,
+  "perfect_birth_unlock_valid": false,
+  "perfect_birth_failures": [
+    "certificate_invalid_or_missing",
+    "recovery_attempts=0 < 8",
+    "auto_approved_pct=0.0 < 60.0",
+    "shadow_samples=0 < 5"
+  ],
+  "curriculum_stage": "stage3_mixed",
+  "stage_trades": 702,
+  "stage_hold_signals": 264109,
+  "stage_total_signals": 403482,
+  "stage_range_hold_signals": 264109,
+  "stage_range_total_signals": 403482,
+  "stage_range_flat_bars": 232497,
+  "stage_range_round_trips": 702,
+  "stage_range_flat_ratio": 0.5762,
+  "rollout_trades": 0,
+  "rollout_steps": 0,
+  "hold_ratio": 0.6546,
+  "exploration_active": false,
+  "learning_attempt": 81,
+  "escalation_level": 1,
+  "gen0_provisional": false,
+  "patterns_mined": 340160,
+  "oracle_wins": 340160,
+  "oracle_last_scanned": 5444,
+  "oracle_last_patterns": 5000,
+  "oracle_last_stop_pct": 0.00297,
+  "oracle_last_target_pct": 0.005539,
+  "oracle_last_reason": "ok_capped",
+  "display_winrate_scope": "stage_current",
+  "training_mode": "certified",
+  "allow_provisional": false,
+  "data_days_loaded": 90,
+  "requested_days": 90,
+  "actual_calendar_days": 88,
+  "requested_instrument": null,
+  "resolved_instrument": null,
+  "rolled": null,
+  "stitched": false,
+  "instruments": [
+    "NQ SEP26"
+  ],
+  "stitched_from": [],
+  "expansion_step": 0,
+  "stage_wall_remaining_sec": 13220,
+  "quality_score": 0.0,
+  "intra_hard_pct": null,
+  "intra_easy_winrate": null,
   "needs_attention": false,
-  "provisional_graduation": false,
-  "graduation_tier": "strict",
-  "oos_proxy_winrate": 0.0,
-  "terminal_freeze": {
-    "schema": "terminal_freeze_v1",
-    "reason": "plateau_evolution_exhausted",
-    "curriculum_stage": "stage2_range",
-    "stages_passed": [
-      "stage1_trend"
-    ],
-    "evolution_step": 0,
-    "stage_trades": 7881,
-    "stage_wins": 3198,
-    "swarm_rejected_no_lift": false,
-    "swarm_champion_accepted": false,
-    "next_action": "expand_data_or_wipe_genesis",
-    "best_edgescore_policy_path": "",
-    "best_policy_path": "/workspace/reports/birth_cloud_run/workspace/lumina_agents/ppo/birth_best_stage2_range.zip",
-    "frozen_at": "2026-09-02T11:42:59.470161+00:00",
-    "resolved": false,
-    "resolved_action": "",
-    "resolved_by": ""
-  },
-  "evolution_phase": "exhausted",
-  "evolution_step": 0
+  "attention_summary": "",
+  "attention_reason_code": "",
+  "attention_recommended_actions": [],
+  "user_initiated_stop": false
 }

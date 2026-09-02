@@ -1,0 +1,33 @@
+{
+  "symbol": "NQ SEP26",
+  "days": 88,
+  "requested_days": 90,
+  "tick_count": 213120,
+  "train_tick_count": 166620,
+  "holdout_tick_count": 43170,
+  "regime_counts": {
+    "TREND_UP": 26205,
+    "NEUTRAL": 161444,
+    "TREND_DOWN": 25471
+  },
+  "holdout_regimes": [
+    "NEUTRAL",
+    "TREND_DOWN",
+    "TREND_UP"
+  ],
+  "train_regimes": [
+    "NEUTRAL",
+    "TREND_DOWN",
+    "TREND_UP"
+  ],
+  "hash": "7e86c2bb1c71d514",
+  "raw_ticks_hash": "2466d3f41d60657b",
+  "schema_version": "cloud_fixture_v1",
+  "cache_schema_version": 1,
+  "enrich_version": "trend_features_v1",
+  "path": "/workspace/reports/birth_cloud_run/workspace/state/lumina_birth_cache_manifest.json",
+  "ticks_path": "/workspace/reports/birth_cloud_run/workspace/state/lumina_birth_ticks_cache.jsonl",
+  "split_path": "/workspace/reports/birth_cloud_run/workspace/state/lumina_birth_split_cache.json",
+  "source": "synthetic_cloud_fixture",
+  "holdout_pct": 0.2
+}
