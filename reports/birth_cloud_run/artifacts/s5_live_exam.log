@@ -1,0 +1,627 @@
+birth.cloud.fixture ticks=213,120 days=88 source=synthetic_cloud_fixture holdout_regimes=['NEUTRAL', 'TREND_DOWN', 'TREND_UP']
+fabric_secret.read heal env→fabric_json env_len=0 json_len=10 mismatch=False
+2026-09-02 19:09:56,715,WARNING,[ConfigLoader] Missing env var (non-strict mode): XAI_API_KEY
+2026-09-02 19:09:56,715,WARNING,[ConfigLoader] Missing env var (non-strict mode): LUMINA_JWT_SECRET_KEY
+2026-09-02 19:09:56,715,WARNING,[ConfigLoader] Placeholder/default API key active in security.api_keys: '${LUMINA_ADMIN_API_KEY}'
+2026-09-02 19:09:56,715,WARNING,speech_recognition library not available; voice input disabled
+birth.cloud.engine_constructed class=BirthPhaseEngineV2
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:09:58,698,WARNING,milestone.send_failed id=birth_started
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:09:58,699,WARNING,milestone.send_failed id=maturation:birth_started
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:10:01,966,WARNING,milestone.send_failed id=history_loaded
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:10:01,966,WARNING,milestone.send_failed id=regime_map_ready
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:10:12,168,WARNING,birth.stage.not_passed stage=stage1_trend trades=0 blockers=foundation_fail:trades 0 < 150;median_loss_r=None missing_or_gt_1.5 settle=warmup median_loss_r=None net_rr=2.4437651559883733
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:10:13,019,WARNING,birth.curriculum soft_constitution_violation principle=birth_constitution_guard count=1
+2026-09-02 19:10:13,019,WARNING,birth.constitution.soft_violation principle=birth_constitution_guard severity=warning count=1 detail=risk_exceeds_1pct
+2026-09-02 19:10:13,021,WARNING,birth.curriculum soft_constitution_violation principle=birth_constitution_guard count=2
+2026-09-02 19:10:13,021,WARNING,birth.constitution.soft_violation principle=birth_constitution_guard severity=warning count=2 detail=risk_exceeds_1pct
+2026-09-02 19:10:13,023,WARNING,birth.curriculum soft_constitution_violation principle=birth_constitution_guard count=3
+2026-09-02 19:10:13,023,WARNING,birth.constitution.soft_violation principle=birth_constitution_guard severity=warning count=3 detail=risk_exceeds_1pct
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:10:15,196,WARNING,milestone.send_failed id=curriculum_stage1_trend_passed
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:10:56,442,WARNING,birth.stage.not_passed stage=stage2_range trades=0 blockers=foundation_fail:trades 0 < 250;median_loss_r=None missing_or_gt_1.5;occupancy=None not_in_30%-70%;round_trips 0 < 25 settle=warmup median_loss_r=None net_rr=1.7904484367298905
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:11:04,195,WARNING,milestone.send_failed id=curriculum_stage2_range_passed
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:11:16,728,WARNING,birth.stage.not_passed stage=stage3_mixed trades=0 blockers=foundation_fail:trades 0 < 400;median_loss_r=None missing_or_gt_1.5;occupancy=None not_in_25%-75%;policy_sample 0 < 150 settle=warmup median_loss_r=None net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:11:29,138,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=43 wins=22 wr_hist=0.5116279069767442 flat=0.640 signals=10000
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:11:48,715,WARNING,birth.stage.not_passed stage=stage3_mixed trades=73 blockers=foundation_fail:trades 73 < 400;policy_sample 72 < 150 settle=warmup median_loss_r=1.0218472466368205 net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:12:02,290,WARNING,milestone.send_failed id=learning_breakthrough
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:12:04,378,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=101 wins=56 wr_hist=0.5544554455445545 flat=0.485 signals=25000
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:12:13,105,WARNING,milestone.send_failed id=learning_breakthrough
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:12:23,801,WARNING,milestone.send_failed id=learning_breakthrough
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:12:24,005,WARNING,birth.stage.not_passed stage=stage3_mixed trades=127 blockers=foundation_fail:trades 127 < 400;policy_sample 126 < 150 settle=warmup median_loss_r=1.021834708867359 net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:12:34,549,WARNING,milestone.send_failed id=learning_breakthrough
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:12:36,575,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=151 wins=86 wr_hist=0.5695364238410596 flat=0.495 signals=40000
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:12:45,270,WARNING,milestone.send_failed id=learning_breakthrough
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:12:47,306,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=151 wins=86 wr_hist=0.5695364238410596 flat=0.551 signals=45000
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:12:56,046,WARNING,milestone.send_failed id=learning_breakthrough
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:12:56,254,WARNING,birth.stage.not_passed stage=stage3_mixed trades=151 blockers=foundation_fail:trades 151 < 400 settle=warmup median_loss_r=1.0219475010529004 net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:12:58,108,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=151 wins=86 wr_hist=0.5695364238410596 flat=0.596 signals=50000
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:13:06,798,WARNING,milestone.send_failed id=learning_breakthrough
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:13:08,839,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=151 wins=86 wr_hist=0.5695364238410596 flat=0.633 signals=55000
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:13:17,538,WARNING,milestone.send_failed id=learning_breakthrough
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:13:19,584,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=151 wins=86 wr_hist=0.5695364238410596 flat=0.663 signals=60000
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:13:28,338,WARNING,milestone.send_failed id=learning_breakthrough
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:13:28,547,WARNING,birth.stage.not_passed stage=stage3_mixed trades=151 blockers=foundation_fail:trades 151 < 400 settle=warmup median_loss_r=1.0219475010529004 net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:14:26,816,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=151 wins=86 wr_hist=0.5695364238410596 flat=0.689 signals=65000
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:14:35,596,WARNING,milestone.send_failed id=learning_breakthrough
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:14:35,800,WARNING,birth.stage.not_passed stage=stage3_mixed trades=151 blockers=foundation_fail:trades 151 < 400 settle=warmup median_loss_r=1.0219475010529004 net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:14:37,622,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=151 wins=86 wr_hist=0.5695364238410596 flat=0.712 signals=70000
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:14:46,481,WARNING,milestone.send_failed id=learning_breakthrough
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:14:48,571,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=156 wins=89 wr_hist=0.5705128205128205 flat=0.719 signals=75000
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:14:57,554,WARNING,milestone.send_failed id=learning_breakthrough
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:15:08,519,WARNING,milestone.send_failed id=learning_breakthrough
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:15:08,726,WARNING,birth.stage.not_passed stage=stage3_mixed trades=159 blockers=foundation_fail:trades 159 < 400 settle=warmup median_loss_r=1.0219423921171822 net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:15:19,427,WARNING,milestone.send_failed id=learning_breakthrough
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:15:30,335,WARNING,milestone.send_failed id=learning_breakthrough
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:15:32,426,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=178 wins=103 wr_hist=0.5786516853932584 flat=0.720 signals=95000
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:15:42,316,WARNING,birth.stage.not_passed stage=stage3_mixed trades=178 blockers=foundation_fail:trades 178 < 400 settle=warmup median_loss_r=1.0218221710978974 net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:15:43,755,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=184 wins=107 wr_hist=0.5815217391304348 flat=0.720 signals=100000
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:16:15,019,WARNING,birth.stage.not_passed stage=stage3_mixed trades=199 blockers=foundation_fail:trades 199 < 400 settle=warmup median_loss_r=1.0215771679234746 net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:16:16,874,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=204 wins=123 wr_hist=0.6029411764705882 flat=0.719 signals=115000
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:16:26,678,WARNING,milestone.send_failed id=learning_breakthrough
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:16:26,683,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:16:36,997,WARNING,milestone.send_failed id=learning_breakthrough
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:16:37,002,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:16:38,301,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=213 wins=129 wr_hist=0.6056338028169014 flat=0.719 signals=125000
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:16:48,440,WARNING,birth.stage.not_passed stage=stage3_mixed trades=213 blockers=foundation_fail:trades 213 < 400 settle=warmup median_loss_r=1.0215522425466372 net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:16:59,985,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=223 wins=136 wr_hist=0.6098654708520179 flat=0.720 signals=135000
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:17:10,078,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:17:11,383,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=230 wins=140 wr_hist=0.6086956521739131 flat=0.719 signals=140000
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:17:22,152,WARNING,birth.stage.not_passed stage=stage3_mixed trades=230 blockers=foundation_fail:trades 230 < 400 settle=warmup median_loss_r=1.020541353434901 net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:17:23,227,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=237 wins=141 wr_hist=0.5949367088607594 flat=0.720 signals=145000
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:17:34,883,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=245 wins=147 wr_hist=0.6 flat=0.719 signals=150000
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:17:55,404,WARNING,birth.stage.not_passed stage=stage3_mixed trades=248 blockers=foundation_fail:trades 248 < 400 settle=warmup median_loss_r=1.0202575240937262 net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:17:56,501,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=254 wins=153 wr_hist=0.6023622047244095 flat=0.720 signals=160000
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:18:08,518,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=258 wins=156 wr_hist=0.6046511627906976 flat=0.720 signals=165000
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:18:20,915,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=263 wins=160 wr_hist=0.6083650190114068 flat=0.719 signals=170000
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:18:32,113,WARNING,birth.stage.not_passed stage=stage3_mixed trades=263 blockers=foundation_fail:trades 263 < 400 settle=warmup median_loss_r=1.0200468986719822 net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:18:33,211,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=269 wins=164 wr_hist=0.6096654275092936 flat=0.719 signals=175000
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:19:07,470,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:19:07,681,WARNING,birth.stage.not_passed stage=stage3_mixed trades=281 blockers=foundation_fail:trades 281 < 400 settle=warmup median_loss_r=1.0079736202442675 net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:19:08,735,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=286 wins=176 wr_hist=0.6153846153846154 flat=0.720 signals=190000
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:19:19,565,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:19:30,947,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:19:32,242,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=297 wins=185 wr_hist=0.622895622895623 flat=0.719 signals=200000
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:19:42,250,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:19:42,461,WARNING,birth.stage.not_passed stage=stage3_mixed trades=297 blockers=foundation_fail:trades 297 < 400 settle=warmup median_loss_r=1.0068424014085693 net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:19:43,531,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=301 wins=188 wr_hist=0.6245847176079734 flat=0.720 signals=205000
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:19:54,421,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:19:55,715,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=306 wins=192 wr_hist=0.6274509803921569 flat=0.720 signals=210000
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:20:07,189,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:20:18,865,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:20:19,075,WARNING,birth.stage.not_passed stage=stage3_mixed trades=312 blockers=foundation_fail:trades 312 < 400 settle=warmup median_loss_r=1.0066659207734978 net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:20:20,142,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=318 wins=200 wr_hist=0.6289308176100629 flat=0.720 signals=220000
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:20:31,348,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:20:32,664,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=323 wins=203 wr_hist=0.628482972136223 flat=0.720 signals=225000
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:20:43,960,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:20:55,807,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:20:56,016,WARNING,birth.stage.not_passed stage=stage3_mixed trades=329 blockers=foundation_fail:trades 329 < 400 settle=warmup median_loss_r=1.00638724148773 net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:20:57,080,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=338 wins=214 wr_hist=0.6331360946745562 flat=0.719 signals=235000
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:21:09,097,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:21:20,982,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:21:32,956,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:21:33,161,WARNING,birth.stage.not_passed stage=stage3_mixed trades=348 blockers=foundation_fail:trades 348 < 400 settle=warmup median_loss_r=1.006129907330737 net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:21:34,247,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=356 wins=226 wr_hist=0.6348314606741573 flat=0.720 signals=250000
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:21:47,144,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=363 wins=230 wr_hist=0.6336088154269972 flat=0.720 signals=255000
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:22:10,936,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:22:11,143,WARNING,birth.stage.not_passed stage=stage3_mixed trades=371 blockers=foundation_fail:trades 371 < 400 settle=warmup median_loss_r=1.0059644180576783 net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:22:12,233,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=378 wins=240 wr_hist=0.6349206349206349 flat=0.720 signals=265000
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:22:25,409,WARNING,twin.evaluate_rejection
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:22:37,325,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:22:38,623,WARNING,twin.evaluate_rejection
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:22:50,625,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:22:50,836,WARNING,birth.stage.not_passed stage=stage3_mixed trades=391 blockers=foundation_fail:trades 391 < 400 settle=warmup median_loss_r=1.005882237769121 net_rr=1.8278398127327382
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:22:51,929,WARNING,twin.evaluate_rejection
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:23:04,085,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:23:04,974,WARNING,twin.evaluate_rejection
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:23:17,251,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:23:17,563,WARNING,milestone.send_failed id=curriculum_stage3_mixed_passed
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:23:30,124,WARNING,birth.stage.not_passed stage=stage4_viable_plant trades=0 blockers=foundation_fail:trades 0 < 100;median_loss_r=None missing_or_gt_1.5;occupancy=None not_in_25%-75%;policy_sample 0 < 150;mean_r_or_e_mech_missing settle=warmup median_loss_r=None net_rr=1.7589123928954724
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:25:00,175,WARNING,birth.stage.not_passed stage=stage4_viable_plant trades=150 blockers=foundation_fail:policy_sample 149 < 150 settle=ok median_loss_r=1.0129759781296723 net_rr=1.7589123928954724
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:25:13,335,WARNING,milestone.send_failed id=curriculum_stage4_viable_passed
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:25:26,135,WARNING,birth.stage.not_passed stage=stage5_probe_handoff trades=0 blockers=foundation_fail:trades 0 < 50;median_loss_r=None missing_or_gt_1.5;occupancy=None not_in_25%-75%;policy_sample 0 < 150 settle=warmup median_loss_r=None net_rr=1.7674031413396907
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:25:37,307,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=58 wins=22 wr_hist=0.3793103448275862 flat=0.639 signals=10031
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:25:46,896,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=82 wins=27 wr_hist=0.32926829268292684 flat=0.731 signals=18330
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:25:50,196,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=106 wins=34 wr_hist=0.32075471698113206 flat=0.724 signals=20720
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:26:40,436,WARNING,birth.stage.not_passed stage=stage5_probe_handoff trades=106 blockers=foundation_fail:policy_sample 62 < 150;oos_sharpe=-2.2999944945248036 <= -2.0;oos_dd=1057.8278213553597 > 25.0 settle=ok median_loss_r=1.0228619571455502 net_rr=1.7674031413396907
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:26:40,657,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=130 wins=42 wr_hist=0.3230769230769231 flat=0.722 signals=22027
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:26:43,855,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=154 wins=51 wr_hist=0.33116883116883117 flat=0.722 signals=23319
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:26:47,306,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=178 wins=60 wr_hist=0.33707865168539325 flat=0.721 signals=27227
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:26:50,635,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=228 wins=69 wr_hist=0.3026315789473684 flat=0.723 signals=29751
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:26:50,690,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:26:50,765,WARNING,birth.beyond_gate.force_train_lap trades=228 wr=30.26% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=1 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:26:53,654,WARNING,birth.beyond_gate.force_train_lap trades=228 wr=30.26% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=0 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:26:54,322,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=267 wins=81 wr_hist=0.30337078651685395 flat=0.720 signals=34751
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:26:54,377,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:26:54,452,WARNING,birth.beyond_gate.force_train_lap trades=267 wr=30.34% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=1 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:26:57,380,WARNING,birth.beyond_gate.force_train_lap trades=267 wr=30.34% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=0 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:26:58,029,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=283 wins=88 wr_hist=0.31095406360424027 flat=0.719 signals=39751
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:26:58,089,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:26:58,166,WARNING,birth.beyond_gate.force_train_lap trades=283 wr=31.10% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=1 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:01,120,WARNING,birth.beyond_gate.force_train_lap trades=283 wr=31.10% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=0 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:01,767,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=312 wins=99 wr_hist=0.3173076923076923 flat=0.719 signals=44751
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:27:01,823,WARNING,milestone.send_failed id=best_policy_updated
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:01,898,WARNING,birth.beyond_gate.force_train_lap trades=312 wr=31.73% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=1 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:04,870,WARNING,birth.beyond_gate.force_train_lap trades=312 wr=31.73% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=0 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:05,432,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=362 wins=107 wr_hist=0.2955801104972376 flat=0.722 signals=49636
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:05,561,WARNING,birth.beyond_gate.force_train_lap trades=362 wr=29.56% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=1 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:08,505,WARNING,birth.beyond_gate.force_train_lap trades=362 wr=29.56% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=0 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:08,939,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=412 wins=117 wr_hist=0.28398058252427183 flat=0.720 signals=52967
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:09,067,WARNING,birth.beyond_gate.force_train_lap trades=412 wr=28.40% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=1 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:12,029,WARNING,birth.beyond_gate.force_train_lap trades=412 wr=28.40% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=0 — skip recovery spam
+2026-09-02 19:27:12,061,WARNING,birth.stage.not_passed stage=stage5_probe_handoff trades=412 blockers=foundation_fail:policy_sample 128 < 150;oos_dd=3793.4016271839255 > 25.0 settle=ok median_loss_r=1.0587969539154125 net_rr=1.7674031413396907
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:12,668,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=444 wins=128 wr_hist=0.2882882882882883 flat=0.721 signals=57967
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:12,799,WARNING,birth.beyond_gate.force_train_lap trades=444 wr=28.83% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=1 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:15,734,WARNING,birth.beyond_gate.force_train_lap trades=444 wr=28.83% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=0 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:16,298,WARNING,birth.beyond_gate.force_train_lap trades=494 wr=28.54% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=1 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:19,273,WARNING,birth.beyond_gate.force_train_lap trades=494 wr=28.54% plateau=False evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=0 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:19,926,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=517 wins=147 wr_hist=0.28433268858800775 flat=0.716 signals=67015
+2026-09-02 19:27:19,977,WARNING,birth.plateau.entered trades=517 winrate=28.43% best_at_cycle_start=31.73%
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 19:27:19,978,WARNING,milestone.send_failed id=plateau_entered
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:20,213,WARNING,birth.beyond_gate.force_train_lap trades=517 wr=28.43% plateau=True evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=1 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:23,395,WARNING,birth.beyond_gate.force_train_lap trades=517 wr=28.43% plateau=True evo_step=0 rollouts_this_step=0/12 rollouts_since_adapt=0 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:24,246,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=519 wins=147 wr_hist=0.2832369942196532 flat=0.716 signals=72015
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:24,603,WARNING,birth.beyond_gate.force_train_lap trades=519 wr=28.32% plateau=True evo_step=0 rollouts_this_step=1/12 rollouts_since_adapt=1 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:28,050,WARNING,birth.beyond_gate.force_train_lap trades=519 wr=28.32% plateau=True evo_step=0 rollouts_this_step=1/12 rollouts_since_adapt=0 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:28,930,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=520 wins=147 wr_hist=0.2826923076923077 flat=0.695 signals=77015
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:29,276,WARNING,birth.beyond_gate.force_train_lap trades=520 wr=28.27% plateau=True evo_step=0 rollouts_this_step=2/12 rollouts_since_adapt=1 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:32,743,WARNING,birth.beyond_gate.force_train_lap trades=520 wr=28.27% plateau=True evo_step=0 rollouts_this_step=2/12 rollouts_since_adapt=0 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:33,429,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=520 wins=147 wr_hist=0.2826923076923077 flat=0.714 signals=82015
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:33,774,WARNING,birth.beyond_gate.force_train_lap trades=520 wr=28.27% plateau=True evo_step=0 rollouts_this_step=3/12 rollouts_since_adapt=1 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:37,198,WARNING,birth.beyond_gate.force_train_lap trades=520 wr=28.27% plateau=True evo_step=0 rollouts_this_step=3/12 rollouts_since_adapt=0 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:38,065,WARNING,birth.beyond_gate.force_train_lap trades=522 wr=28.16% plateau=True evo_step=0 rollouts_this_step=4/12 rollouts_since_adapt=1 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:41,545,WARNING,birth.beyond_gate.force_train_lap trades=522 wr=28.16% plateau=True evo_step=0 rollouts_this_step=4/12 rollouts_since_adapt=0 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:42,501,WARNING,birth.beyond_gate.force_train_lap trades=524 wr=28.05% plateau=True evo_step=0 rollouts_this_step=5/12 rollouts_since_adapt=1 — skip recovery spam
+2026-09-02 19:27:42,535,WARNING,birth.stage.not_passed stage=stage5_probe_handoff trades=524 blockers=foundation_fail:policy_sample 149 < 150;oos_dd=5736.503080460012 > 25.0 settle=ok median_loss_r=1.0587955381627914 net_rr=1.7674031413396907
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:45,944,WARNING,birth.beyond_gate.force_train_lap trades=524 wr=28.05% plateau=True evo_step=0 rollouts_this_step=5/12 rollouts_since_adapt=0 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:46,728,WARNING,birth.beyond_gate.force_train_lap trades=525 wr=28.00% plateau=True evo_step=0 rollouts_this_step=6/12 rollouts_since_adapt=1 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:50,178,WARNING,birth.beyond_gate.force_train_lap trades=525 wr=28.00% plateau=True evo_step=0 rollouts_this_step=6/12 rollouts_since_adapt=0 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:51,049,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=527 wins=147 wr_hist=0.27893738140417457 flat=0.712 signals=102015
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:51,391,WARNING,birth.beyond_gate.force_train_lap trades=527 wr=27.89% plateau=True evo_step=0 rollouts_this_step=7/12 rollouts_since_adapt=1 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:54,878,WARNING,birth.beyond_gate.force_train_lap trades=527 wr=27.89% plateau=True evo_step=0 rollouts_this_step=7/12 rollouts_since_adapt=0 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:55,647,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=528 wins=147 wr_hist=0.2784090909090909 flat=0.711 signals=107015
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:55,997,WARNING,birth.beyond_gate.force_train_lap trades=528 wr=27.84% plateau=True evo_step=0 rollouts_this_step=8/12 rollouts_since_adapt=1 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:27:59,457,WARNING,birth.beyond_gate.force_train_lap trades=528 wr=27.84% plateau=True evo_step=0 rollouts_this_step=8/12 rollouts_since_adapt=0 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:28:00,269,WARNING,birth.beyond_gate.force_train_lap trades=529 wr=27.79% plateau=True evo_step=0 rollouts_this_step=9/12 rollouts_since_adapt=1 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:28:03,774,WARNING,birth.beyond_gate.force_train_lap trades=529 wr=27.79% plateau=True evo_step=0 rollouts_this_step=9/12 rollouts_since_adapt=0 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:28:04,768,WARNING,birth.beyond_gate.force_train_lap trades=532 wr=27.82% plateau=True evo_step=0 rollouts_this_step=10/12 rollouts_since_adapt=1 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:28:08,293,WARNING,birth.beyond_gate.force_train_lap trades=532 wr=27.82% plateau=True evo_step=0 rollouts_this_step=10/12 rollouts_since_adapt=0 — skip recovery spam
+2026-09-02 19:28:08,741,WARNING,birth.curriculum soft_constitution_violation principle=birth_constitution_guard count=500
+2026-09-02 19:28:08,741,WARNING,birth.constitution.soft_violation principle=birth_constitution_guard severity=warning count=500 detail=risk_exceeds_1pct
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:28:08,974,WARNING,birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall trades=532 wins=148 wr_hist=0.2781954887218045 flat=0.713 signals=122015
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:28:09,048,WARNING,birth.beyond_gate.force_train_lap trades=532 wr=27.82% plateau=True evo_step=0 rollouts_this_step=11/12 rollouts_since_adapt=1 — skip recovery spam
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:28:12,520,WARNING,birth.beyond_gate.force_train_lap trades=532 wr=27.82% plateau=True evo_step=0 rollouts_this_step=11/12 rollouts_since_adapt=0 — skip recovery spam
+2026-09-02 19:28:12,553,WARNING,birth.stage.not_passed stage=stage5_probe_handoff trades=532 blockers=foundation_fail:policy_sample 149 < 150;oos_dd=5757.715534191989 > 25.0 settle=ok median_loss_r=1.058794021203758 net_rr=1.7674031413396907
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+Telegram attention alert skipped: credentials missing.
+2026-09-02 19:28:13,348,WARNING,birth.beyond_gate.force_train_lap trades=533 wr=27.77% plateau=True evo_step=0 rollouts_this_step=12/12 rollouts_since_adapt=1 — skip recovery spam
+2026-09-02 19:28:13,384,WARNING,twin.evaluate_rejection
+2026-09-02 19:28:13,387,WARNING,birth.phoenix.cycle_started count=1 action=expand_data reason=phoenix_cycle
+2026-09-02 19:28:13,388,WARNING,twin.evaluate_rejection
+2026-09-02 19:28:16,385,CRITICAL,birth.fail_closed.host_stop reason=stage_stalled — stage loop will exit
+birth.cloud.engine_result={"status": "stage_stalled", "failure_reason": "stage_metrics", "total_trades": 1484, "ppo_steps": 105500, "training_mode": "certified"}
+birth.cloud.exit=2 birth_exit_ok=False timed_out=False
