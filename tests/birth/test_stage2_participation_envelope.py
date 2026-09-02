@@ -613,3 +613,81 @@ def test_pre_caps_never_disables_envelope_on_quality_lock() -> None:
     assert "Quality window: PASSTHROUGH so geometry can finish" not in src
     assert "quality_lock_active" not in src
 
+
+@pytest.mark.unit
+def test_s3_exam_cumulative_in_band_passthrough_despite_rolling_under() -> None:
+    """Live S3 exam: cum=0.577 in 0.28–0.72, rolling=0.278 must not FORCE_FLAT."""
+    d = decide_stage2_participation(
+        enabled=True,
+        range_flat_ratio=0.577,
+        rolling_flat_ratio=0.278,
+        range_total_signals=8000,
+        position=0,
+        bars_in_position=0,
+        band_lo=0.28,
+        band_hi=0.72,
+        hysteresis=0.0,
+        under_band_release_hysteresis=0.0,
+        min_signals=50,
+        cumulative_in_band_passthrough=True,
+    )
+    assert d.mode == MODE_PASSTHROUGH
+    assert d.reason == "exam_cumulative_in_band"
+    assert d.action_override is None
+
+
+@pytest.mark.unit
+def test_s2_dual_imu_unchanged_rolling_under_force_flat() -> None:
+    """S2 keeps dual IMU: rolling 0.278 with band_lo 0.30 still FORCE_FLAT."""
+    d = decide_stage2_participation(
+        enabled=True,
+        range_flat_ratio=0.577,
+        rolling_flat_ratio=0.278,
+        range_total_signals=8000,
+        position=0,
+        bars_in_position=0,
+        band_lo=0.30,
+        band_hi=0.70,
+        min_signals=50,
+        cumulative_in_band_passthrough=False,
+    )
+    assert d.mode == MODE_FORCE_FLAT
+
+
+@pytest.mark.unit
+def test_s3_cumulative_over_band_still_force_open() -> None:
+    """Flag does not disable plant when exam cumulative is still empty."""
+    d = decide_stage2_participation(
+        enabled=True,
+        range_flat_ratio=0.90,
+        rolling_flat_ratio=0.50,
+        range_total_signals=8000,
+        position=0,
+        bars_in_position=0,
+        band_lo=0.28,
+        band_hi=0.72,
+        hysteresis=0.0,
+        min_signals=50,
+        cumulative_in_band_passthrough=True,
+    )
+    assert d.mode == MODE_FORCE_OPEN
+
+
+@pytest.mark.unit
+def test_participation_telemetry_dumps_passthrough() -> None:
+    telem = participation_telemetry(
+        {
+            MODE_FORCE_OPEN: 10,
+            MODE_FORCE_HOLD: 20,
+            MODE_FORCE_FLAT: 30,
+            MODE_FORCE_EXIT: 4,
+            MODE_PASSTHROUGH: 100,
+        }
+    )
+    assert telem["participation_force_open"] == 10
+    assert telem["participation_force_hold"] == 20
+    assert telem["participation_force_flat"] == 30
+    assert telem["participation_force_exit"] == 4
+    assert telem["participation_passthrough"] == 100
+    assert telem["participation_overrides_total"] == 64
+
