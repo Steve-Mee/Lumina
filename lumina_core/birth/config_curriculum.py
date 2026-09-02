@@ -37,9 +37,9 @@ class BirthRewardConfig:
     rolling_trade_window: int = 50
     range_flat_bonus_coeff: float = 0.003
     range_churn_penalty_coeff: float = 0.005
-    # In-band Stage-2 quality boost when expectancy gap (WR−0.50 below floor).
-    range_quality_boost_coeff: float = 0.15
-
+    range_quality_boost_coeff: float = 0.15  # in-band quality when exp gap
+    s3_inband_hold_tax: float = 0.01
+    s3_inband_min_idle_hold_bars: int = 32
 
 @dataclass(slots=True)
 class BirthCurriculumConfig:

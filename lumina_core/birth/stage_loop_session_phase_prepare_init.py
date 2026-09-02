@@ -217,20 +217,13 @@ class SessionPhasePrepareInitMixin:
         self.closes_flatten = 0
         self.closes_time_stop = 0
         self.closes_unknown = 0
-        self.stage_closes_stop_cum = 0
-        self.stage_closes_target_cum = 0
-        self.stage_closes_flatten_cum = 0
-        self.stage_closes_time_stop_cum = 0
-        self.stage_closes_unknown_cum = 0
         self._stage2_rolling_pass_streak = 0
         self.mean_entry_stop_pct = 0.0
         self.mean_entry_target_pct = 0.0
         self.expectancy_quality_step_source = ""
-        # Pilot/plant skill counters reset each stage (FORCE_OPEN does not grade pilot).
-        self.stage_policy_trades = 0
-        self.stage_policy_wins = 0
-        self.stage_plant_trades = 0
-        self.stage_plant_wins = 0
+        from lumina_core.birth.stage3_inband_idle import reset_skill_settlement_if_fresh_stage
+
+        reset_skill_settlement_if_fresh_stage(self)
 
 
 

@@ -71,6 +71,12 @@ class RLConfig:
     curriculum_regime: str = ""
     # Stage-1 nursery: one contract. Size is not the closed-loop lesson.
     force_qty_one: bool = False
+    # S3 in-band idle IMU (pilot tax + HOLD-mask). Envelope still owns FORCE_*.
+    participation_mode: str = "PASSTHROUGH"
+    stage_policy_trades: int = 0
+    participation_band_lo: float = 0.25
+    participation_band_hi: float = 0.75
+    stage_cumulative_flat: float = 0.5
 
 
 class RLTradingEnvironment(RLTradingEnvironmentStepMixin, gym.Env):

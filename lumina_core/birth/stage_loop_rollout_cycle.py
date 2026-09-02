@@ -64,6 +64,8 @@ class StageLoopRolloutCycleMixin(
         chunk_target: int,
         pre: RolloutPreState,
     ) -> tuple[Any, float, float, float, float]:
+        from lumina_core.birth.stage3_inband_idle import apply_s3_inband_rollout_metrics, s3_inband_rollout_kwargs
+
         rollout_started_at = time.time()
         _occ_win = getattr(self, "_occupancy_control_window", None)
         if _occ_win is None:
@@ -140,6 +142,7 @@ class StageLoopRolloutCycleMixin(
             occupancy_control_window_bars=int(
                 getattr(pre, "occupancy_control_window_bars", 500) or 500
             ),
+            **s3_inband_rollout_kwargs(self),
         )
         self.rollout_wall_clock_total_sec += max(0.0, time.time() - rollout_started_at)
         self.rollout_wall_clock_samples += 1
@@ -173,6 +176,7 @@ class StageLoopRolloutCycleMixin(
         self.stage_plant_wins = int(getattr(self, "stage_plant_wins", 0) or 0) + int(
             getattr(rollout, "plant_wins", 0) or 0
         )
+        apply_s3_inband_rollout_metrics(self, rollout)
         # Stage2 participation envelope telemetry (cumulative within stage).
         self.participation_force_open = int(
             getattr(self, "participation_force_open", 0) or 0

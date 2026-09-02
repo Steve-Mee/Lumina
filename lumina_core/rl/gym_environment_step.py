@@ -9,7 +9,6 @@ from lumina_core.rl.reward_shaper import (
     compute_expectancy_reward,
     compute_legacy_reward,
     hold_action_penalty,
-    range_patience_step_reward,
     trend_features_from_tick,
     update_trade_stats,
 )
@@ -407,50 +406,15 @@ class RLTradingEnvironmentStepMixin:
             )
 
         if self.config.range_patience_active and self.trade_mode == "birth":
-            tick_regime = str(row.get("regime", "NEUTRAL"))
-            is_range_tick = (
-                str(tick_regime).upper() in {"NEUTRAL", "RANGING"}
-                or "RANGE" in str(tick_regime).upper()
-            )
-            if is_range_tick:
-                self._range_total_bars = int(getattr(self, "_range_total_bars", 0) or 0) + 1
-                if int(self._position) == 0:
-                    self._range_flat_bars = int(getattr(self, "_range_flat_bars", 0) or 0) + 1
-            stage_flat_ratio = None
-            if int(getattr(self, "_range_total_bars", 0) or 0) >= 20:
-                stage_flat_ratio = float(self._range_flat_bars) / float(
-                    max(1, self._range_total_bars)
-                )
-            # Expectancy gap (WR−0.50 vs floor): prefer stage seed from sim_runner,
-            # else estimate from recent closed trades in this episode.
-            reward_cfg = self._reward_cfg()
-            exp_floor = float(getattr(self.config, "stage2_expectancy_floor", -0.15) or -0.15)
-            exp_gap = float(getattr(self.config, "expectancy_gap", 0.0) or 0.0)
-            recent = list(getattr(self._reward_state, "recent_pnls", []) or [])
-            if len(recent) >= 20:
-                wr = float(sum(1 for p in recent if float(p) > 0.0)) / float(len(recent))
-                live_exp = wr - 0.50
-                exp_gap = max(exp_gap, max(0.0, exp_floor - live_exp))
-            trade_r = None
-            if trade_closed:
-                risk_usd = float(getattr(self, "_close_risk_usd", 0.0) or 0.0)
-                if risk_usd <= 1e-12:
-                    risk_usd = abs(float(close_stop_pct)) * abs(
-                        float(getattr(self, "_close_entry_price", 0.0) or 0.0)
-                    ) * float(getattr(self, "_close_qty", 1) or 1) * 5.0
-                trade_r = float(rl_close_accounting_net_usd) / max(risk_usd, 1e-9)
-            ft_press = float(
-                getattr(self.config, "first_touch_training_pressure", 0.0) or 0.0
-            )
-            reward += range_patience_step_reward(
-                regime=tick_regime,
-                position_flat=int(self._position) == 0,
+            from lumina_core.birth.stage3_inband_idle import apply_gym_birth_occupancy_reward
+
+            reward += apply_gym_birth_occupancy_reward(
+                self,
+                row=row,
+                side_bucket=int(side_bucket),
                 trade_closed=bool(trade_closed),
-                cfg=reward_cfg,
-                stage_flat_ratio=stage_flat_ratio,
-                expectancy_gap=exp_gap,
-                trade_r_multiple=trade_r,
-                first_touch_training_pressure=ft_press,
+                close_stop_pct=float(close_stop_pct),
+                close_net=float(rl_close_accounting_net_usd),
             )
 
         self._idx += 1

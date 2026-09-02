@@ -285,6 +285,8 @@ class StageLoopProgressWriteEnrichMixin(StageLoopMixinBase):
         scorecard["participation_last_mode"] = str(
             getattr(self, "participation_last_mode", "") or "PASSTHROUGH"
         )
+        from lumina_core.birth.stage3_inband_idle import s3_inband_progress_fields
+        scorecard.update(s3_inband_progress_fields(self))
         try:
             scorecard["occupancy_control_flat"] = round(
                 float(getattr(self, "occupancy_control_flat", 0.0) or 0.0), 4

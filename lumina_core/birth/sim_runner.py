@@ -34,32 +34,6 @@ _PROGRESS_INTERVAL_STEPS = 5_000
 _PROGRESS_INTERVAL_SEC = 30.0
 
 
-def _tape_atr_pct_for_force_open(
-    row: dict[str, Any],
-    geometry: BirthTradeGeometry,
-) -> float:
-    """Tape ATR for FORCE_OPEN dwell survival.
-
-    Geometry stop is ``0.9 × ATR median`` (``_geometry_from_atr``). Tick
-    ``trend_atr_norm`` uses the same ≥0.05 ⇒ divide-by-price rule as
-    ``_collect_atr_samples``.
-    """
-    geo_stop = max(0.0, float(getattr(geometry, "stop_pct", 0.0) or 0.0))
-    geo_atr = geo_stop / 0.9 if geo_stop > 0.0 else 0.0
-    try:
-        atr = float(row.get("trend_atr_norm") or 0.0)
-    except (TypeError, ValueError):
-        atr = 0.0
-    try:
-        px = float(row.get("last") or row.get("close") or 0.0)
-    except (TypeError, ValueError):
-        px = 0.0
-    if atr >= 0.05 and px > 0.0:
-        atr = atr / px
-    atr = min(0.02, max(0.0, atr))
-    return max(geo_atr, atr, geo_stop)
-
-
 @dataclass(slots=True)
 class SimRolloutResult:
     trades: int
@@ -106,16 +80,21 @@ class SimRolloutResult:
     occupancy_control_flat: float = 0.0
     last_force_open_stop_pct: float = 0.0
     r_series: list[float] = field(default_factory=list)
+    s3_inband_explore: int = 0
+    s3_inband_hold_tax_steps: int = 0
+    s3_inband_idle_armed: bool = False
 
 
-def _predict_action(policy: Any, obs: np.ndarray) -> np.ndarray:
+def _predict_action(
+    policy: Any, obs: np.ndarray, *, deterministic: bool = True
+) -> np.ndarray:
     if policy is None:
         return _DEFAULT_ACTION.copy()
     predict = getattr(policy, "predict", None)
     if not callable(predict):
         return _DEFAULT_ACTION.copy()
     try:
-        raw = predict(obs, deterministic=True)
+        raw = predict(obs, deterministic=bool(deterministic))
         if isinstance(raw, (tuple, list)) and len(raw) >= 1:
             action = raw[0]
         else:
@@ -192,6 +171,8 @@ def run_policy_rollout(
     # Rolling occupancy IMU (mutated in place; 1=flat, 0=in position).
     occupancy_control_window: list[int] | None = None,
     occupancy_control_window_bars: int = 500,
+    stage_policy_trades_prior: int = 0,
+    s3_inband_min_idle_hold_bars: int | None = None,
 ) -> SimRolloutResult:
     from lumina_core.birth.stage2_participation_envelope import (
         MODE_FORCE_EXIT,
@@ -200,9 +181,16 @@ def run_policy_rollout(
         MODE_FORCE_OPEN,
         MODE_PASSTHROUGH,
         decide_stage2_participation,
-        force_open_stop_from_atr,
         occupancy_control_flat,
         participation_telemetry,
+    )
+    from lumina_core.birth.force_open_plant import apply_force_open_side, apply_force_open_stop
+    from lumina_core.birth.foundation_metrics import POLICY_EDGE_MIN_TRADES
+    from lumina_core.birth.stage3_inband_idle import (
+        S3_INBAND_DEFAULT_MIN_IDLE_HOLD_BARS,
+        S3InbandIdleState,
+        maybe_s3_passthrough_mask,
+        plant_tag_for_entry,
     )
 
     if not data:
@@ -386,6 +374,13 @@ def run_policy_rollout(
     occ_cap = max(50, int(occupancy_control_window_bars or 500))
     envelope_flat_bars = max(0, int(stage_range_flat_bars))
     envelope_signals = max(0, int(stage_range_total_signals))
+    s3_idle = S3InbandIdleState()
+    policy_trades_prior = max(0, int(stage_policy_trades_prior))
+    min_idle_hold = (
+        int(s3_inband_min_idle_hold_bars)
+        if s3_inband_min_idle_hold_bars is not None
+        else int(getattr(cfg.reward, "s3_inband_min_idle_hold_bars", S3_INBAND_DEFAULT_MIN_IDLE_HOLD_BARS) or S3_INBAND_DEFAULT_MIN_IDLE_HOLD_BARS)
+    )
 
     def _emit_progress() -> None:
         if on_progress is None:
@@ -397,6 +392,11 @@ def run_policy_rollout(
                 "hold_ratio": _hold_ratio(hold_signals, total_signals),
                 "exploration_active": exploration_active,
                 "constitution_blocks": constitution_blocks,
+                "s3_inband_idle_armed": bool(s3_idle.last_armed),
+                "s3_inband_explore": int(s3_idle.explore_count),
+                "s3_inband_hold_tax_steps": int(
+                    getattr(env, "_s3_inband_hold_tax_steps", 0) or 0
+                ),
             }
         )
 
@@ -567,56 +567,38 @@ def run_policy_rollout(
                 exploration_active = True
                 idx_sel = min(int(getattr(env, "_idx", 0) or 0), len(enriched) - 1)
                 row_sel = enriched[idx_sel]
-                # Selective side (not fake edge): prefer MTF bias over blind L/S
-                # alternate. Settlement remains real path + costs; occupancy plant only.
-                try:
-                    mtf = float(row_sel.get("bible_mtf_bias", 0.0) or 0.0)
-                    conf = float(row_sel.get("bible_confluence", 0.0) or 0.0)
-                    if abs(mtf) >= 0.05 or conf >= 0.15:
-                        side_sel = 1.0 if mtf >= 0.0 else 2.0
-                        action = np.array(
-                            [side_sel, float(action[1]), float(action[2]), float(action[3])],
-                            dtype=np.float32,
-                        )
-                except Exception:
-                    pass
-                # ATR × sqrt(min_dwell), constitution-clipped. Live stop — never
-                # suppress hit_stop. Tiny 0.12–0.21% plants die same-bar on NQ.
-                atr_pct = _tape_atr_pct_for_force_open(row_sel, geometry)
-                stop = force_open_stop_from_atr(
-                    atr_pct=atr_pct,
+                action = apply_force_open_side(action, row_sel)
+                action, stop = apply_force_open_stop(
+                    action,
+                    row_sel,
+                    geometry,
                     min_dwell_bars=int(participation_min_dwell_bars),
-                )
-                try:
-                    px = float(row_sel.get("last") or row_sel.get("close") or 0.0)
-                except (TypeError, ValueError):
-                    px = 0.0
-                equity = float(getattr(env, "_equity", 0.0) or 0.0)
-                if px > 0.0 and equity > 0.0:
-                    # qty=1 micro-entry so dollar 1% can fit a dwell-viable stop.
-                    dollar_cap = (equity * 0.01) / (abs(px) * 5.0)
-                    if dollar_cap > 0.0:
-                        stop = min(stop, dollar_cap)
-                try:
-                    from lumina_core.birth.birth_constitution_guard import (
-                        BIRTH_MAX_RISK_STOP_PCT,
-                        BIRTH_MIN_STOP_PCT,
-                    )
-
-                    stop = max(float(BIRTH_MIN_STOP_PCT), min(float(BIRTH_MAX_RISK_STOP_PCT), float(stop)))
-                except Exception:
-                    stop = max(0.0004, min(0.01, float(stop)))
-                prev_stop = max(float(action[2]), 1e-12)
-                rr = max(1.25, float(action[3]) / prev_stop)
-                target = max(stop * 1.25, min(0.05, stop * rr))
-                action = np.array(
-                    [float(action[0]), 0.0, float(stop), float(target)],
-                    dtype=np.float32,
+                    equity=float(getattr(env, "_equity", 0.0) or 0.0),
                 )
                 last_force_open_stop_pct = float(stop)
             elif decision.mode == MODE_FORCE_EXIT:
-                # Hold action + gym geometry time-stop (honest PnL; prefer stop/target).
                 action = np.array([0.0, 0.5, float(part_stop), float(part_target)], dtype=np.float32)
+        else:
+            idx_mask = min(int(getattr(env, "_idx", 0) or 0), len(enriched) - 1)
+            action = maybe_s3_passthrough_mask(
+                state=s3_idle,
+                action=action,
+                participation_mode=decision.mode,
+                action_override=decision.action_override,
+                curriculum_regime=str(curriculum_regime or ""),
+                position=pos_now,
+                cumulative_flat=float(envelope_flat_ratio),
+                band_lo=float(participation_band_lo),
+                band_hi=float(participation_band_hi),
+                policy_trades=int(policy_trades_prior) + int(policy_trades),
+                min_idle_hold_bars=int(min_idle_hold),
+                policy_edge_min_trades=int(POLICY_EDGE_MIN_TRADES),
+                geometry=geometry,
+                row=enriched[idx_mask],
+                equity=float(getattr(env, "_equity", 0.0) or 0.0),
+                min_dwell_bars=int(participation_min_dwell_bars),
+                resample_hold=lambda: _predict_action(policy, obs, deterministic=False),
+            )
         # Per-step occupancy protect: only while envelope is correcting (over-flat).
         env.config.suppress_random_flatten = bool(decision.suppress_flatten)
         env.config.participation_min_dwell_bars = (
@@ -626,6 +608,11 @@ def run_policy_rollout(
         env.config.force_time_stop_this_step = bool(getattr(decision, "force_time_stop", False))
         # Occupancy plant: do not let gym soft-prior shrink ATR×√dwell stops.
         env.config.soft_prior_stops = False if force_open_this_step else bool(soft_prior_stops)
+        env.config.participation_mode = str(decision.mode)
+        env.config.stage_policy_trades = int(policy_trades_prior) + int(policy_trades)
+        env.config.participation_band_lo = float(participation_band_lo)
+        env.config.participation_band_hi = float(participation_band_hi)
+        env.config.stage_cumulative_flat = float(envelope_flat_ratio)
 
         idx = min(env._idx, len(enriched) - 1)
         tick_regime = str(enriched[idx].get("regime", "NEUTRAL")).upper()
@@ -651,7 +638,7 @@ def run_policy_rollout(
         pos_after = int(getattr(env, "_position", 0) or 0)
         # Attribute entry: FORCE_OPEN that opens a flat→position is plant, not pilot.
         if pos_before == 0 and pos_after != 0:
-            entry_is_plant = bool(force_open_this_step)
+            entry_is_plant = plant_tag_for_entry(force_open_this_step=force_open_this_step)
         if occupancy_tick and pos_after == 0:
             range_flat_bars += 1
         if occupancy_tick and occ_win is not None:
@@ -847,4 +834,7 @@ def run_policy_rollout(
         plant_wins=int(plant_wins),
         occupancy_control_flat=float(control_flat),
         last_force_open_stop_pct=float(last_force_open_stop_pct),
+        s3_inband_explore=int(s3_idle.explore_count),
+        s3_inband_hold_tax_steps=int(getattr(env, "_s3_inband_hold_tax_steps", 0) or 0),
+        s3_inband_idle_armed=bool(s3_idle.last_armed),
     )
