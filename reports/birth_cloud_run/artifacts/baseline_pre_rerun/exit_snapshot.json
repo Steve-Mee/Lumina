@@ -61,8 +61,10 @@
     }
   },
   "engine_result": {
-    "status": "running_s3",
-    "note": "S2 receipt verified; S3 in progress at verdict freeze. Engine still live.",
+    "status": "stage_stalled",
+    "failure_reason": "stage2_metric",
+    "total_trades": 8031,
+    "ppo_steps": 44500,
     "training_mode": "certified"
   }
 }
