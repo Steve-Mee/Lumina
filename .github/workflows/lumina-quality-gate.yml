@@ -18,11 +18,14 @@ env:
   LUMINA_LOGS_DIR: /tmp/lumina_ci_logs
   LUMINA_DUAL_THOUGHT_LOG: "false"
   LUMINA_SKIP_STARTUP_DIALOG: "1"
+  # CI has no NT Execution Fabric host. Default supervisor=on reconnects and
+  # can raise empty-token fail-closed into coverage integration tests.
+  LUMINA_FABRIC_SUPERVISOR: "0"
 
 jobs:
-  # ─────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────
   # 1. Lint & type-check
-  # ─────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────
   lint:
     name: Ruff + MyPy
     runs-on: ubuntu-latest
@@ -52,9 +55,9 @@ jobs:
       - name: Pyright on lumina_os backend
         run: pyright lumina_os/backend
 
-  # ─────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────
   # 2. Fast unit test gate (< 60 s target)
-  # ─────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────
   unit-tests:
     name: Unit Tests (not slow)
     runs-on: ubuntu-latest
@@ -94,9 +97,9 @@ jobs:
           path: reports/unit-tests.xml
           retention-days: 7
 
-  # ─────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────
   # 3. Dependency security audit
-  # ─────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────
   dependency-security:
     name: Dependency Security (safety + pip-audit + SBOM)
     runs-on: ubuntu-latest
@@ -137,9 +140,9 @@ jobs:
           path: docs/sbom.json
           retention-days: 14
 
-  # ─────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────
   # 4. Safety gate (always runs on main-branch PRs)
-  # ─────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────
   safety-gate:
     name: Safety Gate Tests
     runs-on: ubuntu-latest
@@ -178,9 +181,9 @@ jobs:
           path: reports/safety-gate.xml
           retention-days: 14
 
-  # ─────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────
   # 5. Coverage report (unit + integration, except slow/nightly)
-  # ─────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────
   coverage:
     name: Coverage Report
     runs-on: ubuntu-latest
@@ -219,9 +222,9 @@ jobs:
           files: reports/coverage.xml
           fail_ci_if_error: false
 
-  # ─────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────
   # 5b. Birth autonomy / Event Bus / safety module coverage (85% gate)
-  # ─────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────
   module-coverage-85:
     name: Module Coverage 85% (birth autonomy / bus / safety)
     runs-on: ubuntu-latest
@@ -254,9 +257,9 @@ jobs:
           path: reports/module_coverage.xml
           retention-days: 14
 
-  # ─────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────
   # 6. Nightly full suite (scheduled)
-  # ─────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────
   nightly-full:
     name: Nightly Full Suite
     runs-on: ubuntu-latest
@@ -301,9 +304,9 @@ jobs:
           path: reports/nightly.xml
           retention-days: 30
 
-  # ─────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────
   # 7. Quality gate summary
-  # ─────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────
   quality-gate-summary:
     name: Quality Gate Pass
     runs-on: ubuntu-latest

@@ -52,6 +52,9 @@ def container_with_stub_app(monkeypatch):
     monkeypatch.setenv("XAI_API_KEY", "orchestration-test-xai-key")
     monkeypatch.setenv("LUMINA_JWT_SECRET_KEY", "orchestration-test-jwt-secret")
     monkeypatch.setenv("CROSSTRADE_TOKEN", "orchestration-test-crosstrade-stub")
+    # No NT host in CI. Supervisor reconnect + empty token must not ERROR coverage.
+    monkeypatch.setenv("LUMINA_FABRIC_SUPERVISOR", "0")
+    monkeypatch.setenv("LUMINA_FABRIC_TOKEN", "orchestration-ci-fabric-stub-not-real")
 
     from lumina_core.container import create_application_container
 
