@@ -77,7 +77,9 @@ class EngineConfig(BaseModel):
     instrument: str = Field(default_factory=_default_trading_instrument)
     swarm_symbols: list[str] = Field(default_factory=_parse_swarm_symbols)
     swarm_enabled: bool = Field(default_factory=lambda: os.getenv("SWARM_ENABLED", "True").lower() == "true")
-    supported_swarm_roots: list[str] = Field(default_factory=lambda: ["MES", "MNQ", "MYM", "ES"])
+    supported_swarm_roots: list[str] = Field(
+        default_factory=lambda: ["MES", "MNQ", "MYM", "ES", "NQ"]
+    )
     xai_key: str | None = Field(
         default_factory=lambda: (
             str(os.getenv("XAI_API_KEY") or _config_yaml_section_value("xai", "api_key", "")).strip() or None

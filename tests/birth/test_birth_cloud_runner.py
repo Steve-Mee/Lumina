@@ -50,3 +50,26 @@ def test_certificate_thresholds_object_unchanged_by_runner() -> None:
     t = BirthCertificateThresholds()
     assert t.min_oos_winrate == pytest.approx(0.48)
     assert t.min_regimes == 3
+
+
+@pytest.mark.unit
+def test_nq_is_a_supported_swarm_root() -> None:
+    from lumina_core.engine.engine_config import EngineConfig
+
+    assert "NQ" in EngineConfig.model_fields["supported_swarm_roots"].default_factory()
+
+
+@pytest.mark.unit
+def test_fabric_supervisor_can_be_disabled_for_cache_reuse(monkeypatch: pytest.MonkeyPatch) -> None:
+    import lumina_core.broker.ninjatrader.fabric_link_supervisor as fab
+
+    monkeypatch.setenv("LUMINA_FABRIC_SUPERVISOR", "0")
+    started = {"n": 0}
+
+    def _start(self, **_kwargs):  # noqa: ANN001
+        started["n"] += 1
+
+    monkeypatch.setattr(fab.FabricLinkSupervisor, "start", _start)
+    fab._INSTANCE = None
+    fab.ensure_fabric_link_supervisor(object())
+    assert started["n"] == 0

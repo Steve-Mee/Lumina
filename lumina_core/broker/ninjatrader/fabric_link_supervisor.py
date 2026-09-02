@@ -410,7 +410,17 @@ def get_fabric_link_supervisor() -> FabricLinkSupervisor:
 
 
 def ensure_fabric_link_supervisor(engine_config: Any, *, mode_context: str = "sim") -> FabricLinkSupervisor:
-    """Start process-level supervisor when live_provider=ninjatrader."""
+    """Start process-level supervisor when live_provider=ninjatrader.
+
+    Set ``LUMINA_FABRIC_SUPERVISOR=0`` for headless cache-reuse Birth (no NT host).
+    Default remains always-on keep-alive. This does not arm REAL orders.
+    """
+    import os
+
+    flag = str(os.getenv("LUMINA_FABRIC_SUPERVISOR", "1") or "1").strip().lower()
+    if flag in {"0", "false", "off", "no"}:
+        logger.info("fabric.supervisor.disabled_by_env")
+        return get_fabric_link_supervisor()
     sup = get_fabric_link_supervisor()
     sup.start(engine_config=engine_config, mode_context=mode_context)
     return sup

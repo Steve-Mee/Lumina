@@ -74,6 +74,24 @@ class ModelCatalog:
 
     def recommended_for(self, *, ram_gb: float, gpu_vram_gb: float, vllm_supported: bool) -> ModelDescriptor:
         candidates = self.models()
+        if not candidates:
+            # Fresh / isolated workspace may have no catalog copy. Birth/SIM must
+            # still construct; LLM routing degrades to none rather than crash.
+            return ModelDescriptor(
+                key="none",
+                display_name="none",
+                family="none",
+                ollama_tag="",
+                parameter_size_b=0.0,
+                vram_min_gb=0.0,
+                ram_min_gb=0.0,
+                recommended_tier="light",
+                recommended_provider="none",
+                tested_by_lumina=False,
+                upgrade_notes="empty_model_catalog",
+                supports_unsloth=False,
+                context_length=0,
+            )
         compatible = [model for model in candidates if ram_gb >= model.ram_min_gb and gpu_vram_gb >= model.vram_min_gb]
         if vllm_supported:
             preferred = [model for model in compatible if model.recommended_provider == "vllm"]

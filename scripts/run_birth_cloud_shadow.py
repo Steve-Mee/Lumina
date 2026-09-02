@@ -57,6 +57,10 @@ def _prepare_workspace(workspace: Path, *, repo_root: Path) -> Path:
     if not dest.is_file():
         shutil.copy2(src, dest)
     _overlay_workspace_config(dest)
+    catalog_src = repo_root / "lumina_model_catalog.json"
+    catalog_dest = workspace / "lumina_model_catalog.json"
+    if catalog_src.is_file() and not catalog_dest.is_file():
+        shutil.copy2(catalog_src, catalog_dest)
     return dest
 
 
@@ -131,6 +135,7 @@ def _construct_engine(
 
     os.environ["LUMINA_CONFIG"] = str((workspace / "config.yaml").resolve())
     os.environ["VOICE_ENABLED"] = "false"
+    os.environ["LUMINA_FABRIC_SUPERVISOR"] = "0"
     os.environ.setdefault("LUMINA_LOG_LEVEL", "INFO")
     # Isolated cwd so container state/ logs stay in the shadow workspace.
     os.chdir(workspace)

@@ -60,7 +60,7 @@ From `birth_runner_start.py:394-439` (no `container.start()` — that is the bro
 
 Do **not** call `container.start()` (would `broker.connect()`, `container_lifecycle.py:164-185`).
 
-`supported_swarm_roots` default is `MES, MNQ, MYM, ES` (`engine_config.py:80`). Workspace overlay sets `trading.instrument: NQ SEP26`; validation uses `config.swarm_symbols` (checked **before** primary is inserted), so NQ as primary is allowed.
+`supported_swarm_roots` default is `MES, MNQ, MYM, ES, NQ` (`engine_config.py:80`). Swarm symbols default to the primary instrument (`_parse_swarm_symbols`); NQ SEP26 must be an allowed root or `ApplicationContainer` fail-closes at `_validate_config`.
 
 ## 5. Birth exit contract (call, do not reinvent)
 
