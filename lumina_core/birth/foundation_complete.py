@@ -155,6 +155,13 @@ def complete_foundation_birth(
     except Exception as exc:
         logger.warning("birth.foundation.dna_handoff_failed: %s", exc)
 
+    try:
+        from lumina_core.birth.birth_exit_policy_export import export_birth_exit_pi_star
+
+        export_birth_exit_pi_star(host)
+    except Exception as exc:
+        logger.warning("birth.foundation.pi_star_export_failed: %s", exc)
+
     polish_steps = min(10_000, int(host.birth_config.curriculum.polish_ppo_timesteps))
     if len(host.buffer) >= 256:
         try:
