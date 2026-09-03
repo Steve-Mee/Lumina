@@ -33,6 +33,8 @@ def s3_inband_progress_fields(host: Any) -> dict[str, Any]:
         "last_cap_usd": float(getattr(host, "last_cap_usd", 0.0) or 0.0),
         "last_close_reason": str(getattr(host, "last_close_reason", "") or ""),
         "last_close_gap": bool(getattr(host, "last_close_gap", False)),
+        "occ_floor_band_bars": int(getattr(host, "occ_floor_band_bars", 0) or 0),
+        "occ_total_bars": int(getattr(host, "occ_total_bars", 0) or 0),
     }
 
 
@@ -157,7 +159,10 @@ def restore_skill_settlement_from_metrics(host: Any, metrics: dict[str, Any] | N
     host.s3_inband_idle_armed = bool(raw.get("s3_inband_idle_armed", False))
     host.occupancy_in_band_seen = bool(raw.get("occupancy_in_band_seen", False))
     host.occupancy_seed_source = str(raw.get("occupancy_seed_source", "n/a") or "n/a")
+    host.force_open_refractory_active = bool(raw.get("force_open_refractory_active", False))
     host.close_ledger = list(raw.get("close_ledger") or []) if isinstance(raw.get("close_ledger"), list) else []
+    host.occ_floor_band_bars = int(raw.get("occ_floor_band_bars", 0) or 0)
+    host.occ_total_bars = int(raw.get("occ_total_bars", 0) or 0)
 
 
 def reset_skill_settlement_if_fresh_stage(host: Any) -> None:
@@ -185,6 +190,8 @@ def reset_skill_settlement_if_fresh_stage(host: Any) -> None:
     host.s3_inband_explore = 0
     host.s3_inband_hold_tax_steps = 0
     host.s3_inband_idle_armed = False
+    host.occ_floor_band_bars = 0
+    host.occ_total_bars = 0
 
 
 def s3_inband_rollout_kwargs(loop: Any) -> dict[str, Any]:
@@ -218,25 +225,20 @@ def apply_s3_inband_rollout_metrics(loop: Any, rollout: Any) -> None:
     )
     if bool(getattr(rollout, "occupancy_in_band_seen", False)):
         loop.occupancy_in_band_seen = True
+    from lumina_core.birth.s5_close_ledger_trace import close_ledger_row
+
     ledger = list(getattr(loop, "close_ledger", None) or [])
     for tr in getattr(rollout, "trajectories", None) or []:
         if not isinstance(tr, dict) or tr.get("pnl") is None:
             continue
-        ledger.append(
-            {
-                "pnl": tr.get("pnl"),
-                "qty": tr.get("qty"),
-                "cap_usd": tr.get("cap_usd"),
-                "close_reason": tr.get("close_reason"),
-                "gap": tr.get("gap"),
-                "plant": tr.get("plant_entry"),
-                "entry_price": tr.get("entry_price"),
-                "risk_usd": tr.get("risk_usd"),
-                "trade_r": tr.get("trade_r"),
-                "point_value": tr.get("point_value"),
-            }
-        )
+        ledger.append(close_ledger_row(tr))
     loop.close_ledger = ledger[-2000:]
+    loop.occ_floor_band_bars = int(getattr(loop, "occ_floor_band_bars", 0) or 0) + int(
+        getattr(rollout, "occ_floor_band_bars", 0) or 0
+    )
+    loop.occ_total_bars = int(getattr(loop, "occ_total_bars", 0) or 0) + int(
+        getattr(rollout, "occ_total_bars", 0) or 0
+    )
     if ledger:
         last = ledger[-1]
         loop.last_close_qty = int(last.get("qty") or 0)
