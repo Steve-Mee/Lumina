@@ -85,6 +85,8 @@ def close_ledger_row(tr: dict[str, Any]) -> dict[str, Any]:
         "path_k5_mae_r",
         "path_k5_mfe_r",
         "path_k5_unreal_r",
+        "path_exit_k3",
+        "path_exit_k3_unreal_r",
     ):
         _copy_if_present(row, tr, key)
     return row

@@ -167,6 +167,7 @@ def run_evaluate_only(
     policy_path: Path | str | None = None,
     rollout_fn: Callable[..., Any] | None = None,
     ledger_source: str = "awakening_grind",
+    path_exit_k3_shadow: bool = False,
 ) -> GrindLegMetrics:
     """Single-pass holdout eval. No train, no 172-stop, no env loop farm.
 
@@ -207,17 +208,23 @@ def run_evaluate_only(
     kwargs = s5_envelope_kwargs(cfg, geometry)
     kwargs.update(occupancy_seed_kwargs(reports_dir))
     fn = rollout_fn or run_policy_rollout
-    rollout = fn(
-        runtime=runtime,
-        data=list(holdout),
-        policy=wrapped,
-        target_trades=max(ADR0026_MIN_TRADES, n_bars),
-        workspace_root=root,
-        max_steps=n_bars,
-        rollout_step_budget=n_bars,
-        stall_probe_steps=max(n_bars, 1),
-        **kwargs,
-    )
+    from lumina_core.birth.awakening_path_exit_k3 import PATH_EXIT_K3_SHADOW
+
+    token = PATH_EXIT_K3_SHADOW.set(bool(path_exit_k3_shadow))
+    try:
+        rollout = fn(
+            runtime=runtime,
+            data=list(holdout),
+            policy=wrapped,
+            target_trades=max(ADR0026_MIN_TRADES, n_bars),
+            workspace_root=root,
+            max_steps=n_bars,
+            rollout_step_budget=n_bars,
+            stall_probe_steps=max(n_bars, 1),
+            **kwargs,
+        )
+    finally:
+        PATH_EXIT_K3_SHADOW.reset(token)
     if wrapped.optimizer_steps != 0:
         raise RuntimeError("awakening grind recorded optimizer steps")
     trajectories = list(getattr(rollout, "trajectories", None) or [])
