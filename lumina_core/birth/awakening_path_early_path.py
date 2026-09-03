@@ -199,6 +199,7 @@ def inspect_path_early_protocol() -> dict[str, Any]:
 __all__ = [
     "PATH_STASH_ATTR_PATHS",
     "compute_k_medians",
+    "field_present",
     "inspect_path_early_protocol",
     "pred_mae_deep",
     "pred_mae_flip",
