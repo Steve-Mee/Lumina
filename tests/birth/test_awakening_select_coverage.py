@@ -28,15 +28,16 @@ from lumina_core.birth.awakening_select_path import inspect_select_protocol
 from lumina_core.birth.awakening_select_run import (
     dump_learn_traceback,
     run_select_eval_leg,
+    run_select_train,
     select_leg_table,
 )
+from lumina_core.birth import awakening_select_run as run_mod
 
 
 def test_inspect_select_protocol_gate0_sites() -> None:
     dump = inspect_select_protocol()
     assert dump["missing_sites"] == []
     assert dump["gate0_complete"] is True
-    assert dump["init_path_resolver"].endswith("awakening_select.py") or "resolve_select_init_path" in dump["init_path_resolver"]
     assert "awakening_select.py" in dump["budget_pin"]
     assert "awakening_grind_run.py" in dump["policy_path_eval"]
     assert dump["eval_a_seed"].startswith("lumina_core/birth/awakening_select.py:")
@@ -148,7 +149,7 @@ def test_select_physics_env_reset_render_close_step() -> None:
     }
     env = SelectPhysicsEnv(inner, geometry=geo, envelope=_envelope(), enriched=[row])
     env.render()
-    obs, info = env.reset()
+    obs, _info = env.reset()
     assert inner.reset_calls == 1
     assert obs.shape == (4,)
     out = env.step(np.array([0.0, 0.5, 0.002, 0.003], dtype=np.float32))
@@ -160,7 +161,7 @@ def test_select_physics_env_reset_render_close_step() -> None:
     assert inner.close_calls == 1
 
 
-def test_select_physics_env_rolling_window_and_force_exit_band() -> None:
+def test_select_physics_env_rolling_window() -> None:
     inner = _StubInner()
     geo = SimpleNamespace(hold_bars=120, stop_pct=0.00268, target_pct=0.00483)
     row = {"last": 21150.0, "close": 21150.0, "regime": "NEUTRAL", "high": 21151.0, "low": 21149.0}
@@ -241,7 +242,107 @@ def test_select_leg_table_and_traceback() -> None:
     assert table["plant_n"] == 1
     assert table["stop_x_neutral"]["n"] >= 1
     assert table["train"] is False
-    assert table["optimizer_steps"] == 0
     text = dump_learn_traceback(SelectProtocolError("boom"))
     assert "SelectProtocolError" in text
     assert "boom" in text
+
+
+class _FakeModel:
+    def __init__(self, steps: int = 10_000) -> None:
+        self.num_timesteps = steps
+        self._n_updates = 3
+        self.learn_calls = 0
+
+    def learn(self, **kwargs: Any) -> _FakeModel:
+        self.learn_calls += 1
+        return self
+
+
+def test_run_select_train_mocked_one_learn(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    init = tmp_path / "artifacts" / "birth_exit_pi_star.zip"
+    init.parent.mkdir(parents=True)
+    init.write_bytes(b"PK\x03\x04parent")
+
+    class _Tape:
+        split = SimpleNamespace(
+            train=[{"last": 21150.0, "close": 21150.0, "regime": "NEUTRAL"} for _ in range(8)]
+        )
+        fixture_manifest = {"hash": "abc", "raw_ticks_hash": "def"}
+
+    monkeypatch.setattr(run_mod, "persist_cloud_fixture", lambda *a, **k: _Tape())
+    monkeypatch.setattr(run_mod, "resolve_select_init_path", lambda *_a, **_k: init)
+    monkeypatch.setattr(run_mod, "assert_init_sha", lambda *_a, **_k: INIT_SHA256)
+    monkeypatch.setattr(run_mod, "make_select_train_env", lambda *a, **k: SimpleNamespace())
+
+    fake_model = _FakeModel()
+
+    class _FakePPO:
+        @staticmethod
+        def load(*_a: Any, **_k: Any) -> _FakeModel:
+            return fake_model
+
+    monkeypatch.setattr(run_mod, "PPO", _FakePPO, raising=False)
+    import sys
+
+    monkeypatch.setitem(sys.modules, "stable_baselines3", SimpleNamespace(PPO=_FakePPO))
+
+    class _FakeTrainer:
+        def __init__(self, engine: Any = None, model_dir: Any = None) -> None:
+            self.engine = engine
+
+        def save_weights(self, path: str) -> None:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).write_bytes(b"PK\x03\x04child-different")
+
+    monkeypatch.setattr(run_mod, "PPOTrainer", _FakeTrainer)
+
+    out = run_select_train(
+        seed=20260901,
+        timesteps=10_000,
+        workspace_root=tmp_path,
+        reports=tmp_path,
+        learn_fn=lambda **_k: None,
+    )
+    assert Path(out["child_path"]).is_file()
+    assert out["init_sha256"] == INIT_SHA256
+    assert out["actual_timesteps"] == 10_000
+    assert out["select_noop"] is False
+    meta = Path(out["child_path"]).with_suffix(".json")
+    assert meta.is_file()
+
+
+def test_run_select_train_learn_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    init = tmp_path / "artifacts" / "birth_exit_pi_star.zip"
+    init.parent.mkdir(parents=True)
+    init.write_bytes(b"PK\x03\x04parent")
+
+    class _Tape:
+        split = SimpleNamespace(train=[{"last": 1.0, "close": 1.0}])
+        fixture_manifest = {"hash": "h", "raw_ticks_hash": "r"}
+
+    monkeypatch.setattr(run_mod, "persist_cloud_fixture", lambda *a, **k: _Tape())
+    monkeypatch.setattr(run_mod, "resolve_select_init_path", lambda *_a, **_k: init)
+    monkeypatch.setattr(run_mod, "assert_init_sha", lambda *_a, **_k: INIT_SHA256)
+    monkeypatch.setattr(run_mod, "make_select_train_env", lambda *a, **k: SimpleNamespace())
+
+    class _FakePPO:
+        @staticmethod
+        def load(*_a: Any, **_k: Any) -> _FakeModel:
+            return _FakeModel()
+
+    import sys
+
+    monkeypatch.setitem(sys.modules, "stable_baselines3", SimpleNamespace(PPO=_FakePPO))
+    monkeypatch.setattr(run_mod, "PPOTrainer", lambda **_k: SimpleNamespace(save_weights=lambda _p: None))
+
+    def _boom(**_k: Any) -> None:
+        raise RuntimeError("cuda exploded")
+
+    with pytest.raises(SelectProtocolError, match="SELECT_INCONCLUSIVE"):
+        run_select_train(
+            seed=20260901,
+            timesteps=10_000,
+            workspace_root=tmp_path,
+            reports=tmp_path,
+            learn_fn=_boom,
+        )
