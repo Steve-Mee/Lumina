@@ -74,6 +74,11 @@ def close_ledger_row(tr: dict[str, Any]) -> dict[str, Any]:
         "open_side",
         "bars_since_prev_policy_stop",
         "open_participation_mode",
+        "open_policy_value",
+        "open_policy_entropy",
+        "open_policy_action_margin",
+        "open_policy_p_chosen",
+        "open_policy_margin_is_top2",
     ):
         _copy_if_present(row, tr, key)
     return row

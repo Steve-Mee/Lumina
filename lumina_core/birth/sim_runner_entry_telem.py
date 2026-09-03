@@ -17,6 +17,11 @@ OPEN_OPTIONAL_KEYS = (
     "open_imbalance",
     "open_range_stop_frac",
     "open_participation_mode",
+    "open_policy_value",
+    "open_policy_entropy",
+    "open_policy_action_margin",
+    "open_policy_p_chosen",
+    "open_policy_margin_is_top2",
 )
 
 
@@ -170,6 +175,7 @@ def update_open_telem(
     pos_after: int,
     tick: dict[str, Any],
     ticks: list[dict[str, Any]],
+    policy_signals: dict[str, float | None] | None = None,
 ) -> dict[str, Any] | None:
     """Stash open-state when flat→open (incl. same-bar close). Apply bar excursion."""
     opened = int(pos_before) == 0 and (int(pos_after) != 0 or bool(info.get("trade_closed")))
@@ -189,6 +195,7 @@ def update_open_telem(
         tick_open = ticks[idx_after] if ticks else {}
         regime = str(tick_open.get("regime") or "UNKNOWN") if ticks else "UNKNOWN"
         extras = gather_open_features(env, tick_open if isinstance(tick_open, dict) else {}, info, entry_px)
+        psig = policy_signals or {}
         out = start_open_telem(
             entry_regime=regime,
             entry_bar_index=int(getattr(env, "_idx", 0) or 0),
@@ -203,6 +210,11 @@ def update_open_telem(
             open_imbalance=extras.get("open_imbalance"),
             open_range_stop_frac=extras.get("open_range_stop_frac"),
             open_participation_mode=extras.get("open_participation_mode"),
+            open_policy_value=psig.get("open_policy_value"),
+            open_policy_entropy=psig.get("open_policy_entropy"),
+            open_policy_action_margin=psig.get("open_policy_action_margin"),
+            open_policy_p_chosen=psig.get("open_policy_p_chosen"),
+            open_policy_margin_is_top2=psig.get("open_policy_margin_is_top2"),
         )
     if out is not None:
         apply_open_excursion(out, tick)
@@ -224,6 +236,11 @@ def start_open_telem(
     open_imbalance: float | None = None,
     open_range_stop_frac: float | None = None,
     open_participation_mode: str | None = None,
+    open_policy_value: float | None = None,
+    open_policy_entropy: float | None = None,
+    open_policy_action_margin: float | None = None,
+    open_policy_p_chosen: float | None = None,
+    open_policy_margin_is_top2: bool | None = None,
 ) -> dict[str, Any]:
     stash: dict[str, Any] = {
         "entry_regime": str(entry_regime or "UNKNOWN"),
@@ -243,6 +260,11 @@ def start_open_telem(
         "open_imbalance": open_imbalance,
         "open_range_stop_frac": open_range_stop_frac,
         "open_participation_mode": open_participation_mode,
+        "open_policy_value": open_policy_value,
+        "open_policy_entropy": open_policy_entropy,
+        "open_policy_action_margin": open_policy_action_margin,
+        "open_policy_p_chosen": open_policy_p_chosen,
+        "open_policy_margin_is_top2": open_policy_margin_is_top2,
     }
     for key, value in optional.items():
         if value is not None:

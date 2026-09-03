@@ -630,7 +630,8 @@ def run_policy_rollout(
             env, occupancy_control_flat(cumulative_flat=envelope_flat_ratio, rolling_flat=rolling_flat),
             occupancy_in_band_seen, envelope_flat_bars, envelope_signals, range_flat_bars, range_total_signals, geometry)
         open_telem = update_open_telem(
-            open_telem, env, info, pos_before, pos_after, enriched[idx], enriched
+            open_telem, env, info, pos_before, pos_after, enriched[idx], enriched,
+            policy_signals=getattr(policy, "last_open_signal", None),
         )
         if occupancy_tick and pos_after == 0:
             range_flat_bars += 1

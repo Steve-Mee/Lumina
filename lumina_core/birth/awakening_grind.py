@@ -85,9 +85,20 @@ class EvaluateOnlyPolicy:
     def __init__(self, inner: Any) -> None:
         self._inner = inner
         self.optimizer_steps = 0
+        self.last_open_signal: dict[str, Any] | None = None
+
+    @property
+    def policy(self) -> Any:
+        return getattr(self._inner, "policy", None)
 
     def predict(self, *args: Any, **kwargs: Any) -> Any:
-        return self._inner.predict(*args, **kwargs)
+        raw = self._inner.predict(*args, **kwargs)
+        obs = args[0] if args else kwargs.get("observation")
+        action = raw[0] if isinstance(raw, (tuple, list)) and raw else raw
+        from lumina_core.birth.policy_signal_extract import extract_policy_signals
+
+        self.last_open_signal = extract_policy_signals(self._inner, obs, action)
+        return raw
 
     def learn(self, *args: Any, **kwargs: Any) -> Any:
         raise RuntimeError("awakening grind train=False — learn() forbidden")
