@@ -159,6 +159,7 @@ def run_evaluate_only(
     reports_dir: Path,
     ledger_path: Path,
     policy: Any | None = None,
+    policy_path: Path | str | None = None,
     rollout_fn: Callable[..., Any] | None = None,
 ) -> GrindLegMetrics:
     """Single-pass holdout eval. No train, no 172-stop, no env loop farm.
@@ -166,11 +167,16 @@ def run_evaluate_only(
     Bars exhaust via ``max_steps`` / ``rollout_step_budget`` = len(holdout).
     ``target_trades`` is ADR-0026 min (500) only as a *floor to keep going*,
     not a Birth pass. sim_runner stops at step budget when the tape ends.
+    Default load path is Birth-exit π* via ``resolve_frozen_policy_path``.
+    Awakening-select Gate 2 may pass an explicit child ``policy_path``.
     """
     if TRAIN:
         raise RuntimeError("awakening grind TRAIN must stay False")
     root = Path(workspace_root)
-    frozen_path = resolve_frozen_policy_path(root)
+    if policy_path is not None:
+        frozen_path = Path(policy_path)
+    else:
+        frozen_path = resolve_frozen_policy_path(root)
     if frozen_path is not None and is_gitignored_ppo_zip(frozen_path):
         logger.error("awakening.grind.refused_post_polish_ppo path=%s", frozen_path)
         return inconclusive_leg(frozen_path=str(frozen_path), reason="refused_post_polish_ppo")
