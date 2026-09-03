@@ -125,6 +125,23 @@ def complete_foundation_birth(
         curriculum_total=5,
         stage_pass_receipts=receipts_payload,
     )
+    from lumina_core.birth.birth_exit_policy_export import (
+        export_birth_exit_pi_star,
+        file_sha256,
+    )
+
+    try:
+        pi_star_path = export_birth_exit_pi_star(host)
+        frozen_sha = file_sha256(pi_star_path)
+    except Exception as exc:
+        logger.error("birth.foundation.pi_star_export_failed: %s", exc)
+        return {
+            "status": "foundation_incomplete",
+            "failure_reason": "pi_star_export_failed",
+            "total_trades": host.cumulative_trades,
+            "training_mode": training_mode,
+        }
+
     checksum = receipt_checksum(s5.to_dict())
     vector = BirthFitnessVector(
         schema=FOUNDATION_SCHEMA,
@@ -155,13 +172,6 @@ def complete_foundation_birth(
     except Exception as exc:
         logger.warning("birth.foundation.dna_handoff_failed: %s", exc)
 
-    try:
-        from lumina_core.birth.birth_exit_policy_export import export_birth_exit_pi_star
-
-        export_birth_exit_pi_star(host)
-    except Exception as exc:
-        logger.warning("birth.foundation.pi_star_export_failed: %s", exc)
-
     polish_steps = min(10_000, int(host.birth_config.curriculum.polish_ppo_timesteps))
     if len(host.buffer) >= 256:
         try:
@@ -169,6 +179,15 @@ def complete_foundation_birth(
             host.ppo_steps += polish_steps
         except Exception as exc:
             logger.warning("birth.foundation.light_polish_failed: %s", exc)
+    if file_sha256(pi_star_path) != frozen_sha:
+        logger.error("birth.foundation.pi_star_mutated_by_polish path=%s", pi_star_path)
+        return {
+            "status": "foundation_incomplete",
+            "failure_reason": "pi_star_mutated_by_polish",
+            "total_trades": host.cumulative_trades,
+            "training_mode": training_mode,
+            "fitness_vector": vector.to_dict(),
+        }
 
     target_policy = (
         host.practice_policy_path if practice_mode else host.final_policy_path

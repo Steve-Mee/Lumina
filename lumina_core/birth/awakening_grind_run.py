@@ -19,6 +19,7 @@ from lumina_core.birth.awakening_grind import (
 from lumina_core.birth.birth_exit_policy_export import (
     EXPORT_SITE,
     file_sha256,
+    is_gitignored_ppo_zip,
     load_frozen_policy,
     resolve_frozen_policy_path,
 )
@@ -170,6 +171,9 @@ def run_evaluate_only(
         raise RuntimeError("awakening grind TRAIN must stay False")
     root = Path(workspace_root)
     frozen_path = resolve_frozen_policy_path(root)
+    if frozen_path is not None and is_gitignored_ppo_zip(frozen_path):
+        logger.error("awakening.grind.refused_post_polish_ppo path=%s", frozen_path)
+        return inconclusive_leg(frozen_path=str(frozen_path), reason="refused_post_polish_ppo")
     loaded = policy
     sha = ""
     if loaded is None:
