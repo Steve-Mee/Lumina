@@ -14,7 +14,6 @@ from lumina_core.birth.awakening_path_early_flags import PATH_CANDIDATE_RAW_KEY
 from lumina_core.birth.awakening_path_early_path import compute_k_medians, pred_unreal_red, universe_k
 from lumina_core.birth.awakening_path_unreal_k3 import (
     FORBIDDEN_WRITE_NAMES,
-    INIT_SHA256,
     INIT_ZIP_NAME,
     LOCKED_COV_H_A,
     LOCKED_LIFT_A,
