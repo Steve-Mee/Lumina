@@ -30,8 +30,9 @@ def row_is_segment_gap(row: dict[str, Any] | None) -> bool:
 
 
 def birth_force_qty_one(curriculum_regime: str) -> bool:
-    raw = str(curriculum_regime or "").strip().lower()
-    return "stage1" in raw or raw == "trend"
+    """Birth SIM is always 1-lot. Size is not the closed-loop lesson."""
+    del curriculum_regime
+    return True
 
 
 def plan_birth_exit_fill(

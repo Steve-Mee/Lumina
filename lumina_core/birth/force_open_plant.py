@@ -63,8 +63,13 @@ def apply_force_open_stop(
     *,
     min_dwell_bars: int,
     equity: float,
+    qty: int = 1,
 ) -> tuple[np.ndarray, float]:
-    """Widen FORCE_OPEN stop to ATR×√dwell, clip to constitution + dollar 1%."""
+    """Widen FORCE_OPEN stop to ATR×√dwell, clip to constitution + dollar 1%.
+
+    Dollar cap includes qty in the denominator. Birth still ships qty_frac=0
+    (gym ``force_qty_one`` fills 1 lot). Exam equity is the $50k yardstick.
+    """
     atr_pct = tape_atr_pct_for_force_open(row, geometry)
     stop = force_open_stop_from_atr(
         atr_pct=atr_pct,
@@ -74,8 +79,18 @@ def apply_force_open_stop(
         px = float(row.get("last") or row.get("close") or 0.0)
     except (TypeError, ValueError):
         px = 0.0
-    if px > 0.0 and equity > 0.0:
-        dollar_cap = (equity * 0.01) / (abs(px) * 5.0)
+    from lumina_core.birth.foundation_metrics import S5_DD_EQUITY_USD
+    from lumina_core.birth.notional_cap import birth_stop_pct_dollar_cap
+
+    qty_n = max(1, int(qty))
+    try:
+        live_eq = float(equity)
+    except (TypeError, ValueError):
+        live_eq = 0.0
+    exam_eq = float(S5_DD_EQUITY_USD)
+    eq = exam_eq if live_eq <= 0.0 else min(live_eq, exam_eq)
+    if px > 0.0 and eq > 0.0:
+        dollar_cap = birth_stop_pct_dollar_cap(price=px, qty=qty_n, equity=eq)
         if dollar_cap > 0.0:
             stop = min(stop, dollar_cap)
     try:

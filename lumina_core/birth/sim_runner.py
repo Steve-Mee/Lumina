@@ -12,23 +12,23 @@ import numpy as np
 from lumina_core.birth.birth_constitution_guard import BirthConstitutionGuard
 from lumina_core.birth.bible_observation import bible_features_for_tick
 from lumina_core.birth.birth_trade_geometry import (
-    BIRTH_FALLBACK_STOP_PCT,
-    BIRTH_FALLBACK_TARGET_PCT,
     BirthTradeGeometry,
     calibrate_birth_stops,
     geometry_action,
     soft_prior_action_stops,
 )
 from lumina_core.birth.config import BirthRewardConfig, load_birth_v2_config
+from lumina_core.birth.sim_runner_actions import (
+    exploration_action as _exploration_action,
+    hold_ratio as _hold_ratio,
+    predict_action as _predict_action,
+)
 from lumina_core.logging_utils import get_logger
 from lumina_core.rl.gym_environment import RLConfig, RLTradingEnvironment
 from lumina_core.rl.gym_stop_fill import birth_force_qty_one
 
 logger = get_logger("lumina.birth.sim_runner")
 
-_DEFAULT_ACTION = np.array(
-    [0.0, 0.5, BIRTH_FALLBACK_STOP_PCT, BIRTH_FALLBACK_TARGET_PCT], dtype=np.float32
-)
 _LOG_INTERVAL_STEPS = 10_000
 _PROGRESS_INTERVAL_STEPS = 5_000
 _PROGRESS_INTERVAL_SEC = 30.0
@@ -84,42 +84,9 @@ class SimRolloutResult:
     s3_inband_hold_tax_steps: int = 0
     s3_inband_idle_armed: bool = False
     force_open_refractory_active: bool = False
-
-
-def _predict_action(
-    policy: Any, obs: np.ndarray, *, deterministic: bool = True
-) -> np.ndarray:
-    if policy is None:
-        return _DEFAULT_ACTION.copy()
-    predict = getattr(policy, "predict", None)
-    if not callable(predict):
-        return _DEFAULT_ACTION.copy()
-    try:
-        raw = predict(obs, deterministic=bool(deterministic))
-        if isinstance(raw, (tuple, list)) and len(raw) >= 1:
-            action = raw[0]
-        else:
-            action = raw
-        return np.asarray(action, dtype=np.float32).reshape(-1)
-    except Exception:
-        return _DEFAULT_ACTION.copy()
-
-
-def _exploration_action(
-    exploration_step: int,
-    geometry: BirthTradeGeometry | None = None,
-) -> np.ndarray:
-    side = 1.0 if exploration_step % 2 == 0 else 2.0
-    geo = geometry or BirthTradeGeometry(
-        stop_pct=BIRTH_FALLBACK_STOP_PCT,
-        target_pct=BIRTH_FALLBACK_TARGET_PCT,
-        source="fallback",
-    )
-    return geometry_action(side, 0.5, geo)
-
-
-def _hold_ratio(hold_signals: int, total_signals: int) -> float:
-    return float(hold_signals) / float(max(1, total_signals))
+    occupancy_in_band_seen: bool = False
+    last_cap_usd: float = 0.0
+    last_close_gap: bool = False
 
 
 def run_policy_rollout(
@@ -174,6 +141,7 @@ def run_policy_rollout(
     occupancy_control_window_bars: int = 500,
     stage_policy_trades_prior: int = 0,
     s3_inband_min_idle_hold_bars: int | None = None,
+    occupancy_in_band_seen: bool = False,
 ) -> SimRolloutResult:
     from lumina_core.birth.stage2_participation_envelope import (
         MODE_FORCE_EXIT,
@@ -286,7 +254,7 @@ def run_policy_rollout(
         default_target_pct=float(geometry.target_pct),
         soft_prior_stops=bool(soft_prior_stops),
         curriculum_regime=str(curriculum_regime or ""),
-        force_qty_one=birth_force_qty_one(str(curriculum_regime or "")),
+        force_qty_one=bool(birth_force_qty_one(str(curriculum_regime or ""))),
     )
     env = RLTradingEnvironment(runtime, enriched, config=cfg)
     env.set_birth_context(workspace_root=workspace_root, constitution_guard=guard)
@@ -518,6 +486,12 @@ def run_policy_rollout(
         envelope_flat_bars = stage_flat_prior + int(range_flat_bars)
         envelope_signals = stage_sig_prior + int(range_total_signals)
         envelope_flat_ratio = float(envelope_flat_bars) / float(max(1, envelope_signals))
+        if (
+            float(participation_band_lo) - 1e-12
+            <= envelope_flat_ratio
+            <= float(participation_band_hi) + 1e-12
+        ):
+            occupancy_in_band_seen = True
         pos_now = int(getattr(env, "_position", 0) or 0)
         if pos_now != 0:
             bars_in_position += 1
@@ -558,6 +532,7 @@ def run_policy_rollout(
             # Mixed/S3: occupancy_all_ticks. Exam-in-band → policy PASSTHROUGH.
             cumulative_in_band_passthrough=bool(occupancy_all_ticks),
             force_open_refractory=chatter.blocks(int(participation_min_dwell_bars)),
+            in_band_seen=bool(occupancy_in_band_seen),
         )
         last_participation_mode = decision.mode
         participation_counts[decision.mode] = int(participation_counts.get(decision.mode, 0) or 0) + 1
@@ -742,6 +717,10 @@ def run_policy_rollout(
                     "close_reason": reason,
                     "plant_entry": bool(closed_was_plant),
                     "skill_grade": "plant" if closed_was_plant else "policy",
+                    "cap_usd": info.get("cap_usd"),
+                    "gap": info.get("gap"),
+                    "entry_price": info.get("entry_price"),
+                    "point_value": info.get("point_value"),
                 }
             )
         chatter.on_bar(trade_closed=settled, closed_was_plant=closed_was_plant)
@@ -844,4 +823,5 @@ def run_policy_rollout(
         s3_inband_hold_tax_steps=int(getattr(env, "_s3_inband_hold_tax_steps", 0) or 0),
         s3_inband_idle_armed=bool(s3_idle.last_armed),
         force_open_refractory_active=chatter.blocks(int(participation_min_dwell_bars)),
+        occupancy_in_band_seen=bool(occupancy_in_band_seen),
     )

@@ -282,27 +282,39 @@ class TestVetoIntegrationWithOrchestrator:
         """Test that orchestrator respects veto window (integration test)."""
         from lumina_core.evolution import EvolutionOrchestrator
 
-        # Get orchestrator singleton
-        orchestrator = EvolutionOrchestrator()
+        # Isolate from the singleton's shared state/veto_registry.db. Coverage
+        # workers can truncate that file after first init; append then fails
+        # with "no such table: veto_records" even though coverage itself passed.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry = VetoRegistry(
+                db_path=str(Path(tmpdir) / "test_veto.db"),
+                log_path=str(Path(tmpdir) / "test_veto.jsonl"),
+            )
+            orchestrator = EvolutionOrchestrator()
+            prev_registry = orchestrator._veto_registry
+            prev_window = orchestrator._veto_window
+            try:
+                orchestrator._veto_registry = registry
+                orchestrator._veto_window = VetoWindow(
+                    veto_registry=registry, window_seconds=1800
+                )
+                assert orchestrator._veto_registry is not None
+                assert orchestrator._veto_window is not None
 
-        # Verify veto components initialized
-        assert orchestrator._veto_registry is not None
-        assert orchestrator._veto_window is not None
-
-        # Add test veto for a specific DNA
-        test_dna_id = "veto_integration_test_dna"
-        record = VetoRecord(
-            veto_timestamp=datetime.utcnow().isoformat(),
-            dna_id=test_dna_id,
-            dna_fitness=0.85,
-            reason="Integration test veto",
-            issuer="test",
-            metadata={},
-        )
-        orchestrator._veto_registry.append_veto(record)
-
-        # Verify veto is active
-        assert orchestrator._veto_window.is_promotion_blocked(test_dna_id) is True
+                test_dna_id = "veto_integration_test_dna"
+                record = VetoRecord(
+                    veto_timestamp=datetime.utcnow().isoformat(),
+                    dna_id=test_dna_id,
+                    dna_fitness=0.85,
+                    reason="Integration test veto",
+                    issuer="test",
+                    metadata={},
+                )
+                orchestrator._veto_registry.append_veto(record)
+                assert orchestrator._veto_window.is_promotion_blocked(test_dna_id) is True
+            finally:
+                orchestrator._veto_registry = prev_registry
+                orchestrator._veto_window = prev_window
 
 
 if __name__ == "__main__":

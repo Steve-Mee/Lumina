@@ -31,8 +31,12 @@ class RLTradingEnvironmentStepMixin:
 
         side_bucket = int(np.clip(np.round(action_arr[0]), 0, 2))
         side = 0 if side_bucket == 0 else (1 if side_bucket == 1 else -1)
+        is_birth = str(self.trade_mode or "").lower() == "birth"
+        if not is_birth:
+            is_birth = str(getattr(self.config, "trade_mode", "") or "").lower() == "birth"
+        close_gap = False
         qty = max(1, int(1 + np.clip(action_arr[1], 0.0, 1.0) * 9))
-        if self.trade_mode == "birth" and bool(getattr(self.config, "force_qty_one", False)):
+        if is_birth and bool(getattr(self.config, "force_qty_one", False)):
             qty = 1
         try:
             from lumina_core.birth.birth_constitution_guard import BIRTH_MIN_STOP_PCT
@@ -197,9 +201,6 @@ class RLTradingEnvironmentStepMixin:
                 flat_ratio_now = float(self._range_flat_bars) / float(
                     max(1, self._range_total_bars)
                 )
-            is_birth = str(getattr(self, "trade_mode", "") or "").lower() == "birth"
-            if not is_birth:
-                is_birth = str(getattr(self.config, "trade_mode", "") or "").lower() == "birth"
             flatten_p = 0.0 if is_birth else 0.05
             if self.config.range_patience_active and flat_ratio_now > 0.70:
                 flatten_p = 0.0
@@ -239,6 +240,7 @@ class RLTradingEnvironmentStepMixin:
 
                 is_birth_fill = is_birth
                 fill_plan = None
+                close_gap = False
                 if is_birth_fill:
                     fill_plan = plan_birth_exit_fill(
                         hit_stop=bool(hit_stop),
@@ -255,6 +257,7 @@ class RLTradingEnvironmentStepMixin:
                     close_reason = fill_plan.reason
                     mark = float(fill_plan.mark_price)
                     exit_ticks = float(fill_plan.slippage_ticks)
+                    close_gap = bool(fill_plan.gap)
                 else:
                     if hit_stop:
                         close_reason = "stop"
@@ -317,7 +320,16 @@ class RLTradingEnvironmentStepMixin:
                 self._bars_held = max(0, int(getattr(self, "_bars_held", 0) or 0)) + 1
 
         prev_equity = self._equity
-        self._equity += realized_pnl - slippage_cost - fees_cost
+        from lumina_core.rl.gym_birth_close import book_birth_close_net_usd
+
+        booked_net, close_cap_usd = book_birth_close_net_usd(
+            float(realized_pnl - slippage_cost - fees_cost),
+            is_birth=is_birth,
+            trade_closed=bool(trade_closed),
+            entry_price=float(getattr(self, "_close_entry_price", 0.0) or 0.0),
+            qty=int(getattr(self, "_close_qty", 0) or 1),
+        )
+        self._equity += booked_net
         # Birth SIM plant floor: prevent equity death-spiral that soft-blocks all
         # entries via inverted risk checks and freezes occupancy recovery.
         if self.trade_mode == "birth":
@@ -344,7 +356,7 @@ class RLTradingEnvironmentStepMixin:
                 self.config.sim_es_penalty_coeff
             ) * max(0.0, es_ratio)
 
-        rl_close_accounting_net_usd = float(realized_pnl - slippage_cost - fees_cost)
+        rl_close_accounting_net_usd = float(booked_net)
         reward_components: dict[str, float] = {}
 
         if self._uses_expectancy_reward():
@@ -420,32 +432,33 @@ class RLTradingEnvironmentStepMixin:
         self._idx += 1
         terminated = self._idx >= min(len(self.data) - 1, self.config.max_steps)
 
-        training_reward = float(reward)
+        from lumina_core.rl.gym_birth_close import gym_step_info
+
         close_qty_info = int(getattr(self, "_close_qty", 0) or 0) if trade_closed else 0
         close_risk = float(getattr(self, "_close_risk_usd", 0.0) or 0.0) if trade_closed else 0.0
-        trade_r_info = (
-            float(rl_close_accounting_net_usd) / max(close_risk, 1e-9) if trade_closed and close_risk > 0 else None
+        info = gym_step_info(
+            realized_pnl=realized_pnl,
+            booked_net=rl_close_accounting_net_usd,
+            training_reward=float(reward),
+            slippage_cost=slippage_cost,
+            fees_cost=fees_cost,
+            equity=self._equity,
+            drawdown=self._drawdown(),
+            sharpe=self._rolling_sharpe(),
+            var_es_penalty=var_es_penalty,
+            reward_components=reward_components,
+            trade_closed=trade_closed,
+            close_reason=close_reason,
+            entry_stop_pct=float(getattr(self, "_entry_stop_pct", 0.0) or 0.0),
+            entry_target_pct=float(getattr(self, "_entry_target_pct", 0.0) or 0.0),
+            blocked_by_capital_preservation=blocked_by_capital_preservation,
+            block_reason=block_reason,
+            qty=close_qty_info,
+            risk_usd=close_risk if trade_closed else 0.0,
+            cap_usd=float(close_cap_usd) if trade_closed else 0.0,
+            gap=bool(close_gap) if trade_closed else False,
+            entry_price=float(getattr(self, "_close_entry_price", 0.0) or 0.0) if trade_closed else 0.0,
+            point_value=float(self.valuation_engine.point_value(self.instrument)),
         )
-        info = {
-            "model_close_gross_pnl_usd": realized_pnl,
-            "rl_close_accounting_net_usd": rl_close_accounting_net_usd,
-            "training_reward": training_reward,
-            "slippage_cost": slippage_cost,
-            "fees_cost": fees_cost,
-            "equity": self._equity,
-            "drawdown": self._drawdown(),
-            "sharpe": self._rolling_sharpe(),
-            "var_es_penalty": var_es_penalty,
-            "reward_components": reward_components,
-            "trade_closed": trade_closed,
-            "close_reason": close_reason,
-            "entry_stop_pct": float(getattr(self, "_entry_stop_pct", 0.0) or 0.0),
-            "entry_target_pct": float(getattr(self, "_entry_target_pct", 0.0) or 0.0),
-            "blocked_by_capital_preservation": blocked_by_capital_preservation,
-            "block_reason": block_reason,
-            "qty": close_qty_info,
-            "risk_usd": close_risk if trade_closed else 0.0,
-            "trade_r": trade_r_info,
-        }
         return self._get_observation(), reward, terminated, False, info
 

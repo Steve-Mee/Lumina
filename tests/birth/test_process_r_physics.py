@@ -160,10 +160,11 @@ def test_segment_break_key_is_gap() -> None:
 
 
 @pytest.mark.unit
-def test_birth_force_qty_one_stage1_only() -> None:
+def test_birth_force_qty_one_all_birth_stages() -> None:
     assert birth_force_qty_one("stage1_trend") is True
     assert birth_force_qty_one("trend") is True
-    assert birth_force_qty_one("stage2_range") is False
+    assert birth_force_qty_one("stage2_range") is True
+    assert birth_force_qty_one("stage5_probe_handoff") is True
 
 
 class _MarketDataStub:

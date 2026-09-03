@@ -168,6 +168,11 @@ def decide_stage2_participation(
     # After a FORCE_OPEN plant settles, block a second FORCE_OPEN until
     # min-dwell bars elapse. Position==0 on the close bar is chatter.
     force_open_refractory: bool = False,
+    # Tooth B: after this stage has been in-band once, do not re-arm
+    # FORCE_OPEN until over_flat > band_hi + REARM_HYST (0.76). First
+    # entry into the band is unchanged (in_band_seen=False).
+    in_band_seen: bool = False,
+    rearm_hysteresis: float = 0.04,
 ) -> ParticipationDecision:
     """Return participation mode for one SIM step.
 
@@ -211,6 +216,9 @@ def decide_stage2_participation(
     release_hyst = max(0.0, min(0.08, float(under_band_release_hysteresis)))
     # Over-flat enter only clearly above band (hysteresis).
     force_open_hi = hi + hyst  # e.g. 0.72
+    if bool(in_band_seen):
+        rearm = max(0.0, min(0.08, float(rearm_hysteresis)))
+        force_open_hi = hi + rearm
     # Under-flat: ENTER empty-suppress as soon as flat < band_lo (no 28–30% dead
     # zone). RELEASE empty-suppress after flat clears band_lo + release_hyst
     # (Stage-2 0.32). In-position HOLD only below band_lo (exam), not in settle.
