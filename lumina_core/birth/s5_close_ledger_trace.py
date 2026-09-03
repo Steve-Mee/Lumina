@@ -63,6 +63,17 @@ def close_ledger_row(tr: dict[str, Any]) -> dict[str, Any]:
         "regime_flip",
         "skill_grade",
         "source",
+        "open_occ_flat",
+        "open_cum_flat",
+        "open_in_band_seen",
+        "open_session_phase",
+        "open_confluence",
+        "open_news_proximity",
+        "open_imbalance",
+        "open_range_stop_frac",
+        "open_side",
+        "bars_since_prev_policy_stop",
+        "open_participation_mode",
     ):
         _copy_if_present(row, tr, key)
     return row
