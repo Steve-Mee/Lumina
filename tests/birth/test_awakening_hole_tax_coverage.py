@@ -139,7 +139,7 @@ def test_select_physics_env_tax_r_one_stop_neutral() -> None:
     )
     _obs, reward, _term, _trunc, info = env.step(np.array([1.0, 0.2, 0.002, 0.003], dtype=np.float32))
     assert reward == pytest.approx(-2.038)
-    assert info["training_reward"] == pytest.approx(-2.038)
+    assert info["select_step_r"] == pytest.approx(-2.038)
     assert info["regime"] == "NEUTRAL"
 
 
