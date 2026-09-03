@@ -37,7 +37,7 @@ from lumina_core.birth.awakening_path_exit_k3_report import (
 from lumina_core.birth.awakening_path_exit_k3_tables import table_t4
 from lumina_core.birth.awakening_select import price_sha16
 from lumina_core.birth.awakening_select_env import select_runtime
-from lumina_core.birth.birth_exit_policy_export import file_sha256, load_frozen_policy
+from lumina_core.birth.birth_exit_policy_export import load_frozen_policy
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.awakening_path_exit_k3_eval")

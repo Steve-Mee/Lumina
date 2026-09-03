@@ -204,8 +204,9 @@ def test_compute_flags_s_harm() -> None:
     }
     holes = [_row() for _ in range(76)]
     winners = [_row(close_reason="target", trade_r=1.21, pnl=60.0) for _ in range(10)]
-    extra = [_row(close_reason="time_stop", trade_r=-0.1, pnl=-5.0) for _ in range(64)]
-    flags = compute_path_exit_k3_flags(holes + winners + extra, baseline=base)
+    exits = [_row(close_reason="force_exit", trade_r=-0.2, pnl=-10.0, path_exit_k3=True) for _ in range(5)]
+    extra = [_row(close_reason="time_stop", trade_r=-0.1, pnl=-5.0) for _ in range(59)]
+    flags = compute_path_exit_k3_flags(holes + winners + exits + extra, baseline=base)
     assert flags["S_HARM"] is True
     assert flags["tag"] == TAG_S_HARM
     assert flags["HOLE_MOVED"] is False
@@ -230,7 +231,7 @@ def test_telem_snapshot_then_hook_request() -> None:
     snapshot_path_at_k(stash, tick, 3)
     assert "path_k3_unreal_usd" in stash
     assert stash["path_k3_unreal_usd"] < 0.0
-    env = type("E", (), {"_idx": 13, "_entry_stop_pct": 0.0012, "_path_exit_k3_request": False})()
+    env = type("E", (), {"_idx": 13, "_entry_stop_pct": 0.0012, "_path_exit_k3_request": True})()
     token = PATH_EXIT_K3_SHADOW.set(True)
     try:
         after_open_telem_path_exit_k3(stash, env, [tick] * 20, {"close_reason": "force_exit"}, 3, 0)
