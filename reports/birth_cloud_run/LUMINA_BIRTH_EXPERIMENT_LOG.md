@@ -131,3 +131,23 @@ History is append-only. Do not delete prior rows.
 **π\*:** harvested S5-pass pre-polish zip sha256 `8cc435c68a37b0a0…` (not post-polish PPO, not a fake HOLD policy). A fires all three REGRESS triggers. B n=171 < 172 → INCONCLUSIVE.
 
 **SSOT:** `AWAKENING_GRIND_AUDIT.md` / `AWAKENING_GRIND_VERDICT.md` / `PI_STAR_HARVEST_AUDIT.md`
+
+---
+
+## This ticket — Awakening mechanism (policy vs plant vs FORCE_OPEN)
+
+**Prompt:** First Awakening mechanism step. Decompose grind-A/B close ledgers. At most one Gate-1 law, and only if a named trigger fires. Same frozen zip. No Birth reopen. No Evolution Proof stamp on REGRESS.
+
+**Gate 0:** PR #17 JSONL re-read (A 218 / B 171). Zip sha256 `8cc435c68a37b0a070e38bccc4bfd402d4a802396bd7cd2fcce02f50acf69a03` loadable. Envelope on (`awakening_grind_run.py:126`). `ForceOpenChatterBound` live (`sim_runner.py:341`) with refractory (`:541`). Occupancy seed matches S4 (95/200, in_band_seen). JSONL had `plant` and not `force_open`; writer now persists `force_open` (Birth identity fallback). Occupancy bar series missing — not invented. Terminal occ 0.757 / 0.759.
+
+**Split A:** policy n=150 wr=0.34 mean$=−23.87 mean_r=−0.211; plant≡FORCE_OPEN n=68 mean$=−186.92; all mean$=−74.73. Union frac 0.312, dollar share 0.402.
+
+**Triggers:** `P_PARTICIPATION=False` `E_EDGE=True` `W_WIRE=False` `BOTH_BAD=False` (A and B).
+
+**Gate 1:** none (`E_EDGE` → measurement-only). No second law. Envelope not disabled. Floors untouched.
+
+**Gate 2:** skipped. Overall `GRIND_REGRESS_AWAKENING_OPEN` + `MECH_MEASURE_ONLY`. Evolution Proof not stamped (n=218<500, lift negative, overall ≠ STABLE).
+
+**Learning:** Stopping time glued Birth occ at 0.28 with FORCE_OPEN=0. The longer clock opens the tap, but the policy book itself is still −EV. That is the honest Awakening fact.
+
+**SSOT:** `AWAKENING_MECH_AUDIT.md` / `AWAKENING_MECH_VERDICT.md`
