@@ -205,6 +205,9 @@ def complete_certified_birth(
         ppo_steps=pipeline._host.ppo_steps,
     )
     write_certificate(pipeline._host.workspace_root, certificate)
+    from lumina_core.birth.s5_close_ledger_archive import flush_close_ledger_before_wipe
+
+    flush_close_ledger_before_wipe(pipeline._host, seal=True, clear_memory=False)
     clear_checkpoint(pipeline._host.workspace_root)
     clear_buffer(pipeline._host.workspace_root)
     stamp = datetime.now(timezone.utc).isoformat()

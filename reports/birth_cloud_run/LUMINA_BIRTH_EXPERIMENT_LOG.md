@@ -79,3 +79,19 @@ History is append-only. Do not delete prior rows.
 **Verdict:** `BIRTH_MILESTONE_CLOSED`. Not REAL. Not Perfect Birth. Not certificate 0.48. Rollback SHA remains `22793e7` (S1–S4 did not regress; MES $5 did not regress).
 
 **Learning:** π* was optimizing a mixed expectancy+occupancy close object while the exam graded MES $5 booked dollars / Sharpe / DD. Aligning the close reward with signed process-R on those same dollars collapsed the 1124-fill negative-mean farm (mean −$120, Sharpe −4.96) to a 172-fill book that still sits at occupancy 0.280 by choice, still qty=1 MES $5, and clears the pinned S5 floors. That is a learner/exam split, not a floor move and not a fill rewrite.
+
+---
+
+## This ticket — S5 close_ledger persist (Gate 0 + one archive law)
+
+**Prompt:** Close-ledger persistence agent. Find every live path that drops, slices-without-flush, or wipes `close_ledger` on `birth_complete` / stage-reset / checkpoint-rotate. Make the full S5 series survive on disk. No new exam. Do not change the plant.
+
+**Gate 0:** Wipe map in `S5_LEDGER_PERSIST_AUDIT.md`. Live cap sites: `apply_s3_inband_rollout_metrics` `[-2000:]` (memory) and `persist_skill_settlement_fields` `[-2000:]` (checkpoint field). `complete_foundation_birth` → `clear_checkpoint` deleted the PR #14 exam tail. `reset_skill_settlement_if_fresh_stage` did not clear the list (prior-stage rows could evict S5 from the 2000-cap). No `close_ledger.clear()` in the tree.
+
+**Gate 1 shipped:** one persist law. Append-only `reports/birth_cloud_run/artifacts/s5_close_ledger.jsonl` via `lumina_core/birth/s5_close_ledger_archive.py`. Flush new rows before the memory cap. Flush remainder + `s5_close_ledger.sha256` before `clear_checkpoint`. Checkpoint may keep a 2000-row tail. Fresh stage reset flushes then clears memory. Resume keeps the tail. Same functions on a later live tape. No `if synthetic`. No second schema.
+
+**Honesty:** PR #14 n=172 book cannot be reconstructed. Workspace checkpoint gone. Artifacts checkpoint is 996 phoenix_cycle rows — not the 122-of-172 exam tail — not imported. Missing 50 not invented.
+
+**Result:** `LEDGER_PERSIST_SHIPPED`. Floors grep-identical to PR #14. `S5_IDLE_REGIMES` / `MAX_PLANT` / `MAX_TIME_STOP` still absent. No new S5 exam. Birth receipts stay as PR #14 left them. Not REAL. Not Perfect Birth. Not Evolution Proof.
+
+**SSOT:** `S5_LEDGER_PERSIST_AUDIT.md` / `S5_LEDGER_PERSIST_VERDICT.md`

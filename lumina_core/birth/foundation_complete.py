@@ -177,6 +177,9 @@ def complete_foundation_birth(
         else host.completion_flag_path
     )
     flag.write_text(datetime.now(timezone.utc).isoformat(), encoding="utf-8")
+    from lumina_core.birth.s5_close_ledger_archive import flush_close_ledger_before_wipe
+
+    flush_close_ledger_before_wipe(host, seal=True, clear_memory=False)
     clear_checkpoint(host.workspace_root)
     clear_buffer(host.workspace_root)
     status = "practice_completed" if practice_mode else "completed"
