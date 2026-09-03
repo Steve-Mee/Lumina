@@ -1,0 +1,18 @@
+{
+  "schema": "awakening_hole_tax_pi_star_v1",
+  "sha256": "ca2ae0e5fa6f0e54215fe6c833e2ebff608b5e99426a6e75ff5f7167d6bb0325",
+  "bytes": 202271,
+  "init_path": "/workspace/reports/birth_cloud_run/artifacts/birth_exit_pi_star.zip",
+  "init_sha256": "8cc435c68a37b0a070e38bccc4bfd402d4a802396bd7cd2fcce02f50acf69a03",
+  "control_sha256": "db7daf3b978fe80624608e27111627b5b9c3070e71118c66673df996123dd029",
+  "timesteps": 10000,
+  "hole_tax_r": 1.0,
+  "train_seed": 20260901,
+  "train_ticks_sha16": "7e86c2bb1c71d514",
+  "train_price_sha16": "359271a773ae5448",
+  "exported_at": "2026-09-03T11:03:51.675779+00:00",
+  "gitignored_ppo_fallback": false,
+  "actual_timesteps": 10000,
+  "optimizer_steps": 220,
+  "select_noop": false
+}

@@ -104,6 +104,8 @@ def run_select_train(
     holdout_b_path: Path | str | None = None,
     learn_fn: Any | None = None,
     ppo_load_fn: Any | None = None,
+    tax_r: float = 0.0,
+    train_reward_fn: Any | None = None,
 ) -> dict[str, Any]:
     """One learn() at the pin. Raises before learn on split/budget/init violations."""
     pin = assert_budget(int(timesteps))
@@ -123,6 +125,8 @@ def run_select_train(
         workspace_root=ws,
         reports_dir=reports_path,
         max_steps=max(pin, len(tape["train"])),
+        tax_r=float(tax_r),
+        train_reward_fn=train_reward_fn,
     )
     if ppo_load_fn is not None:
         model = ppo_load_fn(str(init_path), env=env, device="cpu")

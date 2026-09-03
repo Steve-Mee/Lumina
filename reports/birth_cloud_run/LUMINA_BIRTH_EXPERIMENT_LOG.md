@@ -185,3 +185,19 @@ History is append-only. Do not delete prior rows.
 **Overall:** `GRIND_REGRESS_AWAKENING_OPEN SELECT_SHOT SELECT_OVERFIT=false SELECT_NOOP=false`. Birth receipts stay PR #14. REAL=no. Evolution Proof stamped=False.
 
 **SSOT:** `AWAKENING_SELECT_AUDIT.md` / `AWAKENING_SELECT_VERDICT.md`
+
+---
+
+## This ticket — Awakening hole-tax (one named train-time tax)
+
+**Prompt:** One −1 R train tax on stop×NEUTRAL. Continue frozen Birth-exit π* for exactly AWAKENING_HOLE_TAX_PPO_TIMESTEPS=10000 on TRAIN seed 20260901. Freeze child. Evaluate-only A then B. No second shot.
+
+**Train:** seed=20260901 timesteps=10000 optimizer_steps=220 noop=False tax_r=1.0 child_sha16=ca2ae0e5fa6f0e54 train_ticks=7e86c2bb1c71d514 train_price=359271a773ae5448.
+
+**Leg A** seed 20260902 hashes 7e86c2bb1c71d514/2466d3f41d60657b price=aff3cb1e3a6f5014 class=`GRIND_REGRESS` n=211 wr_policy=0.3333333333333333 mean$=-69.90236979862026 sharpe=-4.552234905374526 dd=29.498800055017956 stop×NEUTRAL={'n': 86, 'mean_r': -1.0377589113836108, 'mean_usd': -117.0812092098568} plant=61.
+
+**Leg B** seed 20260903 hashes 7e86c2bb1c71d514/2466d3f41d60657b price=e51ce9b724515e2e class=`GRIND_REGRESS` n=180 wr_policy=0.31333333333333335 mean$=-45.106767083815534 sharpe=-3.5108225814966976 dd=16.658425047406872 stop×NEUTRAL={'n': 87, 'mean_r': -1.0515524666548113, 'mean_usd': -86.89438793959869} plant=30.
+
+**Overall:** `GRIND_REGRESS_AWAKENING_OPEN HOLE_TAX_SHOT SELECT_OVERFIT=false HOLE_SUBSTITUTION=false HOLE_MOVED=false`. SELECT_OVERFIT=False HOLE_SUBSTITUTION=False HOLE_MOVED=False. Birth receipts stay PR #14. REAL=no. Evolution Proof stamped=False.
+
+**SSOT:** `AWAKENING_HOLE_TAX_AUDIT.md` / `AWAKENING_HOLE_TAX_VERDICT.md`

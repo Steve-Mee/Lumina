@@ -78,6 +78,8 @@ class SelectPhysicsEnv(gym.Env):
         geometry: Any,
         envelope: dict[str, Any],
         enriched: list[dict[str, Any]],
+        tax_r: float = 0.0,
+        train_reward_fn: Any | None = None,
     ) -> None:
         super().__init__()
         self.env = inner
@@ -86,6 +88,9 @@ class SelectPhysicsEnv(gym.Env):
         self.geometry = geometry
         self.envelope = envelope
         self.enriched = enriched
+        # tax_r=0 keeps PR #20 path: no train-time hole tax. Exam dollars never taxed.
+        self.tax_r = float(tax_r)
+        self.train_reward_fn = train_reward_fn
         self.chatter = ForceOpenChatterBound()
         self.s3_idle = S3InbandIdleState()
         self.force_open_step = 0
@@ -211,6 +216,19 @@ class SelectPhysicsEnv(gym.Env):
         if pos_before == 0 and pos_after != 0:
             self.entry_is_plant = plant_tag_for_entry(force_open_this_step=force_open_this_step)
         closed = bool(info.get("trade_closed"))
+        if closed:
+            reason = str(info.get("close_reason") or "")
+            regime = str(info.get("regime") or row_sel.get("regime") or "NEUTRAL")
+            info["close_reason"] = reason
+            info["regime"] = regime
+            process_r = float(reward)
+            if self.train_reward_fn is not None:
+                reward = float(self.train_reward_fn(process_r, reason, regime))
+            elif abs(self.tax_r) > 0.0:
+                from lumina_core.birth.awakening_hole_tax import apply_hole_tax
+
+                reward = apply_hole_tax(process_r, reason, regime)
+            info["select_step_r"] = float(reward)
         closed_was_plant = bool(self.entry_is_plant) if closed else False
         if closed:
             if not closed_was_plant:
@@ -237,6 +255,8 @@ def make_select_train_env(
     workspace_root: Any,
     reports_dir: Any,
     max_steps: int,
+    tax_r: float = 0.0,
+    train_reward_fn: Any | None = None,
 ) -> SelectPhysicsEnv:
     if not data:
         raise RuntimeError("select train tape empty")
@@ -259,7 +279,14 @@ def make_select_train_env(
     )
     inner = RLTradingEnvironment(select_runtime(), enriched, config=rl_cfg)
     inner.set_birth_context(workspace_root=workspace_root, constitution_guard=BirthConstitutionGuard())
-    return SelectPhysicsEnv(inner, geometry=geometry, envelope=envelope, enriched=enriched)
+    return SelectPhysicsEnv(
+        inner,
+        geometry=geometry,
+        envelope=envelope,
+        enriched=enriched,
+        tax_r=float(tax_r),
+        train_reward_fn=train_reward_fn,
+    )
 
 
 __all__ = ["SelectPhysicsEnv", "make_select_train_env", "select_runtime"]
