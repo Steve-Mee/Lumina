@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-09-03T11:06:27.000893+00:00",
+  "passed": false,
+  "reasons": [
+    "insufficient lift -8.2% (need 5.0% or OOS >= 45.0%)"
+  ],
+  "birth_exit_winrate": 0.395349,
+  "polish_oos_winrate": 0.31333333333333335,
+  "winrate_source": "wr_policy_B",
+  "winrate_lift": -0.08201566666666665,
+  "holdout_trades": 180,
+  "overall": "GRIND_REGRESS_AWAKENING_OPEN HOLE_TAX_SHOT SELECT_OVERFIT=false HOLE_SUBSTITUTION=false HOLE_MOVED=false",
+  "select_overfit": false,
+  "hole_substitution": false,
+  "hole_moved": false,
+  "source": "awakening_hole_tax_oos_B"
+}

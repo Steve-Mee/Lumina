@@ -175,10 +175,13 @@ TRAIN = False
 
 ### 0.1 PPO.load proof (CPU wheels)
 
-Installed and imported **before** `learn()` (same pins as PR #20 if missing):
+Installed and imported **before** `learn()` (same pins as PR #20):
 
 - `torch==2.11.0+cpu` (PyTorch CPU index)
 - `stable_baselines3==2.8.0`
+- `gymnasium==1.2.3` (already in env)
+
+`PPO.load(birth_exit_pi_star.zip)` succeeded: obs `Box(-1e6, 1e6, (43,), float32)`, action `Box(4,)`. Loaded `n_steps=512`, parent `num_timesteps=1536`, parent `_n_updates=30`. Not DummyPolicy. Not `lumina_agents/ppo/*.zip`. `assert_not_control_init(awakening_select_pi_star.zip)` raises `HoleTaxProtocolError`.
 
 Parent zip sha still `8cc435c68a37b0a070e38bccc4bfd402d4a802396bd7cd2fcce02f50acf69a03`.
 Control zip sha still `db7daf3b978fe80624608e27111627b5b9c3070e71118c66673df996123dd029`.
@@ -212,3 +215,107 @@ Flags:
 - `HOLE_MOVED` informational only.
 
 Evolution Proof: `evaluate_evolution_proof` with `birth_exit_winrate=0.395349` and `polish_oos_winrate=wr_policy_B`. Stamp `passed=True` only if overall=`GRIND_STABLE_AWAKENING_OPEN` AND `SELECT_OVERFIT=False` AND `HOLE_SUBSTITUTION=False` AND `n_B>=500` AND ADR-0026 inequalities pass on B. Else fail-closed.
+
+## GATE 1 — freeze
+
+{
+  "child_path": "/workspace/reports/birth_cloud_run/artifacts/awakening_hole_tax_pi_star.zip",
+  "child_sha256": "ca2ae0e5fa6f0e54215fe6c833e2ebff608b5e99426a6e75ff5f7167d6bb0325",
+  "init_sha256": "8cc435c68a37b0a070e38bccc4bfd402d4a802396bd7cd2fcce02f50acf69a03",
+  "select_noop": false,
+  "actual_timesteps": 10000,
+  "optimizer_steps": 220,
+  "train_ticks_sha16": "7e86c2bb1c71d514",
+  "train_price_sha16": "359271a773ae5448",
+  "train_bars_sha16": "2466d3f41d60657b",
+  "hole_tax_r": 1.0
+}
+
+## GATE 2 — child tables
+
+{
+  "A": {
+    "n": 211,
+    "wr_all": 0.3080568720379147,
+    "wr_policy": 0.3333333333333333,
+    "mean_usd_all": -69.90236979862026,
+    "mean_usd_policy": -28.956135211719193,
+    "mean_r_policy": -0.25619038036381137,
+    "sharpe": -4.552234905374526,
+    "dd_pct_of_50k": 29.498800055017956,
+    "occ": 0.7565438962242298,
+    "plant_n": 61,
+    "force_open_closes": 61,
+    "FORCE_OPEN_bars": 111,
+    "exits": {
+      "stop": 144,
+      "target": 45,
+      "time_stop": 22
+    },
+    "stop_x_neutral": {
+      "n": 86,
+      "mean_r": -1.0377589113836108,
+      "mean_usd": -117.0812092098568
+    },
+    "target_mean_r": 1.2122160679783462,
+    "time_stop_mean_r": 1.2229581555149693,
+    "classification": "GRIND_REGRESS",
+    "ticks_sha16": "7e86c2bb1c71d514",
+    "bars_sha16": "2466d3f41d60657b",
+    "price_sha16": "aff3cb1e3a6f5014",
+    "frozen_sha256": "ca2ae0e5fa6f0e54215fe6c833e2ebff608b5e99426a6e75ff5f7167d6bb0325",
+    "optimizer_steps": 0,
+    "train": false
+  },
+  "B": {
+    "n": 180,
+    "wr_all": 0.3111111111111111,
+    "wr_policy": 0.31333333333333335,
+    "mean_usd_all": -45.106767083815534,
+    "mean_usd_policy": -23.344086897326296,
+    "mean_r_policy": -0.28229412926554237,
+    "sharpe": -3.5108225814966976,
+    "dd_pct_of_50k": 16.658425047406872,
+    "occ": 0.7160991429233264,
+    "plant_n": 30,
+    "force_open_closes": 30,
+    "FORCE_OPEN_bars": 62,
+    "exits": {
+      "stop": 120,
+      "target": 33,
+      "time_stop": 27
+    },
+    "stop_x_neutral": {
+      "n": 87,
+      "mean_r": -1.0515524666548113,
+      "mean_usd": -86.89438793959869
+    },
+    "target_mean_r": 1.1984173505564846,
+    "time_stop_mean_r": 1.222113105211665,
+    "classification": "GRIND_REGRESS",
+    "ticks_sha16": "7e86c2bb1c71d514",
+    "bars_sha16": "2466d3f41d60657b",
+    "price_sha16": "e51ce9b724515e2e",
+    "frozen_sha256": "ca2ae0e5fa6f0e54215fe6c833e2ebff608b5e99426a6e75ff5f7167d6bb0325",
+    "optimizer_steps": 0,
+    "train": false
+  },
+  "overall": "GRIND_REGRESS_AWAKENING_OPEN HOLE_TAX_SHOT SELECT_OVERFIT=false HOLE_SUBSTITUTION=false HOLE_MOVED=false",
+  "flags": {
+    "select_overfit": false,
+    "hole_substitution": false,
+    "hole_moved": false,
+    "sub_a": false,
+    "sub_b": false
+  },
+  "proof": {
+    "passed_inequalities": false,
+    "reasons": [
+      "insufficient lift -8.2% (need 5.0% or OOS >= 45.0%)"
+    ],
+    "stamped": false,
+    "n_b": 180,
+    "wr_policy_b": 0.31333333333333335,
+    "path": "/workspace/reports/birth_cloud_run/awakening_hole_tax/workspace/state/lumina_evolution_proof.json"
+  }
+}
