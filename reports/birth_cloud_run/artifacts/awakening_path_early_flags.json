@@ -1,0 +1,230 @@
+{
+  "A": {
+    "n_U": 126,
+    "n_H": 78,
+    "n_W": 39,
+    "S_MISSING_U": false,
+    "S_MISSING_PATH": false,
+    "S_THIN": false,
+    "winning_P": "none",
+    "tag": "S_MULTI",
+    "candidates": {
+      "P_K3_MAE_DEEP": {
+        "threshold": -3.51259620336855,
+        "missing": false,
+        "missing_share": 0.0,
+        "n_defined": 117,
+        "cov_H": 0.5070422535211268,
+        "cov_W": 0.4594594594594595,
+        "lift": 0.047582794061667266,
+        "S_THIN": false,
+        "S_SPLIT": false,
+        "S_HARM": false,
+        "drop_H": 36.0,
+        "drop_W": 17.0,
+        "remaining_H": 35.0,
+        "remaining_W": 20.0,
+        "READ_ONLY_FLIP": false
+      },
+      "P_K3_UNREAL_RED": {
+        "threshold": -0.04787176712367987,
+        "missing": false,
+        "missing_share": 0.0,
+        "n_defined": 117,
+        "cov_H": 0.6056338028169014,
+        "cov_W": 0.32432432432432434,
+        "lift": 0.28130947849257704,
+        "S_THIN": false,
+        "S_SPLIT": true,
+        "S_HARM": false,
+        "drop_H": 43.0,
+        "drop_W": 12.0,
+        "remaining_H": 28.0,
+        "remaining_W": 25.0,
+        "READ_ONLY_FLIP": false
+      },
+      "P_K5_MAE_DEEP": {
+        "threshold": -3.8296067476950557,
+        "missing": false,
+        "missing_share": 0.0,
+        "n_defined": 106,
+        "cov_H": 0.5409836065573771,
+        "cov_W": 0.4166666666666667,
+        "lift": 0.12431693989071041,
+        "S_THIN": false,
+        "S_SPLIT": false,
+        "S_HARM": false,
+        "drop_H": 33.0,
+        "drop_W": 15.0,
+        "remaining_H": 28.0,
+        "remaining_W": 21.0,
+        "READ_ONLY_FLIP": false
+      },
+      "P_K5_UNREAL_RED": {
+        "threshold": 0.005016593011945927,
+        "missing": false,
+        "missing_share": 0.0,
+        "n_defined": 106,
+        "cov_H": 0.6229508196721312,
+        "cov_W": 0.2222222222222222,
+        "lift": 0.40072859744990896,
+        "S_THIN": false,
+        "S_SPLIT": true,
+        "S_HARM": false,
+        "drop_H": 38.0,
+        "drop_W": 8.0,
+        "remaining_H": 23.0,
+        "remaining_W": 28.0,
+        "READ_ONLY_FLIP": false
+      }
+    },
+    "k": {
+      "3": {
+        "n_Uk": 117,
+        "n_Hk": 71,
+        "n_Wk": 37,
+        "n_died_before_k": 9,
+        "n_still_open": 117,
+        "missing_share": 0.0,
+        "S_THIN": false,
+        "medians": {
+          "mae_r": -3.51259620336855,
+          "unreal_r": -0.04787176712367987
+        }
+      },
+      "5": {
+        "n_Uk": 106,
+        "n_Hk": 61,
+        "n_Wk": 36,
+        "n_died_before_k": 20,
+        "n_still_open": 106,
+        "missing_share": 0.0,
+        "S_THIN": false,
+        "medians": {
+          "mae_r": -3.8296067476950557,
+          "unreal_r": 0.005016593011945927
+        }
+      }
+    },
+    "gate1": "NONE"
+  },
+  "B": {
+    "n_U": 130,
+    "n_H": 83,
+    "n_W": 42,
+    "S_MISSING_U": false,
+    "S_MISSING_PATH": false,
+    "S_THIN": false,
+    "winning_P": "none",
+    "tag": "S_MULTI",
+    "candidates": {
+      "P_K3_MAE_DEEP": {
+        "threshold": -3.9487375469566715,
+        "missing": false,
+        "missing_share": 0.0,
+        "n_defined": 126,
+        "cov_H": 0.5189873417721519,
+        "cov_W": 0.5238095238095238,
+        "lift": -0.004822182037371947,
+        "S_THIN": false,
+        "S_SPLIT": false,
+        "S_HARM": false,
+        "drop_H": 41.0,
+        "drop_W": 22.0,
+        "remaining_H": 38.0,
+        "remaining_W": 20.0,
+        "READ_ONLY_FLIP": false
+      },
+      "P_K3_UNREAL_RED": {
+        "threshold": -0.16345737392751075,
+        "missing": false,
+        "missing_share": 0.0,
+        "n_defined": 126,
+        "cov_H": 0.6329113924050633,
+        "cov_W": 0.23809523809523808,
+        "lift": 0.39481615430982525,
+        "S_THIN": false,
+        "S_SPLIT": true,
+        "S_HARM": false,
+        "drop_H": 50.0,
+        "drop_W": 10.0,
+        "remaining_H": 29.0,
+        "remaining_W": 32.0,
+        "READ_ONLY_FLIP": false
+      },
+      "P_K5_MAE_DEEP": {
+        "threshold": -4.343443747771533,
+        "missing": false,
+        "missing_share": 0.0,
+        "n_defined": 113,
+        "cov_H": 0.5588235294117647,
+        "cov_W": 0.43902439024390244,
+        "lift": 0.11979913916786228,
+        "S_THIN": false,
+        "S_SPLIT": false,
+        "S_HARM": false,
+        "drop_H": 38.0,
+        "drop_W": 18.0,
+        "remaining_H": 30.0,
+        "remaining_W": 23.0,
+        "READ_ONLY_FLIP": false
+      },
+      "P_K5_UNREAL_RED": {
+        "threshold": -0.08968917266227554,
+        "missing": false,
+        "missing_share": 0.0,
+        "n_defined": 113,
+        "cov_H": 0.6617647058823529,
+        "cov_W": 0.24390243902439024,
+        "lift": 0.4178622668579627,
+        "S_THIN": false,
+        "S_SPLIT": true,
+        "S_HARM": false,
+        "drop_H": 45.0,
+        "drop_W": 10.0,
+        "remaining_H": 23.0,
+        "remaining_W": 31.0,
+        "READ_ONLY_FLIP": false
+      }
+    },
+    "k": {
+      "3": {
+        "n_Uk": 126,
+        "n_Hk": 79,
+        "n_Wk": 42,
+        "n_died_before_k": 4,
+        "n_still_open": 126,
+        "missing_share": 0.0,
+        "S_THIN": false,
+        "medians": {
+          "mae_r": -3.9487375469566715,
+          "unreal_r": -0.16345737392751075
+        }
+      },
+      "5": {
+        "n_Uk": 113,
+        "n_Hk": 68,
+        "n_Wk": 41,
+        "n_died_before_k": 17,
+        "n_still_open": 113,
+        "missing_share": 0.0,
+        "S_THIN": false,
+        "medians": {
+          "mae_r": -4.343443747771533,
+          "unreal_r": -0.08968917266227554
+        }
+      }
+    },
+    "gate1": "NONE"
+  },
+  "tag": "S_MULTI",
+  "winning_P": "none",
+  "licensed_next_family": "H_NONE",
+  "gate1": "NONE",
+  "optimizer_steps": 0,
+  "evaluated_zip_sha256": "8cc435c68a37b0a070e38bccc4bfd402d4a802396bd7cd2fcce02f50acf69a03",
+  "evolution_proof_stamped": false,
+  "REAL": "no",
+  "overall": "GRIND_REGRESS_AWAKENING_OPEN PATH_EARLY_AUTOPSY PATH_MEASURE_ONLY",
+  "skip_replay": false
+}
