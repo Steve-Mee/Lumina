@@ -133,7 +133,7 @@ class RLTradingEnvironmentStepMixin:
                 side=side,
                 slippage_ticks=entry_ticks,
             )
-            entry_slippage_cost = abs(fill - price) * qty * self.valuation_engine.point_value(self.instrument)
+            entry_slippage_cost = abs(fill - price) * qty * self.fill_point_value()
             entry_fees = self._fees_usd(quantity=qty, sides=1)
 
             if self.trade_mode == "real":
@@ -281,17 +281,26 @@ class RLTradingEnvironmentStepMixin:
                     side=self._position,
                     slippage_ticks=exit_ticks,
                 )
-                slippage_cost += abs(exit_fill - mark) * close_qty * self.valuation_engine.point_value(
-                    self.instrument
-                )
+                fill_pv = self.fill_point_value()
+                slippage_cost += abs(exit_fill - mark) * close_qty * fill_pv
                 fees_cost += self._fees_usd(quantity=close_qty, sides=1)
-                realized_pnl = self.valuation_engine.pnl_dollars(
-                    symbol=self.instrument,
-                    entry_price=close_entry,
-                    exit_price=exit_fill,
-                    side=self._position,
-                    quantity=close_qty,
-                )
+                if is_birth:
+                    from lumina_core.birth.notional_cap import birth_fill_pnl_usd
+
+                    realized_pnl = birth_fill_pnl_usd(
+                        entry_price=close_entry,
+                        exit_price=exit_fill,
+                        side=self._position,
+                        quantity=close_qty,
+                    )
+                else:
+                    realized_pnl = self.valuation_engine.pnl_dollars(
+                        symbol=self.instrument,
+                        entry_price=close_entry,
+                        exit_price=exit_fill,
+                        side=self._position,
+                        quantity=close_qty,
+                    )
                 self._close_qty = close_qty
                 self._close_entry_price = close_entry
                 try:
@@ -301,7 +310,7 @@ class RLTradingEnvironmentStepMixin:
                         stop_pct=float(close_stop_pct),
                         entry_price=float(close_entry),
                         qty=int(close_qty),
-                        point_value=float(self.valuation_engine.point_value(self.instrument)),
+                        point_value=float(fill_pv),
                     )
                 except Exception:
                     self._close_risk_usd = abs(float(close_stop_pct)) * abs(float(close_entry)) * float(close_qty) * 5.0
@@ -458,7 +467,7 @@ class RLTradingEnvironmentStepMixin:
             cap_usd=float(close_cap_usd) if trade_closed else 0.0,
             gap=bool(close_gap) if trade_closed else False,
             entry_price=float(getattr(self, "_close_entry_price", 0.0) or 0.0) if trade_closed else 0.0,
-            point_value=float(self.valuation_engine.point_value(self.instrument)),
+            point_value=float(self.fill_point_value()),
         )
         return self._get_observation(), reward, terminated, False, info
 
