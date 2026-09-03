@@ -113,3 +113,21 @@ History is append-only. Do not delete prior rows.
 **Tape honesty:** Leg B seed `20260903` keeps the same calendar, so SSOT `compute_ticks_fingerprint` sha16 collides with Leg A (`7e86c2bb1c71d514` / `2466d3f41d60657b`) while **price_sha16** differs (`a7eb832491a5f8aa` vs `bfff3e8f878c6590`) and holdout regime counts differ. Three holdout labels on both legs. ATR/regimes not quieted.
 
 **SSOT:** `AWAKENING_GRIND_AUDIT.md` / `AWAKENING_GRIND_VERDICT.md`
+
+---
+
+## This ticket — Awakening grind (frozen π* longer clock)
+
+**Prompt:** Is S5 n=172 a stable process-R path or an early-stop artifact? Freeze π*. Keep the clock on. Do not move Birth floors.
+
+**Preflight:** persist writer from PR #15 (`s5_close_ledger_archive.py`). PR #14 JSONL still missing (not invented). Frozen load: `/workspace/reports/birth_cloud_run/artifacts/birth_exit_pi_star.zip` site `lumina_core/birth/foundation_complete.py:export_birth_exit_pi_star`.
+
+**Leg A** seed 20260902 reused_manifest=False hashes 7e86c2bb1c71d514/2466d3f41d60657b class=`GRIND_REGRESS` n=218 wr=0.34 mean$=-74.72875356711633 sharpe=-4.782569793167763 dd=33.981955162150804.
+
+**Leg B** seed 20260903 reused_manifest=False hashes 7e86c2bb1c71d514/2466d3f41d60657b class=`INCONCLUSIVE` n=171 wr=0.28 mean$=-44.31683093645542 sharpe=-3.865423396409053 dd=15.343169895446836.
+
+**Overall:** `GRIND_REGRESS_AWAKENING_OPEN`. Birth receipts stay PR #14. REAL=no. Evolution Proof stamped=False.
+
+**π\*:** harvested S5-pass pre-polish zip sha256 `8cc435c68a37b0a0…` (not post-polish PPO, not a fake HOLD policy). A fires all three REGRESS triggers. B n=171 < 172 → INCONCLUSIVE.
+
+**SSOT:** `AWAKENING_GRIND_AUDIT.md` / `AWAKENING_GRIND_VERDICT.md` / `PI_STAR_HARVEST_AUDIT.md`

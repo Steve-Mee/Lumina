@@ -367,3 +367,53 @@ def test_table_reports_realized_r() -> None:
     assert metrics.n == 172
     assert metrics.realized_r_mean == pytest.approx(-0.089)
     assert metrics.mean_usd == pytest.approx(-20.7)
+
+
+def test_gate0_ppo_zip_without_pi_star_is_inconclusive(tmp_path: Path) -> None:
+    """Post-polish lumina_agents/ppo/*.zip must not load as birth-exit π*."""
+    from lumina_core.birth.birth_exit_policy_export import (
+        candidate_frozen_paths,
+        resolve_frozen_policy_path,
+    )
+
+    ppo_dir = tmp_path / "lumina_agents" / "ppo"
+    ppo_dir.mkdir(parents=True)
+    decoy = ppo_dir / "lumina_ppo_policy.zip"
+    decoy.write_bytes(b"PK\x03\x04post_polish_decoy")
+    assert decoy.is_file()
+    assert resolve_frozen_policy_path(tmp_path) is None
+    for path in candidate_frozen_paths(tmp_path):
+        assert "lumina_agents/ppo" not in path.as_posix()
+        assert path.name == "birth_exit_pi_star.zip"
+
+    ticks = [
+        {
+            "timestamp": "2026-09-02T00:00:00Z",
+            "last": 21150.0,
+            "close": 21150.0,
+            "bid": 21149.75,
+            "ask": 21150.25,
+            "volume": 10,
+            "regime": "NEUTRAL",
+            "source": "synthetic_cloud_fixture",
+        }
+        for _ in range(40)
+    ]
+    called = {"n": 0}
+
+    def _boom(**_kwargs: object) -> SimpleNamespace:
+        called["n"] += 1
+        raise AssertionError("rollout must not run on post-polish ppo zip")
+
+    result = run_evaluate_only(
+        runtime=SimpleNamespace(),
+        holdout=ticks,
+        workspace_root=tmp_path,
+        reports_dir=tmp_path,
+        ledger_path=grind_ledger_path(tmp_path, leg="A"),
+        rollout_fn=_boom,
+    )
+    assert called["n"] == 0
+    assert result.frozen_loaded is False
+    assert result.classification == CLASS_INCONCLUSIVE
+    assert result.n < BIRTH_N

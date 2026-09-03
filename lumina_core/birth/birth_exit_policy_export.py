@@ -2,13 +2,14 @@
 
 Saves the Stage-5 pass policy BEFORE light polish. Zip lives under reports/
 artifacts (not gitignored ``lumina_agents/ppo/*.zip``). Missing file = fail-closed
-load, never a fake STABLE grind.
+load, never a fake STABLE grind. Grind load never falls back to post-polish PPO.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,19 @@ logger = get_logger("lumina.birth.birth_exit_policy_export")
 PI_STAR_ZIP_NAME = "birth_exit_pi_star.zip"
 PI_STAR_META_NAME = "birth_exit_pi_star.json"
 EXPORT_SITE = "lumina_core/birth/foundation_complete.py:export_birth_exit_pi_star"
+CANONICAL_PI_STAR_REL = Path("reports") / "birth_cloud_run" / "artifacts" / PI_STAR_ZIP_NAME
+
+
+class BirthPiStarExportError(RuntimeError):
+    """Birth complete is incomplete without frozen π* bytes."""
+
+
+def is_gitignored_ppo_zip(path: Path | str | None) -> bool:
+    """True for gitignored post-polish ``lumina_agents/ppo/*.zip`` paths."""
+    if path is None:
+        return False
+    text = Path(path).as_posix().lower()
+    return "/lumina_agents/ppo/" in f"/{text}" and text.endswith(".zip")
 
 
 def resolve_pi_star_path(workspace_root: Path | str | None) -> Path:
@@ -47,6 +61,7 @@ def _write_meta(zip_path: Path, *, source: str, extra: dict[str, Any] | None = N
         "source": source,
         "export_site": EXPORT_SITE,
         "pre_polish": True,
+        "gitignored_ppo_fallback": False,
     }
     if extra:
         meta.update(extra)
@@ -55,43 +70,42 @@ def _write_meta(zip_path: Path, *, source: str, extra: dict[str, Any] | None = N
     return sidecar
 
 
-def export_birth_exit_pi_star(host: Any) -> Path | None:
-    """Persist frozen S5-pass weights. Must run before ``final_birth_polish``."""
+def export_birth_exit_pi_star(host: Any) -> Path:
+    """Persist frozen S5-pass weights. Must run before ``final_birth_polish``.
+
+    Raises ``BirthPiStarExportError`` instead of returning None. Birth complete
+    must not succeed as a silent warning when the zip is missing.
+    """
     trainer = getattr(host, "ppo_trainer", None)
     root = getattr(host, "workspace_root", None)
     if trainer is None or root is None:
-        logger.warning("birth.pi_star.export_skipped missing trainer_or_root")
-        return None
+        raise BirthPiStarExportError("missing trainer_or_root")
     dest = resolve_pi_star_path(root)
+    if is_gitignored_ppo_zip(dest):
+        raise BirthPiStarExportError("export_target_is_gitignored_ppo")
     dest.parent.mkdir(parents=True, exist_ok=True)
     save = getattr(trainer, "save_weights", None) or getattr(
         trainer, "save_final_birth_policy", None
     )
     if not callable(save):
-        logger.warning("birth.pi_star.export_skipped no_save_hook")
-        return None
+        raise BirthPiStarExportError("no_save_hook")
     save(str(dest))
-    if not dest.is_file():
-        logger.warning("birth.pi_star.export_missing path=%s", dest)
-        return None
+    if not dest.is_file() or dest.stat().st_size <= 0:
+        raise BirthPiStarExportError(f"export_missing path={dest}")
     _write_meta(dest, source="s5_pass_pre_polish")
     logger.info("birth.pi_star.exported path=%s sha16=%s", dest, file_sha256(dest)[:16])
     return dest
 
 
 def candidate_frozen_paths(workspace_root: Path | str | None) -> list[Path]:
-    """Search order: reports export, then workspace zip (gitignored, may be absent)."""
+    """Grind load order: ``birth_exit_pi_star.zip`` only. Never post-polish PPO."""
     root = Path(workspace_root) if workspace_root else Path.cwd()
     out = [resolve_pi_star_path(root)]
-    if root.name == "workspace" and root.parent.name == "birth_cloud_run":
-        out.append(root / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip")
-    else:
-        out.append(root / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip")
-        cloud_ws = root / "reports" / "birth_cloud_run" / "workspace"
-        out.append(cloud_ws / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip")
     seen: set[str] = set()
     unique: list[Path] = []
     for path in out:
+        if is_gitignored_ppo_zip(path):
+            continue
         key = str(path.resolve()) if path.exists() else str(path)
         if key in seen:
             continue
@@ -102,14 +116,34 @@ def candidate_frozen_paths(workspace_root: Path | str | None) -> list[Path]:
 
 def resolve_frozen_policy_path(workspace_root: Path | str | None) -> Path | None:
     for path in candidate_frozen_paths(workspace_root):
+        if is_gitignored_ppo_zip(path):
+            continue
         if path.is_file() and path.stat().st_size > 0:
             return path
     return None
 
 
+def seal_harvested_pi_star(src: Path, dest: Path, *, extra: dict[str, Any] | None = None) -> Path:
+    """Copy a harvested S5-pass zip onto the canonical grind load path."""
+    source = Path(src)
+    target = Path(dest)
+    if is_gitignored_ppo_zip(source):
+        raise BirthPiStarExportError("refusing post-polish lumina_agents/ppo zip as birth-exit π*")
+    if not source.is_file() or source.stat().st_size <= 0:
+        raise BirthPiStarExportError(f"harvest source missing: {source}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target)
+    _write_meta(target, source="harvest_s5_pass_pre_polish", extra=extra)
+    logger.info("birth.pi_star.sealed path=%s sha16=%s", target, file_sha256(target)[:16])
+    return target
+
+
 def load_frozen_policy(path: Path | str) -> Any | None:
     """PPO.load only. Never creates a fresh policy. Missing/corrupt → None."""
     target = Path(path)
+    if is_gitignored_ppo_zip(target):
+        logger.warning("birth.pi_star.refused_post_polish_ppo path=%s", target)
+        return None
     if not target.is_file():
         return None
     try:
@@ -122,13 +156,17 @@ def load_frozen_policy(path: Path | str) -> Any | None:
 
 
 __all__ = [
+    "BirthPiStarExportError",
+    "CANONICAL_PI_STAR_REL",
     "EXPORT_SITE",
     "PI_STAR_META_NAME",
     "PI_STAR_ZIP_NAME",
     "candidate_frozen_paths",
     "export_birth_exit_pi_star",
     "file_sha256",
+    "is_gitignored_ppo_zip",
     "load_frozen_policy",
     "resolve_frozen_policy_path",
     "resolve_pi_star_path",
+    "seal_harvested_pi_star",
 ]

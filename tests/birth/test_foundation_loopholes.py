@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from lumina_core.birth.config import BirthCurriculumConfig
@@ -475,6 +477,15 @@ def test_complete_foundation_birth_uses_s5_oos_sharpe(tmp_path) -> None:  # type
         def __len__(self) -> int:
             return 0
 
+    def _save_weights(path: str) -> str:
+        target = tmp_path / "reports" / "birth_cloud_run" / "artifacts" / "birth_exit_pi_star.zip"
+        # export uses resolve_pi_star_path(workspace_root); write whatever path is requested
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"PK\x03\x04pi_star_stub")
+        _ = target
+        return str(p)
+
     host = SimpleNamespace(
         _stage_pass_receipts=receipts,
         cumulative_trades=900,
@@ -486,6 +497,7 @@ def test_complete_foundation_birth_uses_s5_oos_sharpe(tmp_path) -> None:  # type
         ppo_trainer=SimpleNamespace(
             final_birth_polish=lambda _b: None,
             save_final_birth_policy=lambda _p: None,
+            save_weights=_save_weights,
         ),
         practice_policy_path=tmp_path / "practice.pt",
         final_policy_path=tmp_path / "final.pt",
