@@ -1,0 +1,29 @@
+# Codecov policy for LUMINA.
+# Repo CI already gates coverage two ways:
+#   - Quality Gate Coverage Report: pytest --cov-fail-under=60
+#   - Module Coverage 85% on birth autonomy / bus / safety
+# codecov/patch without this file uses target=auto (≈ project %), which
+# fails measure-only autopsy PRs whose new modules are orchestration +
+# report writers, not the 85% autonomy set.
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 2%
+    patch:
+      default:
+        target: 50%
+        threshold: 5%
+
+comment:
+  layout: "reach,diff,flags,files"
+  behavior: default
+  require_changes: false
+
+ignore:
+  - "reports/**"
+  - "tests/**"
+  - "scripts/**"
+  - "frontend/**"
+  - "tauri-app/**"
