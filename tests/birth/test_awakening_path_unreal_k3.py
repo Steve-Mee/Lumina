@@ -445,6 +445,7 @@ def test_predicates_do_not_use_close_mae_r() -> None:
         "lumina_core/birth/awakening_path_unreal_k3.py",
         "lumina_core/birth/awakening_path_unreal_k3_flags.py",
         "lumina_core/birth/awakening_path_unreal_k3_run.py",
+        "lumina_core/birth/awakening_path_unreal_k3_eval.py",
     ):
         src = Path(rel).read_text(encoding="utf-8")
         assert re.search(r'row\.get\([\'"]mae_r', src) is None
@@ -472,8 +473,7 @@ def test_default_prefers_rescore_when_keys_present(tmp_path: Path, monkeypatch: 
     def _boom(*_a: Any, **_k: Any) -> Any:
         raise AssertionError("replay must not run when path_k3_unreal_r is present")
 
-    monkeypatch.setattr(run_mod, "_replay", _boom)
-    monkeypatch.setattr(run_mod, "run_evaluate_only", _boom)
+    monkeypatch.setattr(run_mod, "replay_path_unreal_k3", _boom)
     monkeypatch.setattr(run_mod, "run_path_unreal_k3_eval_leg", _boom)
     out = run_path_unreal_k3(reports=tmp_path, workspace_a=tmp_path, workspace_b=tmp_path)
     assert out["replay_ran"] is False
@@ -514,7 +514,11 @@ def test_evaluate_only_policy_learn_raises() -> None:
     with pytest.raises(PathUnrealK3ProtocolError, match="train seed"):
         assert_eval_seed(TRAIN_SEED)
     assert TRAIN is False
-    src = Path("lumina_core/birth/awakening_path_unreal_k3_run.py").read_text(encoding="utf-8")
-    assert "model.learn(" not in src
+    for rel in (
+        "lumina_core/birth/awakening_path_unreal_k3_run.py",
+        "lumina_core/birth/awakening_path_unreal_k3_eval.py",
+    ):
+        src = Path(rel).read_text(encoding="utf-8")
+        assert "model.learn(" not in src
     assert honesty_paragraph(source="path_early_jsonl").count("P_K3_UNREAL_RED") >= 1
     assert OVERALL_MEASURE.endswith("PATH_MEASURE_ONLY")

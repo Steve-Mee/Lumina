@@ -218,9 +218,6 @@ def test_coverage_run_evaluate_only_mocked(tmp_path: Path, monkeypatch: pytest.M
     )
     monkeypatch.setattr(run_mod, "resolve_parent_path", lambda *_a, **_k: parent)
     monkeypatch.setattr(run_mod, "assert_parent_sha", lambda *_a, **_k: INIT_SHA256)
-    monkeypatch.setattr(
-        run_mod, "load_frozen_policy", lambda *_a, **_k: SimpleNamespace(predict=lambda *a, **k: ([0.0], None))
-    )
     monkeypatch.setattr(run_mod, "probe_path_early_source", lambda *_a, **_k: {"ok": False, "reason": "missing_jsonl", "source_A_sha256": "", "source_B_sha256": "", "missing_share": 1.0, "rows_a": [], "rows_b": []})
 
     def _fixture(workspace: Path, *, seed: int) -> dict[str, Any]:
@@ -250,16 +247,20 @@ def test_coverage_run_evaluate_only_mocked(tmp_path: Path, monkeypatch: pytest.M
         path.write_text("".join(_json.dumps(r) + "\n" for r in holes + winners + extra), encoding="utf-8")
         return SimpleNamespace(optimizer_steps=0, trajectories=[], rollout_steps=0)
 
-    monkeypatch.setattr(run_mod, "_load_or_build_fixture", _fixture)
-    monkeypatch.setattr(run_mod, "run_path_unreal_k3_eval_leg", _eval_leg)
+    import lumina_core.birth.awakening_path_unreal_k3_eval as eval_mod
+
+    monkeypatch.setattr(eval_mod, "resolve_parent_path", lambda *_a, **_k: parent)
+    monkeypatch.setattr(eval_mod, "assert_parent_sha", lambda *_a, **_k: INIT_SHA256)
+    monkeypatch.setattr(eval_mod, "_load_or_build_fixture", _fixture)
+    monkeypatch.setattr(eval_mod, "run_path_unreal_k3_eval_leg", _eval_leg)
     live = run_path_unreal_k3(reports=tmp_path, workspace_a=tmp_path, workspace_b=tmp_path)
     assert live["parent_loaded"] is True
     assert live["replay_ran"] is True
     assert live["A"]["t0"]["n_policy"] == 150
     assert live["A"]["t0"]["optimizer_steps"] == 0
-    src = Path("lumina_core/birth/awakening_path_unreal_k3_run.py").read_text(encoding="utf-8")
+    src = Path("lumina_core/birth/awakening_path_unreal_k3_eval.py").read_text(encoding="utf-8")
     assert "ledger_source=SOURCE" in src or SOURCE in src
-    monkeypatch.setattr(run_mod, "run_path_unreal_k3_eval_leg", lambda **_k: SimpleNamespace(optimizer_steps=1))
+    monkeypatch.setattr(eval_mod, "run_path_unreal_k3_eval_leg", lambda **_k: SimpleNamespace(optimizer_steps=1))
     with pytest.raises(PathUnrealK3ProtocolError, match="optimizer_steps"):
         run_path_unreal_k3(reports=tmp_path, workspace_a=tmp_path, workspace_b=tmp_path)
 
