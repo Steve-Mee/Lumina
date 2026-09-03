@@ -214,3 +214,16 @@ History is append-only. Do not delete prior rows.
 **Flags:** A missing=False neu=True flip=False ft=False; B missing=False neu=True flip=False ft=False. Licensed=`OPEN_DECISION`.
 **Overall:** `GRIND_REGRESS_AWAKENING_OPEN ENTRY_HOLE_AUTOPSY ENTRY_MEASURE_ONLY`
 **SSOT:** `AWAKENING_ENTRY_AUTOPSY_AUDIT.md` / `AWAKENING_ENTRY_AUTOPSY_VERDICT.md`
+
+---
+
+## This ticket — Awakening OPEN_SPLIT autopsy (measure-only)
+
+**Prompt:** Among policy NEUTRAL opens, which at-OPEN feature separates hole from +R?
+**Train:** none. optimizer_steps=0. Parent zip 8cc435c6 only.
+**Landed:** PR #22 on main before replay (record merge SHA or green HEAD). Gate 0 SHA `25061876cd5d249d18fd8e12e5890d965f10f8c7`.
+**Leg A** seed 20260902 n_U=131 n_H=74 n_W=46 wr_policy=0.34 tag=S_NONE winning_F=none.
+**Leg B** seed 20260903 n_U=134 n_H=79 n_W=45 wr_policy=0.36 tag=S_NONE winning_F=none.
+**Tag / winning F:** `S_NONE` / `none` licensed=`H_NONE`
+**Overall:** `GRIND_REGRESS_AWAKENING_OPEN OPEN_SPLIT_AUTOPSY OPEN_MEASURE_ONLY`
+**SSOT:** `AWAKENING_OPEN_SPLIT_AUDIT.md` / `AWAKENING_OPEN_SPLIT_VERDICT.md`

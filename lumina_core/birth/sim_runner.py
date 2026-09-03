@@ -23,7 +23,7 @@ from lumina_core.birth.sim_runner_actions import (
     hold_ratio as _hold_ratio,
     predict_action as _predict_action,
 )
-from lumina_core.birth.sim_runner_entry_telem import close_open_telem, update_open_telem
+from lumina_core.birth.sim_runner_entry_telem import close_open_telem, stamp_open_host, update_open_telem
 from lumina_core.logging_utils import get_logger
 from lumina_core.rl.gym_environment import RLConfig, RLTradingEnvironment
 from lumina_core.rl.gym_stop_fill import birth_force_qty_one
@@ -626,6 +626,9 @@ def run_policy_rollout(
         # Attribute entry: FORCE_OPEN that opens a flat→position is plant, not pilot.
         if pos_before == 0 and pos_after != 0:
             entry_is_plant = plant_tag_for_entry(force_open_this_step=force_open_this_step)
+        stamp_open_host(
+            env, occupancy_control_flat(cumulative_flat=envelope_flat_ratio, rolling_flat=rolling_flat),
+            occupancy_in_band_seen, envelope_flat_bars, envelope_signals, range_flat_bars, range_total_signals, geometry)
         open_telem = update_open_telem(
             open_telem, env, info, pos_before, pos_after, enriched[idx], enriched
         )
@@ -735,7 +738,7 @@ def run_policy_rollout(
                     "gap": info.get("gap"),
                     "entry_price": info.get("entry_price"),
                     "point_value": info.get("point_value"),
-                    **close_open_telem(open_telem, idx, regime, info),
+                    **close_open_telem(open_telem, idx, regime, info, host=env, closed_was_plant=closed_was_plant),
                 }
             )
             open_telem = None
