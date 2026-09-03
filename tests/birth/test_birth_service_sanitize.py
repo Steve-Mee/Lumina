@@ -9,6 +9,14 @@ import pytest
 from lumina_launcher.services.birth_service import BirthService
 
 
+@pytest.fixture(autouse=True)
+def _reset_birth_service_singleton() -> None:
+    """Coverage suite runs extra tests; BirthService is a process singleton."""
+    BirthService._instance = None
+    yield
+    BirthService._instance = None
+
+
 @pytest.mark.unit
 def test_sanitize_running_progress_replaces_stale_curriculum_failed(tmp_path: Path) -> None:
     service = BirthService()
