@@ -15,19 +15,18 @@ from lumina_core.birth.awakening_edge import policy_only_rows
 from lumina_core.birth.awakening_mech import load_close_jsonl
 from lumina_core.birth.awakening_open_policy_signal_flags import (
     FAMILY_H_NONE,
-    FAMILY_OPEN_DECISION,
     POLICY_CANDIDATE_NAMES,
     P_ACTION_MARGIN,
     P_ENTROPY,
     P_VALUE,
     TAG_S_AB_DISAGREE,
     TAG_S_MISSING,
+    TAG_S_MISSING_SIGNAL,
     TAG_S_MULTI,
     TAG_S_NONE,
     TAG_S_SPLIT,
     TAG_S_THIN,
     compute_open_policy_signal_flags,
-    honesty_paragraph,
     license_from_ab,
     policy_candidate_grid_row,
 )
@@ -50,7 +49,7 @@ SIGNAL_A_NAME = "policy_signal_A_close_ledger.jsonl"
 SIGNAL_B_NAME = "policy_signal_B_close_ledger.jsonl"
 SOURCE = "awakening_open_policy_signal"
 
-BASELINE_WR_POLICY_A = 0.373
+BASELINE_WR_POLICY_A = 0.34
 BASELINE_N_POLICY_A = 150
 WR_WIRE_DELTA = 0.03
 N_WIRE_DELTA = 15
@@ -174,8 +173,48 @@ def assert_wire_vs_autopsy_a(*, wr_policy: float, n_policy: int) -> None:
         )
 
 
-def overall_policy_signal_string(*, parent_loaded: bool) -> str:
+def honesty_paragraph(
+    tag: str,
+    winning_p: str,
+    lift: float | None = None,
+    *,
+    skip_replay: bool = False,
+    n_u_a: int = 0,
+    n_u_b: int = 0,
+    family: str = FAMILY_H_NONE,
+) -> str:
+    _ = winning_p, lift
+    return (
+        "External OPEN_SPLIT bits did not separate H from W (PR #23 S_NONE).\n"
+        "This ticket asked whether frozen π* internals at OPEN do.\n"
+        f"Replay: skip_replay={str(bool(skip_replay)).lower()}. n_U A/B = {n_u_a}/{n_u_b}.\n"
+        f"Winning tag: {tag}.\n"
+        f"Licensed next family: {family}.\n"
+        "Law shipped: NONE.\n"
+        "Playground: no.\n"
+        "Evolution Proof stamped: False.\n"
+        "REAL: no."
+    )
+
+
+def overall_policy_signal_string(
+    *,
+    parent_loaded: bool,
+    skip_replay: bool = False,
+    n_u_a: int = 0,
+    s_missing_signal: bool = False,
+    optimizer_steps: int = 0,
+) -> str:
+    """MEASURE only after a real A+B replay with parent, n_U(A)>=60, signals present."""
     if not parent_loaded:
+        return OVERALL_INCONCLUSIVE
+    if skip_replay:
+        return OVERALL_INCONCLUSIVE
+    if int(n_u_a) < 60:
+        return OVERALL_INCONCLUSIVE
+    if s_missing_signal:
+        return OVERALL_INCONCLUSIVE
+    if int(optimizer_steps) != 0:
         return OVERALL_INCONCLUSIVE
     return OVERALL_MEASURE
 
@@ -189,7 +228,6 @@ __all__ = [
     "EVAL_B_SEED",
     "EVAL_SEEDS",
     "FAMILY_H_NONE",
-    "FAMILY_OPEN_DECISION",
     "FORBIDDEN_WRITE_NAMES",
     "HOLE_TAX_SHA256",
     "HOLE_TAX_ZIP_NAME",
@@ -207,6 +245,7 @@ __all__ = [
     "SOURCE",
     "TAG_S_AB_DISAGREE",
     "TAG_S_MISSING",
+    "TAG_S_MISSING_SIGNAL",
     "TAG_S_MULTI",
     "TAG_S_NONE",
     "TAG_S_SPLIT",

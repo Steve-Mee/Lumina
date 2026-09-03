@@ -12,10 +12,12 @@ from typing import Any
 
 from lumina_core.birth.awakening_grind import TRAIN
 from lumina_core.birth.awakening_grind_run import run_evaluate_only
+from lumina_core.birth.awakening_edge import policy_only_rows
 from lumina_core.birth.awakening_open_policy_signal import (
     EVAL_A_SEED,
     EVAL_B_SEED,
     INIT_SHA256,
+    OVERALL_INCONCLUSIVE,
     SOURCE,
     OpenPolicySignalProtocolError,
     assert_eval_seed,
@@ -35,7 +37,15 @@ from lumina_core.birth.awakening_open_policy_signal_report import (
     leg_payload,
     write_open_policy_signal_reports,
 )
-from lumina_core.birth.awakening_open_policy_signal_tables import table_t0, table_t1, table_t2, table_t3, table_t4
+from lumina_core.birth.awakening_open_policy_signal_tables import (
+    table_t0,
+    table_t1,
+    table_t1b,
+    table_t2,
+    table_t3,
+    table_t4,
+    table_t5,
+)
 from lumina_core.birth.awakening_select import price_sha16
 from lumina_core.birth.awakening_select_env import select_runtime
 from lumina_core.birth.birth_exit_policy_export import load_frozen_policy
@@ -123,6 +133,27 @@ def run_policy_signal_eval_leg(
     )
 
 
+def capture_ok_share(rows: list[dict[str, Any]]) -> float:
+    """Share of policy opens with at least one of value/entropy/margin present."""
+    policy = policy_only_rows(rows)
+    if not policy:
+        return 0.0
+    keys = ("open_policy_value", "open_policy_entropy", "open_policy_action_margin")
+    ok = sum(1 for row in policy if any(k in row and row.get(k) is not None for k in keys))
+    return float(ok) / float(len(policy))
+
+
+def _apply_capture_floor(payload: dict[str, Any], rows: list[dict[str, Any]]) -> None:
+    share = capture_ok_share(rows)
+    flags = payload.get("flags") or {}
+    flags["capture_ok_share"] = float(share)
+    if share < 0.80:
+        flags["S_MISSING_SIGNAL"] = True
+        flags["tag"] = "S_MISSING"
+        flags["winning_P"] = "none"
+    payload["flags"] = flags
+
+
 def _empty_leg(zip_sha: str) -> dict[str, Any]:
     return {
         "t0": table_t0(
@@ -133,8 +164,10 @@ def _empty_leg(zip_sha: str) -> dict[str, Any]:
             optimizer_steps=0,
         ),
         "t1": table_t1([]),
+        "t1b": table_t1b([]),
         "t2": table_t2([]),
         "t3": table_t3([]),
+        "t5": table_t5([]),
         "flags": compute_open_policy_signal_flags([]),
         "rows_n": 0,
     }
@@ -167,13 +200,19 @@ def run_open_policy_signal(
     except OpenPolicySignalProtocolError:
         zip_sha = ""
         parent_loaded = False
-    overall = overall_policy_signal_string(parent_loaded=parent_loaded)
+    overall = overall_policy_signal_string(
+        parent_loaded=parent_loaded,
+        skip_replay=bool(skip_replay),
+        n_u_a=0,
+        s_missing_signal=True,
+        optimizer_steps=0,
+    )
     empty_leg = _empty_leg(zip_sha)
     if not parent_loaded or skip_replay:
         t4 = table_t4(reports_path / "artifacts")
         write_open_policy_signal_reports(
             reports=reports_path,
-            overall=overall,
+            overall=OVERALL_INCONCLUSIVE if skip_replay or not parent_loaded else overall,
             zip_sha=zip_sha or INIT_SHA256,
             payload_a=empty_leg,
             payload_b=empty_leg,
@@ -181,8 +220,14 @@ def run_open_policy_signal(
             proto=proto,
             parent_loaded=parent_loaded,
             gate0_sha=GATE0_SHA,
+            skip_replay=bool(skip_replay),
         )
-        return {"overall": overall, "parent_loaded": parent_loaded, "family": "OPEN_DECISION"}
+        return {
+            "overall": OVERALL_INCONCLUSIVE if skip_replay or not parent_loaded else overall,
+            "parent_loaded": parent_loaded,
+            "family": "H_NONE",
+            "skip_replay": bool(skip_replay),
+        }
 
     fixture_a = _load_or_build_fixture(ws_a, seed=EVAL_A_SEED)
     metrics_a = run_policy_signal_eval_leg(
@@ -205,6 +250,7 @@ def run_open_policy_signal(
         price_sha16_value=str(fixture_a["price_sha16"]),
         optimizer_steps=0,
     )
+    _apply_capture_floor(payload_a, rows_a)
     assert_wire_vs_autopsy_a(
         wr_policy=float(payload_a["t0"]["wr_policy"]),
         n_policy=int(payload_a["t0"]["n_policy"]),
@@ -231,8 +277,16 @@ def run_open_policy_signal(
         price_sha16_value=str(fixture_b["price_sha16"]),
         optimizer_steps=0,
     )
+    _apply_capture_floor(payload_b, rows_b)
     t4 = table_t4(reports_path / "artifacts")
-    overall = overall_policy_signal_string(parent_loaded=True)
+    flags_a = payload_a.get("flags") or {}
+    overall = overall_policy_signal_string(
+        parent_loaded=True,
+        skip_replay=False,
+        n_u_a=int(flags_a.get("n_U") or 0),
+        s_missing_signal=bool(flags_a.get("S_MISSING_SIGNAL")),
+        optimizer_steps=0,
+    )
     write_open_policy_signal_reports(
         reports=reports_path,
         overall=overall,
@@ -245,6 +299,7 @@ def run_open_policy_signal(
         gate0_sha=GATE0_SHA,
         fixture_a=fixture_a,
         fixture_b=fixture_b,
+        skip_replay=False,
     )
     logger.info(
         "awakening.open_policy_signal.done overall=%s tag=%s n_a=%s n_b=%s",
@@ -280,6 +335,7 @@ if __name__ == "__main__":
 
 
 __all__ = [
+    "capture_ok_share",
     "run_open_policy_signal",
     "run_policy_signal_eval_leg",
     "write_jsonl_sha256",

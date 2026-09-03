@@ -20,6 +20,8 @@ OPEN_OPTIONAL_KEYS = (
     "open_policy_value",
     "open_policy_entropy",
     "open_policy_action_margin",
+    "open_policy_p_chosen",
+    "open_policy_margin_is_top2",
 )
 
 
@@ -211,6 +213,8 @@ def update_open_telem(
             open_policy_value=psig.get("open_policy_value"),
             open_policy_entropy=psig.get("open_policy_entropy"),
             open_policy_action_margin=psig.get("open_policy_action_margin"),
+            open_policy_p_chosen=psig.get("open_policy_p_chosen"),
+            open_policy_margin_is_top2=psig.get("open_policy_margin_is_top2"),
         )
     if out is not None:
         apply_open_excursion(out, tick)
@@ -235,6 +239,8 @@ def start_open_telem(
     open_policy_value: float | None = None,
     open_policy_entropy: float | None = None,
     open_policy_action_margin: float | None = None,
+    open_policy_p_chosen: float | None = None,
+    open_policy_margin_is_top2: bool | None = None,
 ) -> dict[str, Any]:
     stash: dict[str, Any] = {
         "entry_regime": str(entry_regime or "UNKNOWN"),
@@ -257,6 +263,8 @@ def start_open_telem(
         "open_policy_value": open_policy_value,
         "open_policy_entropy": open_policy_entropy,
         "open_policy_action_margin": open_policy_action_margin,
+        "open_policy_p_chosen": open_policy_p_chosen,
+        "open_policy_margin_is_top2": open_policy_margin_is_top2,
     }
     for key, value in optional.items():
         if value is not None:

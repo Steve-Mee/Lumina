@@ -16,7 +16,15 @@ from lumina_core.birth.awakening_open_policy_signal import (
 )
 from lumina_core.birth.awakening_open_policy_signal_flags import POLICY_CANDIDATE_NAMES
 from lumina_core.birth.awakening_open_policy_signal_path import POLICY_SIGNAL_STASH_ATTR_PATHS
-from lumina_core.birth.awakening_open_policy_signal_tables import table_t0, table_t1, table_t2, table_t3
+from lumina_core.birth.awakening_open_policy_signal_flags import FAMILY_H_NONE
+from lumina_core.birth.awakening_open_policy_signal_tables import (
+    table_t0,
+    table_t1,
+    table_t1b,
+    table_t2,
+    table_t3,
+    table_t5,
+)
 
 
 def leg_payload(
@@ -38,8 +46,10 @@ def leg_payload(
     return {
         "t0": t0,
         "t1": table_t1(rows),
+        "t1b": table_t1b(rows),
         "t2": table_t2(rows),
         "t3": table_t3(rows),
+        "t5": table_t5(rows),
         "flags": flags,
         "rows_n": len(rows),
     }
@@ -100,6 +110,7 @@ def write_open_policy_signal_reports(
     gate0_sha: str,
     fixture_a: dict[str, Any] | None = None,
     fixture_b: dict[str, Any] | None = None,
+    skip_replay: bool = False,
 ) -> None:
     now = datetime.now(timezone.utc).isoformat()
     (reports / "artifacts").mkdir(parents=True, exist_ok=True)
@@ -108,7 +119,7 @@ def write_open_policy_signal_reports(
     licensed = license_from_ab(flags_a, flags_b)
     tag = str(licensed.get("tag") or "S_NONE")
     winning = str(licensed.get("winning_P") or "none")
-    family = str(licensed.get("licensed_next_family") or "OPEN_DECISION")
+    family = str(licensed.get("licensed_next_family") or FAMILY_H_NONE)
     t0_a = payload_a.get("t0") or {}
     t0_b = payload_b.get("t0") or {}
     t1_a = payload_a.get("t1") or {}
@@ -130,6 +141,7 @@ def write_open_policy_signal_reports(
         "evolution_proof_stamped": False,
         "REAL": "no",
         "overall": overall,
+        "skip_replay": bool(skip_replay),
     }
     (reports / "artifacts" / "awakening_open_policy_signal_flags.json").write_text(
         json.dumps(flags_payload, indent=2, default=str) + "\n", encoding="utf-8"
@@ -210,12 +222,16 @@ def write_open_policy_signal_reports(
         "",
         json.dumps({"A": t0_a, "B": t0_b}, indent=2, default=str),
         "",
-        "Wire vs PR #22 autopsy A: wr_policy baseline 0.373 n_policy 150. "
+        "Wire vs OPEN_SPLIT A: wr_policy baseline 0.34 n_policy 150. "
         "AND-stop fires only if both deltas exceed 0.03 / 15.",
         "",
         "## T1 U / H / W",
         "",
         json.dumps({"A": t1_a, "B": t1_b}, indent=2, default=str),
+        "",
+        "## T1b raw signal distributions",
+        "",
+        json.dumps({"A": payload_a.get("t1b"), "B": payload_b.get("t1b")}, indent=2, default=str),
         "",
         "## T2 policy candidate grid",
         "",
@@ -229,10 +245,22 @@ def write_open_policy_signal_reports(
         "",
         json.dumps(t4, indent=2, default=str),
         "",
+        "## T5 opposite-tail (READ_ONLY_FLIP, cannot win)",
+        "",
+        json.dumps({"A": payload_a.get("t5"), "B": payload_b.get("t5")}, indent=2, default=str),
+        "",
         "## Licensing decision (A SSOT)",
         "",
         f"**Tag:** `{tag}`  **Winning P:** `{winning}`  **Licensed next family:** `{family}`  **Gate 1 law:** `NONE`",
-        honesty_paragraph(tag, winning, lift_a if isinstance(lift_a, float) else None),
+        honesty_paragraph(
+            tag,
+            winning,
+            lift_a if isinstance(lift_a, float) else None,
+            skip_replay=skip_replay,
+            n_u_a=int(t1_a.get("n_U") or 0),
+            n_u_b=int(t1_b.get("n_U") or 0),
+            family=family,
+        ),
         "",
         "## Forbidden-path grep (learn, " + "training" + "_reward, OPEN_FILTER controller)",
         "",
@@ -258,7 +286,9 @@ def write_open_policy_signal_reports(
         f"**Date:** {now}",
         f"**Evaluated zip sha256:** `{INIT_SHA256}`",
         "**optimizer_steps:** `0`",
+        f"**skip_replay:** `{str(bool(skip_replay)).lower()}`",
         f"**S_MISSING_U A/B:** `{flags_a.get('S_MISSING_U')}` / `{flags_b.get('S_MISSING_U')}`",
+        f"**S_MISSING_SIGNAL A/B:** `{flags_a.get('S_MISSING_SIGNAL')}` / `{flags_b.get('S_MISSING_SIGNAL')}`",
         f"**S_THIN A/B:** `{flags_a.get('S_THIN')}` / `{flags_b.get('S_THIN')}`",
         f"**Winning P A/B:** `{flags_a.get('winning_P')}` / `{flags_b.get('winning_P')}`",
         f"**Tag:** `{tag}`",
@@ -287,6 +317,11 @@ def write_open_policy_signal_reports(
         f"- A U: `{_md_cell(t1_a.get('U') or {})}` n_U={t1_a.get('n_U')} share_H={t1_a.get('share_H')} share_W={t1_a.get('share_W')}",
         f"- A H: `{_md_cell(t1_a.get('H') or {})}`",
         f"- A W: `{_md_cell(t1_a.get('W') or {})}`",
+        "",
+        "### T1b — signal distributions",
+        "",
+        json.dumps({"A": payload_a.get("t1b"), "B": payload_b.get("t1b")}, indent=2, default=str),
+        "",
         f"- B U: `{_md_cell(t1_b.get('U') or {})}` n_U={t1_b.get('n_U')} share_H={t1_b.get('share_H')} share_W={t1_b.get('share_W')}",
         f"- B H: `{_md_cell(t1_b.get('H') or {})}`",
         f"- B W: `{_md_cell(t1_b.get('W') or {})}`",
@@ -310,9 +345,21 @@ def write_open_policy_signal_reports(
         "",
         json.dumps(t4, indent=2, default=str),
         "",
+        "### T5 — opposite-tail READ_ONLY_FLIP",
+        "",
+        json.dumps({"A": payload_a.get("t5"), "B": payload_b.get("t5")}, indent=2, default=str),
+        "",
         "### Honesty",
         "",
-        honesty_paragraph(tag, winning, lift_a if isinstance(lift_a, float) else None),
+        honesty_paragraph(
+            tag,
+            winning,
+            lift_a if isinstance(lift_a, float) else None,
+            skip_replay=skip_replay,
+            n_u_a=int(t1_a.get("n_U") or 0),
+            n_u_b=int(t1_b.get("n_U") or 0),
+            family=family,
+        ),
         "",
         "Playground does not open. No learn(). Gate 1 law: NONE.",
         "",

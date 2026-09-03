@@ -23,7 +23,6 @@ from lumina_core.birth.sim_runner_actions import (
     hold_ratio as _hold_ratio,
     predict_action as _predict_action,
 )
-from lumina_core.birth.policy_signal_extract import extract_policy_signals
 from lumina_core.birth.sim_runner_entry_telem import close_open_telem, stamp_open_host, update_open_telem
 from lumina_core.logging_utils import get_logger
 from lumina_core.rl.gym_environment import RLConfig, RLTradingEnvironment
@@ -630,10 +629,9 @@ def run_policy_rollout(
         stamp_open_host(
             env, occupancy_control_flat(cumulative_flat=envelope_flat_ratio, rolling_flat=rolling_flat),
             occupancy_in_band_seen, envelope_flat_bars, envelope_signals, range_flat_bars, range_total_signals, geometry)
-        _psig = extract_policy_signals(policy, prev_obs) if pos_before == 0 and pos_after != 0 else None
         open_telem = update_open_telem(
             open_telem, env, info, pos_before, pos_after, enriched[idx], enriched,
-            policy_signals=_psig,
+            policy_signals=getattr(policy, "last_open_signal", None),
         )
         if occupancy_tick and pos_after == 0:
             range_flat_bars += 1

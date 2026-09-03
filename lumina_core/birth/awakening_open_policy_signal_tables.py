@@ -11,6 +11,7 @@ from lumina_core.birth.awakening_mech import bucket_stats, split_close_rows
 from lumina_core.birth.awakening_open_policy_signal_flags import (
     POLICY_CANDIDATE_NAMES,
     compute_adaptive_thresholds,
+    flag_s_missing_signal,
     flag_s_missing_u,
     flag_s_thin,
     policy_candidate_grid_row,
@@ -91,20 +92,88 @@ def table_t1(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _quantiles(values: list[float]) -> dict[str, float]:
+    if not values:
+        return {"mean": 0.0, "median": 0.0, "p25": 0.0, "p75": 0.0}
+    s = sorted(values)
+    n = len(s)
+
+    def _at(p: float) -> float:
+        idx = min(n - 1, max(0, int(round(p * (n - 1)))))
+        return float(s[idx])
+
+    mid = n // 2
+    median = float(s[mid]) if n % 2 == 1 else (float(s[mid - 1]) + float(s[mid])) / 2.0
+    return {
+        "mean": float(sum(s) / n),
+        "median": median,
+        "p25": _at(0.25),
+        "p75": _at(0.75),
+    }
+
+
+def _dist_cell(rows: list[dict[str, Any]], key: str) -> dict[str, Any]:
+    defined = []
+    for row in rows:
+        if key in row and row.get(key) is not None:
+            try:
+                defined.append(float(row.get(key)))
+            except (TypeError, ValueError):
+                continue
+    n = len(rows)
+    n_defined = len(defined)
+    missing_share = 1.0 if n <= 0 else 1.0 - (float(n_defined) / float(n))
+    stats = _quantiles(defined)
+    return {
+        "n_defined": int(n_defined),
+        "missing_share": float(missing_share),
+        **stats,
+    }
+
+
+T1B_KEYS = (
+    "open_policy_value",
+    "open_policy_entropy",
+    "open_policy_action_margin",
+    "open_policy_p_chosen",
+)
+
+
+def table_t1b(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    policy = policy_only_rows(rows)
+    universe = universe_rows(policy)
+    hole = hole_from_u(universe)
+    winners = winners_from_u(universe)
+    out: dict[str, Any] = {}
+    for key in T1B_KEYS:
+        out[key] = {
+            "U": _dist_cell(universe, key),
+            "H": _dist_cell(hole, key),
+            "W": _dist_cell(winners, key),
+        }
+    return out
+
+
 def table_t2(rows: list[dict[str, Any]]) -> dict[str, Any]:
     policy = policy_only_rows(rows)
     universe = universe_rows(policy)
     hole = hole_from_u(universe)
     winners = winners_from_u(universe)
-    s_missing_u = flag_s_missing_u(missing_entry_share=missing_entry_share_policy(policy), n_u=len(universe))
+    s_missing_u = flag_s_missing_u(missing_entry_share=missing_entry_share_policy(policy), n_u=len(universe)) or len(universe) <= 0
+    s_missing_signal = flag_s_missing_signal(universe)
     s_thin = flag_s_thin(n_h=len(hole), n_w=len(winners))
     thresholds = compute_adaptive_thresholds(universe)
     grid: dict[str, Any] = {}
     for name in POLICY_CANDIDATE_NAMES:
         row = policy_candidate_grid_row(
-            universe, hole, winners,
-            name=name, s_missing_u=s_missing_u, s_thin=s_thin,
+            universe,
+            hole,
+            winners,
+            name=name,
+            s_missing_u=s_missing_u,
+            s_thin=s_thin,
             thresholds=thresholds,
+            s_missing_signal=s_missing_signal,
         )
         grid[name] = {
             "threshold": row["threshold"],
@@ -125,21 +194,60 @@ def table_t3(rows: list[dict[str, Any]]) -> dict[str, Any]:
     universe = universe_rows(policy)
     hole = hole_from_u(universe)
     winners = winners_from_u(universe)
-    s_missing_u = flag_s_missing_u(missing_entry_share=missing_entry_share_policy(policy), n_u=len(universe))
+    s_missing_u = flag_s_missing_u(missing_entry_share=missing_entry_share_policy(policy), n_u=len(universe)) or len(universe) <= 0
+    s_missing_signal = flag_s_missing_signal(universe)
     s_thin = flag_s_thin(n_h=len(hole), n_w=len(winners))
     thresholds = compute_adaptive_thresholds(universe)
     out: dict[str, Any] = {}
     for name in POLICY_CANDIDATE_NAMES:
         row = policy_candidate_grid_row(
-            universe, hole, winners,
-            name=name, s_missing_u=s_missing_u, s_thin=s_thin,
+            universe,
+            hole,
+            winners,
+            name=name,
+            s_missing_u=s_missing_u,
+            s_thin=s_thin,
             thresholds=thresholds,
+            s_missing_signal=s_missing_signal,
         )
         out[name] = {
             "drop_H": row["drop_H"],
             "drop_W": row["drop_W"],
             "remaining_H": row["remaining_H"],
             "remaining_W": row["remaining_W"],
+        }
+    return out
+
+
+def table_t5(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Opposite-tail cov/lift. READ_ONLY_FLIP. Cannot win."""
+    policy = policy_only_rows(rows)
+    universe = universe_rows(policy)
+    hole = hole_from_u(universe)
+    winners = winners_from_u(universe)
+    s_missing_u = flag_s_missing_u(missing_entry_share=missing_entry_share_policy(policy), n_u=len(universe)) or len(universe) <= 0
+    s_missing_signal = flag_s_missing_signal(universe)
+    s_thin = flag_s_thin(n_h=len(hole), n_w=len(winners))
+    thresholds = compute_adaptive_thresholds(universe)
+    out: dict[str, Any] = {}
+    for name in POLICY_CANDIDATE_NAMES:
+        row = policy_candidate_grid_row(
+            universe,
+            hole,
+            winners,
+            name=name,
+            s_missing_u=s_missing_u,
+            s_thin=s_thin,
+            thresholds=thresholds,
+            s_missing_signal=s_missing_signal,
+            flip=True,
+        )
+        out[name] = {
+            "cov_H": row["cov_H"],
+            "cov_W": row["cov_W"],
+            "lift": row["lift"],
+            "READ_ONLY_FLIP": True,
+            "S_SPLIT": False,
         }
     return out
 
@@ -156,7 +264,9 @@ __all__ = [
     "CONTRAST_BOOKS",
     "table_t0",
     "table_t1",
+    "table_t1b",
     "table_t2",
     "table_t3",
     "table_t4",
+    "table_t5",
 ]
