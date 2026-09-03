@@ -25,6 +25,8 @@ reports/*
 !reports/birth_cloud_run/**
 reports/birth_cloud_run/workspace/state/lumina_birth_ticks_cache.jsonl
 reports/birth_cloud_run/workspace/state/lumina_birth_split_cache.json
+reports/birth_cloud_run/awakening_select/workspace/state/lumina_birth_ticks_cache.jsonl
+reports/birth_cloud_run/awakening_select/workspace/state/lumina_birth_split_cache.json
 
 # CI-generated SBOM (cyclonedx-py in quality gate / nightly audit)
 docs/sbom.json
