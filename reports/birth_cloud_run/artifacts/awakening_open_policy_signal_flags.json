@@ -1,47 +1,50 @@
 {
   "A": {
-    "n_U": 0,
-    "n_H": 0,
-    "n_W": 0,
-    "S_MISSING_U": true,
-    "S_THIN": true,
+    "n_U": 132,
+    "n_H": 80,
+    "n_W": 39,
+    "S_MISSING_U": false,
+    "S_MISSING_SIGNAL": false,
+    "S_THIN": false,
     "winning_P": "none",
-    "tag": "S_MISSING",
+    "tag": "S_NONE",
     "candidates": {
       "P_VALUE": {
-        "threshold": 0.0,
+        "threshold": 1.5816690921783447,
         "missing": false,
         "missing_share": 0.0,
-        "n_defined": 0,
-        "cov_H": 0.0,
-        "cov_W": 0.0,
-        "lift": 0.0,
+        "n_defined": 132,
+        "cov_H": 0.85,
+        "cov_W": 0.8461538461538461,
+        "lift": 0.0038461538461538325,
         "S_SPLIT": false,
         "S_HARM": false,
-        "drop_H": 0.0,
-        "drop_W": 0.0,
-        "remaining_H": 0.0,
-        "remaining_W": 0.0
+        "drop_H": 68.0,
+        "drop_W": 33.0,
+        "remaining_H": 12.0,
+        "remaining_W": 6.0,
+        "READ_ONLY_FLIP": false
       },
       "P_ENTROPY": {
-        "threshold": 0.0,
+        "threshold": 5.686735153198242,
         "missing": false,
         "missing_share": 0.0,
-        "n_defined": 0,
-        "cov_H": 0.0,
-        "cov_W": 0.0,
+        "n_defined": 132,
+        "cov_H": 1.0,
+        "cov_W": 1.0,
         "lift": 0.0,
         "S_SPLIT": false,
         "S_HARM": false,
-        "drop_H": 0.0,
-        "drop_W": 0.0,
+        "drop_H": 80.0,
+        "drop_W": 39.0,
         "remaining_H": 0.0,
-        "remaining_W": 0.0
+        "remaining_W": 0.0,
+        "READ_ONLY_FLIP": false
       },
       "P_ACTION_MARGIN": {
-        "threshold": 0.0,
-        "missing": false,
-        "missing_share": 0.0,
+        "threshold": 0.3,
+        "missing": true,
+        "missing_share": 1.0,
         "n_defined": 0,
         "cov_H": 0.0,
         "cov_W": 0.0,
@@ -50,60 +53,65 @@
         "S_HARM": false,
         "drop_H": 0.0,
         "drop_W": 0.0,
-        "remaining_H": 0.0,
-        "remaining_W": 0.0
+        "remaining_H": 80.0,
+        "remaining_W": 39.0,
+        "READ_ONLY_FLIP": false
       }
     },
     "thresholds": {
-      "value_median": 0.0,
-      "entropy_median": 0.0,
-      "action_margin_median": 0.0
+      "value_median": 1.5816690921783447,
+      "entropy_median": 5.686735153198242,
+      "action_margin_median": 0.3
     },
-    "gate1": "NONE"
+    "gate1": "NONE",
+    "capture_ok_share": 1.0
   },
   "B": {
-    "n_U": 0,
-    "n_H": 0,
-    "n_W": 0,
-    "S_MISSING_U": true,
-    "S_THIN": true,
+    "n_U": 131,
+    "n_H": 79,
+    "n_W": 46,
+    "S_MISSING_U": false,
+    "S_MISSING_SIGNAL": false,
+    "S_THIN": false,
     "winning_P": "none",
-    "tag": "S_MISSING",
+    "tag": "S_NONE",
     "candidates": {
       "P_VALUE": {
-        "threshold": 0.0,
+        "threshold": 1.6298996210098267,
         "missing": false,
         "missing_share": 0.0,
-        "n_defined": 0,
-        "cov_H": 0.0,
-        "cov_W": 0.0,
+        "n_defined": 131,
+        "cov_H": 1.0,
+        "cov_W": 1.0,
         "lift": 0.0,
         "S_SPLIT": false,
         "S_HARM": false,
-        "drop_H": 0.0,
-        "drop_W": 0.0,
+        "drop_H": 79.0,
+        "drop_W": 46.0,
         "remaining_H": 0.0,
-        "remaining_W": 0.0
+        "remaining_W": 0.0,
+        "READ_ONLY_FLIP": false
       },
       "P_ENTROPY": {
-        "threshold": 0.0,
+        "threshold": 5.686735153198242,
         "missing": false,
         "missing_share": 0.0,
-        "n_defined": 0,
-        "cov_H": 0.0,
-        "cov_W": 0.0,
+        "n_defined": 131,
+        "cov_H": 1.0,
+        "cov_W": 1.0,
         "lift": 0.0,
         "S_SPLIT": false,
         "S_HARM": false,
-        "drop_H": 0.0,
-        "drop_W": 0.0,
+        "drop_H": 79.0,
+        "drop_W": 46.0,
         "remaining_H": 0.0,
-        "remaining_W": 0.0
+        "remaining_W": 0.0,
+        "READ_ONLY_FLIP": false
       },
       "P_ACTION_MARGIN": {
-        "threshold": 0.0,
-        "missing": false,
-        "missing_share": 0.0,
+        "threshold": 0.3,
+        "missing": true,
+        "missing_share": 1.0,
         "n_defined": 0,
         "cov_H": 0.0,
         "cov_W": 0.0,
@@ -112,24 +120,27 @@
         "S_HARM": false,
         "drop_H": 0.0,
         "drop_W": 0.0,
-        "remaining_H": 0.0,
-        "remaining_W": 0.0
+        "remaining_H": 79.0,
+        "remaining_W": 46.0,
+        "READ_ONLY_FLIP": false
       }
     },
     "thresholds": {
-      "value_median": 0.0,
-      "entropy_median": 0.0,
-      "action_margin_median": 0.0
+      "value_median": 1.6298996210098267,
+      "entropy_median": 5.686735153198242,
+      "action_margin_median": 0.3
     },
-    "gate1": "NONE"
+    "gate1": "NONE",
+    "capture_ok_share": 1.0
   },
-  "tag": "S_MISSING",
+  "tag": "S_NONE",
   "winning_P": "none",
-  "licensed_next_family": "OPEN_DECISION",
+  "licensed_next_family": "H_NONE",
   "gate1": "NONE",
   "optimizer_steps": 0,
   "evaluated_zip_sha256": "8cc435c68a37b0a070e38bccc4bfd402d4a802396bd7cd2fcce02f50acf69a03",
   "evolution_proof_stamped": false,
   "REAL": "no",
-  "overall": "GRIND_REGRESS_AWAKENING_OPEN OPEN_POLICY_SIGNAL_AUTOPSY OPEN_MEASURE_ONLY"
+  "overall": "GRIND_REGRESS_AWAKENING_OPEN OPEN_POLICY_SIGNAL_AUTOPSY OPEN_MEASURE_ONLY",
+  "skip_replay": false
 }

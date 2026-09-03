@@ -240,3 +240,16 @@ History is append-only. Do not delete prior rows.
 **Tag / winning P:** `S_MISSING` / `none` licensed=`OPEN_DECISION`
 **Overall:** `GRIND_REGRESS_AWAKENING_OPEN OPEN_POLICY_SIGNAL_AUTOPSY OPEN_MEASURE_ONLY`
 **SSOT:** `AWAKENING_OPEN_POLICY_SIGNAL_AUDIT.md` / `AWAKENING_OPEN_POLICY_SIGNAL_VERDICT.md`
+
+---
+
+## This ticket — Awakening OPEN_POLICY_SIGNAL autopsy (measure-only)
+
+**Prompt:** Among policy NEUTRAL opens, does the frozen π* value/entropy/action-margin separate hole from +R?
+**Train:** none. optimizer_steps=0. Parent zip 8cc435c6 only.
+**Landed:** PR #23 on main before replay (record merge SHA or green HEAD). Gate 0 SHA `a9c5e32b10ed517c78091806b9f58c8e65a3f621`.
+**Leg A** seed 20260902 n_U=132 n_H=80 n_W=39 wr_policy=0.29333333333333333 tag=S_NONE winning_P=none.
+**Leg B** seed 20260903 n_U=131 n_H=79 n_W=46 wr_policy=0.3333333333333333 tag=S_NONE winning_P=none.
+**Tag / winning P:** `S_NONE` / `none` licensed=`H_NONE`
+**Overall:** `GRIND_REGRESS_AWAKENING_OPEN OPEN_POLICY_SIGNAL_AUTOPSY OPEN_MEASURE_ONLY`
+**SSOT:** `AWAKENING_OPEN_POLICY_SIGNAL_AUDIT.md` / `AWAKENING_OPEN_POLICY_SIGNAL_VERDICT.md`
