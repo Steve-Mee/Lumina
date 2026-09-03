@@ -1,6 +1,11 @@
 """Birth SIM exam notional SSOT — one cap for gym, plant, and guard.
 
 Live stop PRICE may still be geometry. Booked exam PnL cannot be a $1M gap mark.
+
+Birth gym fills settle at MES $5 (geometry SSOT) even when the certified tape
+is labeled NQ. The $500 / 1%-of-equity clip is a GAP backstop, not the typical
+close. Two living point-values (NQ $20 fills + MES $5 cap) made 73% of S5
+closes sit on the cap — that split is forbidden.
 """
 
 from __future__ import annotations
@@ -9,6 +14,25 @@ from lumina_core.birth.birth_trade_geometry import MES_POINT_VALUE_USD, MES_TICK
 from lumina_core.birth.foundation_metrics import S5_DD_EQUITY_USD
 
 BIRTH_EXAM_RISK_FRAC = 0.01
+
+
+def birth_gym_point_value() -> float:
+    """Birth gym fill settlement. Geometry SSOT. Not the tape's NQ $20."""
+    return float(MES_POINT_VALUE_USD)
+
+
+def birth_fill_pnl_usd(
+    *,
+    entry_price: float,
+    exit_price: float,
+    side: int,
+    quantity: int,
+) -> float:
+    """Gross fill dollars: Δprice × side × qty × MES $5."""
+    qty = max(0, int(quantity))
+    return float(
+        (float(exit_price) - float(entry_price)) * int(side) * qty * birth_gym_point_value()
+    )
 
 
 def one_tick_usd(
@@ -85,6 +109,8 @@ __all__ = [
     "BIRTH_EXAM_RISK_FRAC",
     "birth_close_cap_usd",
     "birth_exam_book_limit_usd",
+    "birth_fill_pnl_usd",
+    "birth_gym_point_value",
     "birth_stop_pct_dollar_cap",
     "clip_birth_exam_pnl",
     "one_tick_usd",

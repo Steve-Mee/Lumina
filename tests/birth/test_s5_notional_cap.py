@@ -25,6 +25,8 @@ from lumina_core.birth.foundation_metrics import (
 from lumina_core.birth.notional_cap import (
     birth_close_cap_usd,
     birth_exam_book_limit_usd,
+    birth_fill_pnl_usd,
+    birth_gym_point_value,
     birth_stop_pct_dollar_cap,
     clip_birth_exam_pnl,
     one_tick_usd,
@@ -116,13 +118,15 @@ def _open_then_mark(
     qty_frac: float,
     gap: bool,
     force_qty_one: bool = True,
-) -> dict[str, object]:
-    stop_pct = 0.003385
+    instrument: str = "NQ SEP26",
+    stop_pct: float = 0.003385,
+    trade_mode: str = "birth",
+) -> tuple[dict[str, object], RLTradingEnvironment]:
     env = RLTradingEnvironment(
-        _EngineStub(),
+        _EngineStub(instrument=instrument),
         _ticks(80, price=entry),
         config=RLConfig(
-            trade_mode="birth",
+            trade_mode=trade_mode,
             force_qty_one=force_qty_one,
             default_stop_pct=stop_pct,
             default_target_pct=stop_pct * 1.6,
@@ -140,11 +144,11 @@ def _open_then_mark(
         if gap:
             row[SEGMENT_BREAK_KEY] = True
     _obs, _rew, _done, _trunc, info = env.step([0.0, qty_frac, stop_pct, stop_pct * 1.6])
-    return info
+    return info, env
 
 
 def test_a_gym_action_qty_frac_one_still_fills_qty_one() -> None:
-    info = _open_then_mark(
+    info, _env = _open_then_mark(
         entry=29539.75, mark=29400.0, qty_frac=1.0, gap=False, force_qty_one=True
     )
     assert info.get("trade_closed") is True
@@ -170,7 +174,7 @@ def test_a_force_open_stop_qty10_is_ten_times_tighter() -> None:
 def test_a_gap_mark_ten_pct_books_exam_cap_not_raw() -> None:
     entry = 29539.75
     mark = entry * 0.90
-    info = _open_then_mark(entry=entry, mark=mark, qty_frac=1.0, gap=True)
+    info, env = _open_then_mark(entry=entry, mark=mark, qty_frac=1.0, gap=True)
     assert info.get("trade_closed") is True
     booked = float(info.get("rl_close_accounting_net_usd") or 0.0)
     tick = one_tick_usd()
@@ -178,6 +182,8 @@ def test_a_gap_mark_ten_pct_books_exam_cap_not_raw() -> None:
     raw_if_nq20 = abs(mark - entry) * 20.0
     assert raw_if_nq20 > 10_000.0
     assert abs(booked) < raw_if_nq20
+    assert env.fill_point_value() == pytest.approx(MES_POINT_VALUE_USD)
+    assert float(info.get("point_value") or 0.0) == pytest.approx(MES_POINT_VALUE_USD)
 
 
 def test_a_intended_risk_dollar_cap_is_500() -> None:
@@ -324,6 +330,80 @@ def test_c_s4_first_force_open_still_fires() -> None:
     assert d.mode == MODE_FORCE_OPEN
 
 
+def test_a_birth_gym_point_value_is_mes_five() -> None:
+    assert birth_gym_point_value() == pytest.approx(MES_POINT_VALUE_USD)
+    assert birth_gym_point_value() == pytest.approx(5.0)
+    one_point = birth_fill_pnl_usd(entry_price=21132.0, exit_price=21131.0, side=1, quantity=1)
+    assert one_point == pytest.approx(-5.0)
+    nq_lie = abs(21132.0 - 21131.0) * 20.0
+    assert abs(one_point) == pytest.approx(5.0)
+    assert abs(one_point) * 4.0 == pytest.approx(nq_lie)
+
+
+def test_a_nq_tape_birth_fill_settles_mes_not_nq20() -> None:
+    """Same certified tape label (NQ SEP26) must book MES $5, not valuation $20."""
+    entry = 21132.07
+    stop_pct = 0.00268
+    mark = entry * (1.0 - stop_pct)
+    info, env = _open_then_mark(
+        entry=entry, mark=mark, qty_frac=1.0, gap=False, instrument="NQ SEP26", stop_pct=stop_pct
+    )
+    assert env.instrument == "NQ SEP26"
+    assert env.valuation_engine.point_value("NQ SEP26") == pytest.approx(20.0)
+    assert env.fill_point_value() == pytest.approx(MES_POINT_VALUE_USD)
+    assert info.get("trade_closed") is True
+    assert float(info.get("point_value") or 0.0) == pytest.approx(MES_POINT_VALUE_USD)
+    booked = float(info.get("rl_close_accounting_net_usd") or 0.0)
+    raw_mes = abs(mark - entry) * MES_POINT_VALUE_USD
+    raw_nq = abs(mark - entry) * 20.0
+    limit = birth_exam_book_limit_usd(entry_price=entry, qty=1)
+    assert raw_mes < 400.0
+    assert raw_nq > limit
+    # Geometry-sized stop settles near MES dollars — cap is not the typical close.
+    assert abs(booked) < limit - 50.0
+    assert abs(booked) == pytest.approx(raw_mes, abs=25.0)
+    assert abs(booked) != pytest.approx(limit, abs=1.0)
+
+
+def test_a_exam_cap_is_gap_backstop_not_typical_settlement() -> None:
+    """$500 clip fires on a blow-through, not on a 1R MES geometry stop."""
+    entry = 21132.07
+    geo_stop = 0.00268
+    geo_mark = entry * (1.0 - geo_stop)
+    gap_mark = entry * 0.90
+    geo_info, _geo_env = _open_then_mark(
+        entry=entry, mark=geo_mark, qty_frac=1.0, gap=False, stop_pct=geo_stop
+    )
+    gap_info, _gap_env = _open_then_mark(
+        entry=entry, mark=gap_mark, qty_frac=1.0, gap=True, stop_pct=geo_stop
+    )
+    geo_booked = abs(float(geo_info.get("rl_close_accounting_net_usd") or 0.0))
+    gap_booked = abs(float(gap_info.get("rl_close_accounting_net_usd") or 0.0))
+    limit = birth_exam_book_limit_usd(entry_price=entry, qty=1)
+    assert geo_info.get("gap") is False
+    assert gap_info.get("gap") is True
+    assert geo_booked < 400.0
+    assert gap_booked == pytest.approx(limit, abs=1e-9)
+    assert geo_booked < gap_booked
+
+
+def test_a_non_birth_nq_still_uses_valuation_twenty() -> None:
+    env = RLTradingEnvironment(
+        _EngineStub(instrument="NQ SEP26"),
+        _ticks(80, price=21132.07),
+        config=RLConfig(trade_mode="sim", force_qty_one=True, max_steps=80),
+    )
+    assert env.is_birth_mode() is False
+    assert env.fill_point_value() == pytest.approx(20.0)
+
+
+def test_a_gym_step_does_not_book_nq20_on_birth_path() -> None:
+    src = Path("lumina_core/rl/gym_environment_step.py").read_text(encoding="utf-8")
+    assert "birth_fill_pnl_usd" in src
+    assert "self.fill_point_value()" in src
+    assert "self.valuation_engine.point_value(self.instrument)" not in src
+
+
 def test_no_idle_regimes_or_plant_cap_kruk() -> None:
     forbidden = ("S5_IDLE_REGIMES", "MAX_PLANT", "MAX_S5_PLANT", "MAX_FORCE_OPEN")
     for rel in (
@@ -331,6 +411,9 @@ def test_no_idle_regimes_or_plant_cap_kruk() -> None:
         "lumina_core/birth/stage2_participation_envelope.py",
         "lumina_core/birth/s5_occupancy_continuity.py",
         "lumina_core/birth/foundation_metrics.py",
+        "lumina_core/birth/notional_cap.py",
+        "lumina_core/rl/gym_environment.py",
+        "lumina_core/rl/gym_environment_step.py",
     ):
         src = Path(rel).read_text(encoding="utf-8")
         for token in forbidden:

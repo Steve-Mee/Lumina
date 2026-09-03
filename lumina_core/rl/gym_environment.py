@@ -196,6 +196,23 @@ class RLTradingEnvironment(RLTradingEnvironmentStepMixin, gym.Env):
         shock = random.gauss(0.0, float(self.config.slippage_sigma))
         return float(max(0.0, base + (volatility_factor * shock)))
 
+    def is_birth_mode(self) -> bool:
+        if str(self.trade_mode or "").lower() == "birth":
+            return True
+        return str(getattr(self.config, "trade_mode", "") or "").lower() == "birth"
+
+    def fill_point_value(self) -> float:
+        """Dollar multiplier for gym fills.
+
+        Birth collapses to MES $5 (geometry SSOT) even when the tape symbol is NQ.
+        Non-birth keeps ``valuation_engine.point_value(instrument)``.
+        """
+        if self.is_birth_mode():
+            from lumina_core.birth.notional_cap import birth_gym_point_value
+
+            return birth_gym_point_value()
+        return float(self.valuation_engine.point_value(self.instrument))
+
     def _fees_usd(self, *, quantity: int, sides: int) -> float:
         per_side = (
             float(self.config.commission_per_side_usd)
