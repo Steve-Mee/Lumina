@@ -22,13 +22,19 @@ def close_ledger_row(tr: dict[str, Any]) -> dict[str, Any]:
         reward_f = float(reward) if reward is not None else None
     except (TypeError, ValueError):
         reward_f = None
+    plant = tr.get("plant_entry", tr.get("plant"))
+    force_open = tr.get("force_open")
+    if force_open is None:
+        # Birth: plant_tag_for_entry ≡ FORCE_OPEN-at-entry. Schema, not a second law.
+        force_open = plant
     return {
         "pnl": tr.get("pnl"),
         "qty": tr.get("qty"),
         "cap_usd": tr.get("cap_usd"),
         "close_reason": tr.get("close_reason"),
         "gap": tr.get("gap"),
-        "plant": tr.get("plant_entry"),
+        "plant": plant,
+        "force_open": force_open,
         "entry_price": tr.get("entry_price"),
         "risk_usd": tr.get("risk_usd"),
         "intended_risk_usd": intended,
