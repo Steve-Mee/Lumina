@@ -152,6 +152,16 @@ TRAIN = False
 - `learn()` not yet called when this Gate 0 section was written.
 - Child zip exists only after Gate 1 (or honest `SELECT_INCONCLUSIVE_AWAKENING_OPEN` with no invented zip).
 
+### 0.1 PPO.load proof (CPU wheels)
+
+Installed and imported **before** `learn()`:
+
+- `torch==2.11.0+cpu` (PyTorch CPU index)
+- `stable_baselines3==2.8.0`
+- `gymnasium==1.2.3` (already in env)
+
+`PPO.load(birth_exit_pi_star.zip)` succeeded: obs `Box(-1e6, 1e6, (43,), float32)`, action `Box(4,)`. Loaded `n_steps=512`, parent `num_timesteps=1536`, parent `_n_updates=30`. Not DummyPolicy. Not `lumina_agents/ppo/*.zip`.
+
 ---
 
 ## GATE 1 — one selection law
@@ -180,3 +190,99 @@ Overfit: `SELECT_OVERFIT = (wr_policy_A - 0.34 >= 0.05) AND (wr_policy_B - 0.28 
 Evolution Proof: `evaluate_evolution_proof` with `birth_exit_winrate=0.395349` and `polish_oos_winrate=wr_policy_B` (policy-only, matches PR #17 skill WR). Stamp `passed=True` only if overall=`GRIND_STABLE_AWAKENING_OPEN` AND `SELECT_OVERFIT=False` AND `n_B>=500` AND ADR-0026 inequalities pass on B. Else fail-closed.
 
 Gate 2 numbers: see `AWAKENING_SELECT_VERDICT.md` after the shot.
+
+## GATE 1 — freeze
+
+{
+  "child_path": "/workspace/reports/birth_cloud_run/artifacts/awakening_select_pi_star.zip",
+  "child_sha256": "db7daf3b978fe80624608e27111627b5b9c3070e71118c66673df996123dd029",
+  "init_sha256": "8cc435c68a37b0a070e38bccc4bfd402d4a802396bd7cd2fcce02f50acf69a03",
+  "select_noop": false,
+  "actual_timesteps": 10000,
+  "optimizer_steps": 220,
+  "train_ticks_sha16": "7e86c2bb1c71d514",
+  "train_price_sha16": "359271a773ae5448",
+  "train_bars_sha16": "2466d3f41d60657b"
+}
+
+## GATE 2 — child tables
+
+{
+  "A": {
+    "n": 225,
+    "wr_all": 0.30666666666666664,
+    "wr_policy": 0.3333333333333333,
+    "mean_usd_all": -72.59384314264545,
+    "mean_usd_policy": -31.010356288345573,
+    "mean_r_policy": -0.27389581954773,
+    "sharpe": -4.583245071164464,
+    "dd_pct_of_50k": 32.87462017478503,
+    "occ": 0.7599953671531156,
+    "plant_n": 75,
+    "force_open_closes": 75,
+    "FORCE_OPEN_bars": 149,
+    "exits": {
+      "stop": 151,
+      "target": 51,
+      "time_stop": 23
+    },
+    "stop_x_neutral": {
+      "n": 79,
+      "mean_r": -1.0377639065293784,
+      "mean_usd": -117.06630513776742
+    },
+    "target_mean_r": 1.2122150350232215,
+    "time_stop_mean_r": 0.8135511733151649,
+    "classification": "GRIND_REGRESS",
+    "ticks_sha16": "7e86c2bb1c71d514",
+    "bars_sha16": "2466d3f41d60657b",
+    "price_sha16": "aff3cb1e3a6f5014",
+    "frozen_sha256": "db7daf3b978fe80624608e27111627b5b9c3070e71118c66673df996123dd029",
+    "optimizer_steps": 0,
+    "train": false
+  },
+  "B": {
+    "n": 182,
+    "wr_all": 0.3791208791208791,
+    "wr_policy": 0.38666666666666666,
+    "mean_usd_all": -34.246779716172504,
+    "mean_usd_policy": -14.950525227562903,
+    "mean_r_policy": -0.17461574736072388,
+    "sharpe": -2.5271434898282914,
+    "dd_pct_of_50k": 12.966977405911381,
+    "occ": 0.7536715311558952,
+    "plant_n": 32,
+    "force_open_closes": 32,
+    "FORCE_OPEN_bars": 74,
+    "exits": {
+      "stop": 109,
+      "target": 51,
+      "time_stop": 22
+    },
+    "stop_x_neutral": {
+      "n": 75,
+      "mean_r": -1.0675576786404861,
+      "mean_usd": -88.25842516168144
+    },
+    "target_mean_r": 1.19844324296314,
+    "time_stop_mean_r": 1.0083898218831873,
+    "classification": "INCONCLUSIVE",
+    "ticks_sha16": "7e86c2bb1c71d514",
+    "bars_sha16": "2466d3f41d60657b",
+    "price_sha16": "e51ce9b724515e2e",
+    "frozen_sha256": "db7daf3b978fe80624608e27111627b5b9c3070e71118c66673df996123dd029",
+    "optimizer_steps": 0,
+    "train": false
+  },
+  "overall": "GRIND_REGRESS_AWAKENING_OPEN SELECT_SHOT SELECT_OVERFIT=false SELECT_NOOP=false",
+  "proof": {
+    "passed_inequalities": false,
+    "reasons": [
+      "insufficient lift -0.9% (need 5.0% or OOS >= 45.0%)"
+    ],
+    "stamped": false,
+    "n_b": 182,
+    "wr_policy_b": 0.38666666666666666,
+    "path": "/workspace/reports/birth_cloud_run/awakening_select/workspace/state/lumina_evolution_proof.json"
+  }
+}

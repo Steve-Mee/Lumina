@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-09-03T10:02:45.454922+00:00",
+  "passed": false,
+  "reasons": [
+    "insufficient lift -0.9% (need 5.0% or OOS >= 45.0%)"
+  ],
+  "birth_exit_winrate": 0.395349,
+  "polish_oos_winrate": 0.38666666666666666,
+  "winrate_source": "wr_policy_B",
+  "winrate_lift": -0.008682333333333347,
+  "holdout_trades": 182,
+  "overall": "GRIND_REGRESS_AWAKENING_OPEN SELECT_SHOT SELECT_OVERFIT=false SELECT_NOOP=false",
+  "select_overfit": false,
+  "source": "awakening_select_oos_B"
+}

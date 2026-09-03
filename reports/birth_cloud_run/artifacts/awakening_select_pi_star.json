@@ -1,0 +1,19 @@
+{
+  "schema": "awakening_select_pi_star_v1",
+  "sha256": "db7daf3b978fe80624608e27111627b5b9c3070e71118c66673df996123dd029",
+  "bytes": 202271,
+  "init_path": "/workspace/reports/birth_cloud_run/artifacts/birth_exit_pi_star.zip",
+  "init_sha256": "8cc435c68a37b0a070e38bccc4bfd402d4a802396bd7cd2fcce02f50acf69a03",
+  "timesteps": 10000,
+  "train_seed": 20260901,
+  "train_ticks_sha16": "7e86c2bb1c71d514",
+  "train_price_sha16": "359271a773ae5448",
+  "exported_at": "2026-09-03T10:00:14.144210+00:00",
+  "pre_polish_parent": true,
+  "gitignored_ppo_fallback": false,
+  "select_noop": false,
+  "optimizer_steps": 220,
+  "optimizer_steps_parent": 30,
+  "optimizer_steps_this_shot": 190,
+  "actual_timesteps": 10000
+}

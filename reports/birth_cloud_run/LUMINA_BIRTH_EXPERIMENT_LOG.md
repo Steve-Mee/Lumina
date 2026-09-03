@@ -169,3 +169,19 @@ History is append-only. Do not delete prior rows.
 **Learning:** The fill is not lying. The tag is not lying. Policy has target-edge and stop-physics; WR 0.34 cannot pay 1.21:1.04. That is selection/training later, not a new exam.
 
 **SSOT:** `AWAKENING_EDGE_AUDIT.md` / `AWAKENING_EDGE_VERDICT.md`
+
+---
+
+## This ticket — Awakening selection (one pinned PPO shot)
+
+**Prompt:** Continue frozen Birth-exit π* under process-R for exactly AWAKENING_SELECT_PPO_TIMESTEPS=10000 on TRAIN seed 20260901. Freeze child. Evaluate-only A then B. No second shot.
+
+**Train:** seed=20260901 timesteps=10000 optimizer_steps=220 noop=False child_sha16=db7daf3b978fe806 train_ticks=7e86c2bb1c71d514 train_price=359271a773ae5448.
+
+**Leg A** seed 20260902 hashes 7e86c2bb1c71d514/2466d3f41d60657b price=aff3cb1e3a6f5014 class=`GRIND_REGRESS` n=225 wr_policy=0.3333333333333333 mean$=-72.59384314264545 sharpe=-4.583245071164464 dd=32.87462017478503 stop×NEUTRAL={'n': 79, 'mean_r': -1.0377639065293784, 'mean_usd': -117.06630513776742}.
+
+**Leg B** seed 20260903 hashes 7e86c2bb1c71d514/2466d3f41d60657b price=e51ce9b724515e2e class=`INCONCLUSIVE` n=182 wr_policy=0.38666666666666666 mean$=-34.246779716172504 sharpe=-2.5271434898282914 dd=12.966977405911381 stop×NEUTRAL={'n': 75, 'mean_r': -1.0675576786404861, 'mean_usd': -88.25842516168144}.
+
+**Overall:** `GRIND_REGRESS_AWAKENING_OPEN SELECT_SHOT SELECT_OVERFIT=false SELECT_NOOP=false`. Birth receipts stay PR #14. REAL=no. Evolution Proof stamped=False.
+
+**SSOT:** `AWAKENING_SELECT_AUDIT.md` / `AWAKENING_SELECT_VERDICT.md`
