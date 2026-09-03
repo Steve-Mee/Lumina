@@ -15,6 +15,7 @@ OPEN_OPTIONAL_KEYS = (
 )
 K_LOCKED = (3, 5)
 PATH_R_KEYS = tuple(f"path_k{k}_{kind}_r" for k in K_LOCKED for kind in ("mae", "mfe", "unreal"))
+PATH_K3_UNREAL_R = "path_k3_unreal_r"
 
 
 def tick_hl(tick: dict[str, Any]) -> tuple[float, float] | None:
@@ -224,6 +225,7 @@ def update_open_telem(
             open_policy_p_chosen=psig.get("open_policy_p_chosen"),
             open_policy_margin_is_top2=psig.get("open_policy_margin_is_top2"),
         )
+        out["is_policy"] = str(extras.get("open_participation_mode") or "") != "FORCE_OPEN"
     if out is not None:
         apply_open_excursion(out, tick)
         try:
@@ -232,6 +234,8 @@ def update_open_telem(
             bars_k = -1
         if (int(pos_before) != 0 or int(pos_after) != 0) and bars_k in K_LOCKED:
             snapshot_path_at_k(out, tick, bars_k)
+        from lumina_core.birth.awakening_path_exit_k3_hook import after_open_telem_path_exit_k3
+        after_open_telem_path_exit_k3(out, env, ticks, info, bars_k, int(pos_after))
     return out
 
 
@@ -373,13 +377,16 @@ def close_open_telem(
                 usd = stash.get(f"path_k{k}_{kind}_usd")
                 if usd is not None:
                     out[f"path_k{k}_{kind}_r"] = float(usd) / denom
+    for key in ("path_exit_k3", "path_exit_k3_unreal_r"):
+        if key in stash and stash.get(key) is not None:
+            out[key] = stash.get(key)
     _note_policy_stop(host, close_idx=close_idx, info=info, closed_was_plant=closed_was_plant)
     return out
 
 
 __all__ = [
     "ENTRY_AUTOPSY_SOURCE", "K_LOCKED", "OPEN_OPTIONAL_KEYS", "OPEN_SPLIT_SOURCE",
-    "PATH_R_KEYS", "apply_open_excursion", "close_open_telem", "gather_open_features",
+    "PATH_K3_UNREAL_R", "PATH_R_KEYS", "apply_open_excursion", "close_open_telem", "gather_open_features",
     "snapshot_path_at_k", "stamp_open_host", "start_open_telem", "tick_hl",
     "update_open_telem",
 ]

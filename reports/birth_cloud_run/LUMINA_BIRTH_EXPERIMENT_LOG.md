@@ -280,3 +280,17 @@ History is append-only. Do not delete prior rows.
 **Tag / winning P:** `S_SPLIT` / `P_K3_UNREAL_RED` licensed=`PATH_EXIT:P_K3_UNREAL_RED`
 **Overall:** `GRIND_REGRESS_AWAKENING_OPEN PATH_UNREAL_K3_AUTOPSY PATH_MEASURE_ONLY`
 **SSOT:** `AWAKENING_PATH_UNREAL_K3_AUDIT.md` / `AWAKENING_PATH_UNREAL_K3_VERDICT.md`
+
+---
+
+## This ticket — Awakening PATH_EXIT K3 shadow (evaluate-only flatten-at-3)
+
+**Prompt:** If we flatten a policy NEUTRAL-open still open at bar 3 when path_k3_unreal_r <= T_LOCK, does the evaluate-only book move the hole (n_H / mean_r) versus the frozen parent path without peeking the rest of the trade and without changing exam dollars?
+**Train:** none. optimizer_steps=0. Parent zip 8cc435c6 only. T_LOCK=-0.04787176712367987. k=3. Median not recomputed.
+**Landed:** PR #26 on main. Gate 0 SHA `334e367ffeec8fecf01b70f86b1dd84952064ebf`.
+**skip_replay**=false replay_ran=true
+**Leg A** n_exit=50 n_H base→shadow=78→40 wr_policy=0.26 tag=HOLE_MOVED
+**Leg B** n_exit=57 n_H=42 wr_policy=0.22666666666666666 tag=HOLE_INTACT
+**Tag / law:** `HOLE_MOVED` / `SHADOW` family=`PATH_EXIT:P_K3_UNREAL_RED`
+**Overall:** `GRIND_REGRESS_AWAKENING_OPEN PATH_EXIT_K3_SHADOW SHADOW_MEASURE`
+**SSOT:** `AWAKENING_PATH_EXIT_K3_AUDIT.md` / `AWAKENING_PATH_EXIT_K3_VERDICT.md`

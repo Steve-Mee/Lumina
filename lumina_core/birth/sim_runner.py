@@ -591,7 +591,7 @@ def run_policy_rollout(
         env.config.participation_min_dwell_bars = (
             int(participation_min_dwell_bars) if decision.suppress_flatten else 0
         )
-        env.config.force_flatten_this_step = bool(getattr(decision, "force_flatten", False))
+        env.config.force_flatten_this_step = bool(getattr(decision, "force_flatten", False)) or bool(getattr(env, "_path_exit_k3_request", False))
         env.config.force_time_stop_this_step = bool(getattr(decision, "force_time_stop", False))
         # Occupancy plant: do not let gym soft-prior shrink ATR×√dwell stops.
         env.config.soft_prior_stops = False if force_open_this_step else bool(soft_prior_stops)
