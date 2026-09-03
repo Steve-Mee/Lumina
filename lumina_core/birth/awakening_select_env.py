@@ -228,7 +228,7 @@ class SelectPhysicsEnv(gym.Env):
                 from lumina_core.birth.awakening_hole_tax import apply_hole_tax
 
                 reward = apply_hole_tax(process_r, reason, regime)
-            info["training_reward"] = float(reward)
+            info["select_step_r"] = float(reward)
         closed_was_plant = bool(self.entry_is_plant) if closed else False
         if closed:
             if not closed_was_plant:
