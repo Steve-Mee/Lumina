@@ -8,21 +8,13 @@ ENTRY_AUTOPSY_SOURCE = "awakening_entry_autopsy"
 OPEN_SPLIT_SOURCE = "awakening_open_split"
 
 OPEN_OPTIONAL_KEYS = (
-    "open_occ_flat",
-    "open_cum_flat",
-    "open_in_band_seen",
-    "open_session_phase",
-    "open_confluence",
-    "open_news_proximity",
-    "open_imbalance",
-    "open_range_stop_frac",
-    "open_participation_mode",
-    "open_policy_value",
-    "open_policy_entropy",
-    "open_policy_action_margin",
-    "open_policy_p_chosen",
-    "open_policy_margin_is_top2",
+    "open_occ_flat", "open_cum_flat", "open_in_band_seen", "open_session_phase",
+    "open_confluence", "open_news_proximity", "open_imbalance", "open_range_stop_frac",
+    "open_participation_mode", "open_policy_value", "open_policy_entropy",
+    "open_policy_action_margin", "open_policy_p_chosen", "open_policy_margin_is_top2",
 )
+K_LOCKED = (3, 5)
+PATH_R_KEYS = tuple(f"path_k{k}_{kind}_r" for k in K_LOCKED for kind in ("mae", "mfe", "unreal"))
 
 
 def tick_hl(tick: dict[str, Any]) -> tuple[float, float] | None:
@@ -65,15 +57,31 @@ def apply_open_excursion(stash: dict[str, Any], tick: dict[str, Any]) -> None:
     stash["mfe_usd"] = favorable if prev_mfe is None else max(float(prev_mfe), favorable)
 
 
+def snapshot_path_at_k(stash: dict[str, Any], tick: dict[str, Any], bars_from_entry: int) -> None:
+    """k-bar paper MAE/MFE/unreal. Omit missing. Never impute 0.0."""
+    k = int(bars_from_entry)
+    if k not in K_LOCKED:
+        return
+    for kind in ("mae", "mfe"):
+        usd = stash.get(f"{kind}_usd")
+        if usd is not None:
+            stash[f"path_k{k}_{kind}_usd"] = float(usd)
+    raw = tick.get("close", tick.get("last")) if isinstance(tick, dict) else None
+    try:
+        mark = float(raw) if raw is not None else None
+        entry = float(stash.get("entry_price") or 0.0)
+        side = int(stash.get("side") or 0)
+    except (TypeError, ValueError):
+        return
+    if mark is None or side == 0 or entry <= 0.0:
+        return
+    from lumina_core.birth.notional_cap import birth_gym_point_value
+    stash[f"path_k{k}_unreal_usd"] = (mark - entry) * float(side) * float(birth_gym_point_value())
+
+
 def stamp_open_host(
-    host: Any,
-    occ_flat: float,
-    in_band: bool,
-    stage_flats: int,
-    stage_sigs: int,
-    flats: int,
-    sigs: int,
-    geometry: Any | None = None,
+    host: Any, occ_flat: float, in_band: bool, stage_flats: int, stage_sigs: int,
+    flats: int, sigs: int, geometry: Any | None = None,
 ) -> None:
     """Mirror live rollout occupancy onto the env so gather_open_features can read it."""
     host.occupancy_control_flat = float(occ_flat)
@@ -218,6 +226,12 @@ def update_open_telem(
         )
     if out is not None:
         apply_open_excursion(out, tick)
+        try:
+            bars_k = int(getattr(env, "_idx", 0) or 0) - int(out.get("entry_bar_index") or 0)
+        except (TypeError, ValueError):
+            bars_k = -1
+        if (int(pos_before) != 0 or int(pos_after) != 0) and bars_k in K_LOCKED:
+            snapshot_path_at_k(out, tick, bars_k)
     return out
 
 
@@ -353,19 +367,19 @@ def close_open_telem(
         out["mae_r"] = float(mae_usd) / denom
     if mfe_usd is not None and denom is not None:
         out["mfe_r"] = float(mfe_usd) / denom
+    if denom is not None:
+        for k in K_LOCKED:
+            for kind in ("mae", "mfe", "unreal"):
+                usd = stash.get(f"path_k{k}_{kind}_usd")
+                if usd is not None:
+                    out[f"path_k{k}_{kind}_r"] = float(usd) / denom
     _note_policy_stop(host, close_idx=close_idx, info=info, closed_was_plant=closed_was_plant)
     return out
 
 
 __all__ = [
-    "ENTRY_AUTOPSY_SOURCE",
-    "OPEN_OPTIONAL_KEYS",
-    "OPEN_SPLIT_SOURCE",
-    "apply_open_excursion",
-    "close_open_telem",
-    "gather_open_features",
-    "stamp_open_host",
-    "start_open_telem",
-    "tick_hl",
+    "ENTRY_AUTOPSY_SOURCE", "K_LOCKED", "OPEN_OPTIONAL_KEYS", "OPEN_SPLIT_SOURCE",
+    "PATH_R_KEYS", "apply_open_excursion", "close_open_telem", "gather_open_features",
+    "snapshot_path_at_k", "stamp_open_host", "start_open_telem", "tick_hl",
     "update_open_telem",
 ]
