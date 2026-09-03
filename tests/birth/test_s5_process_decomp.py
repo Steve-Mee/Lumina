@@ -262,7 +262,8 @@ def test_c_m2_non_birth_expectancy_unchanged() -> None:
     )
     assert env.trade_mode == "sim"
     if info.get("trade_closed"):
-        comps = info.get("reward_components") or {}
+        raw_comps = info.get("reward_components")
+        comps = raw_comps if isinstance(raw_comps, dict) else {}
         assert "process_r" not in comps
 
 
@@ -297,7 +298,7 @@ def test_c_ledger_trace_keeps_regime_and_reward() -> None:
     assert row["reward_on_close"] == pytest.approx(-1.0)
     assert row["intended_risk_usd"] == pytest.approx(308.0)
     assert row["point_value"] == pytest.approx(5.0)
-    assert "sim_runner.py:697" in REGIME_JOIN_KEY
+    assert "sim_runner.py:704" in REGIME_JOIN_KEY
 
 
 def test_c_g0_tables_and_m2_trigger() -> None:

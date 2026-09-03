@@ -7,7 +7,7 @@ from typing import Any
 from lumina_core.birth.foundation_metrics import S3_OCCUPANCY_MIN
 
 OCC_FLOOR_NEIGHBORHOOD_HI = 0.30
-REGIME_JOIN_KEY = "lumina_core/birth/sim_runner.py:697"
+REGIME_JOIN_KEY = "lumina_core/birth/sim_runner.py:704"
 
 
 def close_ledger_row(tr: dict[str, Any]) -> dict[str, Any]:
