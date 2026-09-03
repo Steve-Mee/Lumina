@@ -11,16 +11,38 @@ from lumina_launcher.services.birth_service import BirthService
 
 @pytest.fixture(autouse=True)
 def _reset_birth_service_singleton() -> None:
-    """Coverage suite runs extra tests; BirthService is a process singleton."""
+    """Coverage suite shares one process; BirthService is a singleton."""
+    inst = getattr(BirthService, "_instance", None)
+    if inst is not None and getattr(inst, "_stop_requested", None) is not None:
+        inst._stop_requested.clear()
     BirthService._instance = None
     yield
+    inst = getattr(BirthService, "_instance", None)
+    if inst is not None and getattr(inst, "_stop_requested", None) is not None:
+        inst._stop_requested.clear()
     BirthService._instance = None
+
+
+def _isolated_running_service(tmp_path: Path) -> BirthService:
+    service = BirthService()
+    service.configure_workspace(tmp_path)
+    if getattr(service, "_stop_requested", None) is not None:
+        service._stop_requested.clear()
+    service._error = None
+    service._result = None
+    service._stalled_auto_resume_attempted = True
+    service._maybe_execute_autonomous_recovery = lambda: None  # type: ignore[method-assign]
+    service._maybe_auto_resume_stalled_birth = lambda: None  # type: ignore[method-assign]
+    alive_thread = MagicMock()
+    alive_thread.is_alive.return_value = True
+    service._thread = alive_thread
+    service._start_time = 1.0
+    return service
 
 
 @pytest.mark.unit
 def test_sanitize_running_progress_replaces_stale_curriculum_failed(tmp_path: Path) -> None:
-    service = BirthService()
-    service.configure_workspace(tmp_path)
+    service = _isolated_running_service(tmp_path)
     state_dir = tmp_path / "state"
     state_dir.mkdir(parents=True, exist_ok=True)
     (state_dir / "lumina_birth_progress.json").write_text(
@@ -34,11 +56,6 @@ def test_sanitize_running_progress_replaces_stale_curriculum_failed(tmp_path: Pa
         encoding="utf-8",
     )
 
-    alive_thread = MagicMock()
-    alive_thread.is_alive.return_value = True
-    service._thread = alive_thread
-    service._start_time = 1.0
-
     status = service.get_status()
     progress = status.get("progress") or {}
 
@@ -48,8 +65,7 @@ def test_sanitize_running_progress_replaces_stale_curriculum_failed(tmp_path: Pa
 
 @pytest.mark.unit
 def test_sanitize_running_progress_replaces_stale_stage_stalled(tmp_path: Path) -> None:
-    service = BirthService()
-    service.configure_workspace(tmp_path)
+    service = _isolated_running_service(tmp_path)
     state_dir = tmp_path / "state"
     state_dir.mkdir(parents=True, exist_ok=True)
     (state_dir / "lumina_birth_progress.json").write_text(
@@ -63,11 +79,6 @@ def test_sanitize_running_progress_replaces_stale_stage_stalled(tmp_path: Path) 
         ),
         encoding="utf-8",
     )
-
-    alive_thread = MagicMock()
-    alive_thread.is_alive.return_value = True
-    service._thread = alive_thread
-    service._start_time = 1.0
 
     status = service.get_status()
     progress = status.get("progress") or {}
