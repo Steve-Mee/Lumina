@@ -57,9 +57,15 @@ def persist_skill_settlement_fields(host: Any) -> dict[str, Any]:
         getattr(host, "_settlement_ssot_pending", False)
     )
     payload.update(s3_inband_progress_fields(host))
+    from lumina_core.birth.s5_close_ledger_archive import (
+        MEMORY_CAP,
+        flush_close_ledger_before_wipe,
+    )
+
+    flush_close_ledger_before_wipe(host, seal=False, clear_memory=False)
     raw_ledger = getattr(host, "close_ledger", None)
     if isinstance(raw_ledger, list) and raw_ledger:
-        payload["close_ledger"] = list(raw_ledger[-2000:])
+        payload["close_ledger"] = list(raw_ledger[-MEMORY_CAP:])
     return payload
 
 
@@ -161,6 +167,7 @@ def restore_skill_settlement_from_metrics(host: Any, metrics: dict[str, Any] | N
     host.occupancy_seed_source = str(raw.get("occupancy_seed_source", "n/a") or "n/a")
     host.force_open_refractory_active = bool(raw.get("force_open_refractory_active", False))
     host.close_ledger = list(raw.get("close_ledger") or []) if isinstance(raw.get("close_ledger"), list) else []
+    host._close_ledger_archived_n = len(host.close_ledger)
     host.occ_floor_band_bars = int(raw.get("occ_floor_band_bars", 0) or 0)
     host.occ_total_bars = int(raw.get("occ_total_bars", 0) or 0)
 
@@ -177,6 +184,9 @@ def reset_skill_settlement_if_fresh_stage(host: Any) -> None:
     host.closes_unknown = 0
     if resume_keep:
         return
+    from lumina_core.birth.s5_close_ledger_archive import flush_close_ledger_before_wipe
+
+    flush_close_ledger_before_wipe(host, seal=False, clear_memory=True)
     host.stage_closes_stop_cum = 0
     host.stage_closes_target_cum = 0
     host.stage_closes_flatten_cum = 0
@@ -225,14 +235,17 @@ def apply_s3_inband_rollout_metrics(loop: Any, rollout: Any) -> None:
     )
     if bool(getattr(rollout, "occupancy_in_band_seen", False)):
         loop.occupancy_in_band_seen = True
-    from lumina_core.birth.s5_close_ledger_trace import close_ledger_row
+    from lumina_core.birth.s5_close_ledger_archive import (
+        MEMORY_CAP,
+        record_close_rows_from_trajectories,
+    )
 
     ledger = list(getattr(loop, "close_ledger", None) or [])
-    for tr in getattr(rollout, "trajectories", None) or []:
-        if not isinstance(tr, dict) or tr.get("pnl") is None:
-            continue
-        ledger.append(close_ledger_row(tr))
-    loop.close_ledger = ledger[-2000:]
+    new_rows = record_close_rows_from_trajectories(
+        loop, list(getattr(rollout, "trajectories", None) or [])
+    )
+    ledger.extend(new_rows)
+    loop.close_ledger = ledger[-MEMORY_CAP:]
     loop.occ_floor_band_bars = int(getattr(loop, "occ_floor_band_bars", 0) or 0) + int(
         getattr(rollout, "occ_floor_band_bars", 0) or 0
     )
