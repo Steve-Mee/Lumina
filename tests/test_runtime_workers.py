@@ -763,10 +763,9 @@ def test_supervisor_loop_runs_swarm_once_per_boundary_across_multiple_cycles(mon
 
         @classmethod
         def now(cls):
-            try:
-                cls.last_value = next(cls.values)
-            except StopIteration:
-                pass
+            # Exhausting the four locked ticks stops the loop. Do not swallow
+            # StopIteration: leftover daemons must not share this budget.
+            cls.last_value = next(cls.values)
             return cls.last_value
 
         @staticmethod
@@ -777,12 +776,6 @@ def test_supervisor_loop_runs_swarm_once_per_boundary_across_multiple_cycles(mon
 
     swarm = SwarmSpy()
     recorded_updates = []
-    sleep_calls = {"count": 0}
-
-    def _sleep(*_args, **_kwargs):
-        sleep_calls["count"] += 1
-        if sleep_calls["count"] >= 4:
-            raise StopIteration()
 
     app = SimpleNamespace(
         live_data_lock=nullcontext(),
@@ -831,7 +824,7 @@ def test_supervisor_loop_runs_swarm_once_per_boundary_across_multiple_cycles(mon
 
     monkeypatch.setattr(runtime_workers, "datetime", FakeDateTime)
     _patch_supervisor_phase_state_machine(monkeypatch, fake_datetime=FakeDateTime)
-    monkeypatch.setattr(runtime_workers.time, "sleep", _sleep)
+    monkeypatch.setattr(runtime_workers.time, "sleep", lambda *_a, **_k: None)
 
     with pytest.raises(StopIteration):
         runtime_workers.supervisor_loop(cast(Any, app))

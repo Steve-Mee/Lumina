@@ -131,3 +131,16 @@ History is append-only. Do not delete prior rows.
 **Tag / winning P:** `S_NONE` / `none` licensed=`H_NONE`
 **Overall:** `GRIND_REGRESS_AWAKENING_OPEN OPEN_POLICY_SIGNAL_AUTOPSY OPEN_MEASURE_ONLY`
 **SSOT:** `AWAKENING_OPEN_POLICY_SIGNAL_AUDIT.md` / `AWAKENING_OPEN_POLICY_SIGNAL_VERDICT.md`
+
+---
+
+## This ticket — Awakening PATH_EARLY autopsy (measure-only)
+
+**Prompt:** Among policy NEUTRAL opens still open at locked k=3,5, do k-bar path bits separate hole from +R?
+**Train:** none. optimizer_steps=0. Parent zip 8cc435c6 only.
+**Landed:** PR #24 on main before replay. Gate 0 SHA `9a98853f08909c39205da647aa749a485c66c0a1`.
+**Leg A** seed 20260902 n_U=126 n_H=78 n_W=39 U_3=117 U_5=106 wr_policy=0.30666666666666664 tag=S_MULTI winning_P=none.
+**Leg B** seed 20260903 n_U=130 n_H=83 n_W=42 wr_policy=0.36 tag=S_MULTI winning_P=none.
+**Tag / winning P:** `S_MULTI` / `none` licensed=`H_NONE`
+**Overall:** `GRIND_REGRESS_AWAKENING_OPEN PATH_EARLY_AUTOPSY PATH_MEASURE_ONLY`
+**SSOT:** `AWAKENING_PATH_EARLY_AUDIT.md` / `AWAKENING_PATH_EARLY_VERDICT.md`

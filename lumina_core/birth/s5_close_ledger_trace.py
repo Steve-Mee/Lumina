@@ -79,6 +79,12 @@ def close_ledger_row(tr: dict[str, Any]) -> dict[str, Any]:
         "open_policy_action_margin",
         "open_policy_p_chosen",
         "open_policy_margin_is_top2",
+        "path_k3_mae_r",
+        "path_k3_mfe_r",
+        "path_k3_unreal_r",
+        "path_k5_mae_r",
+        "path_k5_mfe_r",
+        "path_k5_unreal_r",
     ):
         _copy_if_present(row, tr, key)
     return row
