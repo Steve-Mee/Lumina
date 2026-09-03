@@ -151,3 +151,21 @@ History is append-only. Do not delete prior rows.
 **Learning:** Stopping time glued Birth occ at 0.28 with FORCE_OPEN=0. The longer clock opens the tap, but the policy book itself is still −EV. That is the honest Awakening fact.
 
 **SSOT:** `AWAKENING_MECH_AUDIT.md` / `AWAKENING_MECH_VERDICT.md`
+
+---
+
+## This ticket — Awakening E_EDGE (policy-R autopsy)
+
+**Prompt:** WHERE does policy-R die (reason × regime × realized-R vs design-R)? At most one law, and only if Gate 0 finds a dead wire or a mislabel. Same frozen zip. No Birth reopen. No train-until-WR. No NEUTRAL drop. No FORCE_OPEN cap.
+
+**Gate 0:** grind_A/B JSONL re-read (218 / 171). Policy-only A n=150 wr=0.34 mean$=−23.87 mean_r=−0.211; B n=150 wr=0.28 mean$=−26.91 mean_r=−0.329. Geometry path is Birth gym: `calibrate_birth_stops` + `plan_birth_exit_fill` + `birth_fill_pnl_usd` + clip qty=1 MES $5. `G_MISWIRE=False`. Targets print +R (A +1.212, B +1.198, 0 gapped). Stops print −R (−1.038 / −1.062). Time-stop mean_r positive. Hole = stop × NEUTRAL (A 83/150). Occupancy series missing — not invented.
+
+**Triggers:** `G_MISWIRE=False` `G_MISLABEL=False` `T_TIME=False` `T_TARGET=False` `T_NEUTRAL=False` `T_STOP_ONLY=True` (A and B).
+
+**Gate 1:** none (`T_STOP_ONLY` → measurement-only). No second law. Envelope not disabled. Floors untouched.
+
+**Gate 2:** skipped. Overall `GRIND_REGRESS_AWAKENING_OPEN` + `EDGE_MEASURE_ONLY`. Evolution Proof not stamped (n=218<500, lift negative, overall ≠ STABLE).
+
+**Learning:** The fill is not lying. The tag is not lying. Policy has target-edge and stop-physics; WR 0.34 cannot pay 1.21:1.04. That is selection/training later, not a new exam.
+
+**SSOT:** `AWAKENING_EDGE_AUDIT.md` / `AWAKENING_EDGE_VERDICT.md`
