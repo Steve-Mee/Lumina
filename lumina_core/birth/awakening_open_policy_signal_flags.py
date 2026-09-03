@@ -1,0 +1,330 @@
+"""OPEN_POLICY_SIGNAL U/H/W universe and P_ candidate flags. Measure-only."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from lumina_core.birth.awakening_edge import policy_only_rows
+from lumina_core.birth.awakening_open_split_flags import (
+    MISSING_SHARE,
+    SPLIT_COV_H,
+    SPLIT_LIFT,
+    HARM_COV_W,
+    HARM_LIFT,
+    flag_s_missing_u,
+    flag_s_thin,
+    hole_from_u,
+    missing_entry_share_policy,
+    universe_rows,
+    winners_from_u,
+)
+
+P_VALUE = "P_VALUE"
+P_ENTROPY = "P_ENTROPY"
+P_ACTION_MARGIN = "P_ACTION_MARGIN"
+
+POLICY_CANDIDATE_NAMES = (P_VALUE, P_ENTROPY, P_ACTION_MARGIN)
+
+POLICY_CANDIDATE_RAW_KEY = {
+    P_VALUE: "open_policy_value",
+    P_ENTROPY: "open_policy_entropy",
+    P_ACTION_MARGIN: "open_policy_action_margin",
+}
+
+FAMILY_OPEN_DECISION = "OPEN_DECISION"
+FAMILY_H_NONE = "H_NONE"
+
+TAG_S_SPLIT = "S_SPLIT"
+TAG_S_MULTI = "S_MULTI"
+TAG_S_NONE = "S_NONE"
+TAG_S_MISSING = "S_MISSING"
+TAG_S_THIN = "S_THIN"
+TAG_S_AB_DISAGREE = "S_AB_DISAGREE"
+
+VALUE_MEDIAN_THRESHOLD = 0.0
+ENTROPY_LOW_THRESHOLD = 0.5
+ACTION_MARGIN_HIGH_THRESHOLD = 0.3
+
+
+def _field_present(row: dict[str, Any], key: str) -> bool:
+    return key in row and row.get(key) is not None
+
+
+def _opt_float(row: dict[str, Any], key: str) -> float | None:
+    if not _field_present(row, key):
+        return None
+    try:
+        return float(row.get(key))
+    except (TypeError, ValueError):
+        return None
+
+
+def _median(values: list[float]) -> float:
+    if not values:
+        return 0.0
+    s = sorted(values)
+    n = len(s)
+    if n % 2 == 1:
+        return s[n // 2]
+    return (s[n // 2 - 1] + s[n // 2]) / 2.0
+
+
+def compute_adaptive_thresholds(
+    universe: list[dict[str, Any]],
+) -> dict[str, float]:
+    """Compute median-based thresholds from the universe so the split is data-driven."""
+    vals_v: list[float] = []
+    vals_e: list[float] = []
+    vals_m: list[float] = []
+    for row in universe:
+        v = _opt_float(row, "open_policy_value")
+        if v is not None:
+            vals_v.append(v)
+        e = _opt_float(row, "open_policy_entropy")
+        if e is not None:
+            vals_e.append(e)
+        m = _opt_float(row, "open_policy_action_margin")
+        if m is not None:
+            vals_m.append(m)
+    return {
+        "value_median": _median(vals_v),
+        "entropy_median": _median(vals_e),
+        "action_margin_median": _median(vals_m),
+    }
+
+
+def pred_value_below_median(row: dict[str, Any], *, threshold: float) -> bool:
+    """P_VALUE: value head below universe median → pessimistic at open."""
+    value = _opt_float(row, "open_policy_value")
+    if value is None:
+        return False
+    return float(value) < float(threshold)
+
+
+def pred_entropy_high(row: dict[str, Any], *, threshold: float) -> bool:
+    """P_ENTROPY: entropy above universe median → uncertain at open."""
+    value = _opt_float(row, "open_policy_entropy")
+    if value is None:
+        return False
+    return float(value) > float(threshold)
+
+
+def pred_action_margin_low(row: dict[str, Any], *, threshold: float) -> bool:
+    """P_ACTION_MARGIN: action margin below universe median → indecisive at open."""
+    value = _opt_float(row, "open_policy_action_margin")
+    if value is None:
+        return False
+    return float(value) < float(threshold)
+
+
+def flag_s_split(
+    *,
+    s_missing_u: bool,
+    s_thin: bool,
+    missing: bool,
+    cov_h: float,
+    lift: float,
+) -> bool:
+    return (
+        (not bool(s_missing_u))
+        and (not bool(s_thin))
+        and (not bool(missing))
+        and float(cov_h) >= SPLIT_COV_H - 1e-12
+        and float(lift) >= SPLIT_LIFT - 1e-12
+    )
+
+
+def flag_s_harm(
+    *,
+    s_missing_u: bool,
+    s_thin: bool,
+    missing: bool,
+    cov_w: float,
+    lift: float,
+) -> bool:
+    return (
+        (not bool(s_missing_u))
+        and (not bool(s_thin))
+        and (not bool(missing))
+        and float(cov_w) >= HARM_COV_W - 1e-12
+        and float(lift) <= HARM_LIFT + 1e-12
+    )
+
+
+def policy_candidate_grid_row(
+    universe: list[dict[str, Any]],
+    hole: list[dict[str, Any]],
+    winners: list[dict[str, Any]],
+    *,
+    name: str,
+    s_missing_u: bool,
+    s_thin: bool,
+    thresholds: dict[str, float],
+) -> dict[str, Any]:
+    raw_key = POLICY_CANDIDATE_RAW_KEY[name]
+    n_u = len(universe)
+    n_h = len(hole)
+    n_w = len(winners)
+    n_defined = sum(1 for r in universe if _field_present(r, raw_key))
+    missing_share = 0.0 if n_u <= 0 else 1.0 - (float(n_defined) / float(n_u))
+    missing = missing_share >= MISSING_SHARE - 1e-12
+
+    if name == P_VALUE:
+        thr = thresholds.get("value_median", VALUE_MEDIAN_THRESHOLD)
+        n_h_hit = sum(1 for r in hole if pred_value_below_median(r, threshold=float(thr)))
+        n_w_hit = sum(1 for r in winners if pred_value_below_median(r, threshold=float(thr)))
+    elif name == P_ENTROPY:
+        thr = thresholds.get("entropy_median", ENTROPY_LOW_THRESHOLD)
+        n_h_hit = sum(1 for r in hole if pred_entropy_high(r, threshold=float(thr)))
+        n_w_hit = sum(1 for r in winners if pred_entropy_high(r, threshold=float(thr)))
+    elif name == P_ACTION_MARGIN:
+        thr = thresholds.get("action_margin_median", ACTION_MARGIN_HIGH_THRESHOLD)
+        n_h_hit = sum(1 for r in hole if pred_action_margin_low(r, threshold=float(thr)))
+        n_w_hit = sum(1 for r in winners if pred_action_margin_low(r, threshold=float(thr)))
+    else:
+        thr = 0.0
+        n_h_hit = 0
+        n_w_hit = 0
+    cov_h = float(n_h_hit) / float(max(n_h, 1))
+    cov_w = float(n_w_hit) / float(max(n_w, 1))
+    lift = cov_h - cov_w
+    return {
+        "threshold": float(thr),
+        "missing": bool(missing),
+        "missing_share": float(missing_share),
+        "n_defined": int(n_defined),
+        "cov_H": float(cov_h),
+        "cov_W": float(cov_w),
+        "lift": float(lift),
+        "S_SPLIT": flag_s_split(s_missing_u=s_missing_u, s_thin=s_thin, missing=missing, cov_h=cov_h, lift=lift),
+        "S_HARM": flag_s_harm(s_missing_u=s_missing_u, s_thin=s_thin, missing=missing, cov_w=cov_w, lift=lift),
+        "drop_H": float(cov_h) * float(n_h),
+        "drop_W": float(cov_w) * float(n_w),
+        "remaining_H": float(n_h) - float(cov_h) * float(n_h),
+        "remaining_W": float(n_w) - float(cov_w) * float(n_w),
+    }
+
+
+def compute_open_policy_signal_flags(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    policy = policy_only_rows(rows)
+    universe = universe_rows(policy)
+    hole = hole_from_u(universe)
+    winners = winners_from_u(universe)
+    n_u = len(universe)
+    n_h = len(hole)
+    n_w = len(winners)
+    miss_share = missing_entry_share_policy(policy)
+    s_missing_u = flag_s_missing_u(missing_entry_share=miss_share, n_u=n_u)
+    s_thin = flag_s_thin(n_h=n_h, n_w=n_w)
+    thresholds = compute_adaptive_thresholds(universe)
+    candidates: dict[str, Any] = {}
+    split_names: list[str] = []
+    for name in POLICY_CANDIDATE_NAMES:
+        row = policy_candidate_grid_row(
+            universe, hole, winners,
+            name=name, s_missing_u=s_missing_u, s_thin=s_thin,
+            thresholds=thresholds,
+        )
+        candidates[name] = row
+        if bool(row["S_SPLIT"]) and not bool(row["S_HARM"]):
+            split_names.append(name)
+    if s_missing_u:
+        tag = TAG_S_MISSING
+        winning = "none"
+    elif s_thin:
+        tag = TAG_S_THIN
+        winning = "none"
+    elif len(split_names) >= 2:
+        tag = TAG_S_MULTI
+        winning = "none"
+    elif len(split_names) == 1:
+        tag = TAG_S_SPLIT
+        winning = split_names[0]
+    else:
+        tag = TAG_S_NONE
+        winning = "none"
+    return {
+        "n_U": int(n_u),
+        "n_H": int(n_h),
+        "n_W": int(n_w),
+        "S_MISSING_U": bool(s_missing_u),
+        "S_THIN": bool(s_thin),
+        "winning_P": winning,
+        "tag": tag,
+        "candidates": candidates,
+        "thresholds": thresholds,
+        "gate1": "NONE",
+    }
+
+
+def license_from_ab(flags_a: dict[str, Any], flags_b: dict[str, Any]) -> dict[str, Any]:
+    """Leg A is SSOT. B cannot invent a law. Disagree on winning P name → S_AB_DISAGREE."""
+    win_a = str(flags_a.get("winning_P") or "none")
+    win_b = str(flags_b.get("winning_P") or "none")
+    if bool(flags_a.get("S_MISSING_U")):
+        return {"tag": TAG_S_MISSING, "winning_P": "none", "licensed_next_family": FAMILY_OPEN_DECISION}
+    if bool(flags_a.get("S_THIN")):
+        return {"tag": TAG_S_THIN, "winning_P": "none", "licensed_next_family": FAMILY_OPEN_DECISION}
+    tag_a = str(flags_a.get("tag") or TAG_S_NONE)
+    if tag_a == TAG_S_MULTI:
+        return {"tag": TAG_S_MULTI, "winning_P": "none", "licensed_next_family": FAMILY_OPEN_DECISION}
+    if tag_a == TAG_S_SPLIT:
+        if win_a != win_b:
+            return {"tag": TAG_S_AB_DISAGREE, "winning_P": "none", "licensed_next_family": FAMILY_OPEN_DECISION}
+        return {
+            "tag": TAG_S_SPLIT,
+            "winning_P": win_a,
+            "licensed_next_family": f"OPEN_FILTER:POLICY_{win_a}",
+        }
+    return {"tag": TAG_S_NONE, "winning_P": "none", "licensed_next_family": FAMILY_H_NONE}
+
+
+def honesty_paragraph(tag: str, winning_p: str, lift: float | None = None) -> str:
+    if tag == TAG_S_SPLIT:
+        lift_s = "…" if lift is None else f"{lift}"
+        return (
+            f"NEUTRAL-open splits on policy signal {winning_p} (lift={lift_s}). "
+            "Filter is **not** shipped. "
+            "Next human ticket may implement only this P as evaluate-only refuse-open. "
+            "Exam still grades NEUTRAL."
+        )
+    if tag == TAG_S_MULTI:
+        return "Two+ policy signals split. Do not pick. No law."
+    if tag == TAG_S_NONE:
+        return (
+            "Frozen π* policy signals (value / entropy / action-margin) do not separate "
+            "NEUTRAL-open hole from NEUTRAL-open winners. "
+            "This π* is informationally empty at NEUTRAL-open. "
+            "Next ticket is representation / objective, not Playground, not a fourth 10k costume."
+        )
+    return "No train law licensed."
+
+
+__all__ = [
+    "ACTION_MARGIN_HIGH_THRESHOLD",
+    "ENTROPY_LOW_THRESHOLD",
+    "FAMILY_H_NONE",
+    "FAMILY_OPEN_DECISION",
+    "POLICY_CANDIDATE_NAMES",
+    "POLICY_CANDIDATE_RAW_KEY",
+    "P_ACTION_MARGIN",
+    "P_ENTROPY",
+    "P_VALUE",
+    "TAG_S_AB_DISAGREE",
+    "TAG_S_MISSING",
+    "TAG_S_MULTI",
+    "TAG_S_NONE",
+    "TAG_S_SPLIT",
+    "TAG_S_THIN",
+    "VALUE_MEDIAN_THRESHOLD",
+    "compute_adaptive_thresholds",
+    "compute_open_policy_signal_flags",
+    "flag_s_harm",
+    "flag_s_split",
+    "honesty_paragraph",
+    "license_from_ab",
+    "policy_candidate_grid_row",
+    "pred_action_margin_low",
+    "pred_entropy_high",
+    "pred_value_below_median",
+]

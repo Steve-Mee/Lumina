@@ -1,0 +1,135 @@
+{
+  "A": {
+    "n_U": 0,
+    "n_H": 0,
+    "n_W": 0,
+    "S_MISSING_U": true,
+    "S_THIN": true,
+    "winning_P": "none",
+    "tag": "S_MISSING",
+    "candidates": {
+      "P_VALUE": {
+        "threshold": 0.0,
+        "missing": false,
+        "missing_share": 0.0,
+        "n_defined": 0,
+        "cov_H": 0.0,
+        "cov_W": 0.0,
+        "lift": 0.0,
+        "S_SPLIT": false,
+        "S_HARM": false,
+        "drop_H": 0.0,
+        "drop_W": 0.0,
+        "remaining_H": 0.0,
+        "remaining_W": 0.0
+      },
+      "P_ENTROPY": {
+        "threshold": 0.0,
+        "missing": false,
+        "missing_share": 0.0,
+        "n_defined": 0,
+        "cov_H": 0.0,
+        "cov_W": 0.0,
+        "lift": 0.0,
+        "S_SPLIT": false,
+        "S_HARM": false,
+        "drop_H": 0.0,
+        "drop_W": 0.0,
+        "remaining_H": 0.0,
+        "remaining_W": 0.0
+      },
+      "P_ACTION_MARGIN": {
+        "threshold": 0.0,
+        "missing": false,
+        "missing_share": 0.0,
+        "n_defined": 0,
+        "cov_H": 0.0,
+        "cov_W": 0.0,
+        "lift": 0.0,
+        "S_SPLIT": false,
+        "S_HARM": false,
+        "drop_H": 0.0,
+        "drop_W": 0.0,
+        "remaining_H": 0.0,
+        "remaining_W": 0.0
+      }
+    },
+    "thresholds": {
+      "value_median": 0.0,
+      "entropy_median": 0.0,
+      "action_margin_median": 0.0
+    },
+    "gate1": "NONE"
+  },
+  "B": {
+    "n_U": 0,
+    "n_H": 0,
+    "n_W": 0,
+    "S_MISSING_U": true,
+    "S_THIN": true,
+    "winning_P": "none",
+    "tag": "S_MISSING",
+    "candidates": {
+      "P_VALUE": {
+        "threshold": 0.0,
+        "missing": false,
+        "missing_share": 0.0,
+        "n_defined": 0,
+        "cov_H": 0.0,
+        "cov_W": 0.0,
+        "lift": 0.0,
+        "S_SPLIT": false,
+        "S_HARM": false,
+        "drop_H": 0.0,
+        "drop_W": 0.0,
+        "remaining_H": 0.0,
+        "remaining_W": 0.0
+      },
+      "P_ENTROPY": {
+        "threshold": 0.0,
+        "missing": false,
+        "missing_share": 0.0,
+        "n_defined": 0,
+        "cov_H": 0.0,
+        "cov_W": 0.0,
+        "lift": 0.0,
+        "S_SPLIT": false,
+        "S_HARM": false,
+        "drop_H": 0.0,
+        "drop_W": 0.0,
+        "remaining_H": 0.0,
+        "remaining_W": 0.0
+      },
+      "P_ACTION_MARGIN": {
+        "threshold": 0.0,
+        "missing": false,
+        "missing_share": 0.0,
+        "n_defined": 0,
+        "cov_H": 0.0,
+        "cov_W": 0.0,
+        "lift": 0.0,
+        "S_SPLIT": false,
+        "S_HARM": false,
+        "drop_H": 0.0,
+        "drop_W": 0.0,
+        "remaining_H": 0.0,
+        "remaining_W": 0.0
+      }
+    },
+    "thresholds": {
+      "value_median": 0.0,
+      "entropy_median": 0.0,
+      "action_margin_median": 0.0
+    },
+    "gate1": "NONE"
+  },
+  "tag": "S_MISSING",
+  "winning_P": "none",
+  "licensed_next_family": "OPEN_DECISION",
+  "gate1": "NONE",
+  "optimizer_steps": 0,
+  "evaluated_zip_sha256": "8cc435c68a37b0a070e38bccc4bfd402d4a802396bd7cd2fcce02f50acf69a03",
+  "evolution_proof_stamped": false,
+  "REAL": "no",
+  "overall": "GRIND_REGRESS_AWAKENING_OPEN OPEN_POLICY_SIGNAL_AUTOPSY OPEN_MEASURE_ONLY"
+}
