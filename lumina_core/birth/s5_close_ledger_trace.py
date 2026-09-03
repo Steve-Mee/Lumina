@@ -10,6 +10,13 @@ OCC_FLOOR_NEIGHBORHOOD_HI = 0.30
 REGIME_JOIN_KEY = "lumina_core/birth/sim_runner.py:704"
 
 
+def _copy_if_present(out: dict[str, Any], tr: dict[str, Any], key: str) -> None:
+    """Additive telemetry: omit missing keys. Never invent 0.0 MAE."""
+    if key not in tr:
+        return
+    out[key] = tr.get(key)
+
+
 def close_ledger_row(tr: dict[str, Any]) -> dict[str, Any]:
     """Persist exam + G0 columns. Regime is copied from the live tick join."""
     risk = tr.get("risk_usd")
@@ -27,7 +34,8 @@ def close_ledger_row(tr: dict[str, Any]) -> dict[str, Any]:
     if force_open is None:
         # Birth: plant_tag_for_entry ≡ FORCE_OPEN-at-entry. Schema, not a second law.
         force_open = plant
-    return {
+    regime = str(tr.get("regime") or "")
+    row: dict[str, Any] = {
         "pnl": tr.get("pnl"),
         "qty": tr.get("qty"),
         "cap_usd": tr.get("cap_usd"),
@@ -40,10 +48,24 @@ def close_ledger_row(tr: dict[str, Any]) -> dict[str, Any]:
         "intended_risk_usd": intended,
         "trade_r": tr.get("trade_r"),
         "point_value": tr.get("point_value"),
-        "regime": str(tr.get("regime") or ""),
+        "regime": regime,
+        "close_regime": str(tr.get("close_regime") or regime),
         "reward_on_close": reward_f,
         "cap_hit": _cap_hit(tr),
     }
+    for key in (
+        "entry_regime",
+        "entry_bar_index",
+        "close_bar_index",
+        "bars_held",
+        "mae_r",
+        "mfe_r",
+        "regime_flip",
+        "skill_grade",
+        "source",
+    ):
+        _copy_if_present(row, tr, key)
+    return row
 
 
 def _cap_hit(tr: dict[str, Any]) -> bool:

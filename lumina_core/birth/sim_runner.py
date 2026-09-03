@@ -23,6 +23,7 @@ from lumina_core.birth.sim_runner_actions import (
     hold_ratio as _hold_ratio,
     predict_action as _predict_action,
 )
+from lumina_core.birth.sim_runner_entry_telem import close_open_telem, update_open_telem
 from lumina_core.logging_utils import get_logger
 from lumina_core.rl.gym_environment import RLConfig, RLTradingEnvironment
 from lumina_core.rl.gym_stop_fill import birth_force_qty_one
@@ -332,6 +333,7 @@ def run_policy_rollout(
     )
     # Entry attribution: FORCE_OPEN plant vs policy pilot (skill metric).
     entry_is_plant = False
+    open_telem: dict[str, Any] | None = None
     policy_trades = 0
     policy_wins = 0
     plant_trades = 0
@@ -624,6 +626,9 @@ def run_policy_rollout(
         # Attribute entry: FORCE_OPEN that opens a flat→position is plant, not pilot.
         if pos_before == 0 and pos_after != 0:
             entry_is_plant = plant_tag_for_entry(force_open_this_step=force_open_this_step)
+        open_telem = update_open_telem(
+            open_telem, env, info, pos_before, pos_after, enriched[idx], enriched
+        )
         if occupancy_tick and pos_after == 0:
             range_flat_bars += 1
         if occupancy_tick and occ_win is not None:
@@ -722,6 +727,7 @@ def run_policy_rollout(
                     "qty": info.get("qty"),
                     "risk_usd": info.get("risk_usd"),
                     "regime": regime,
+                    "close_regime": regime,
                     "close_reason": reason,
                     "plant_entry": bool(closed_was_plant),
                     "skill_grade": "plant" if closed_was_plant else "policy",
@@ -729,11 +735,14 @@ def run_policy_rollout(
                     "gap": info.get("gap"),
                     "entry_price": info.get("entry_price"),
                     "point_value": info.get("point_value"),
+                    **close_open_telem(open_telem, idx, regime, info),
                 }
             )
+            open_telem = None
         chatter.on_bar(trade_closed=settled, closed_was_plant=closed_was_plant)
         prev_obs = obs
         if terminated:
+            open_telem = None
             obs, _ = env.reset()
             prev_obs = obs
 
