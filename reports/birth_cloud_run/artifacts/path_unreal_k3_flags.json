@@ -1,0 +1,104 @@
+{
+  "source": "path_early_jsonl",
+  "source_A_sha256": "4604b5082d9ab13e1fdabdfcc9577728117be7183a0accf69f8d599c7050d0eb",
+  "source_B_sha256": "0a349eb2ab48e8f8194d177c8b4dee760ef2010647a9d2c8548292d953dc1356",
+  "skip_replay": false,
+  "replay_ran": false,
+  "A": {
+    "n_U": 126,
+    "n_H": 78,
+    "n_W": 39,
+    "n_died_before_3": 9,
+    "U_3": {
+      "n_Uk": 117,
+      "n_Hk": 71,
+      "n_Wk": 37,
+      "n_died_before_k": 9,
+      "n_still_open": 117,
+      "missing_share": 0.0,
+      "S_THIN": false,
+      "medians": {
+        "mae_r": -3.51259620336855,
+        "unreal_r": -0.04787176712367987
+      }
+    },
+    "S_MISSING_U": false,
+    "S_MISSING_PATH": false,
+    "S_THIN": false,
+    "winning_P": "P_K3_UNREAL_RED",
+    "tag": "S_SPLIT",
+    "candidates": {
+      "P_K3_UNREAL_RED": {
+        "threshold": -0.04787176712367987,
+        "missing": false,
+        "missing_share": 0.0,
+        "n_defined": 117,
+        "cov_H": 0.6056338028169014,
+        "cov_W": 0.32432432432432434,
+        "lift": 0.28130947849257704,
+        "S_THIN": false,
+        "S_SPLIT": true,
+        "S_HARM": false,
+        "drop_H": 43.0,
+        "drop_W": 12.0,
+        "remaining_H": 28.0,
+        "remaining_W": 25.0,
+        "READ_ONLY_FLIP": false
+      }
+    },
+    "gate1": "NONE"
+  },
+  "B": {
+    "n_U": 130,
+    "n_H": 83,
+    "n_W": 42,
+    "n_died_before_3": 4,
+    "U_3": {
+      "n_Uk": 126,
+      "n_Hk": 79,
+      "n_Wk": 42,
+      "n_died_before_k": 4,
+      "n_still_open": 126,
+      "missing_share": 0.0,
+      "S_THIN": false,
+      "medians": {
+        "mae_r": -3.9487375469566715,
+        "unreal_r": -0.16345737392751075
+      }
+    },
+    "S_MISSING_U": false,
+    "S_MISSING_PATH": false,
+    "S_THIN": false,
+    "winning_P": "P_K3_UNREAL_RED",
+    "tag": "S_SPLIT",
+    "candidates": {
+      "P_K3_UNREAL_RED": {
+        "threshold": -0.16345737392751075,
+        "missing": false,
+        "missing_share": 0.0,
+        "n_defined": 126,
+        "cov_H": 0.6329113924050633,
+        "cov_W": 0.23809523809523808,
+        "lift": 0.39481615430982525,
+        "S_THIN": false,
+        "S_SPLIT": true,
+        "S_HARM": false,
+        "drop_H": 50.0,
+        "drop_W": 10.0,
+        "remaining_H": 29.0,
+        "remaining_W": 32.0,
+        "READ_ONLY_FLIP": false
+      }
+    },
+    "gate1": "NONE"
+  },
+  "tag": "S_SPLIT",
+  "winning_P": "P_K3_UNREAL_RED",
+  "licensed_next_family": "PATH_EXIT:P_K3_UNREAL_RED",
+  "gate1": "NONE",
+  "optimizer_steps": 0,
+  "evaluated_zip_sha256": "8cc435c68a37b0a070e38bccc4bfd402d4a802396bd7cd2fcce02f50acf69a03",
+  "evolution_proof_stamped": false,
+  "REAL": "no",
+  "overall": "GRIND_REGRESS_AWAKENING_OPEN PATH_UNREAL_K3_AUTOPSY PATH_MEASURE_ONLY"
+}

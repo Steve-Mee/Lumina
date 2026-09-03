@@ -144,3 +144,17 @@ History is append-only. Do not delete prior rows.
 **Tag / winning P:** `S_MULTI` / `none` licensed=`H_NONE`
 **Overall:** `GRIND_REGRESS_AWAKENING_OPEN PATH_EARLY_AUTOPSY PATH_MEASURE_ONLY`
 **SSOT:** `AWAKENING_PATH_EARLY_AUDIT.md` / `AWAKENING_PATH_EARLY_VERDICT.md`
+
+---
+
+## This ticket — Awakening PATH_UNREAL_K3 autopsy (measure-only)
+
+**Prompt:** Among policy NEUTRAL opens still open at locked k=3, does path_k3_unreal_r separate hole from +R?
+**Train:** none. optimizer_steps=0. Parent zip 8cc435c6 only. Candidate set size 1: P_K3_UNREAL_RED.
+**Landed:** PR #25 on main. Gate 0 SHA `5079d66af8dfd74933989bac459e97d3fbb0daca`.
+**Source:** `path_early_jsonl` skip_replay=false replay_ran=false
+**Leg A** n_U=126 n_H=78 n_W=39 U_3=117 wr_policy=0.30666666666666664 tag=S_SPLIT winning_P=P_K3_UNREAL_RED.
+**Leg B** n_U=130 n_H=83 n_W=42 U_3=126 wr_policy=0.36 tag=S_SPLIT winning_P=P_K3_UNREAL_RED.
+**Tag / winning P:** `S_SPLIT` / `P_K3_UNREAL_RED` licensed=`PATH_EXIT:P_K3_UNREAL_RED`
+**Overall:** `GRIND_REGRESS_AWAKENING_OPEN PATH_UNREAL_K3_AUTOPSY PATH_MEASURE_ONLY`
+**SSOT:** `AWAKENING_PATH_UNREAL_K3_AUDIT.md` / `AWAKENING_PATH_UNREAL_K3_VERDICT.md`
