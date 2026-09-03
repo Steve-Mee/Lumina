@@ -4,14 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from lumina_core.rl.reward_shaper import (
-    TradeCloseContext,
-    compute_expectancy_reward,
-    compute_legacy_reward,
-    hold_action_penalty,
-    trend_features_from_tick,
-    update_trade_stats,
-)
+from lumina_core.rl.reward_shaper import hold_action_penalty
 
 
 class RLTradingEnvironmentStepMixin:
@@ -366,53 +359,19 @@ class RLTradingEnvironmentStepMixin:
             ) * max(0.0, es_ratio)
 
         rl_close_accounting_net_usd = float(booked_net)
-        reward_components: dict[str, float] = {}
+        from lumina_core.rl.gym_birth_close import training_reward_after_book
 
-        if self._uses_expectancy_reward():
-            if trade_closed:
-                trend_strength, atr_norm = trend_features_from_tick(row)
-                self._reward_state.drawdown = self._drawdown()
-                self._reward_state.sharpe = self._rolling_sharpe()
-                ctx = TradeCloseContext(
-                    net_pnl=rl_close_accounting_net_usd,
-                    equity=prev_equity,
-                    stop_pct=close_stop_pct,
-                    side=close_side,
-                    trend_regime_strength=trend_strength,
-                    trend_atr_norm=atr_norm,
-                    var_es_penalty=var_es_penalty,
-                    curriculum_regime=str(
-                        getattr(self.config, "curriculum_regime", "") or ""
-                    ),
-                    expectancy_gap=float(
-                        getattr(self.config, "expectancy_gap", 0.0) or 0.0
-                    ),
-                    tick_regime=str(row.get("regime", "NEUTRAL") or "NEUTRAL"),
-                    risk_usd=float(getattr(self, "_close_risk_usd", 0.0) or 0.0) or None,
-                    qty=int(getattr(self, "_close_qty", 0) or 0) or None,
-                )
-                reward, reward_components = compute_expectancy_reward(
-                    ctx,
-                    self._reward_state,
-                    self._reward_cfg(),
-                )
-                update_trade_stats(
-                    self._reward_state,
-                    rl_close_accounting_net_usd,
-                    window=self._reward_cfg().rolling_trade_window,
-                )
-            else:
-                reward = -var_es_penalty if var_es_penalty > 0 else 0.0
-        else:
-            reward_cfg = self._reward_cfg()
-            reward = compute_legacy_reward(
-                net_pnl=rl_close_accounting_net_usd,
-                drawdown=self._drawdown(),
-                sharpe=self._rolling_sharpe(),
-                drawdown_penalty_coeff=reward_cfg.drawdown_penalty_coeff,
-                sharpe_bonus_coeff=reward_cfg.sharpe_bonus_coeff,
-                var_es_penalty=var_es_penalty,
-            )
+        reward, reward_components = training_reward_after_book(
+            self,
+            is_birth=is_birth,
+            trade_closed=bool(trade_closed),
+            booked_net=rl_close_accounting_net_usd,
+            prev_equity=float(prev_equity),
+            close_stop_pct=float(close_stop_pct),
+            close_side=int(close_side),
+            row=row,
+            var_es_penalty=float(var_es_penalty),
+        )
 
         if blocked_by_capital_preservation:
             reward -= 5.0
@@ -426,7 +385,7 @@ class RLTradingEnvironmentStepMixin:
                 coeff=float(self.config.hold_penalty_coeff),
             )
 
-        if self.config.range_patience_active and self.trade_mode == "birth":
+        if self.config.range_patience_active and self.trade_mode == "birth" and not trade_closed:
             from lumina_core.birth.stage3_inband_gym import apply_gym_birth_occupancy_reward
 
             reward += apply_gym_birth_occupancy_reward(

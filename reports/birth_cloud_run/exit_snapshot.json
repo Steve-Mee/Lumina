@@ -1,13 +1,13 @@
 {
-  "is_birth_exit_sufficient": false,
+  "is_birth_exit_sufficient": true,
   "decision": {
     "schema": "birth_exit_v1",
-    "exited": false,
-    "proofs": [],
-    "missing": [
-      "foundation_fitness_vector",
-      "foundation_five_receipts_v2"
+    "exited": true,
+    "proofs": [
+      "foundation_five_receipts_v2",
+      "foundation_fitness_vector"
     ],
+    "missing": [],
     "survival": {
       "birth_survival_pass_enabled": true,
       "wr_floor": 0.2,
@@ -16,7 +16,7 @@
       "note": "Survival floors for Birth EdgeScore only. Skill WR floor 0.35 applies when survival mode off; OOS 0.48 is Proving Ground / cert \u2014 not Birth exit."
     },
     "conflation_blockers": [],
-    "next_phase": null,
+    "next_phase": "awakening",
     "hub_after_exit": true,
     "policy": {
       "birth_exit_means": [
@@ -61,10 +61,22 @@
     }
   },
   "engine_result": {
-    "status": "stage_stalled",
-    "failure_reason": "stage_metrics",
-    "total_trades": 2075,
-    "ppo_steps": 33500,
-    "training_mode": "certified"
+    "status": "completed",
+    "total_trades": 1123,
+    "ppo_steps": 43500,
+    "real_data_pct": 100.0,
+    "policy_path": "/workspace/reports/birth_cloud_run/workspace/lumina_agents/ppo/lumina_ppo_policy.zip",
+    "training_mode": "certified",
+    "fitness_vector": {
+      "schema": "foundation_v2",
+      "mean_r": -0.0887405145105915,
+      "edge": 0.0755171696659041,
+      "occupancy": 0.28008496301179225,
+      "oos_wr": 0.395349,
+      "oos_sharpe": -0.9429348925552722,
+      "median_loss_r": 1.0141552749964504,
+      "s5_receipt_checksum": "707b5ab9d6b9af96",
+      "trades": 172
+    }
   }
 }

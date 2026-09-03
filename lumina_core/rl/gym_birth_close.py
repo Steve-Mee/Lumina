@@ -109,4 +109,84 @@ def birth_close_info_fields(
     }
 
 
-__all__ = ["birth_close_info_fields", "book_birth_close_net_usd", "gym_step_info"]
+def training_reward_after_book(
+    env: Any,
+    *,
+    is_birth: bool,
+    trade_closed: bool,
+    booked_net: float,
+    prev_equity: float,
+    close_stop_pct: float,
+    close_side: int,
+    row: dict[str, Any],
+    var_es_penalty: float,
+) -> tuple[float, dict[str, float]]:
+    """Birth close = signed process-R. Non-birth close = expectancy shaper."""
+    from lumina_core.rl.reward_shaper import (
+        TradeCloseContext,
+        compute_expectancy_reward,
+        compute_legacy_reward,
+        trend_features_from_tick,
+        update_trade_stats,
+    )
+
+    components: dict[str, float] = {}
+    if env._uses_expectancy_reward():
+        if not trade_closed:
+            return (-var_es_penalty if var_es_penalty > 0 else 0.0), components
+        if is_birth:
+            from lumina_core.birth.s5_process_decomp import birth_close_process_r
+
+            reward = birth_close_process_r(
+                float(booked_net),
+                float(getattr(env, "_close_risk_usd", 0.0) or 0.0),
+            )
+            components = {"r_multiple": float(reward), "process_r": float(reward)}
+            update_trade_stats(
+                env._reward_state,
+                float(booked_net),
+                window=env._reward_cfg().rolling_trade_window,
+            )
+            return float(reward), components
+        trend_strength, atr_norm = trend_features_from_tick(row)
+        env._reward_state.drawdown = env._drawdown()
+        env._reward_state.sharpe = env._rolling_sharpe()
+        ctx = TradeCloseContext(
+            net_pnl=float(booked_net),
+            equity=float(prev_equity),
+            stop_pct=float(close_stop_pct),
+            side=int(close_side),
+            trend_regime_strength=trend_strength,
+            trend_atr_norm=atr_norm,
+            var_es_penalty=float(var_es_penalty),
+            curriculum_regime=str(getattr(env.config, "curriculum_regime", "") or ""),
+            expectancy_gap=float(getattr(env.config, "expectancy_gap", 0.0) or 0.0),
+            tick_regime=str(row.get("regime", "NEUTRAL") or "NEUTRAL"),
+            risk_usd=float(getattr(env, "_close_risk_usd", 0.0) or 0.0) or None,
+            qty=int(getattr(env, "_close_qty", 0) or 0) or None,
+        )
+        reward, components = compute_expectancy_reward(ctx, env._reward_state, env._reward_cfg())
+        update_trade_stats(
+            env._reward_state,
+            float(booked_net),
+            window=env._reward_cfg().rolling_trade_window,
+        )
+        return float(reward), components
+    reward_cfg = env._reward_cfg()
+    reward = compute_legacy_reward(
+        net_pnl=float(booked_net),
+        drawdown=env._drawdown(),
+        sharpe=env._rolling_sharpe(),
+        drawdown_penalty_coeff=reward_cfg.drawdown_penalty_coeff,
+        sharpe_bonus_coeff=reward_cfg.sharpe_bonus_coeff,
+        var_es_penalty=float(var_es_penalty),
+    )
+    return float(reward), components
+
+
+__all__ = [
+    "birth_close_info_fields",
+    "book_birth_close_net_usd",
+    "gym_step_info",
+    "training_reward_after_book",
+]

@@ -87,6 +87,8 @@ class SimRolloutResult:
     occupancy_in_band_seen: bool = False
     last_cap_usd: float = 0.0
     last_close_gap: bool = False
+    occ_floor_band_bars: int = 0
+    occ_total_bars: int = 0
 
 
 def run_policy_rollout(
@@ -318,6 +320,8 @@ def run_policy_rollout(
     closes_target = 0
     closes_flatten = 0
     closes_time_stop = 0
+    occ_floor_band_bars = 0
+    occ_total_bars = 0
     stop_pct_sum = 0.0
     target_pct_sum = 0.0
     stop_pct_n = 0
@@ -486,6 +490,9 @@ def run_policy_rollout(
         envelope_flat_bars = stage_flat_prior + int(range_flat_bars)
         envelope_signals = stage_sig_prior + int(range_total_signals)
         envelope_flat_ratio = float(envelope_flat_bars) / float(max(1, envelope_signals))
+        occ_total_bars += 1
+        if 0.25 - 1e-12 <= envelope_flat_ratio <= 0.30 + 1e-12:
+            occ_floor_band_bars += 1
         if (
             float(participation_band_lo) - 1e-12
             <= envelope_flat_ratio
@@ -707,6 +714,7 @@ def run_policy_rollout(
                         else ("SELL" if side_bucket == 2 else "HOLD")
                     },
                     "reward": float(reward),
+                    "reward_on_close": float(reward),
                     "next_observation": {"vector": obs.tolist()},
                     "done": True,
                     "pnl": pnl,
@@ -824,4 +832,6 @@ def run_policy_rollout(
         s3_inband_idle_armed=bool(s3_idle.last_armed),
         force_open_refractory_active=chatter.blocks(int(participation_min_dwell_bars)),
         occupancy_in_band_seen=bool(occupancy_in_band_seen),
+        occ_floor_band_bars=int(occ_floor_band_bars),
+        occ_total_bars=int(occ_total_bars),
     )
