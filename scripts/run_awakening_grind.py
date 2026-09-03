@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -318,8 +317,9 @@ def main() -> int:
     _write_reports(preflight=preflight, leg_a=table_a, leg_b=table_b, proof=proof, overall=overall)
     for name in ("grind_A_close_ledger.jsonl", "grind_B_close_ledger.jsonl"):
         src = REPORTS / "artifacts" / name
-        if src.is_file():
-            shutil.copy2(src, REPORTS / "artifacts" / name)
+        src.parent.mkdir(parents=True, exist_ok=True)
+        if not src.is_file():
+            src.write_text("", encoding="utf-8")
     print(json.dumps({"overall": overall, "A": table_a.get("classification"), "B": table_b.get("classification"), "stamped": stamped}, indent=2))
     return 0
 
