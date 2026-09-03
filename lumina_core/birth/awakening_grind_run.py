@@ -68,7 +68,12 @@ def grind_ledger_path(workspace_root: Path | str, *, leg: str) -> Path:
     return root / "reports" / "birth_cloud_run" / "artifacts" / name
 
 
-def write_grind_closes(path: Path, trajectories: list[dict[str, Any]]) -> int:
+def write_grind_closes(
+    path: Path,
+    trajectories: list[dict[str, Any]],
+    *,
+    ledger_source: str = "awakening_grind",
+) -> int:
     """New file per leg. Never the Birth s5 archive path."""
     if path.name == "s5_close_ledger.jsonl":
         raise RuntimeError("grind must not write the Birth s5 archive")
@@ -77,7 +82,7 @@ def write_grind_closes(path: Path, trajectories: list[dict[str, Any]]) -> int:
         if not isinstance(tr, dict) or tr.get("pnl") is None:
             continue
         row = close_ledger_row(tr)
-        rows.append(enrich_archive_row(row, stage=S5_STAGE.value, tr=tr, source="awakening_grind"))
+        rows.append(enrich_archive_row(row, stage=S5_STAGE.value, tr=tr, source=str(ledger_source)))
     if path.is_file():
         path.unlink()
     sha = path.with_suffix(".sha256")
@@ -161,6 +166,7 @@ def run_evaluate_only(
     policy: Any | None = None,
     policy_path: Path | str | None = None,
     rollout_fn: Callable[..., Any] | None = None,
+    ledger_source: str = "awakening_grind",
 ) -> GrindLegMetrics:
     """Single-pass holdout eval. No train, no 172-stop, no env loop farm.
 
@@ -215,7 +221,7 @@ def run_evaluate_only(
     if wrapped.optimizer_steps != 0:
         raise RuntimeError("awakening grind recorded optimizer steps")
     trajectories = list(getattr(rollout, "trajectories", None) or [])
-    write_grind_closes(ledger_path, trajectories)
+    write_grind_closes(ledger_path, trajectories, ledger_source=str(ledger_source))
     steps = int(getattr(rollout, "rollout_steps", 0) or 0)
     exhausted = steps >= max(0, n_bars - 1)
     rows: list[dict[str, Any]] = []
