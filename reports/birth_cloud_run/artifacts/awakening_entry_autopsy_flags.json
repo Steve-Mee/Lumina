@@ -1,0 +1,40 @@
+{
+  "A": {
+    "n_H": 76,
+    "frac_neu": 0.9210526315789473,
+    "frac_tr": 0.07894736842105263,
+    "frac_ft": 0.18421052631578946,
+    "missing_entry": 0.0,
+    "missing_mae": 0.0,
+    "H_MISSING_ENTRY": false,
+    "H_ENTRY_NEUTRAL": true,
+    "H_ENTRY_FLIP": false,
+    "H_FIRST_TOUCH": false,
+    "licensed_family": "OPEN_DECISION",
+    "missing_fields": [],
+    "gate1": "NONE"
+  },
+  "B": {
+    "n_H": 82,
+    "frac_neu": 0.8902439024390244,
+    "frac_tr": 0.10975609756097561,
+    "frac_ft": 0.17073170731707318,
+    "missing_entry": 0.0,
+    "missing_mae": 0.0,
+    "H_MISSING_ENTRY": false,
+    "H_ENTRY_NEUTRAL": true,
+    "H_ENTRY_FLIP": false,
+    "H_FIRST_TOUCH": false,
+    "licensed_family": "OPEN_DECISION",
+    "missing_fields": [],
+    "gate1": "NONE"
+  },
+  "licensed_future_family": "OPEN_DECISION",
+  "gate1": "NONE",
+  "optimizer_steps": 0,
+  "evaluated_zip_sha256": "8cc435c68a37b0a070e38bccc4bfd402d4a802396bd7cd2fcce02f50acf69a03",
+  "missing_fields": [],
+  "evolution_proof_stamped": false,
+  "REAL": "no",
+  "overall": "GRIND_REGRESS_AWAKENING_OPEN ENTRY_HOLE_AUTOPSY ENTRY_MEASURE_ONLY"
+}

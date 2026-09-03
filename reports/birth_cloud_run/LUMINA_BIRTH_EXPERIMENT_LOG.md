@@ -201,3 +201,16 @@ History is append-only. Do not delete prior rows.
 **Overall:** `GRIND_REGRESS_AWAKENING_OPEN HOLE_TAX_SHOT SELECT_OVERFIT=false HOLE_SUBSTITUTION=false HOLE_MOVED=false`. SELECT_OVERFIT=False HOLE_SUBSTITUTION=False HOLE_MOVED=False. Birth receipts stay PR #14. REAL=no. Evolution Proof stamped=False.
 
 **SSOT:** `AWAKENING_HOLE_TAX_AUDIT.md` / `AWAKENING_HOLE_TAX_VERDICT.md`
+
+---
+
+## This ticket — Awakening ENTRY hole autopsy (measure-only)
+
+**Prompt:** Where does stop×NEUTRAL start — regime at OPEN or only at CLOSE?
+**Train:** none. optimizer_steps=0. Parent zip 8cc435c6 only.
+**Hygiene:** training_reward token removed from birth/; GitPython==3.1.59.
+**Leg A** seed 20260902 n_all=217 n_policy=150 wr_policy=0.37333333333333335 mean_r=-0.16280700616093724 ticks=7e86c2bb1c71d514 price=aff3cb1e3a6f5014 hole={'n': 76, 'wr': 0.0, 'mean_r': -1.0520731660642308, 'mean_usd': -118.70721003287197, 'n_entry_neutral': 70, 'n_entry_trend': 6, 'n_entry_unknown': 0, 'frac_entry_neutral': 0.9210526315789473, 'frac_entry_trend': 0.07894736842105263, 'frac_regime_flip': 0.07894736842105263, 'median_bars_held': 13.5, 'p25_bars_held': 5.0, 'p75_bars_held': 30.5, 'median_mae_r': -8.901336301037603, 'median_mfe_r': 7.699734803615165, 'bars_held_missing': False, 'mae_r_missing': False} flags={'n_H': 76, 'frac_neu': 0.9210526315789473, 'frac_tr': 0.07894736842105263, 'frac_ft': 0.18421052631578946, 'missing_entry': 0.0, 'missing_mae': 0.0, 'H_MISSING_ENTRY': False, 'H_ENTRY_NEUTRAL': True, 'H_ENTRY_FLIP': False, 'H_FIRST_TOUCH': False, 'licensed_family': 'OPEN_DECISION', 'missing_fields': [], 'gate1': 'NONE'}.
+**Leg B** seed 20260903 n_all=187 n_policy=150 wr_policy=0.34 mean_r=-0.24524752185084342 ticks=7e86c2bb1c71d514 price=e51ce9b724515e2e hole={'n': 82, 'wr': 0.0, 'mean_r': -1.0770073952838481, 'mean_usd': -89.01498215982033, 'n_entry_neutral': 73, 'n_entry_trend': 9, 'n_entry_unknown': 0, 'frac_entry_neutral': 0.8902439024390244, 'frac_entry_trend': 0.10975609756097561, 'frac_regime_flip': 0.10975609756097561, 'median_bars_held': 9.5, 'p25_bars_held': 5.0, 'p75_bars_held': 20.25, 'median_mae_r': -7.597623779527693, 'median_mfe_r': 6.17551471387498, 'bars_held_missing': False, 'mae_r_missing': False} flags={'n_H': 82, 'frac_neu': 0.8902439024390244, 'frac_tr': 0.10975609756097561, 'frac_ft': 0.17073170731707318, 'missing_entry': 0.0, 'missing_mae': 0.0, 'H_MISSING_ENTRY': False, 'H_ENTRY_NEUTRAL': True, 'H_ENTRY_FLIP': False, 'H_FIRST_TOUCH': False, 'licensed_family': 'OPEN_DECISION', 'missing_fields': [], 'gate1': 'NONE'}.
+**Flags:** A missing=False neu=True flip=False ft=False; B missing=False neu=True flip=False ft=False. Licensed=`OPEN_DECISION`.
+**Overall:** `GRIND_REGRESS_AWAKENING_OPEN ENTRY_HOLE_AUTOPSY ENTRY_MEASURE_ONLY`
+**SSOT:** `AWAKENING_ENTRY_AUTOPSY_AUDIT.md` / `AWAKENING_ENTRY_AUTOPSY_VERDICT.md`
