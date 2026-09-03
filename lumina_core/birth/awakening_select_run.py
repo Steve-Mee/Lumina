@@ -79,7 +79,10 @@ def load_select_train_tape(
 
 
 def _timestep_cap_callback(cap: int) -> Any:
-    from stable_baselines3.common.callbacks import BaseCallback
+    try:
+        from stable_baselines3.common.callbacks import BaseCallback
+    except Exception:
+        return None
 
     class _Cap(BaseCallback):
         def __init__(self, max_steps: int) -> None:
@@ -100,6 +103,7 @@ def run_select_train(
     reports: Path | str | None = None,
     holdout_b_path: Path | str | None = None,
     learn_fn: Any | None = None,
+    ppo_load_fn: Any | None = None,
 ) -> dict[str, Any]:
     """One learn() at the pin. Raises before learn on split/budget/init violations."""
     pin = assert_budget(int(timesteps))
@@ -120,11 +124,14 @@ def run_select_train(
         reports_dir=reports_path,
         max_steps=max(pin, len(tape["train"])),
     )
-    try:
-        from stable_baselines3 import PPO
-    except Exception as exc:
-        raise SelectProtocolError(f"PPO import failed: {exc}") from exc
-    model = PPO.load(str(init_path), env=env, device="cpu")
+    if ppo_load_fn is not None:
+        model = ppo_load_fn(str(init_path), env=env, device="cpu")
+    else:
+        try:
+            from stable_baselines3 import PPO
+        except Exception as exc:
+            raise SelectProtocolError(f"PPO import failed: {exc}") from exc
+        model = PPO.load(str(init_path), env=env, device="cpu")
     engine = _SelectEngine(model)
     trainer = PPOTrainer(engine=engine, model_dir=ws / "ppo_out")
     engine.set_rl_policy(model)

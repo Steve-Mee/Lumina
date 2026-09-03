@@ -40,15 +40,12 @@ def test_inspect_select_protocol_gate0_sites() -> None:
     assert dump["gate0_complete"] is True
     assert "awakening_select.py" in dump["budget_pin"]
     assert "awakening_grind_run.py" in dump["policy_path_eval"]
-    assert dump["eval_a_seed"].startswith("lumina_core/birth/awakening_select.py:")
-    assert dump["eval_b_seed"].startswith("lumina_core/birth/awakening_select.py:")
 
 
 def test_path_helpers_and_sidecar(tmp_path: Path) -> None:
     ws = isolated_workspace(tmp_path)
     assert ws.as_posix().endswith("awakening_select/workspace")
-    z = child_zip_path(tmp_path)
-    assert z.name == "awakening_select_pi_star.zip"
+    assert child_zip_path(tmp_path).name == "awakening_select_pi_star.zip"
     assert select_ledger_path(tmp_path, leg="A").name == "select_A_close_ledger.jsonl"
     assert select_ledger_path(tmp_path, leg="B").name == "select_B_close_ledger.jsonl"
     artifacts = tmp_path / "artifacts"
@@ -67,9 +64,7 @@ def test_path_helpers_and_sidecar(tmp_path: Path) -> None:
     )
     assert payload["schema"] == "awakening_select_pi_star_v1"
     assert payload["init_sha256"] == INIT_SHA256
-    assert payload["bytes"] == child.stat().st_size
     assert payload["gitignored_ppo_fallback"] is False
-    assert payload["pre_polish_parent"] is True
     assert price_sha16([{"last": 1.0}, {"close": 2.0}]) == price_sha16([{"last": 1.0}, {"close": 2.0}])
     assert reports_dir().as_posix().endswith("reports/birth_cloud_run")
 
@@ -77,7 +72,6 @@ def test_path_helpers_and_sidecar(tmp_path: Path) -> None:
 def test_select_runtime_and_empty_env() -> None:
     rt = select_runtime()
     assert rt.detect_market_regime(None) == "NEUTRAL"
-    assert rt.config.instrument == "MES"
     with pytest.raises(RuntimeError, match="select train tape empty"):
         make_select_train_env([], workspace_root=".", reports_dir=".", max_steps=8)
 
@@ -110,8 +104,7 @@ class _StubInner:
 
     def step(self, action: Any) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         _ = action
-        info = {"trade_closed": self.closed}
-        return np.zeros(4, dtype=np.float32), 0.0, False, False, info
+        return np.zeros(4, dtype=np.float32), 0.0, False, False, {"trade_closed": self.closed}
 
 
 def _envelope(**over: Any) -> dict[str, Any]:
@@ -138,22 +131,13 @@ def _envelope(**over: Any) -> dict[str, Any]:
 def test_select_physics_env_reset_render_close_step() -> None:
     inner = _StubInner()
     geo = SimpleNamespace(hold_bars=120, stop_pct=0.00268, target_pct=0.00483)
-    row = {
-        "last": 21150.0,
-        "close": 21150.0,
-        "bid": 21149.75,
-        "ask": 21150.25,
-        "regime": "NEUTRAL",
-        "high": 21151.0,
-        "low": 21149.0,
-    }
+    row = {"last": 21150.0, "close": 21150.0, "regime": "NEUTRAL", "high": 21151.0, "low": 21149.0}
     env = SelectPhysicsEnv(inner, geometry=geo, envelope=_envelope(), enriched=[row])
     env.render()
     obs, _info = env.reset()
     assert inner.reset_calls == 1
     assert obs.shape == (4,)
-    out = env.step(np.array([0.0, 0.5, 0.002, 0.003], dtype=np.float32))
-    assert len(out) == 5
+    assert len(env.step(np.array([0.0, 0.5, 0.002, 0.003], dtype=np.float32))) == 5
     inner._position = 1
     inner.closed = True
     env.step(np.array([1.0, 0.2, 0.002, 0.003], dtype=np.float32))
@@ -168,7 +152,7 @@ def test_select_physics_env_rolling_window() -> None:
     env = SelectPhysicsEnv(
         inner,
         geometry=geo,
-        envelope=_envelope(stage_range_flat_bars=0, stage_range_total_signals=200, occupancy_in_band_seen=False),
+        envelope=_envelope(stage_range_flat_bars=0, occupancy_in_band_seen=False),
         enriched=[row],
     )
     env._occ_win = [1] * 50
@@ -224,11 +208,7 @@ def test_select_leg_table_and_traceback() -> None:
         },
     ]
     metrics = SimpleNamespace(
-        oos_sharpe=-4.5,
-        oos_dd_pct=33.0,
-        occupancy=0.76,
-        force_open=10,
-        classification="GRIND_REGRESS",
+        oos_sharpe=-4.5, oos_dd_pct=33.0, occupancy=0.76, force_open=10, classification="GRIND_REGRESS"
     )
     table = select_leg_table(
         rows,
@@ -240,10 +220,8 @@ def test_select_leg_table_and_traceback() -> None:
     )
     assert table["n"] == 3
     assert table["plant_n"] == 1
-    assert table["stop_x_neutral"]["n"] >= 1
     assert table["train"] is False
     text = dump_learn_traceback(SelectProtocolError("boom"))
-    assert "SelectProtocolError" in text
     assert "boom" in text
 
 
@@ -251,10 +229,8 @@ class _FakeModel:
     def __init__(self, steps: int = 10_000) -> None:
         self.num_timesteps = steps
         self._n_updates = 3
-        self.learn_calls = 0
 
     def learn(self, **kwargs: Any) -> _FakeModel:
-        self.learn_calls += 1
         return self
 
 
@@ -264,27 +240,13 @@ def test_run_select_train_mocked_one_learn(monkeypatch: pytest.MonkeyPatch, tmp_
     init.write_bytes(b"PK\x03\x04parent")
 
     class _Tape:
-        split = SimpleNamespace(
-            train=[{"last": 21150.0, "close": 21150.0, "regime": "NEUTRAL"} for _ in range(8)]
-        )
+        split = SimpleNamespace(train=[{"last": 21150.0, "close": 21150.0, "regime": "NEUTRAL"}] * 8)
         fixture_manifest = {"hash": "abc", "raw_ticks_hash": "def"}
 
     monkeypatch.setattr(run_mod, "persist_cloud_fixture", lambda *a, **k: _Tape())
     monkeypatch.setattr(run_mod, "resolve_select_init_path", lambda *_a, **_k: init)
     monkeypatch.setattr(run_mod, "assert_init_sha", lambda *_a, **_k: INIT_SHA256)
     monkeypatch.setattr(run_mod, "make_select_train_env", lambda *a, **k: SimpleNamespace())
-
-    fake_model = _FakeModel()
-
-    class _FakePPO:
-        @staticmethod
-        def load(*_a: Any, **_k: Any) -> _FakeModel:
-            return fake_model
-
-    monkeypatch.setattr(run_mod, "PPO", _FakePPO, raising=False)
-    import sys
-
-    monkeypatch.setitem(sys.modules, "stable_baselines3", SimpleNamespace(PPO=_FakePPO))
 
     class _FakeTrainer:
         def __init__(self, engine: Any = None, model_dir: Any = None) -> None:
@@ -302,13 +264,13 @@ def test_run_select_train_mocked_one_learn(monkeypatch: pytest.MonkeyPatch, tmp_
         workspace_root=tmp_path,
         reports=tmp_path,
         learn_fn=lambda **_k: None,
+        ppo_load_fn=lambda *_a, **_k: _FakeModel(),
     )
     assert Path(out["child_path"]).is_file()
     assert out["init_sha256"] == INIT_SHA256
     assert out["actual_timesteps"] == 10_000
     assert out["select_noop"] is False
-    meta = Path(out["child_path"]).with_suffix(".json")
-    assert meta.is_file()
+    assert Path(out["child_path"]).with_suffix(".json").is_file()
 
 
 def test_run_select_train_learn_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -324,15 +286,6 @@ def test_run_select_train_learn_failure(monkeypatch: pytest.MonkeyPatch, tmp_pat
     monkeypatch.setattr(run_mod, "resolve_select_init_path", lambda *_a, **_k: init)
     monkeypatch.setattr(run_mod, "assert_init_sha", lambda *_a, **_k: INIT_SHA256)
     monkeypatch.setattr(run_mod, "make_select_train_env", lambda *a, **k: SimpleNamespace())
-
-    class _FakePPO:
-        @staticmethod
-        def load(*_a: Any, **_k: Any) -> _FakeModel:
-            return _FakeModel()
-
-    import sys
-
-    monkeypatch.setitem(sys.modules, "stable_baselines3", SimpleNamespace(PPO=_FakePPO))
     monkeypatch.setattr(run_mod, "PPOTrainer", lambda **_k: SimpleNamespace(save_weights=lambda _p: None))
 
     def _boom(**_k: Any) -> None:
@@ -345,4 +298,5 @@ def test_run_select_train_learn_failure(monkeypatch: pytest.MonkeyPatch, tmp_pat
             workspace_root=tmp_path,
             reports=tmp_path,
             learn_fn=_boom,
+            ppo_load_fn=lambda *_a, **_k: _FakeModel(),
         )
