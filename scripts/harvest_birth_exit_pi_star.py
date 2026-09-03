@@ -88,7 +88,7 @@ def main() -> int:
         workspace=HARVEST_WS,
         reports_dir=HARVEST_ROOT,
         force=True,
-        timeout_sec=90 * 60,
+        timeout_sec=6 * 60 * 60,
         target_trades=8_000,
         ppo_update_timesteps=1_000,
     )
