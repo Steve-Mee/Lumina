@@ -1,0 +1,62 @@
+[
+  {
+    "pnl": -501.25,
+    "qty": 1,
+    "cap_usd": 500.0,
+    "close_reason": "stop",
+    "gap": true,
+    "plant": false,
+    "entry_price": 22245.0,
+    "risk_usd": 298.1221205962356,
+    "trade_r": -1.6813579582672848,
+    "point_value": 5.0
+  },
+  {
+    "pnl": -501.25,
+    "qty": 1,
+    "cap_usd": 500.0,
+    "close_reason": "stop",
+    "gap": false,
+    "plant": false,
+    "entry_price": 32596.549288708462,
+    "risk_usd": 436.8510855504376,
+    "trade_r": -1.1474161712758915,
+    "point_value": 5.0
+  },
+  {
+    "pnl": -501.25,
+    "qty": 1,
+    "cap_usd": 500.0,
+    "close_reason": "stop",
+    "gap": true,
+    "plant": false,
+    "entry_price": 28017.25,
+    "risk_usd": 375.4804218150093,
+    "trade_r": -1.3349564208355835,
+    "point_value": 5.0
+  },
+  {
+    "pnl": -501.25,
+    "qty": 1,
+    "cap_usd": 500.0,
+    "close_reason": "stop",
+    "gap": false,
+    "plant": false,
+    "entry_price": 23032.813493423706,
+    "risk_usd": 308.68020687602,
+    "trade_r": -1.6238488533906055,
+    "point_value": 5.0
+  },
+  {
+    "pnl": -501.25,
+    "qty": 1,
+    "cap_usd": 500.0,
+    "close_reason": "stop",
+    "gap": false,
+    "plant": false,
+    "entry_price": 22263.620119050098,
+    "risk_usd": 298.3716629372997,
+    "trade_r": -1.6799517590426591,
+    "point_value": 5.0
+  }
+]
