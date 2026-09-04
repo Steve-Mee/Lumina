@@ -364,3 +364,8 @@ Genesis run lives under `reports/genesis_cloud_run`. Old `reports/birth_cloud_ru
 ## Pointer — genesis HOLD_COMPARE follow-on
 
 Gate 1 cache-source honesty + Gate 2 HOLD_COMPARE live under `reports/genesis_cloud_run`. G5 ledgers were read-only. Floor 150 stays. GENESIS_EYES_OK is false. No second 10k. REAL=no.
+---
+
+## Pointer — GENESIS_EYES_BUDGET
+
+Frozen first-life zips on a NEW thick holdout live under `reports/genesis_budget_run`. No second 10k. Floor 150 stays. GENESIS_EYES_OK is false. REAL=no.

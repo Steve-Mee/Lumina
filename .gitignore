@@ -28,6 +28,9 @@ reports/birth_cloud_run/workspace/state/lumina_birth_split_cache.json
 !reports/genesis_cloud_run/
 !reports/genesis_cloud_run/**
 reports/genesis_cloud_run/workspace/
+!reports/genesis_budget_run/
+!reports/genesis_budget_run/**
+reports/genesis_budget_run/workspace/
 reports/birth_cloud_run/awakening_select/workspace/
 reports/birth_cloud_run/awakening_hole_tax/workspace/
 reports/birth_cloud_run/awakening_entry_autopsy/workspace/
