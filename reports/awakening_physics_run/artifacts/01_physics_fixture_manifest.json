@@ -1,0 +1,99 @@
+{
+  "attempts": [
+    {
+      "drift_eth": 3e-05,
+      "drift_rth": 0.00012,
+      "holdout_trend_down_frac": 0.20543603978718483,
+      "holdout_trend_up_frac": 0.2013300948415452,
+      "phase_blocks": 6,
+      "price_sha16": "1d035fdf6f276ca7",
+      "range_kappa": 0.04,
+      "seed": 20260908,
+      "shock": 0.00022,
+      "train_trend_down_frac": 0.1444741749777021,
+      "train_trend_up_frac": 0.2650531095435012
+    },
+    {
+      "drift_eth": 4.5e-05,
+      "drift_rth": 0.00018,
+      "holdout_trend_down_frac": 0.26585704371963914,
+      "holdout_trend_up_frac": 0.2642724959518853,
+      "phase_blocks": 6,
+      "price_sha16": "f27f43df901a2581",
+      "range_kappa": 0.02,
+      "seed": 20260908,
+      "shock": 0.00022,
+      "train_trend_down_frac": 0.18516176112867916,
+      "train_trend_up_frac": 0.35323116840995705
+    },
+    {
+      "drift_eth": 6e-05,
+      "drift_rth": 0.00024,
+      "holdout_trend_down_frac": 0.2652556095304187,
+      "holdout_trend_up_frac": 0.26685172334027296,
+      "phase_blocks": 6,
+      "price_sha16": "7233ced2cffdd916",
+      "range_kappa": 0.01,
+      "seed": 20260908,
+      "shock": 0.0003,
+      "train_trend_down_frac": 0.19067542366009893,
+      "train_trend_up_frac": 0.3520392443039001
+    }
+  ],
+  "cache_schema_version": 1,
+  "days": 88,
+  "enrich_version": "trend_features_v1",
+  "fixture_seed": 20260908,
+  "hash": "8d1aa6f8247dd195",
+  "holdout_pct": 0.4,
+  "holdout_regime_counts": {
+    "NEUTRAL": 40454,
+    "TREND_DOWN": 22934,
+    "TREND_UP": 23072
+  },
+  "holdout_regimes": [
+    "NEUTRAL",
+    "TREND_DOWN",
+    "TREND_UP"
+  ],
+  "holdout_tick_count": 86460,
+  "host_real_data_pct": 0.0,
+  "path": "/workspace/reports/awakening_physics_run/workspace/state/lumina_birth_cache_manifest.json",
+  "raw_ticks_hash": "a23c2438d28271e6",
+  "real_data_pct": 0.0,
+  "regime_counts": {
+    "NEUTRAL": 99248,
+    "TREND_DOWN": 46912,
+    "TREND_UP": 66960
+  },
+  "requested_days": 90,
+  "schema_version": "cloud_fixture_v1",
+  "source": "synthetic_cloud_fixture",
+  "split_path": "/workspace/reports/awakening_physics_run/workspace/state/lumina_birth_split_cache.json",
+  "start_et": "2026-04-06T18:00:00-04:00",
+  "symbol": "NQ SEP26",
+  "tick_count": 213120,
+  "ticks_path": "/workspace/reports/awakening_physics_run/workspace/state/lumina_birth_ticks_cache.jsonl",
+  "ticks_per_leg": [
+    43230,
+    43230
+  ],
+  "train_regime_counts": {
+    "NEUTRAL": 56397,
+    "TREND_DOWN": 23516,
+    "TREND_UP": 43417
+  },
+  "train_regimes": [
+    "NEUTRAL",
+    "TREND_DOWN",
+    "TREND_UP"
+  ],
+  "train_tick_count": 123330,
+  "trend_down_frac": 0.2652556095304187,
+  "trend_down_frac_holdout": 0.2652556095304187,
+  "trend_down_frac_train": 0.19067542366009893,
+  "trend_up_frac": 0.26685172334027296,
+  "trend_up_frac_holdout": 0.26685172334027296,
+  "trend_up_frac_train": 0.3520392443039001,
+  "world_ok": false
+}

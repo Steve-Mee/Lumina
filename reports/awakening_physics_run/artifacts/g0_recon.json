@@ -1,0 +1,26 @@
+{
+  "origin_main": "c17328627e0a8ef5fd564f7a2716de9619754b93",
+  "POLICY_EDGE_MIN_TRADES": 150,
+  "OBSERVATION_DIM": 43,
+  "pct_synthetic": 0.0,
+  "pct_real_historical": 0.0,
+  "pct_real": 100.0,
+  "inspect_complete": true,
+  "protocol": {
+    "physics_drift_rth": "lumina_core/birth/awakening_physics_tape.py:44",
+    "min_trend_up_frac": "lumina_core/birth/awakening_physics_tape.py:48",
+    "min_trend_down_frac": "lumina_core/birth/awakening_physics_tape.py:49",
+    "counts_post_enrich": "lumina_core/birth/awakening_physics_tape.py:212",
+    "no_oracle_stamp": "lumina_core/birth/awakening_physics_tape.py:149",
+    "scratch_init": "lumina_core/birth/awakening_physics_train.py:70",
+    "forbidden_hashes": "lumina_core/birth/awakening_physics_tape.py:69",
+    "floor_150": "lumina_core/birth/foundation_metrics.py:39",
+    "license_both_legs": "lumina_core/birth/awakening_physics_flags.py:159",
+    "genesis_eyes_ok_forced_false": "lumina_core/birth/awakening_physics_flags.py:176",
+    "hooks_default_false": "lumina_core/birth/awakening_path_exit_k3.py:22",
+    "hooks_shape_default_false": "lumina_core/birth/awakening_path_shape_k3_dead.py:57",
+    "honesty_synthetic_0": "lumina_core/birth/data_source_honesty.py:22",
+    "missing_sites": [],
+    "gate0_complete": true
+  }
+}
