@@ -35,6 +35,7 @@ reports/birth_cloud_run/awakening_path_unreal_k3/workspace/
 reports/birth_cloud_run/awakening_path_exit_k3/workspace/
 reports/birth_cloud_run/awakening_path_exit_k3_t025/workspace/
 reports/birth_cloud_run/awakening_path_shape_k3_dead/workspace/
+reports/birth_cloud_run/awakening_mark_eyes/workspace/
 
 # CI-generated SBOM (cyclonedx-py in quality gate / nightly audit)
 docs/sbom.json
