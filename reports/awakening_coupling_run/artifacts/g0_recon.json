@@ -1,0 +1,24 @@
+{
+  "origin_main": "bbe41a5b2c77ec9528d5bab12b20f3f9e047bebe",
+  "POLICY_EDGE_MIN_TRADES": 150,
+  "OBSERVATION_DIM": 43,
+  "pct_synthetic": 0.0,
+  "inspect_complete": true,
+  "protocol": {
+    "cause_rules_order": "lumina_core/birth/awakening_coupling_diagnose.py:23",
+    "fix_kind_equals_cause": "lumina_core/birth/awakening_coupling_fix.py:1",
+    "no_oracle_regime": "lumina_core/birth/awakening_coupling_fix.py:76",
+    "diagnose_seed": "lumina_core/birth/awakening_coupling_diagnose.py:21",
+    "exam_seed": "lumina_core/birth/awakening_coupling_diagnose.py:22",
+    "frac_25_25": "lumina_core/birth/awakening_coupling_diagnose.py:31",
+    "floor_150": "lumina_core/birth/foundation_metrics.py:39",
+    "both_leg_license": "lumina_core/birth/awakening_coupling_flags.py:168",
+    "genesis_eyes_ok_false": "lumina_core/birth/awakening_coupling_flags.py:185",
+    "hooks_false": "lumina_core/birth/awakening_path_exit_k3.py:22",
+    "hooks_shape_false": "lumina_core/birth/awakening_path_shape_k3_dead.py:57",
+    "body_skipped": "lumina_core/birth/awakening_coupling_run.py:121",
+    "honesty_synthetic_0": "lumina_core/birth/data_source_honesty.py:22",
+    "missing_sites": [],
+    "gate0_complete": true
+  }
+}

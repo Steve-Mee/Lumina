@@ -1,0 +1,114 @@
+{
+  "train": {
+    "n": 123330,
+    "cells": {
+      "up|TREND_UP": {
+        "n": 40333,
+        "frac": 0.32703316305846103
+      },
+      "up|TREND_DOWN": {
+        "n": 1599,
+        "frac": 0.012965215276088543
+      },
+      "up|NEUTRAL": {
+        "n": 29108,
+        "frac": 0.23601718965377444
+      },
+      "down|TREND_UP": {
+        "n": 941,
+        "frac": 0.007629935944214708
+      },
+      "down|TREND_DOWN": {
+        "n": 19593,
+        "frac": 0.1588664558501581
+      },
+      "down|NEUTRAL": {
+        "n": 14986,
+        "frac": 0.12151139219978918
+      },
+      "range|TREND_UP": {
+        "n": 2143,
+        "frac": 0.017376145301224357
+      },
+      "range|TREND_DOWN": {
+        "n": 2324,
+        "frac": 0.018843752533852266
+      },
+      "range|NEUTRAL": {
+        "n": 12303,
+        "frac": 0.09975675018243736
+      }
+    }
+  },
+  "holdout": {
+    "n": 86460,
+    "cells": {
+      "up|TREND_UP": {
+        "n": 20289,
+        "frac": 0.23466342817487856
+      },
+      "up|TREND_DOWN": {
+        "n": 943,
+        "frac": 0.01090677770067083
+      },
+      "up|NEUTRAL": {
+        "n": 14288,
+        "frac": 0.16525560953041868
+      },
+      "down|TREND_UP": {
+        "n": 1018,
+        "frac": 0.011774230858200323
+      },
+      "down|TREND_DOWN": {
+        "n": 20115,
+        "frac": 0.23265093684941013
+      },
+      "down|NEUTRAL": {
+        "n": 14387,
+        "frac": 0.16640064769835763
+      },
+      "range|TREND_UP": {
+        "n": 1765,
+        "frac": 0.02041406430719408
+      },
+      "range|TREND_DOWN": {
+        "n": 1876,
+        "frac": 0.02169789498033773
+      },
+      "range|NEUTRAL": {
+        "n": 11779,
+        "frac": 0.13623640990053204
+      }
+    }
+  },
+  "features_by_gen_phase": {
+    "up": {
+      "n": 106560,
+      "mean_signed_slope": 0.18740524704436115,
+      "mean_adx_14": 0.08917253789926285,
+      "mean_strength": 0.17886410571581715,
+      "used_threshold_pos": 0.15,
+      "used_threshold_neg": -0.15
+    },
+    "down": {
+      "n": 71040,
+      "mean_signed_slope": -0.18610847943887837,
+      "mean_adx_14": 0.08878699949072191,
+      "mean_strength": -0.176647061071785,
+      "used_threshold_pos": 0.15,
+      "used_threshold_neg": -0.15
+    },
+    "range": {
+      "n": 35520,
+      "mean_signed_slope": -0.00784184915627276,
+      "mean_adx_14": 0.056459596585050606,
+      "mean_strength": -0.006931787824915854,
+      "used_threshold_pos": 0.15,
+      "used_threshold_neg": -0.15
+    }
+  },
+  "diagnose_seed": 20260908,
+  "drift_rth": 0.00024,
+  "range_kappa": 0.01,
+  "phase_blocks": 6
+}
