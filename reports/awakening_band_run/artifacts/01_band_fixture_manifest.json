@@ -1,0 +1,44 @@
+{
+  "attempts": [
+    {
+      "in_band": false,
+      "max": 13538023.5,
+      "min": 18044.5,
+      "seed": 20260914
+    },
+    {
+      "in_band": false,
+      "max": 13977321.25,
+      "min": 18714.25,
+      "seed": 20260915
+    },
+    {
+      "in_band": false,
+      "max": 15568974.0,
+      "min": 21051.25,
+      "seed": 20260916
+    }
+  ],
+  "clipped": false,
+  "hash": "",
+  "hold_down_frac": 0.0,
+  "hold_up_frac": 0.0,
+  "in_band": false,
+  "nq_max": 28000.0,
+  "nq_min": 12000.0,
+  "phase_blocks": 6,
+  "price_max": 15568974.0,
+  "price_min": 21051.25,
+  "prod_slope_abs": 0.15,
+  "real_data_pct": 0.0,
+  "seed_used": 0,
+  "slope_abs_used": 0.12,
+  "source": "synthetic_cloud_fixture",
+  "splitter": "per_phase_60_40",
+  "start_et": "2025-11-03T18:00:00-05:00",
+  "start_price": 21150.0,
+  "train_down_frac": 0.0,
+  "train_up_frac": 0.0,
+  "world_fail": true,
+  "world_ok": false
+}
