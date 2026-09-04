@@ -233,7 +233,7 @@ def write_select_obj_bounce_reports(
         "**optimizer_steps:** `0`",
         "**replay_ran:** `false`",
         "**learn_called:** `false`",
-        f"**BOUNCE_WEAK:** `{BOUNCE_WEAK}`",
+        f"**BOUNCE_WEAK:** `{BOUNCE_WEAK:.2f}`",
         f"**gate1_tag:** `{tag}`",
         f"**Tag:** `{tag}`",
         f"**Law:** `{law}`",
@@ -266,7 +266,7 @@ def write_select_obj_bounce_reports(
 ## This ticket — Awakening SELECT_OBJ P_BOUNCE_WEAK (score measure, no flatten)
 
 **Prompt:** On the frozen path_early A/B books, does a pre-declared WEAK-bounce score at k=3 — recovered R off paper MAE ≤ 0.50 — concentrate the hole versus winners under the locked path_early split algebra?
-**Train:** none. optimizer_steps=0. Parent zip 8cc435c6 only. BOUNCE_WEAK={BOUNCE_WEAK}. No flatten. No learn().
+**Train:** none. optimizer_steps=0. Parent zip 8cc435c6 only. BOUNCE_WEAK={BOUNCE_WEAK:.2f}. No flatten. No learn().
 **Landed:** Gate 0 SHA `{gate0_sha}`. Parent `{PARENT_BRANCH}`.
 **replay_ran**=false learn_called=false gate1_tag={tag}
 **Leg A** n_U3={measure_a.get("n_U3")} n_H3={measure_a.get("n_H3")} n_W3={measure_a.get("n_W3")} n_h_hit={measure_a.get("n_h_hit")} lift={measure_a.get("lift")} min_bounce={measure_a.get("min_bounce_U")}
