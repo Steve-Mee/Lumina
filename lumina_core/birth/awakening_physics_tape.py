@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+import shutil
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -266,7 +268,7 @@ def _cloud_spec(spec: PhysicsTapeSpec) -> CloudFixtureSpec:
     )
 
 
-def _attempt_row(spec: PhysicsTapeSpec, train_up: float, train_down: float, hold_up: float, hold_down: float) -> dict[str, Any]:
+def _attempt_row(spec: PhysicsTapeSpec, train_up: float, train_down: float, hold_up: float, hold_down: float, price_sha16: str = "") -> dict[str, Any]:
     return {
         "seed": int(spec.seed),
         "drift_rth": float(spec.drift_rth),
@@ -274,6 +276,7 @@ def _attempt_row(spec: PhysicsTapeSpec, train_up: float, train_down: float, hold
         "range_kappa": float(spec.range_kappa),
         "phase_blocks": int(spec.phase_blocks),
         "shock": float(spec.shock),
+        "price_sha16": str(price_sha16),
         "train_trend_up_frac": float(train_up),
         "train_trend_down_frac": float(train_down),
         "holdout_trend_up_frac": float(hold_up),
@@ -289,13 +292,18 @@ def persist_physics_fixture(work: Path, art: Path) -> dict[str, Any]:
         raw = generate_physics_tape_ticks(spec)
         if any("regime" in row for row in raw):
             raise PhysicsProtocolError("generator must not write tick['regime']")
+        cache = work / "state" / "birth_enrichment_cache"
+        if cache.is_dir():
+            shutil.rmtree(cache)
         result = persist_cloud_fixture(work, spec=_cloud_spec(spec), ticks=raw)
         train = list(result.split.train)
         holdout = list(result.split.holdout)
         tr_c, ho_c = count_regimes_post_enrich(train), count_regimes_post_enrich(holdout)
         train_up, train_down = trend_fracs(tr_c)
         hold_up, hold_down = trend_fracs(ho_c)
-        attempts.append(_attempt_row(spec, train_up, train_down, hold_up, hold_down))
+        step = max(1, len(raw) // 32)
+        price_sha16 = hashlib.sha256(str([t["last"] for t in raw[::step]]).encode()).hexdigest()[:16]
+        attempts.append(_attempt_row(spec, train_up, train_down, hold_up, hold_down, price_sha16))
         payload = dict(result.fixture_manifest)
         payload.update(
             {
