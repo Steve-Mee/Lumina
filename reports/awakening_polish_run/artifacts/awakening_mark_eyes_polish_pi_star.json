@@ -1,0 +1,14 @@
+{
+  "schema": "awakening_mark_eyes_polish_pi_star_v1",
+  "sha256": "cebe1804e7d0e20d0120c4e7b61823a220640e1b1a7d9d73108eba373af32ee3",
+  "init_policy": "a9ffa8529e02f2d8f8a535be4dcce205a43abe20bdec492add78126a8181188b",
+  "init_sha256": "a9ffa8529e02f2d8f8a535be4dcce205a43abe20bdec492add78126a8181188b",
+  "timesteps": 10000,
+  "train_seed": 20260906,
+  "actual_timesteps": 10000,
+  "optimizer_steps": 180,
+  "obs_dim": 46,
+  "evolution_proof": false,
+  "train_ticks_sha16": "afcea4fa72734337",
+  "REAL": "no"
+}
