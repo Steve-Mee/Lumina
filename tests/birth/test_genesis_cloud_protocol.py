@@ -46,8 +46,10 @@ def test_refuses_old_parent_zip_name_as_input(tmp_path: Path) -> None:
         refuse_old_parent_as_input(tmp_path / "birth_exit_pi_star.zip")
     with pytest.raises(GenesisProtocolError, match="old parent zip"):
         refuse_old_parent_as_input("awakening_mark_eyes_pi_star.zip")
-    with pytest.raises(GenesisProtocolError, match="birth_cloud_run"):
+    with pytest.raises(GenesisProtocolError, match="old parent zip|birth_cloud_run"):
         refuse_old_parent_as_input(Path("reports/birth_cloud_run/artifacts/awakening_select_pi_star.zip"))
+    with pytest.raises(GenesisProtocolError, match="birth_cloud_run"):
+        refuse_old_parent_as_input(Path("reports/birth_cloud_run/artifacts/other_policy.zip"))
     refuse_old_parent_as_input(tmp_path / "genesis_birth_exit_pi_star.zip")
 
 
