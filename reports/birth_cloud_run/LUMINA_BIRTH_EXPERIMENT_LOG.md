@@ -308,3 +308,17 @@ History is append-only. Do not delete prior rows.
 **Tag / law:** `TRANSFER_FAIL` / `SHADOW` family=`PATH_EXIT:P_K3_UNREAL_RED`
 **Overall:** `GRIND_REGRESS_AWAKENING_OPEN PATH_EXIT_K3_T025 SHADOW_MEASURE`
 **SSOT:** `AWAKENING_PATH_EXIT_K3_T025_AUDIT.md` / `AWAKENING_PATH_EXIT_K3_T025_VERDICT.md`
+
+---
+
+## This ticket — Awakening PATH_SHAPE K3 DEAD transfer shadow (sitting-at-MAE + lifeless)
+
+**Prompt:** Does flatten-at-3 on a pre-declared DEAD path-shape (sitting at running MAE and no MFE life), using already-stamped path_k3_{mae,mfe,unreal}_r bits, move the hole and raise policy mean_r on BOTH eval seeds versus the unflattened path_early baseline?
+**Train:** none. optimizer_steps=0. Parent zip 8cc435c6 only. EPS_SIT=0.05. MFE_LIFE=0.25. No T compare.
+**Landed:** stacked on T025 HEAD. Gate 0 SHA `eb3184db8a7931991752e0e3eef3f1149269d20f`.
+**skip_replay**=false replay_ran=false gate1_tag=SHAPE_NONE
+**Leg A** n_exit=0 n_H base→shape=0→0 mean_r 0.0→0.0 HOLE_MOVED=False
+**Leg B** n_exit=0 n_H base→shape=0→0 mean_r 0.0→0.0 HOLE_MOVED=False
+**Tag / law:** `SHAPE_NONE` / `NONE` family=`H_NONE`
+**Overall:** `GRIND_REGRESS_AWAKENING_OPEN PATH_SHAPE_K3_DEAD SHADOW_MEASURE`
+**SSOT:** `AWAKENING_PATH_SHAPE_K3_DEAD_AUDIT.md` / `AWAKENING_PATH_SHAPE_K3_DEAD_VERDICT.md`
