@@ -20,6 +20,7 @@ LAW_SHADOW = "SHADOW"
 LAW_NONE = "NONE"
 
 PATH_EXIT_K3_SHADOW: ContextVar[bool] = ContextVar("path_exit_k3_shadow", default=False)
+PATH_EXIT_K3_THRESHOLD: ContextVar[float] = ContextVar("path_exit_k3_threshold", default=T_LOCK)
 
 TRAIN_SEED = 20260901
 EVAL_A_SEED = 20260902
@@ -103,6 +104,10 @@ def path_exit_k3_shadow_enabled() -> bool:
     return bool(PATH_EXIT_K3_SHADOW.get())
 
 
+def path_exit_k3_threshold() -> float:
+    return float(PATH_EXIT_K3_THRESHOLD.get())
+
+
 def should_path_exit_k3(
     *,
     enabled: bool,
@@ -110,6 +115,7 @@ def should_path_exit_k3(
     entry_regime: str | None,
     bars_from_entry: int,
     unreal_r: float | None,
+    threshold: float | None = None,
 ) -> bool:
     """Causal flatten predicate. Missing unreal or unknown regime → do not flatten."""
     if not bool(enabled):
@@ -126,7 +132,11 @@ def should_path_exit_k3(
         mark = float(unreal_r)
     except (TypeError, ValueError):
         return False
-    return mark <= T_LOCK
+    if threshold is None:
+        thr = path_exit_k3_threshold()
+    else:
+        thr = float(threshold)
+    return mark <= thr
 
 
 def isolated_workspace(root: Path | str | None = None) -> Path:
@@ -298,6 +308,7 @@ __all__ = [
     "PATH_EARLY_A_NAME",
     "PATH_EARLY_B_NAME",
     "PATH_EXIT_K3_SHADOW",
+    "PATH_EXIT_K3_THRESHOLD",
     "PATH_UNREAL_A_NAME",
     "PATH_UNREAL_B_NAME",
     "PATH_UNREAL_FLAGS_NAME",
@@ -318,6 +329,7 @@ __all__ = [
     "path_early_source_path",
     "path_exit_k3_ledger_path",
     "path_exit_k3_shadow_enabled",
+    "path_exit_k3_threshold",
     "policy_only_rows",
     "price_sha16",
     "reports_dir",
