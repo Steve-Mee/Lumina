@@ -40,17 +40,22 @@ def mark_eyes_gym_rollout(
     data: list[dict[str, Any]],
     policy: Any,
     workspace_root: Path | str,
-    reports_dir: Path,
-    max_steps: int,
+    reports_dir: Path | str | None = None,
+    max_steps: int | None = None,
     rollout_step_budget: int | None = None,
+    target_trades: int = 0,
     **_kwargs: Any,
 ) -> SimRolloutResult:
     _ = runtime
+    _ = target_trades
+    from lumina_core.birth.awakening_select import reports_dir as default_reports
+
+    rd = Path(reports_dir) if reports_dir is not None else default_reports()
     budget = int(rollout_step_budget or max_steps or len(data))
     env = make_mark_eyes_eval_env(
         list(data),
         workspace_root=workspace_root,
-        reports_dir=reports_dir,
+        reports_dir=rd,
         max_steps=budget,
     )
     reset_out = env.reset()

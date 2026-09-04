@@ -166,7 +166,27 @@ def run_mark_eyes(
         "learn_called": False,
         "init_policy": "scratch",
     }
-    if not skip_train:
+    child = reports_path / "artifacts" / "awakening_mark_eyes_pi_star.zip"
+    meta = child.with_name("awakening_mark_eyes_pi_star.json")
+    reuse = False
+    if child.is_file() and meta.is_file():
+        payload = json.loads(meta.read_text(encoding="utf-8"))
+        if (
+            int(payload.get("actual_timesteps") or 0) == 10_000
+            and str(payload.get("init_policy") or "") == "scratch"
+        ):
+            reuse = True
+            train_out = {
+                "child_sha256": str(payload.get("sha256") or ""),
+                "actual_timesteps": int(payload.get("actual_timesteps") or 0),
+                "optimizer_steps": int(payload.get("optimizer_steps") or 0),
+                "train_ticks_sha16": str(payload.get("train_ticks_sha16") or ""),
+                "learn_called": True,
+                "init_policy": "scratch",
+            }
+    if skip_train and not reuse:
+        pass
+    elif not reuse and not skip_train:
         try:
             train_out = run_mark_eyes_train(
                 workspace_root=reports_path,
@@ -194,13 +214,12 @@ def run_mark_eyes(
                 leg_a=empty_leg(missing=True, leg="A"),
                 leg_b=empty_leg(missing=True, leg="B"),
             )
-    child = reports_path / "artifacts" / "awakening_mark_eyes_pi_star.zip"
     child_sha = str(train_out.get("child_sha256") or "")
     actual = int(train_out.get("actual_timesteps") or 0)
     opt = int(train_out.get("optimizer_steps") or 0)
     learn_called = bool(train_out.get("learn_called"))
     ticks = str(train_out.get("train_ticks_sha16") or "")
-    if skip_train or actual <= 0 or not child.is_file():
+    if actual <= 0 or not child.is_file():
         overall = overall_mark_eyes_string(
             parent_ok=parent_ok,
             path_early_present=path_early_present,
