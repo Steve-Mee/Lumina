@@ -308,3 +308,17 @@ History is append-only. Do not delete prior rows.
 **Tag / law:** `TRANSFER_FAIL` / `SHADOW` family=`PATH_EXIT:P_K3_UNREAL_RED`
 **Overall:** `GRIND_REGRESS_AWAKENING_OPEN PATH_EXIT_K3_T025 SHADOW_MEASURE`
 **SSOT:** `AWAKENING_PATH_EXIT_K3_T025_AUDIT.md` / `AWAKENING_PATH_EXIT_K3_T025_VERDICT.md`
+
+---
+
+## This ticket — Awakening SELECT_OBJ P_BOUNCE_WEAK (score measure, no flatten)
+
+**Prompt:** On the frozen path_early A/B books, does a pre-declared WEAK-bounce score at k=3 — recovered R off paper MAE ≤ 0.50 — concentrate the hole versus winners under the locked path_early split algebra?
+**Train:** none. optimizer_steps=0. Parent zip 8cc435c6 only. BOUNCE_WEAK=0.50. No flatten. No learn().
+**Landed:** Gate 0 SHA `53daabec73a6a303415c267e38203f77b6805f52`. Parent `origin/main`.
+**replay_ran**=false learn_called=false gate1_tag=OBJ_NONE
+**Leg A** n_U3=117 n_H3=71 n_W3=37 n_h_hit=1 lift=-0.012942519984773507 min_bounce=0.3764944017797075
+**Leg B** n_U3=126 n_H3=79 n_W3=42 n_h_hit=0 lift=0.0 min_bounce=0.802030850456357
+**Tag / law:** `OBJ_NONE` / `NONE` family=`H_NONE`
+**Overall:** `GRIND_REGRESS_AWAKENING_OPEN SELECT_OBJ_BOUNCE SHADOW_MEASURE`
+**SSOT:** `AWAKENING_SELECT_OBJ_BOUNCE_AUDIT.md` / `AWAKENING_SELECT_OBJ_BOUNCE_VERDICT.md`
