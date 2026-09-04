@@ -294,3 +294,17 @@ History is append-only. Do not delete prior rows.
 **Tag / law:** `HOLE_MOVED` / `SHADOW` family=`PATH_EXIT:P_K3_UNREAL_RED`
 **Overall:** `GRIND_REGRESS_AWAKENING_OPEN PATH_EXIT_K3_SHADOW SHADOW_MEASURE`
 **SSOT:** `AWAKENING_PATH_EXIT_K3_AUDIT.md` / `AWAKENING_PATH_EXIT_K3_VERDICT.md`
+
+---
+
+## This ticket — Awakening PATH_EXIT K3 T025 transfer shadow (evaluate-only flatten-at-3 at T_FP)
+
+**Prompt:** Does flatten-at-3 at a first-principles threshold not fitted on A or B (T_FP = -0.25 R) move the hole and raise policy mean_r on both eval seeds versus the unflattened path_early baseline?
+**Train:** none. optimizer_steps=0. Parent zip 8cc435c6 only. T_FP=-0.25. T_LOCK unchanged. k=3. Median not recomputed.
+**Landed:** PR #27 on main. Gate 0 SHA `a694f3f55f4bc7f3bb5abf8fecc6d09481ec200e`.
+**skip_replay**=false replay_ran=true
+**Leg A** n_exit=30 n_H base→t025=78→53 mean_r -0.3092697822118258→-0.29534249318344147 HOLE_MOVED=False
+**Leg B** n_exit=36 n_H base→t025=83→46 mean_r -0.17973357939421974→-0.23297568771778443 HOLE_MOVED=False
+**Tag / law:** `TRANSFER_FAIL` / `SHADOW` family=`PATH_EXIT:P_K3_UNREAL_RED`
+**Overall:** `GRIND_REGRESS_AWAKENING_OPEN PATH_EXIT_K3_T025 SHADOW_MEASURE`
+**SSOT:** `AWAKENING_PATH_EXIT_K3_T025_AUDIT.md` / `AWAKENING_PATH_EXIT_K3_T025_VERDICT.md`
