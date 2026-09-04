@@ -409,3 +409,8 @@ Isolated |0.12| slope knob + scratch 46-dim V1 10k iff world_ok, license vs froz
 ## Pointer — AWAKENING_OBJECTIVE_TRADE
 
 FORCE_OPEN train-only on a NEW #44 payable world + scratch 46-dim V1 10k, license vs frozen a9ffa852 lives under `reports/awakening_obj_run`. Floor 150 stays. GENESIS_EYES_OK is false. REAL=no. Production ±0.15 unchanged.
+---
+
+## Pointer — AWAKENING_PRICE_BAND
+
+Tradeable NQ band [12000, 28000] on a NEW #44-physics tape + scratch 46-dim V1 10k lives under `reports/awakening_band_run`. Floor 150 stays. 1% guard intact. GENESIS_EYES_OK is false. REAL=no. Production ±0.15 unchanged.

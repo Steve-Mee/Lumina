@@ -1,0 +1,33 @@
+{
+  "origin_main": "58ebbe5958343aa702aa72542b978cad6185e9ab",
+  "POLICY_EDGE_MIN_TRADES": 150,
+  "OBSERVATION_DIM": 43,
+  "pct_synthetic": 0.0,
+  "PHYSICS_SLOPE_ABS": 0.12,
+  "PROD_SLOPE_ABS": 0.15,
+  "inspect_complete": true,
+  "obj_live": {
+    "tag": "OBJ_THIN",
+    "n_policy_child_A": 0,
+    "n_policy_child_B": 0,
+    "floor": 150
+  },
+  "seeds": [
+    20260914,
+    20260915,
+    20260916
+  ],
+  "protocol": {
+    "nq_min_max": "lumina_core/birth/awakening_band_tape.py:59",
+    "no_clip_as_success": "lumina_core/birth/awakening_band_tape.py:119",
+    "at_most_three_seeds": "lumina_core/birth/awakening_band_tape.py:62",
+    "guard_1pct_unedited": "lumina_core/birth/birth_constitution_guard.py:39",
+    "force_open_train_only": "lumina_core/birth/awakening_mark_eyes_env.py:111",
+    "eval_refuses_true": "lumina_core/birth/awakening_mark_eyes_env.py:150",
+    "floor_150": "lumina_core/birth/foundation_metrics.py:39",
+    "both_leg_license": "lumina_core/birth/awakening_band_flags.py:167",
+    "genesis_eyes_ok_false": "lumina_core/birth/awakening_band_flags.py:176",
+    "missing_sites": [],
+    "gate0_complete": true
+  }
+}
