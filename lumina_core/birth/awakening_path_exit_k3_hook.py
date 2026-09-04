@@ -10,6 +10,13 @@ from lumina_core.birth.awakening_path_exit_k3 import (
     path_exit_k3_threshold,
     should_path_exit_k3,
 )
+from lumina_core.birth.awakening_path_shape_k3_dead import (
+    FAMILY as SHAPE_FAMILY,
+    PathShapeK3DeadProtocolError,
+    path_shape_k3_shadow_enabled,
+    should_path_shape_k3_dead,
+)
+from lumina_core.birth.awakening_path_shape_k3_dead_peek import _peek_excursion_usd, _r_from_usd
 
 
 def _open_intended_risk(env: Any, stash: dict[str, Any]) -> float | None:
@@ -68,23 +75,41 @@ def after_open_telem_path_exit_k3(
     pos_after: int,
 ) -> None:
     """Arm next-bar flatten at k=2; stamp sidecar after the k=3 snapshot."""
-    enabled = path_exit_k3_shadow_enabled()
+    shape_on = path_shape_k3_shadow_enabled()
+    t_on = path_exit_k3_shadow_enabled()
+    if shape_on and t_on:
+        raise PathShapeK3DeadProtocolError("T-family shadow and shape shadow both on")
     is_policy = bool(stash.get("is_policy", False))
     entry_regime = str(stash.get("entry_regime") or "")
     bars = int(bars_from_entry)
-    if bars == 2 and int(pos_after) != 0 and enabled:
+    if bars == 2 and int(pos_after) != 0 and (shape_on or t_on):
         try:
             nxt_idx = int(getattr(env, "_idx", 0) or 0)
             nxt = ticks[nxt_idx] if ticks and 0 <= nxt_idx < len(ticks) else None
         except (TypeError, ValueError, IndexError):
             nxt = None
-        peek_r = _unreal_r(stash, env, _unreal_usd_from_tick(stash, nxt))
-        if should_path_exit_k3(
-            enabled=enabled,
+        peek_unreal_usd = _unreal_usd_from_tick(stash, nxt)
+        peek_unreal_r = _unreal_r(stash, env, peek_unreal_usd)
+        peek_mae_usd, peek_mfe_usd = _peek_excursion_usd(stash, nxt)
+        intended = _open_intended_risk(env, stash)
+        peek_mae_r = _r_from_usd(peek_mae_usd, intended)
+        peek_mfe_r = _r_from_usd(peek_mfe_usd, intended)
+        if shape_on and should_path_shape_k3_dead(
+            enabled=True,
             is_policy=is_policy,
             entry_regime=entry_regime,
             bars_from_entry=K_LOCKED,
-            unreal_r=peek_r,
+            unreal_r=peek_unreal_r,
+            mae_r=peek_mae_r,
+            mfe_r=peek_mfe_r,
+        ):
+            env._path_exit_k3_request = True
+        elif t_on and should_path_exit_k3(
+            enabled=True,
+            is_policy=is_policy,
+            entry_regime=entry_regime,
+            bars_from_entry=K_LOCKED,
+            unreal_r=peek_unreal_r,
         ):
             env._path_exit_k3_request = True
     if bars != K_LOCKED:
@@ -101,7 +126,14 @@ def after_open_telem_path_exit_k3(
     if requested and reason == "force_exit" and unreal_r is not None:
         stash["path_exit_k3"] = True
         stash["path_exit_k3_unreal_r"] = float(unreal_r)
-        stash["path_exit_k3_threshold"] = path_exit_k3_threshold()
+        if shape_on:
+            intended = _open_intended_risk(env, stash)
+            stash["path_exit_k3_mae_r"] = _r_from_usd(stash.get("mae_usd"), intended)
+            stash["path_exit_k3_mfe_r"] = _r_from_usd(stash.get("mfe_usd"), intended)
+            stash["path_exit_k3_shape"] = "DEAD"
+            stash["path_exit_k3_family"] = SHAPE_FAMILY
+        else:
+            stash["path_exit_k3_threshold"] = path_exit_k3_threshold()
     env._path_exit_k3_request = False
 
 
