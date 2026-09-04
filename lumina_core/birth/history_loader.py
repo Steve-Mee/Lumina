@@ -6,7 +6,10 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from typing import Any, Callable
 
+from lumina_core.birth.data_source_honesty import resolved_tick_source
 from lumina_core.logging_utils import get_logger
+
+FABRIC_SOURCE_LABEL = "real"
 
 logger = get_logger("lumina.birth.history")
 
@@ -118,7 +121,7 @@ def normalize_tick_rows(rows: list[dict[str, Any]], *, source_label: str) -> lis
                 "volume": int(row.get("volume", 1) or 1),
                 "regime": str(row.get("regime", "NEUTRAL")),
                 "imbalance": float(row.get("imbalance", 1.0) or 1.0),
-                "source": source_label,
+                "source": resolved_tick_source(row, default_if_empty=source_label),
             }
         )
     return normalized
@@ -152,7 +155,7 @@ def load_historical_ticks(
                 fetch_kwargs["instrument"] = symbol
             rows = source.load_historical_ohlc_extended(**fetch_kwargs)
             if isinstance(rows, list):
-                return normalize_tick_rows(rows, source_label="real_historical")
+                return normalize_tick_rows(rows, source_label=FABRIC_SOURCE_LABEL)
         except Exception as exc:
             logger.warning("birth.history.load_extended_failed detail=%s", exc, exc_info=True)
 
@@ -164,4 +167,4 @@ def load_historical_ticks(
         records = ohlc.tail(tail_limit).to_dict("records")
     except Exception:
         return []
-    return normalize_tick_rows(records, source_label="real_runtime")
+    return normalize_tick_rows(records, source_label=FABRIC_SOURCE_LABEL)

@@ -12,6 +12,7 @@ from lumina_core.birth.enrichment_cache import (
     finalize_enrichment_cache,
     try_apply_enrichment_cache,
 )
+from lumina_core.birth.data_source_honesty import real_data_percentage
 from lumina_core.rl.trend_features import (
     ENRICH_VERSION,
     MIN_TREND_LOOKBACK,
@@ -118,8 +119,4 @@ def enrich_ticks_for_sim(
     return ticks
 
 
-def real_data_percentage(ticks: list[dict[str, Any]]) -> float:
-    if not ticks:
-        return 0.0
-    real = sum(1 for t in ticks if str(t.get("source", "")).lower().startswith("real"))
-    return round((float(real) / float(len(ticks))) * 100.0, 3)
+__all__ = ["enrich_ticks_for_sim", "real_data_percentage"]

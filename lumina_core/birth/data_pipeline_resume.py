@@ -16,7 +16,7 @@ from lumina_core.birth.tick_cache_persist import (
     load_split_cache,
     load_ticks_cache,
 )
-from lumina_core.birth.tick_enricher import real_data_percentage
+from lumina_core.birth.data_source_honesty import host_real_data_pct
 from lumina_core.logging_utils import get_logger
 from lumina_core.rl.trend_features import ENRICH_VERSION
 
@@ -116,10 +116,11 @@ class BirthDataPipelineResumeMixin:
             ticks = [dict(t) for t in cached_ticks]
             split = cached_split
             resume_skip_load = True
-            host._real_data_pct = float(host._data_manifest.get("real_data_pct", 0.0) or 0.0)
-            if host._real_data_pct <= 0.0 and cached_ticks:
-                host._real_data_pct = float(real_data_percentage(cached_ticks))
-                host._data_manifest["real_data_pct"] = host._real_data_pct
+            host._real_data_pct = host_real_data_pct(
+                cached_ticks,
+                manifest_pct=float(host._data_manifest.get("real_data_pct", 0.0) or 0.0),
+            )
+            host._data_manifest["real_data_pct"] = host._real_data_pct
             if resume_cache_decision.repair_manifest:
                 repaired = dict(host._data_manifest)
                 cache_m = dict(cache_manifest or {})

@@ -1,0 +1,23 @@
+{
+  "source": "genesis_followon",
+  "gate1_tag": "HONEST_OK",
+  "gate2_tag": "HOLD_LONGER",
+  "tag": "GENESIS_FOLLOWON_OK",
+  "law": "SHADOW",
+  "licensed_next_family": "GENESIS_EYES_BUDGET",
+  "POLICY_EDGE_MIN_TRADES": 150,
+  "n_policy_A_child": 113,
+  "n_policy_B_child": 103,
+  "HOLE_MOVED_A": false,
+  "HOLE_MOVED_B": false,
+  "GENESIS_EYES_OK": false,
+  "learn_called": false,
+  "optimizer_steps": 0,
+  "evolution_proof_stamped": false,
+  "REAL": "no",
+  "playground": false,
+  "hook_default": false,
+  "used_old_path_early": false,
+  "real_data_pct_synthetic_fixture": 0.0,
+  "overall": "GENESIS_FOLLOWON SHADOW_MEASURE"
+}
