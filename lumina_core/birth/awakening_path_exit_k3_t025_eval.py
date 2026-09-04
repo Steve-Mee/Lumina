@@ -135,48 +135,25 @@ def empty_leg(
     replay_ran: bool,
     baseline: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    t0 = {
+        "n_all": 0, "n_policy": 0, "n_plant": 0, "wr_policy": 0.0, "mean_r_policy": 0.0,
+        "zip_sha256": zip_sha or INIT_SHA256, "ticks_sha16": "", "price_sha16": "",
+        "optimizer_steps": 0, "hook_enabled": False, "T_FP": float(T_FP),
+        "mean_stamped_threshold": None, "n_exit": 0, "skip_replay": bool(skip_replay),
+        "replay_ran": bool(replay_ran), "source": SOURCE,
+    }
+    t1 = {
+        "n_U": 0, "n_H": 0, "n_W": 0, "n_exit": 0, "mean_r_exit": 0.0,
+        "wr_exit": 0.0, "wr_policy": 0.0, "mean_r_policy": 0.0,
+    }
+    flags = {
+        "n_exit": 0, "S_MISSING_HOOK": True, "S_HARM": False, "HOLE_MOVED": False,
+        "tag": "S_MISSING", "law": "NONE", "baseline": baseline or empty_baseline(),
+    }
     return {
-        "t0": {
-            "n_all": 0,
-            "n_policy": 0,
-            "n_plant": 0,
-            "wr_policy": 0.0,
-            "mean_r_policy": 0.0,
-            "zip_sha256": zip_sha or INIT_SHA256,
-            "ticks_sha16": "",
-            "price_sha16": "",
-            "optimizer_steps": 0,
-            "hook_enabled": False,
-            "T_FP": float(T_FP),
-            "mean_stamped_threshold": None,
-            "n_exit": 0,
-            "skip_replay": bool(skip_replay),
-            "replay_ran": bool(replay_ran),
-            "source": SOURCE,
-        },
-        "t1": {
-            "n_U": 0,
-            "n_H": 0,
-            "n_W": 0,
-            "n_exit": 0,
-            "mean_r_exit": 0.0,
-            "wr_exit": 0.0,
-            "wr_policy": 0.0,
-            "mean_r_policy": 0.0,
-        },
-        "t2": {},
+        "t0": t0, "t1": t1, "t2": {},
         "t3": {"n_exit_k27": 0, "n_exit_t025": 0, "k27_absent": True},
-        "flags": {
-            "n_exit": 0,
-            "S_MISSING_HOOK": True,
-            "S_HARM": False,
-            "HOLE_MOVED": False,
-            "tag": "S_MISSING",
-            "law": "NONE",
-            "baseline": baseline or empty_baseline(),
-        },
-        "rows_n": 0,
-        "mean_stamped_threshold": None,
+        "flags": flags, "rows_n": 0, "mean_stamped_threshold": None,
     }
 
 
