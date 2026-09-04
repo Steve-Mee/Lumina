@@ -374,3 +374,8 @@ Frozen first-life zips on a NEW thick holdout live under `reports/genesis_budget
 ## Pointer — AWAKENING_MARK_EYES_POLISH
 
 One continue 10k of frozen first-life MARK_EYES a9ffa852 on a NEW tape lives under `reports/awakening_polish_run`. Floor 150 stays. GENESIS_EYES_OK is false. REAL=no.
+---
+
+## Pointer — AWAKENING_MARK_EYES_V2
+
+New 48-dim eyes, one scratch 10k on a NEW tape, license vs frozen a9ffa852 lives under `reports/awakening_eyes_v2_run`. Floor 150 stays. GENESIS_EYES_OK is false. REAL=no.

@@ -1,0 +1,21 @@
+{
+  "schema": "awakening_mark_eyes_v2_pi_star_v1",
+  "sha256": "1123282f0fe3715d66a6945db847f9c39dadfab071cef7279553725f6aa910c1",
+  "init_policy": "scratch",
+  "baseline_sha256": "a9ffa8529e02f2d8f8a535be4dcce205a43abe20bdec492add78126a8181188b",
+  "timesteps": 10000,
+  "train_seed": 20260907,
+  "actual_timesteps": 10000,
+  "optimizer_steps": 90,
+  "obs_dim": 48,
+  "extra": [
+    "mark_unreal_r",
+    "mark_mae_r",
+    "bars_held_norm",
+    "mark_mfe_r",
+    "mark_d_unreal"
+  ],
+  "evolution_proof": false,
+  "train_ticks_sha16": "5e7eae98d1b4d228",
+  "REAL": "no"
+}
