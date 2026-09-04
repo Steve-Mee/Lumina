@@ -399,3 +399,8 @@ Equal UP/DOWN/RANGE generator occupancy + scratch 46-dim V1 10k iff world_ok, li
 ## Pointer — AWAKENING_STRATIFIED_SPLIT
 
 Per-phase 60/40 split + scratch 46-dim V1 10k iff world_ok, license vs frozen a9ffa852 lives under `reports/awakening_strat_run`. Floor 150 stays. GENESIS_EYES_OK is false. REAL=no.
+---
+
+## Pointer — AWAKENING_ENRICHER_CONVERSION
+
+Isolated |0.12| slope knob + scratch 46-dim V1 10k iff world_ok, license vs frozen a9ffa852 lives under `reports/awakening_conv_run`. Floor 150 stays. GENESIS_EYES_OK is false. REAL=no. Production ±0.15 unchanged.

@@ -1,0 +1,19 @@
+{
+  "schema": "awakening_conv_v1_pi_star_v1",
+  "sha256": "a8a93d6e4cc2dfd171d5130e01fd385c6db5aeb6de590fbb497e636a13015add",
+  "init_policy": "scratch",
+  "baseline_sha256": "a9ffa8529e02f2d8f8a535be4dcce205a43abe20bdec492add78126a8181188b",
+  "timesteps": 10000,
+  "train_seed": 20260912,
+  "actual_timesteps": 10000,
+  "optimizer_steps": 90,
+  "obs_dim": 46,
+  "extra": [
+    "mark_unreal_r",
+    "mark_mae_r",
+    "bars_held_norm"
+  ],
+  "evolution_proof": false,
+  "train_ticks_sha16": "b1f16c99e2989be1",
+  "REAL": "no"
+}
