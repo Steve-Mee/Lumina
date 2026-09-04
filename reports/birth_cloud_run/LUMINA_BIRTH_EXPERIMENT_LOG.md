@@ -404,3 +404,8 @@ Per-phase 60/40 split + scratch 46-dim V1 10k iff world_ok, license vs frozen a9
 ## Pointer — AWAKENING_ENRICHER_CONVERSION
 
 Isolated |0.12| slope knob + scratch 46-dim V1 10k iff world_ok, license vs frozen a9ffa852 lives under `reports/awakening_conv_run`. Floor 150 stays. GENESIS_EYES_OK is false. REAL=no. Production ±0.15 unchanged.
+---
+
+## Pointer — AWAKENING_OBJECTIVE_TRADE
+
+FORCE_OPEN train-only on a NEW #44 payable world + scratch 46-dim V1 10k, license vs frozen a9ffa852 lives under `reports/awakening_obj_run`. Floor 150 stays. GENESIS_EYES_OK is false. REAL=no. Production ±0.15 unchanged.

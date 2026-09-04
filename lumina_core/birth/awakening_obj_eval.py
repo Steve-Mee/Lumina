@@ -113,6 +113,8 @@ def eval_obj_leg(
     finally:
         PATH_SHAPE_K3_SHADOW.reset(token_s)
         PATH_EXIT_K3_SHADOW.reset(token_e)
+    if not ledger.is_file():
+        ledger.write_text("", encoding="utf-8")
     _write_jsonl_sha(ledger)
     rows = load_close_jsonl(ledger) if ledger.is_file() else []
     stats = organism_stats(rows)
