@@ -52,6 +52,9 @@ reports/awakening_strat_run/workspace/
 !reports/awakening_conv_run/
 !reports/awakening_conv_run/**
 reports/awakening_conv_run/workspace/
+!reports/awakening_obj_run/
+!reports/awakening_obj_run/**
+reports/awakening_obj_run/workspace/
 reports/birth_cloud_run/awakening_select/workspace/
 reports/birth_cloud_run/awakening_hole_tax/workspace/
 reports/birth_cloud_run/awakening_entry_autopsy/workspace/
