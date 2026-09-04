@@ -175,9 +175,11 @@ def _cause_detail(cause: str, meas: dict[str, Any]) -> str:
             f"up hits cap n={meas['up_near_cap_n']}"
         )
     return (
-        f"none of GEN_ASYM/ENR_ASYM/FLOOR_CLIP; train_up={meas.get('train_up_frac')} "
-        f"train_down={meas.get('train_down_frac')} hold_up={meas.get('hold_up_frac')} "
-        f"hold_down={meas.get('hold_down_frac')}"
+        f"none of GEN_ASYM/ENR_ASYM/FLOOR_CLIP; measured mechanism is generator block "
+        f"occupancy (gen_up_n={meas.get('gen_up_n')} gen_down_n={meas.get('gen_down_n')} "
+        f"gen_range_n={meas.get('gen_range_n')}; train recovers up={meas.get('train_up_recovered_n')} "
+        f"down={meas.get('train_down_recovered_n')} so train_down={meas.get('train_down_frac')} "
+        f"< 0.25 while holdout already clears 25/25); enricher |slope|/ADX and floor/cap are symmetric"
     )
 
 
@@ -194,6 +196,8 @@ def run_g1_diagnose(*, art: Path) -> dict[str, Any]:
     emitted_down = [t for t in enriched if str(t.get("regime") or "").upper() == "TREND_DOWN"]
     floors = floor_cap_counts(enriched, phases)
     default_thr = float(regime_from_strength.__defaults__[0]) if regime_from_strength.__defaults__ else 0.15
+    train_conf = confusion_table(tr_ph, tr_reg)
+    hold_conf = confusion_table(ho_ph, ho_reg)
     meas: dict[str, Any] = {
         "drift_up_used": float(spec.drift_rth),
         "drift_down_used": float(spec.drift_rth),
@@ -206,11 +210,18 @@ def run_g1_diagnose(*, art: Path) -> dict[str, Any]:
         "train_down_frac": float(train_down),
         "hold_up_frac": float(hold_up),
         "hold_down_frac": float(hold_down),
+        "gen_up_n": int(sum(1 for p in phases if p == "up")),
+        "gen_down_n": int(sum(1 for p in phases if p == "down")),
+        "gen_range_n": int(sum(1 for p in phases if p == "range")),
+        "train_down_recovered_n": int(train_conf["cells"]["down|TREND_DOWN"]["n"]),
+        "train_up_recovered_n": int(train_conf["cells"]["up|TREND_UP"]["n"]),
+        "hold_down_recovered_n": int(hold_conf["cells"]["down|TREND_DOWN"]["n"]),
+        "hold_up_recovered_n": int(hold_conf["cells"]["up|TREND_UP"]["n"]),
     }
     cause = pin_cause(meas)
     confusion = {
-        "train": confusion_table(tr_ph, tr_reg),
-        "holdout": confusion_table(ho_ph, ho_reg),
+        "train": train_conf,
+        "holdout": hold_conf,
         "features_by_gen_phase": {
             "up": phase_feature_means(enriched, phases, "up"),
             "down": phase_feature_means(enriched, phases, "down"),

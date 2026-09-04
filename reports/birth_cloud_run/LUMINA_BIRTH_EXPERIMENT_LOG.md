@@ -384,3 +384,8 @@ New 48-dim eyes, one scratch 10k on a NEW tape, license vs frozen a9ffa852 lives
 ## Pointer — AWAKENING_PHYSICS_TAPE
 
 Payable-world tape + scratch 46-dim V1 10k, license vs frozen a9ffa852 lives under `reports/awakening_physics_run`. Floor 150 stays. GENESIS_EYES_OK is false. REAL=no.
+---
+
+## Pointer — AWAKENING_ENRICHER_COUPLING
+
+Diagnose post-enrich TREND_DOWN death + one fix, then scratch 46-dim V1 10k iff world_ok, lives under `reports/awakening_coupling_run`. Floor 150 stays. GENESIS_EYES_OK is false. REAL=no.

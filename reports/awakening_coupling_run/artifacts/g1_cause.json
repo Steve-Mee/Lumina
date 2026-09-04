@@ -1,0 +1,34 @@
+{
+  "cause": "OTHER",
+  "cause_detail": "none of GEN_ASYM/ENR_ASYM/FLOOR_CLIP; measured mechanism is generator block occupancy (gen_up_n=106560 gen_down_n=71040 gen_range_n=35520; train recovers up=40333 down=19593 so train_down=0.19067542366009893 < 0.25 while holdout already clears 25/25); enricher |slope|/ADX and floor/cap are symmetric",
+  "numbers": {
+    "drift_up_used": 0.00024,
+    "drift_down_used": 0.00024,
+    "enr_threshold_pos": 0.15,
+    "enr_threshold_neg": -0.15,
+    "mean_slope_emitted_up": 0.2480803402479768,
+    "mean_slope_emitted_down": -0.24408113903194575,
+    "down_near_floor_n": 14,
+    "up_near_cap_n": 14,
+    "down_hard_floor_n": 0,
+    "run_min_x100": 1841900,
+    "run_max_x100": 669235747150,
+    "train_up_frac": 0.3520392443039001,
+    "train_down_frac": 0.19067542366009893,
+    "hold_up_frac": 0.26685172334027296,
+    "hold_down_frac": 0.2652556095304187,
+    "gen_up_n": 106560,
+    "gen_down_n": 71040,
+    "gen_range_n": 35520,
+    "train_down_recovered_n": 19593,
+    "train_up_recovered_n": 40333,
+    "hold_down_recovered_n": 20115,
+    "hold_up_recovered_n": 20289
+  },
+  "CAUSE_RULES_ORDER": [
+    "GEN_ASYM",
+    "ENR_ASYM",
+    "FLOOR_CLIP",
+    "OTHER"
+  ]
+}
