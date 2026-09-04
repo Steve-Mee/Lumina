@@ -200,3 +200,35 @@ History is append-only. Do not delete prior rows.
 **Tag / law:** `OBJ_NONE` / `NONE` family=`H_NONE`
 **Overall:** `GRIND_REGRESS_AWAKENING_OPEN SELECT_OBJ_BOUNCE SHADOW_MEASURE`
 **SSOT:** `AWAKENING_SELECT_OBJ_BOUNCE_AUDIT.md` / `AWAKENING_SELECT_OBJ_BOUNCE_VERDICT.md`
+
+---
+
+## This ticket — Awakening MARK_EYES (new body, mark-path eyes)
+
+LAW: paper-MAE / T_LOCK / T_FP / DEAD / BOUNCE families are closed as controllers
+on parent 8cc435c6. This window is a new body with mark-path eyes. Proof=false.
+**Prompt:** Does a NEW policy body, born with mark-path eyes, trained one pinned 10_000-step shot on TRAIN seed only, move the hole AND raise policy mean_r on BOTH eval seeds versus the frozen path_early book of parent zip 8cc435c6?
+**Train:** one shot timesteps=10000 seed=20260901 init=scratch actual=0.
+**Landed:** Gate 0 SHA `7bcdaa079e60c92c03b256ff49d7f9a7f1534876`. Parent `origin/main`.
+**learn_called**=false child_sha=
+**Leg A** n_H=0 n_H_early=78 mean_r=0.0 HOLE_MOVED=False
+**Leg B** n_H=0 n_H_early=83 mean_r=0.0 HOLE_MOVED=False
+**Tag / law:** `S_MISSING` / `NONE` family=`H_NONE`
+**Overall:** `GRIND_INCONCLUSIVE_AWAKENING_OPEN MARK_EYES_WINDOW S_MISSING`
+**SSOT:** `AWAKENING_MARK_EYES_AUDIT.md` / `AWAKENING_MARK_EYES_VERDICT.md`
+
+---
+
+## This ticket — Awakening MARK_EYES (new body, mark-path eyes)
+
+LAW: paper-MAE / T_LOCK / T_FP / DEAD / BOUNCE families are closed as controllers
+on parent 8cc435c6. This window is a new body with mark-path eyes. Proof=false.
+**Prompt:** Does a NEW policy body, born with mark-path eyes, trained one pinned 10_000-step shot on TRAIN seed only, move the hole AND raise policy mean_r on BOTH eval seeds versus the frozen path_early book of parent zip 8cc435c6?
+**Train:** one shot timesteps=10000 seed=20260901 init=scratch actual=10000.
+**Landed:** Gate 0 SHA `7bcdaa079e60c92c03b256ff49d7f9a7f1534876`. Parent `origin/main`.
+**learn_called**=true child_sha=53df2d78be7ff824
+**Leg A** n_H=23 n_H_early=78 mean_r=0.03702885329849976 HOLE_MOVED=True
+**Leg B** n_H=18 n_H_early=83 mean_r=0.1237743003390373 HOLE_MOVED=True
+**Tag / law:** `EYES_OK` / `SHADOW` family=`AWAKENING_MARK_EYES`
+**Overall:** `GRIND_REGRESS_AWAKENING_OPEN MARK_EYES_WINDOW EYES_MEASURE`
+**SSOT:** `AWAKENING_MARK_EYES_AUDIT.md` / `AWAKENING_MARK_EYES_VERDICT.md`
