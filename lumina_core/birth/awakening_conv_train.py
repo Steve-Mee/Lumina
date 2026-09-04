@@ -1,0 +1,205 @@
+"""G5: one scratch V1 PPO.learn() of 10_000 env steps. Train seed 20260912. TRAIN only."""
+
+from __future__ import annotations
+
+import json
+import random
+from pathlib import Path
+from typing import Any
+
+from lumina_core.birth.awakening_conv_enrich import ConvProtocolError
+from lumina_core.birth.awakening_conv_tape import (
+    BASELINE_SHA256,
+    CHILD_META_NAME,
+    CHILD_SCHEMA,
+    CHILD_ZIP_NAME,
+    CONV_TIMESTEPS,
+    TRAIN_SEED,
+    assert_forbidden_init,
+    load_conv_train_split,
+)
+from lumina_core.birth.awakening_mark_eyes import EXTRA_SLOT_NAMES, MARK_EYES_OBS_DIM
+from lumina_core.birth.awakening_mark_eyes_env import make_mark_eyes_train_env
+from lumina_core.birth.awakening_occupancy_tape import write_bytes_sha
+from lumina_core.birth.awakening_path_exit_k3 import PATH_EXIT_K3_SHADOW
+from lumina_core.birth.awakening_path_shape_k3_dead import PATH_SHAPE_K3_SHADOW
+from lumina_core.birth.awakening_select_run import _SelectEngine, _timestep_cap_callback
+from lumina_core.logging_utils import get_logger
+from lumina_core.rl.ppo_trainer import PPOTrainer
+
+logger = get_logger("lumina.birth.awakening_conv_train")
+
+
+def pin_train_seed(seed: int) -> None:
+    if int(seed) != int(TRAIN_SEED):
+        raise ConvProtocolError(f"train seed {seed} != {TRAIN_SEED}")
+    random.seed(int(seed))
+    try:
+        import numpy as np
+
+        np.random.seed(int(seed))
+    except Exception:
+        pass
+    try:
+        import torch
+
+        torch.manual_seed(int(seed))
+    except Exception:
+        pass
+
+
+def _obs_shape(obj: Any) -> tuple[int, ...]:
+    space = getattr(obj, "observation_space", None)
+    shape = getattr(space, "shape", None) if space is not None else None
+    if not shape:
+        return ()
+    return tuple(int(x) for x in shape)
+
+
+def run_conv_v1_train(
+    *,
+    work: Path,
+    art: Path,
+    init_zip: Path | str | None = None,
+    timesteps: int = CONV_TIMESTEPS,
+    learn_fn: Any | None = None,
+    ppo_cls: Any | None = None,
+) -> dict[str, Any]:
+    if init_zip is not None:
+        assert_forbidden_init(init_zip)
+        raise ConvProtocolError("init_policy must be scratch")
+    if int(timesteps) != int(CONV_TIMESTEPS):
+        raise ConvProtocolError(f"timesteps {timesteps} != {CONV_TIMESTEPS}")
+    if bool(PATH_EXIT_K3_SHADOW.get()) or bool(PATH_SHAPE_K3_SHADOW.get()):
+        raise ConvProtocolError("hooks must stay False")
+    pin_train_seed(TRAIN_SEED)
+    tape = load_conv_train_split(work)
+    train = list(tape["train"])
+    if not train:
+        raise ConvProtocolError("TRAIN split empty — refuse holdout ticks")
+    env = make_mark_eyes_train_env(
+        train,
+        workspace_root=work,
+        reports_dir=art,
+        max_steps=max(int(timesteps), len(train)),
+        tax_r=0.0,
+        train_reward_fn=None,
+    )
+    if _obs_shape(env) != (int(MARK_EYES_OBS_DIM),):
+        raise ConvProtocolError(f"env observation space {_obs_shape(env)} != (46,)")
+    try:
+        cls = ppo_cls
+        if cls is None:
+            from stable_baselines3 import PPO
+
+            cls = PPO
+        model = cls(
+            "MlpPolicy",
+            env,
+            verbose=0,
+            device="cpu",
+            seed=int(TRAIN_SEED),
+            learning_rate=3e-4,
+            n_steps=1024,
+            batch_size=256,
+            gamma=0.995,
+            gae_lambda=0.95,
+            clip_range=0.2,
+            ent_coef=0.01,
+            vf_coef=0.5,
+        )
+    except ConvProtocolError:
+        raise
+    except Exception as exc:
+        logger.error("awakening.conv.sb3_missing: %s", exc)
+        return {
+            "status": "S_MISSING",
+            "learn_called": False,
+            "actual_timesteps": 0,
+            "optimizer_steps": 0,
+            "child_sha256": "",
+            "init_policy": "scratch",
+            "error": f"S_MISSING: {exc}",
+        }
+    setter = getattr(model, "set_random_seed", None)
+    if callable(setter):
+        setter(int(TRAIN_SEED))
+    engine = _SelectEngine(model)
+    trainer = PPOTrainer(engine=engine, model_dir=work / "ppo_out")
+    engine.set_rl_policy(model)
+    cap = _timestep_cap_callback(int(timesteps))
+    try:
+        if learn_fn is not None:
+            learn_fn(total_timesteps=int(timesteps), reset_num_timesteps=True, callback=cap, progress_bar=False)
+        else:
+            model.learn(total_timesteps=int(timesteps), reset_num_timesteps=True, callback=cap, progress_bar=False)
+    except Exception as exc:
+        logger.error("awakening.conv.learn_failed: %s", exc)
+        return {
+            "status": "S_MISSING",
+            "learn_called": False,
+            "actual_timesteps": 0,
+            "child_sha256": "",
+            "init_policy": "scratch",
+            "error": f"S_MISSING: learn() {exc}",
+        }
+    actual = int(getattr(model, "num_timesteps", 0) or 0)
+    if actual <= 0:
+        return {
+            "status": "S_MISSING",
+            "learn_called": True,
+            "actual_timesteps": 0,
+            "child_sha256": "",
+            "init_policy": "scratch",
+            "error": "S_MISSING: actual_timesteps == 0 — do not relabel a9ffa852 as conv child",
+        }
+    child = art / CHILD_ZIP_NAME
+    trainer.save_weights(str(child))
+    if not child.is_file() or child.stat().st_size <= 0:
+        return {
+            "status": "S_MISSING",
+            "learn_called": True,
+            "actual_timesteps": actual,
+            "child_sha256": "",
+            "error": "S_MISSING: child zip missing after save",
+        }
+    child_sha = write_bytes_sha(child)
+    if child_sha == BASELINE_SHA256:
+        return {
+            "status": "S_MISSING",
+            "learn_called": True,
+            "actual_timesteps": actual,
+            "child_sha256": child_sha,
+            "error": "S_MISSING: child sha identical to a9ffa852",
+        }
+    payload = {
+        "schema": CHILD_SCHEMA,
+        "sha256": child_sha,
+        "init_policy": "scratch",
+        "baseline_sha256": BASELINE_SHA256,
+        "timesteps": int(CONV_TIMESTEPS),
+        "train_seed": int(TRAIN_SEED),
+        "actual_timesteps": int(actual),
+        "optimizer_steps": int(getattr(model, "_n_updates", 0) or 0),
+        "obs_dim": int(MARK_EYES_OBS_DIM),
+        "extra": list(EXTRA_SLOT_NAMES),
+        "evolution_proof": False,
+        "train_ticks_sha16": str(tape.get("train_hash") or ""),
+        "REAL": "no",
+    }
+    (art / CHILD_META_NAME).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return {
+        "status": "ok",
+        "child_path": str(child),
+        "child_sha256": child_sha,
+        "init_policy": "scratch",
+        "baseline_sha256": BASELINE_SHA256,
+        "learn_called": True,
+        "actual_timesteps": int(actual),
+        "optimizer_steps": payload["optimizer_steps"],
+        "obs_dim": int(MARK_EYES_OBS_DIM),
+        "sidecar": payload,
+    }
+
+
+__all__ = ["pin_train_seed", "run_conv_v1_train"]

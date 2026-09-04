@@ -71,11 +71,13 @@ def enrich_ticks_for_sim(
     workspace_root: Path | str | None = None,
     raw_ticks_hash: str | None = None,
     enrich_version: str = ENRICH_VERSION,
+    slope_abs: float | None = None,
 ) -> list[dict[str, Any]]:
     if not ticks:
         return ticks
 
-    if workspace_root is not None and try_apply_enrichment_cache(
+    use_prod_cache = workspace_root is not None and slope_abs is None
+    if use_prod_cache and try_apply_enrichment_cache(
         workspace_root,
         ticks,
         raw_ticks_hash=raw_ticks_hash,
@@ -108,8 +110,12 @@ def enrich_ticks_for_sim(
             continue
         tick = ticks[i]
         tick.update(feature_rows[i])
-        tick["regime"] = regime_from_strength(float(feature_rows[i].get("trend_regime_strength", 0.0) or 0.0))
-    if workspace_root is not None:
+        strength = float(feature_rows[i].get("trend_regime_strength", 0.0) or 0.0)
+        if slope_abs is None:
+            tick["regime"] = regime_from_strength(strength)
+        else:
+            tick["regime"] = regime_from_strength(strength, threshold=float(slope_abs))
+    if workspace_root is not None and slope_abs is None:
         finalize_enrichment_cache(
             workspace_root,
             ticks,
