@@ -1,0 +1,55 @@
+{
+  "origin_main": "275919e18a00fcc02e32052606ed46b1d06570d9",
+  "POLICY_EDGE_MIN_TRADES": 150,
+  "OBSERVATION_DIM": 43,
+  "pct_synthetic": 0.0,
+  "PHYSICS_SLOPE_ABS": 0.12,
+  "PROD_SLOPE_ABS": 0.15,
+  "inspect_complete": true,
+  "band_live": {
+    "tag": "BAND_WORLD_FAIL",
+    "attempts": [
+      {
+        "seed": 20260914,
+        "min": 18044.5,
+        "max": 13538023.5,
+        "in_band": false
+      },
+      {
+        "seed": 20260915,
+        "min": 18714.25,
+        "max": 13977321.25,
+        "in_band": false
+      },
+      {
+        "seed": 20260916,
+        "min": 21051.25,
+        "max": 15568974.0,
+        "in_band": false
+      }
+    ],
+    "floor": 150
+  },
+  "seeds": [
+    20260917,
+    20260918,
+    20260919
+  ],
+  "drift_rth": 8e-06,
+  "protocol": {
+    "drift_rth_8e_6": "lumina_core/birth/awakening_drift_tape.py:56",
+    "phase_blocks_6": "lumina_core/birth/awakening_drift_tape.py:59",
+    "nq_min_max": "lumina_core/birth/awakening_drift_tape.py:53",
+    "no_clip_as_success": "lumina_core/birth/awakening_drift_tape.py:367",
+    "at_most_three_seeds": "lumina_core/birth/awakening_drift_tape.py:60",
+    "seeds_20260917_19": "lumina_core/birth/awakening_drift_tape.py:60",
+    "guard_1pct_unedited": "lumina_core/birth/birth_constitution_guard.py:39",
+    "force_open_train_only": "lumina_core/birth/awakening_mark_eyes_env.py:111",
+    "eval_refuses_true": "lumina_core/birth/awakening_mark_eyes_env.py:150",
+    "floor_150": "lumina_core/birth/foundation_metrics.py:39",
+    "both_leg_license": "lumina_core/birth/awakening_drift_flags.py:174",
+    "genesis_eyes_ok_false": "lumina_core/birth/awakening_drift_flags.py:183",
+    "missing_sites": [],
+    "gate0_complete": true
+  }
+}

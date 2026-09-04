@@ -1,0 +1,89 @@
+{
+  "attempts": [
+    {
+      "in_band": false,
+      "max": 30164.0,
+      "min": 16599.25,
+      "seed": 20260917
+    },
+    {
+      "in_band": false,
+      "max": 29357.0,
+      "min": 20299.75,
+      "seed": 20260918
+    },
+    {
+      "in_band": true,
+      "max": 24703.5,
+      "min": 17278.5,
+      "seed": 20260919
+    }
+  ],
+  "clipped": false,
+  "days": 88,
+  "drift_rth": 8e-06,
+  "enrich_fail": true,
+  "gen_counts": {
+    "DOWN": 71040,
+    "RANGE": 71040,
+    "UP": 71040
+  },
+  "gen_down": 71040,
+  "gen_range": 71040,
+  "gen_up": 71040,
+  "hash": "79397a6f2e866fff",
+  "hold_down_frac": 0.19661458333333334,
+  "hold_gen_counts": {
+    "DOWN": 28416,
+    "RANGE": 28416,
+    "UP": 28416
+  },
+  "hold_up_frac": 0.20150619369369369,
+  "holdout_regime_counts": {
+    "NEUTRAL": 51309,
+    "TREND_DOWN": 16761,
+    "TREND_UP": 17178
+  },
+  "holdout_tick_count": 85248,
+  "host_real_data_pct": 0.0,
+  "in_band": true,
+  "nq_max": 28000.0,
+  "nq_min": 12000.0,
+  "path": "/workspace/reports/awakening_drift_run/workspace/state/lumina_birth_cache_manifest.json",
+  "phase_blocks": 6,
+  "price_max": 24703.5,
+  "price_min": 17278.5,
+  "prod_slope_abs": 0.15,
+  "raw_ticks_hash": "1b08a537ec373381",
+  "real_data_pct": 0.0,
+  "requested_days": 90,
+  "seed_used": 20260919,
+  "slope_abs_used": 0.12,
+  "source": "synthetic_cloud_fixture",
+  "split_path": "/workspace/reports/awakening_drift_run/workspace/state/lumina_birth_split_cache.json",
+  "splitter": "per_phase_60_40",
+  "start_et": "2025-10-06T18:00:00-04:00",
+  "start_price": 21150.0,
+  "symbol": "NQ SEP26",
+  "tick_count": 213120,
+  "ticks_path": "/workspace/reports/awakening_drift_run/workspace/state/lumina_birth_ticks_cache.jsonl",
+  "ticks_per_leg": [
+    42624,
+    42624
+  ],
+  "train_down_frac": 0.2078953953953954,
+  "train_gen_counts": {
+    "DOWN": 42624,
+    "RANGE": 42624,
+    "UP": 42624
+  },
+  "train_regime_counts": {
+    "NEUTRAL": 76493,
+    "TREND_DOWN": 26584,
+    "TREND_UP": 24795
+  },
+  "train_tick_count": 127872,
+  "train_up_frac": 0.19390484234234234,
+  "world_fail": false,
+  "world_ok": false
+}
