@@ -1,0 +1,23 @@
+{
+  "origin_main": "33ef9d0468bf6154ffb562160005fca57df0e6c0",
+  "POLICY_EDGE_MIN_TRADES": 150,
+  "OBSERVATION_DIM": 43,
+  "pct_synthetic": 0.0,
+  "PHYSICS_SLOPE_ABS": 0.12,
+  "PROD_SLOPE_ABS": 0.15,
+  "inspect_complete": true,
+  "protocol": {
+    "physics_slope_abs_012": "lumina_core/birth/awakening_conv_enrich.py:1",
+    "prod_default_015": "lumina_core/birth/awakening_conv_enrich.py:13",
+    "exam_seed_20260912": "lumina_core/birth/awakening_conv_tape.py:65",
+    "per_phase_60_40_import": "lumina_core/birth/awakening_conv_tape.py:35",
+    "fracs_25_25": "lumina_core/birth/awakening_conv_tape.py:294",
+    "no_oracle_regime": "lumina_core/birth/awakening_conv_tape.py:159",
+    "body_skipped": "lumina_core/birth/awakening_conv_run.py:129",
+    "floor_150": "lumina_core/birth/foundation_metrics.py:39",
+    "both_leg_license": "lumina_core/birth/awakening_conv_flags.py:166",
+    "genesis_eyes_ok_false": "lumina_core/birth/awakening_conv_flags.py:151",
+    "missing_sites": [],
+    "gate0_complete": true
+  }
+}
