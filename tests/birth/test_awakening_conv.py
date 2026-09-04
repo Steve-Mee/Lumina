@@ -5,6 +5,8 @@ from __future__ import annotations
 import inspect
 from pathlib import Path
 
+import pytest
+
 from lumina_core.birth.awakening_conv_enrich import (
     PHYSICS_SLOPE_ABS,
     PROD_SLOPE_ABS,
@@ -195,3 +197,43 @@ def test_modules_under_400() -> None:
     assert prod.count("slope_abs: float | None = None") == 1
     net = sum(1 for line in prod.splitlines() if "slope_abs" in line)
     assert net <= 20
+
+
+def test_wrapper_enrich_calls_prod_with_012() -> None:
+    ticks = [{"last": 5000.0 + i * 2.0, "volume": 100, "source": "synthetic_cloud_fixture"} for i in range(80)]
+    prod = enrich_ticks_for_sim([dict(t) for t in ticks])
+    conv = enrich_ticks_for_conv([dict(t) for t in ticks])
+    via_kw = enrich_ticks_for_sim([dict(t) for t in ticks], slope_abs=PHYSICS_SLOPE_ABS)
+    assert prod[70]["regime"] == "TREND_UP"
+    assert conv[70]["regime"] == "TREND_UP"
+    assert via_kw[70]["regime"] == "TREND_UP"
+    assert enrich_ticks_for_sim([]) == []
+
+
+def test_tables_report_and_tape_guards() -> None:
+    from lumina_core.birth.awakening_conv_enrich import ConvProtocolError
+    from lumina_core.birth.awakening_conv_report import render_audit, render_verdict
+    from lumina_core.birth.awakening_conv_run import origin_guard_paths, snapshot_origin_artifacts
+    from lumina_core.birth.awakening_conv_tables import table_t0_identity, table_t1_honesty, table_t2_leg, table_t3_license
+    from lumina_core.birth.awakening_conv_tape import assert_forbidden_init, refuse_this_tape_hash
+
+    t0 = table_t0_identity(origin_main="abc", train_hash="b1f16c99", baseline_sha="a9ffa852", child_sha="")
+    t1 = table_t1_honesty()
+    t2 = table_t2_leg("A", {"n_policy_base": 160, "MOVED": False})
+    t3 = table_t3_license({"tag": "S_HARM", "law": "NONE"})
+    assert t0["prod_enricher_default_changed"] is False
+    assert t1["G6_tag"] == "REAL_DOOR_LOCKED"
+    assert t2["leg"] == "A"
+    assert t3["GENESIS_EYES_OK"] is False
+    flags = compose_conv_flags({"tag": "S_HARM", "world_ok": True, "A": {}, "B": {}})
+    audit = render_audit(gate0={}, proto={}, t0=t0, t1=t1, t2_a=t2, t2_b=t2, t3=t3, flags=flags, g6={})
+    verdict = render_verdict(flags=flags, t2_a=t2, t2_b=t2)
+    assert "AWAKENING_ENRICHER_CONVERSION_AUDIT" in audit
+    assert "S_HARM" in verdict
+    assert refuse_this_tape_hash("b1f16c99deadbeef") == "b1f16c99deadbeef"
+    with pytest.raises(ConvProtocolError, match="refused old tape hash"):
+        refuse_this_tape_hash("7923fa61deadbeef")
+    with pytest.raises(ConvProtocolError, match="forbidden init"):
+        assert_forbidden_init("baseline_a9ffa852_pi_star.zip", sha="a9ffa852dead")
+    assert "awakening_strat_flags.json" in origin_guard_paths()
+    assert isinstance(snapshot_origin_artifacts(), dict)
