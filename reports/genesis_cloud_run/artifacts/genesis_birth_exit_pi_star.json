@@ -1,0 +1,21 @@
+{
+  "schema": "genesis_birth_exit_pi_star_v1",
+  "path": "/workspace/reports/genesis_cloud_run/artifacts/genesis_birth_exit_pi_star.zip",
+  "sha256": "d313b107e99e03a5ce856226ccc6b352ae5fb01f995eccb4c0a6888988fda2af",
+  "bytes": 202270,
+  "source": "genesis_s5_pass_pre_polish",
+  "copied_from": "/workspace/reports/genesis_cloud_run/workspace/reports/birth_cloud_run/artifacts/birth_exit_pi_star.zip",
+  "evolution_proof": false,
+  "REAL": "no",
+  "engine_meta": {
+    "schema": "birth_exit_pi_star_v1",
+    "path": "/workspace/reports/genesis_cloud_run/workspace/reports/birth_cloud_run/artifacts/birth_exit_pi_star.zip",
+    "sha256": "d313b107e99e03a5ce856226ccc6b352ae5fb01f995eccb4c0a6888988fda2af",
+    "bytes": 202270,
+    "exported_at": "2026-09-04T09:43:51.943553+00:00",
+    "source": "s5_pass_pre_polish",
+    "export_site": "lumina_core/birth/foundation_complete.py:export_birth_exit_pi_star",
+    "pre_polish": true,
+    "gitignored_ppo_fallback": false
+  }
+}

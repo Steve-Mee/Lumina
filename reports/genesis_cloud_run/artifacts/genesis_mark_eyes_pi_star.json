@@ -1,0 +1,15 @@
+{
+  "schema": "genesis_mark_eyes_pi_star_v1",
+  "sha256": "a9ffa8529e02f2d8f8a535be4dcce205a43abe20bdec492add78126a8181188b",
+  "bytes": 207018,
+  "timesteps": 10000,
+  "train_seed": 20260904,
+  "init_policy": "scratch",
+  "obs_dim": 46,
+  "actual_timesteps": 10000,
+  "optimizer_steps": 90,
+  "hole_tax_r": 0.0,
+  "evolution_proof": false,
+  "train_ticks_sha16": "5726ae7e83ff3d48",
+  "REAL": "no"
+}

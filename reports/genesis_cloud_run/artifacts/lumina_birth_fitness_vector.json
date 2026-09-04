@@ -1,0 +1,11 @@
+{
+  "schema": "foundation_v2",
+  "mean_r": -0.12224323591010415,
+  "edge": 0.08961175522689718,
+  "occupancy": 0.2790397521941146,
+  "oos_wr": 0.415584,
+  "oos_sharpe": -1.5241811786200314,
+  "median_loss_r": 1.0160284642927073,
+  "s5_receipt_checksum": "dc73a394b4dbc79a",
+  "trades": 154
+}

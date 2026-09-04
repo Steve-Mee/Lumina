@@ -1,0 +1,73 @@
+{
+  "exited": true,
+  "missing": [],
+  "proofs": [
+    "foundation_five_receipts_v2",
+    "foundation_fitness_vector"
+  ],
+  "fitness_checksum_ok": true,
+  "fitness_checksum": "dc73a394b4dbc79a",
+  "s5_checksum": "dc73a394b4dbc79a",
+  "newborn_zip_sha256": "d313b107e99e03a5ce856226ccc6b352ae5fb01f995eccb4c0a6888988fda2af",
+  "real_data_pct": 0.0,
+  "decision": {
+    "schema": "birth_exit_v1",
+    "exited": true,
+    "proofs": [
+      "foundation_five_receipts_v2",
+      "foundation_fitness_vector"
+    ],
+    "missing": [],
+    "survival": {
+      "birth_survival_pass_enabled": true,
+      "wr_floor": 0.2,
+      "expectancy_floor": -0.5,
+      "plant_soft_block_rate_max_per_1k": 100.0,
+      "note": "Survival floors for Birth EdgeScore only. Skill WR floor 0.35 applies when survival mode off; OOS 0.48 is Proving Ground / cert \u2014 not Birth exit."
+    },
+    "conflation_blockers": [],
+    "next_phase": "awakening",
+    "hub_after_exit": true,
+    "policy": {
+      "birth_exit_means": [
+        "five_foundation_v2_receipts",
+        "fitness_vector_checksum_ok",
+        "legal_plant_hard_const_ok",
+        "return_to_phase_hub"
+      ],
+      "birth_exit_does_not_require": [
+        "deck_unlocked",
+        "evolution_proof_passed",
+        "first_sim_order_placed",
+        "human_real_approval",
+        "perfect_birth_autonomy_proven",
+        "promotion_gate_passed",
+        "real_trading_live",
+        "shadow_validation_passed",
+        "sim_mirror_api_ok",
+        "sim_real_guard_stable",
+        "perfect_birth_flag",
+        "oos_wr_0_48",
+        "twin_full_auto",
+        "real_capital"
+      ],
+      "after_birth": {
+        "surface": "phase_hub",
+        "next_phase": "awakening",
+        "perfect_birth": "awakening_or_phase2_unlock_not_birth_gate",
+        "certificate_skill_walls": "proving_ground_and_cert_pipeline",
+        "economic_viability": "playground",
+        "risk_discipline": "apprenticeship",
+        "evolution_proof": "awakening"
+      },
+      "adr": [
+        "0036-birth-exit-vs-maturation",
+        "0046-birth-foundation-evolvable-plant"
+      ],
+      "sufficient_proofs_all_of": [
+        "foundation_fitness_vector",
+        "foundation_five_receipts_v2"
+      ]
+    }
+  }
+}

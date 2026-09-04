@@ -1,0 +1,10 @@
+{
+  "status": "ok",
+  "child_path": "/workspace/reports/genesis_cloud_run/artifacts/genesis_mark_eyes_pi_star.zip",
+  "child_sha256": "a9ffa8529e02f2d8f8a535be4dcce205a43abe20bdec492add78126a8181188b",
+  "learn_called": true,
+  "actual_timesteps": 10000,
+  "optimizer_steps": 90,
+  "init_policy": "scratch",
+  "train_hash": "5726ae7e83ff3d48"
+}

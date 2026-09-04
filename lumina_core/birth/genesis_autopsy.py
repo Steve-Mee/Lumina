@@ -193,23 +193,23 @@ def build_autopsy(*, art: Path, work: Path, state: dict[str, Any]) -> list[dict[
                 f"g5_eval.json tag={tag} HOLE_MOVED A/B={g5.get('HOLE_MOVED_A')}/{g5.get('HOLE_MOVED_B')}",
             )
         )
-    elif tag in {"GENESIS_EYES_FAIL", "GENESIS_S_MISSING", "GENESIS_BIRTH_ONLY"}:
-        rows.append(
-            _row(
-                "MARK_EYES eval vs newborn",
-                WEAK,
-                f"g5_eval.json tag={tag} (not compared to old path_early 78/83)",
-                "child did not clear HOLE_MOVED on both legs, or learn/eval skipped",
-                "GENESIS_EYES_HOLD_COMPARE",
-            )
-        )
     else:
+        eyes_a = dict(g5.get("eyes_A") or {})
+        eyes_b = dict(g5.get("eyes_B") or {})
+        n_a = int(eyes_a.get("n_policy") or 0)
+        n_b = int(eyes_b.get("n_policy") or 0)
+        cause = (
+            f"HOLE_MOVED A/B={g5.get('HOLE_MOVED_A')}/{g5.get('HOLE_MOVED_B')} "
+            f"n_policy={n_a}/{n_b} (need ≥150) "
+            f"Δn_H={g5.get('delta_n_H_A')}/{g5.get('delta_n_H_B')} "
+            f"Δmean_r={g5.get('delta_mean_r_A')}/{g5.get('delta_mean_r_B')}"
+        )
         rows.append(
             _row(
                 "MARK_EYES eval vs newborn",
                 WEAK,
-                "G5 not licensed",
-                "no G5 tag on disk",
+                f"g5_eval.json tag={tag or 'missing'} (not compared to old path_early 78/83)",
+                cause,
                 "GENESIS_EYES_HOLD_COMPARE",
             )
         )
@@ -220,11 +220,14 @@ def build_autopsy(*, art: Path, work: Path, state: dict[str, Any]) -> list[dict[
             "PATH_EXIT_K3_SHADOW default False; PATH_SHAPE_K3_SHADOW default False; not rerun",
         )
     )
+    engine_pct = dict(birth.get("engine_result") or {}).get("real_data_pct")
     rows.append(
         _row(
             "REAL / Promotion / Proof door",
             FORBIDDEN,
-            f"g6_real_door.json G6_tag={g6.get('G6_tag')} REAL=no source={SOURCE_LABEL} real_data_pct=0.0",
+            f"g6_real_door.json G6_tag={g6.get('G6_tag')} REAL=no source={SOURCE_LABEL} "
+            f"fixture_real_data_pct=0.0 engine_real_data_pct={engine_pct} "
+            "(certified-cache accounting is not a REAL certificate)",
         )
     )
     rows.append(

@@ -1,0 +1,37 @@
+{
+  "status": "completed",
+  "engine_result": {
+    "status": "completed",
+    "total_trades": 1105,
+    "ppo_steps": 42000,
+    "real_data_pct": 100.0,
+    "policy_path": "/workspace/reports/genesis_cloud_run/workspace/lumina_agents/ppo/lumina_ppo_policy.zip",
+    "training_mode": "certified",
+    "fitness_vector": {
+      "schema": "foundation_v2",
+      "mean_r": -0.12224323591010415,
+      "edge": 0.08961175522689718,
+      "occupancy": 0.2790397521941146,
+      "oos_wr": 0.415584,
+      "oos_sharpe": -1.5241811786200314,
+      "median_loss_r": 1.0160284642927073,
+      "s5_receipt_checksum": "dc73a394b4dbc79a",
+      "trades": 154
+    }
+  },
+  "error": "",
+  "timed_out": false,
+  "birth_exited": true,
+  "checkpoint": {},
+  "progress": {
+    "phase": "completed",
+    "receipt_stages": [
+      "stage1_trend",
+      "stage2_range",
+      "stage3_mixed",
+      "stage4_viable_plant",
+      "stage5_probe_handoff"
+    ],
+    "receipt_count": 5
+  }
+}

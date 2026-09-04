@@ -1,0 +1,107 @@
+[
+  {
+    "rung": "Fixture generator + certified cache",
+    "status": "Works",
+    "evidence": "01_genesis_fixture_manifest.json source=synthetic_cloud_fixture hash=5726ae7e83ff3d48 days=88 ticks=213120 regimes=['NEUTRAL', 'TREND_DOWN', 'TREND_UP']",
+    "cause": "",
+    "next_experiment": ""
+  },
+  {
+    "rung": "Birth S1",
+    "status": "Works",
+    "evidence": "s1_receipt.json schema=foundation_v2 trades=150 pass_criteria_id=closed_loop oos_sharpe=None",
+    "cause": "",
+    "next_experiment": ""
+  },
+  {
+    "rung": "Birth S2 occupancy / envelope",
+    "status": "Works",
+    "evidence": "s2_receipt.json schema=foundation_v2 trades=250 pass_criteria_id=selectivity oos_sharpe=None",
+    "cause": "",
+    "next_experiment": ""
+  },
+  {
+    "rung": "Birth S3 in-band idle",
+    "status": "Works",
+    "evidence": "s3_receipt.json schema=foundation_v2 trades=400 pass_criteria_id=mixed_regimes oos_sharpe=None",
+    "cause": "",
+    "next_experiment": ""
+  },
+  {
+    "rung": "Birth S4",
+    "status": "Works",
+    "evidence": "s4_receipt.json schema=foundation_v2 trades=151 pass_criteria_id=viable_plant oos_sharpe=None",
+    "cause": "",
+    "next_experiment": ""
+  },
+  {
+    "rung": "Birth S5 + OOS sharpe",
+    "status": "Works",
+    "evidence": "s5_receipt.json schema=foundation_v2 trades=154 pass_criteria_id=probe_handoff oos_sharpe=-1.5241811786200314",
+    "cause": "",
+    "next_experiment": ""
+  },
+  {
+    "rung": "Birth exit + pi_star export",
+    "status": "Works",
+    "evidence": "g3_birth_exit_exam.json exited=true sha=d313b107e99e03a5ce856226ccc6b352ae5fb01f995eccb4c0a6888988fda2af fitness_ok=True",
+    "cause": "",
+    "next_experiment": ""
+  },
+  {
+    "rung": "43-dim newborn eval A/B",
+    "status": "Works",
+    "evidence": "genesis_birth_A/B_close_ledger.jsonl on this fixture holdout halves",
+    "cause": "",
+    "next_experiment": ""
+  },
+  {
+    "rung": "MARK_EYES wrapper 46-dim",
+    "status": "Works",
+    "evidence": "genesis_mark_eyes_pi_star.zip init=scratch obs_dim=46",
+    "cause": "",
+    "next_experiment": ""
+  },
+  {
+    "rung": "MARK_EYES 10k scratch learn",
+    "status": "Works",
+    "evidence": "learn_called=true actual_timesteps=10000 seed=20260904",
+    "cause": "",
+    "next_experiment": ""
+  },
+  {
+    "rung": "MARK_EYES eval vs newborn",
+    "status": "Weak",
+    "evidence": "g5_eval.json tag=GENESIS_EYES_FAIL (not compared to old path_early 78/83)",
+    "cause": "HOLE_MOVED A/B=False/False n_policy=113/103 (need \u2265150) \u0394n_H=36/34 \u0394mean_r=0.0672562233335908/0.33046107806918934",
+    "next_experiment": "GENESIS_EYES_HOLD_COMPARE"
+  },
+  {
+    "rung": "T/DEAD/bounce families",
+    "status": "Forbidden-correct",
+    "evidence": "PATH_EXIT_K3_SHADOW default False; PATH_SHAPE_K3_SHADOW default False; not rerun",
+    "cause": "",
+    "next_experiment": ""
+  },
+  {
+    "rung": "REAL / Promotion / Proof door",
+    "status": "Forbidden-correct",
+    "evidence": "g6_real_door.json G6_tag=REAL_DOOR_LOCKED REAL=no source=synthetic_cloud_fixture fixture_real_data_pct=0.0 engine_real_data_pct=100.0 (certified-cache accounting is not a REAL certificate)",
+    "cause": "",
+    "next_experiment": ""
+  },
+  {
+    "rung": "Capital path (qty=1 MES $5 clip)",
+    "status": "Works",
+    "evidence": "lumina_core/rl/gym_stop_fill.py:32 birth_force_qty_one; lumina_core/birth/notional_cap.py:48 birth_close_cap_usd; lumina_core/birth/birth_trade_geometry.py MES $5 \u2014 untouched",
+    "cause": "",
+    "next_experiment": ""
+  },
+  {
+    "rung": "Autonomy (checkpoint / no human T)",
+    "status": "Works",
+    "evidence": "checkpoint=False force=True reuse_data_manifest=True no T_LOCK",
+    "cause": "",
+    "next_experiment": ""
+  }
+]
