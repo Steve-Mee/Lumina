@@ -109,10 +109,10 @@ def test_guard_not_patched() -> None:
     assert loc.startswith(f"{GUARD}:")
     assert not loc.endswith(":-1")
     guard_src = Path(GUARD).read_text(encoding="utf-8")
-    assert "def risk_exceeds_1pct" in guard_src
+    assert "BIRTH_MAX_RISK_STOP_PCT = 0.01" in guard_src
+    assert "risk_exceeds_1pct" in guard_src
     porcelain = subprocess.check_output(["git", "status", "--porcelain", "--", GUARD], text=True)
     assert porcelain.strip() == ""
-    # Actions PR checkout often has no origin/main. Diff only if a base exists.
     for ref in ("origin/main", "main"):
         if not _git_ref_exists(ref):
             continue
@@ -123,6 +123,7 @@ def test_guard_not_patched() -> None:
         text = Path(rel).read_text(encoding="utf-8")
         assert "def risk_exceeds_1pct" not in text
         assert "guard_bypassed = True" not in text
+        assert "BIRTH_MAX_RISK_STOP_PCT = " not in text
     flags = empty_band_flags()
     assert flags["guard_bypassed"] is False
     composed = compose_band_flags({"guard_bypassed": True})
