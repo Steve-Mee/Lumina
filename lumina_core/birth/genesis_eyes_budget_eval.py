@@ -155,6 +155,7 @@ def run_budget_eval(*, work: Path, art: Path, holdout_pct: float) -> dict[str, A
         leg="B", expected_dim=int(MARK_EYES_OBS_DIM),
     )
     missing = any(bool(x.get("S_MISSING")) for x in (birth_a, birth_b, eyes_a, eyes_b))
+    reasons = [str(x.get("reason") or "") for x in (birth_a, birth_b, eyes_a, eyes_b) if x.get("S_MISSING")]
     return {
         "ticks_per_leg": [len(leg_a), len(leg_b)],
         "birth_A": birth_a,
@@ -162,6 +163,7 @@ def run_budget_eval(*, work: Path, art: Path, holdout_pct: float) -> dict[str, A
         "eyes_A": eyes_a,
         "eyes_B": eyes_b,
         "S_MISSING": missing,
+        "reason": "; ".join(r for r in reasons if r),
         "used_old_path_early": False,
         "used_g5_halves_as_exam": False,
         "eval_seeds": ["A", "B"],
