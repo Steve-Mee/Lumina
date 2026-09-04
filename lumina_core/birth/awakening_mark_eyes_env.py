@@ -16,6 +16,9 @@ from lumina_core.birth.awakening_mark_eyes_obs import (
 from lumina_core.birth.awakening_path_exit_k3 import PATH_EXIT_K3_SHADOW
 from lumina_core.birth.awakening_path_shape_k3_dead import PATH_SHAPE_K3_SHADOW
 from lumina_core.birth.awakening_select_env import make_select_train_env
+from lumina_core.birth.config_curriculum import BirthCurriculumConfig
+from lumina_core.birth.curriculum_types import CurriculumStage
+from lumina_core.birth.foundation_occupancy_envelope import foundation_occupancy_envelope_enabled
 
 
 def _rl_env(inner: Any) -> Any:
@@ -104,6 +107,14 @@ class MarkEyesEnv(gym.Env):
         return obs46, reward, terminated, truncated, info
 
 
+def _apply_train_force_open(inner: Any, *, force_open: bool) -> None:
+    # FORCE_OPEN true only on train factory — same Birth occupancy helper.
+    birth_on = foundation_occupancy_envelope_enabled(
+        CurriculumStage.STAGE5_PROBE_HANDOFF, BirthCurriculumConfig()
+    )
+    inner.envelope["participation_envelope_enabled"] = bool(force_open) and bool(birth_on)
+
+
 def make_mark_eyes_train_env(
     data: list[dict[str, Any]],
     *,
@@ -112,6 +123,7 @@ def make_mark_eyes_train_env(
     max_steps: int,
     tax_r: float = 0.0,
     train_reward_fn: Any | None = None,
+    force_open: bool = False,
 ) -> MarkEyesEnv:
     if abs(float(tax_r)) > 0.0 or train_reward_fn is not None:
         raise MarkEyesProtocolError("MARK_EYES is not hole-tax; tax_r must stay 0.0")
@@ -123,6 +135,7 @@ def make_mark_eyes_train_env(
         tax_r=0.0,
         train_reward_fn=None,
     )
+    _apply_train_force_open(inner, force_open=bool(force_open))
     return MarkEyesEnv(inner)
 
 
@@ -132,7 +145,10 @@ def make_mark_eyes_eval_env(
     workspace_root: Any,
     reports_dir: Any,
     max_steps: int,
+    force_open: bool = False,
 ) -> MarkEyesEnv:
+    if force_open:  # eval refuses True
+        raise MarkEyesProtocolError("FORCE_OPEN must stay False at eval")
     return make_mark_eyes_train_env(
         data,
         workspace_root=workspace_root,
@@ -140,6 +156,7 @@ def make_mark_eyes_eval_env(
         max_steps=int(max_steps),
         tax_r=0.0,
         train_reward_fn=None,
+        force_open=False,
     )
 
 
