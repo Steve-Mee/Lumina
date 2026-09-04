@@ -47,10 +47,20 @@ MODULES = (
     "lumina_core/birth/awakening_band_report.py",
     "lumina_core/birth/awakening_band_run.py",
 )
+GUARD = "lumina_core/birth/birth_constitution_guard.py"
 
 
 def _thick(*, n_h: int = 40, mean_r: float = 0.1, n_policy: int = 160, wr: float = 0.4) -> dict[str, object]:
     return {"n_policy": n_policy, "n_H": n_h, "mean_r": mean_r, "wr": wr, "n_W": 20, "bars_held_p50": 90.0}
+
+
+def _git_ref_exists(ref: str) -> bool:
+    proc = subprocess.run(
+        ["git", "rev-parse", "--verify", ref],
+        capture_output=True,
+        text=True,
+    )
+    return proc.returncode == 0
 
 
 def test_out_of_band_is_dead_seed() -> None:
@@ -96,13 +106,19 @@ def test_max_three_seeds() -> None:
 def test_guard_not_patched() -> None:
     proto = inspect_band_protocol()
     loc = str(proto["guard_1pct_unedited"])
-    assert loc.startswith("lumina_core/birth/birth_constitution_guard.py:")
+    assert loc.startswith(f"{GUARD}:")
     assert not loc.endswith(":-1")
-    diff = subprocess.check_output(
-        ["git", "diff", "origin/main", "--", "lumina_core/birth/birth_constitution_guard.py"],
-        text=True,
-    )
-    assert diff == ""
+    guard_src = Path(GUARD).read_text(encoding="utf-8")
+    assert "def risk_exceeds_1pct" in guard_src
+    porcelain = subprocess.check_output(["git", "status", "--porcelain", "--", GUARD], text=True)
+    assert porcelain.strip() == ""
+    # Actions PR checkout often has no origin/main. Diff only if a base exists.
+    for ref in ("origin/main", "main"):
+        if not _git_ref_exists(ref):
+            continue
+        diff = subprocess.check_output(["git", "diff", ref, "--", GUARD], text=True)
+        assert diff == "", f"1% guard patched versus {ref}"
+        break
     for rel in MODULES:
         text = Path(rel).read_text(encoding="utf-8")
         assert "def risk_exceeds_1pct" not in text
