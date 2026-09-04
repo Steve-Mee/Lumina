@@ -1,0 +1,316 @@
+# AWAKENING_OCCUPANCY_BALANCE_AUDIT
+
+## Gate 0 live-check + inspect_occupancy_protocol
+
+```json
+{
+  "origin_main": "39cab3a630caf7a206f4583e4d1d5cc3f3b0548d",
+  "POLICY_EDGE_MIN_TRADES": 150,
+  "OBSERVATION_DIM": 43,
+  "pct_synthetic": 0.0,
+  "inspect_complete": true
+}
+```
+
+```json
+{
+  "phase_formula_mod_3": "lumina_core/birth/awakening_occupancy_tape.py:92",
+  "phase_blocks_6_or_12": "lumina_core/birth/awakening_occupancy_tape.py:45",
+  "gen_counts_n3": "lumina_core/birth/awakening_occupancy_tape.py:119",
+  "exam_seed_20260910": "lumina_core/birth/awakening_occupancy_tape.py:34",
+  "start_et_2026_02_02": "lumina_core/birth/awakening_occupancy_tape.py:34",
+  "drift_kappa_attempt2": "lumina_core/birth/awakening_occupancy_tape.py:41",
+  "fracs_25_25": "lumina_core/birth/awakening_occupancy_tape.py:223",
+  "no_oracle_regime": "lumina_core/birth/awakening_occupancy_tape.py:163",
+  "body_skipped": "lumina_core/birth/awakening_occupancy_run.py:122",
+  "floor_150": "lumina_core/birth/foundation_metrics.py:39",
+  "both_leg_license": "lumina_core/birth/awakening_occupancy_flags.py:165",
+  "genesis_eyes_ok_forced_false": "lumina_core/birth/awakening_occupancy_flags.py:182",
+  "hooks_default_false": "lumina_core/birth/awakening_path_exit_k3.py:22",
+  "honesty_synthetic_0": "lumina_core/birth/data_source_honesty.py:22",
+  "missing_sites": [],
+  "gate0_complete": true
+}
+```
+
+## T0 identity
+
+```json
+{
+  "origin_main": "39cab3a630caf7a206f4583e4d1d5cc3f3b0548d",
+  "fixture_seed": 20260910,
+  "fixture_train_hash": "9b66a1625937d161",
+  "baseline_sha256": "a9ffa8529e02f2d8f8a535be4dcce205a43abe20bdec492add78126a8181188b",
+  "child_sha256": "",
+  "init_policy": "scratch",
+  "obs_dim": 46,
+  "OBSERVATION_DIM": 43,
+  "POLICY_EDGE_MIN_TRADES": 150,
+  "timesteps": 10000,
+  "train_seed": 20260910
+}
+```
+
+## T1 honesty / G2 occupancy fixture
+
+```json
+{
+  "pct_synthetic_cloud_fixture": 0.0,
+  "pct_real_historical": 0.0,
+  "pct_real": 100.0,
+  "synthetic_source_reasons": [
+    "synthetic_source:synthetic_cloud_fixture"
+  ],
+  "min_real_data_pct": 95.0,
+  "G6_tag": "REAL_DOOR_LOCKED"
+}
+```
+
+## T2 G3 a9ffa852 vs G5 scratch V1 child on THIS tape
+
+### Leg A
+
+```json
+{
+  "leg": "A",
+  "n_policy_base": 0,
+  "n_policy_child": 0,
+  "wr_base": 0.0,
+  "wr_child": 0.0,
+  "mean_r_base": 0.0,
+  "mean_r_child": 0.0,
+  "n_H_base": 0,
+  "n_H_child": 0,
+  "bars_held_p50_base": 0.0,
+  "bars_held_p50_child": 0.0,
+  "delta_mean_r": 0.0,
+  "delta_n_H": 0,
+  "HOLE_OK": false,
+  "MOVED": false,
+  "S_THIN": false,
+  "S_HARM": false,
+  "S_MISSING": true
+}
+```
+
+### Leg B
+
+```json
+{
+  "leg": "B",
+  "n_policy_base": 0,
+  "n_policy_child": 0,
+  "wr_base": 0.0,
+  "wr_child": 0.0,
+  "mean_r_base": 0.0,
+  "mean_r_child": 0.0,
+  "n_H_base": 0,
+  "n_H_child": 0,
+  "bars_held_p50_base": 0.0,
+  "bars_held_p50_child": 0.0,
+  "delta_mean_r": 0.0,
+  "delta_n_H": 0,
+  "HOLE_OK": false,
+  "MOVED": false,
+  "S_THIN": false,
+  "S_HARM": false,
+  "S_MISSING": true
+}
+```
+
+## T3 license vs G3 books
+
+```json
+{
+  "tag": "OCCUPANCY_WORLD_FAIL",
+  "law": "NONE",
+  "licensed_next_family": "H_NONE",
+  "MOVED_A": false,
+  "MOVED_B": false,
+  "GENESIS_EYES_OK": false,
+  "Proof": false,
+  "REAL": "no",
+  "honesty": "LAW: #41 OTHER = 3/2/1 occupancy. This window forces %3 equal blocks. a9ffa852 is baseline, not clay. Scratch 46-dim V1. Floor 150 stays. GENESIS_EYES_OK stays false. OCCUPANCY_OK is not Evolution Proof. REAL=no. Source synthetic_cloud_fixture. License vs frozen a9ffa852 on THIS tape."
+}
+```
+
+## G6 REAL door
+
+```json
+{
+  "G6_tag": "REAL_DOOR_LOCKED",
+  "REAL": "no",
+  "rows": [
+    {
+      "function": "config.yaml mode",
+      "result": "PASS",
+      "why": "mode='sim' (must stay sim)"
+    },
+    {
+      "function": "BirthCertificateThresholds.min_real_data_pct lumina_core/birth/birth_certificate.py:14",
+      "result": "FAIL",
+      "why": "real_data_pct=0.0 < min_real_data_pct=95.0"
+    },
+    {
+      "function": "tick source",
+      "result": "FAIL-CLOSED",
+      "why": "source=synthetic_cloud_fixture (synthetic_cloud_fixture is not a REAL certificate)"
+    },
+    {
+      "function": "ApplicationContainer.start lumina_core/container/container_lifecycle.py:164",
+      "result": "PASS",
+      "why": "container.start not called (broker connect forbidden)"
+    },
+    {
+      "function": "NinjaTrader / Fabric / gRPC",
+      "result": "PASS",
+      "why": "NT/Fabric host not contacted"
+    },
+    {
+      "function": "PromotionGate.evaluate lumina_core/evolution/promotion_gate.py:136",
+      "result": "FAIL",
+      "why": "no proving certificate / no promotion evidence on synthetic first life"
+    },
+    {
+      "function": "evolution_proof_passed lumina_core/birth/evolution_proof_gate.py:137",
+      "result": "FAIL",
+      "why": "stamped=False (must stay false)"
+    },
+    {
+      "function": "maturation_eligible_for_real lumina_core/maturity/maturation_progress.py:190",
+      "result": "FAIL",
+      "why": "eligible=False blockers=['Birth Certificate v2 issued', 'Evolution Proof passed', 'SIM stability READY_FOR_REAL (5-day green streak)', 'Promotion gate passed (shadow validation)', 'Perfect Birth Phase complete (twin vs Steve accuracy + never-stop recovery + auto-approval + shadow alignment)']"
+    },
+    {
+      "function": "certificate OOS WR 0.48",
+      "result": "FAIL",
+      "why": "min_oos_winrate=0.48 not claimed"
+    },
+    {
+      "function": "kill-switch / Dead Man lumina_core/risk/risk_gates.py:169",
+      "result": "N/A",
+      "why": "not armed against a live broker (no broker connect)"
+    },
+    {
+      "function": "HardRiskController lumina_core/risk/risk_controller.py:36",
+      "result": "PRESENT",
+      "why": "risk engine independent of strategy (bounded context lumina_core/risk)"
+    },
+    {
+      "function": "first live/SIM broker order",
+      "result": "NONE",
+      "why": "no container.start, no order path"
+    },
+    {
+      "function": "lumina_core/rl/observation_builder.py:36 OBSERVATION_DIM",
+      "result": "PASS",
+      "why": "OBSERVATION_DIM=43 (must stay 43)"
+    },
+    {
+      "function": "PATH_EXIT_K3_SHADOW / PATH_SHAPE_K3_SHADOW",
+      "result": "PASS",
+      "why": "exit=False shape=False default False"
+    }
+  ],
+  "broken": [],
+  "real_data_pct": 0.0,
+  "source": "synthetic_cloud_fixture",
+  "mode": "sim",
+  "evolution_proof_stamped": false,
+  "promotion_passed": false,
+  "nt_called": false,
+  "container_start_called": false,
+  "observation_dim": 43
+}
+```
+
+## Honesty
+
+LAW: #41 OTHER = 3/2/1 occupancy. This window forces %3 equal blocks. a9ffa852 is baseline, not clay. Scratch 46-dim V1. Floor 150 stays. GENESIS_EYES_OK stays false. OCCUPANCY_OK is not Evolution Proof. REAL=no. Source synthetic_cloud_fixture. License vs frozen a9ffa852 on THIS tape.
+
+Origin genesis/physics/coupling/v2/polish artifacts were not overwritten.
+GENESIS_EYES_OK is false. used_v2_child is false. oracle_regime is false. REAL=no. Floor 150.
+
+## flags
+
+```json
+{
+  "source": "awakening_occupancy_balance",
+  "phase_blocks": 6,
+  "gen_up": 71040,
+  "gen_down": 71040,
+  "gen_range": 71040,
+  "train_up_frac": 0.27609665126084487,
+  "train_down_frac": 0.2094380929214303,
+  "hold_up_frac": 0.16176266481609994,
+  "hold_down_frac": 0.2773999537358316,
+  "world_ok": false,
+  "fixture_seed": 20260910,
+  "fixture_train_hash": "9b66a1625937d161",
+  "baseline_sha256": "a9ffa8529e02f2d8f8a535be4dcce205a43abe20bdec492add78126a8181188b",
+  "child_sha256": "",
+  "init_policy": "scratch",
+  "obs_dim": 46,
+  "learn_called": false,
+  "actual_timesteps": 0,
+  "A": {
+    "n_policy_base": 0,
+    "n_policy_child": 0,
+    "mean_r_base": 0.0,
+    "mean_r_child": 0.0,
+    "n_H_base": 0,
+    "n_H_child": 0,
+    "wr_base": 0.0,
+    "wr_child": 0.0,
+    "n_W_base": 0,
+    "n_W_child": 0,
+    "bars_held_p50_base": 0.0,
+    "bars_held_p50_child": 0.0,
+    "delta_mean_r": 0.0,
+    "delta_n_H": 0,
+    "HOLE_OK": false,
+    "MOVED": false,
+    "S_THIN": false,
+    "S_HARM": false,
+    "S_MISSING": true
+  },
+  "B": {
+    "n_policy_base": 0,
+    "n_policy_child": 0,
+    "mean_r_base": 0.0,
+    "mean_r_child": 0.0,
+    "n_H_base": 0,
+    "n_H_child": 0,
+    "wr_base": 0.0,
+    "wr_child": 0.0,
+    "n_W_base": 0,
+    "n_W_child": 0,
+    "bars_held_p50_base": 0.0,
+    "bars_held_p50_child": 0.0,
+    "delta_mean_r": 0.0,
+    "delta_n_H": 0,
+    "HOLE_OK": false,
+    "MOVED": false,
+    "S_THIN": false,
+    "S_HARM": false,
+    "S_MISSING": true
+  },
+  "tag": "OCCUPANCY_WORLD_FAIL",
+  "GENESIS_EYES_OK": false,
+  "law": "NONE",
+  "licensed_next_family": "H_NONE",
+  "evolution_proof_stamped": false,
+  "REAL": "no",
+  "playground": false,
+  "hook_default": false,
+  "oracle_regime": false,
+  "used_v2_child": false,
+  "polished_a9ffa852": false,
+  "real_data_pct": 0.0,
+  "G6_tag": "REAL_DOOR_LOCKED",
+  "overall": "AWAKENING_OCCUPANCY_BALANCE SHADOW_MEASURE",
+  "MOVED_A": false,
+  "MOVED_B": false,
+  "missing_reason": ""
+}
+```
