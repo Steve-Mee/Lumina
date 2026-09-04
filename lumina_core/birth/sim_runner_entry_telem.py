@@ -377,7 +377,7 @@ def close_open_telem(
                 usd = stash.get(f"path_k{k}_{kind}_usd")
                 if usd is not None:
                     out[f"path_k{k}_{kind}_r"] = float(usd) / denom
-    for key in ("path_exit_k3", "path_exit_k3_unreal_r"):
+    for key in ("path_exit_k3", "path_exit_k3_unreal_r", "path_exit_k3_threshold"):
         if key in stash and stash.get(key) is not None:
             out[key] = stash.get(key)
     _note_policy_stop(host, close_idx=close_idx, info=info, closed_was_plant=closed_was_plant)

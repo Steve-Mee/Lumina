@@ -7,6 +7,7 @@ from typing import Any
 from lumina_core.birth.awakening_path_exit_k3 import (
     K_LOCKED,
     path_exit_k3_shadow_enabled,
+    path_exit_k3_threshold,
     should_path_exit_k3,
 )
 
@@ -100,6 +101,7 @@ def after_open_telem_path_exit_k3(
     if requested and reason == "force_exit" and unreal_r is not None:
         stash["path_exit_k3"] = True
         stash["path_exit_k3_unreal_r"] = float(unreal_r)
+        stash["path_exit_k3_threshold"] = path_exit_k3_threshold()
     env._path_exit_k3_request = False
 
 
