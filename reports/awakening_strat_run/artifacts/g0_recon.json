@@ -1,0 +1,25 @@
+{
+  "origin_main": "a05a7db599e7228f0635d6570c802119fd8efda8",
+  "POLICY_EDGE_MIN_TRADES": 150,
+  "OBSERVATION_DIM": 43,
+  "pct_synthetic": 0.0,
+  "inspect_complete": true,
+  "protocol": {
+    "per_block_cut_060": "lumina_core/birth/awakening_strat_split.py:15",
+    "no_shuffle": "lumina_core/birth/awakening_strat_split.py:69",
+    "gen_counts_per_split": "lumina_core/birth/awakening_strat_split.py:54",
+    "exam_seed_start_et": "lumina_core/birth/awakening_strat_tape.py:60",
+    "drift_00024_frozen": "lumina_core/birth/awakening_strat_tape.py:66",
+    "fracs_25_25": "lumina_core/birth/awakening_strat_tape.py:289",
+    "no_oracle_regime": "lumina_core/birth/awakening_strat_tape.py:155",
+    "enrich_full_then_slice": "lumina_core/birth/awakening_strat_tape.py:211",
+    "body_skipped": "lumina_core/birth/awakening_strat_run.py:129",
+    "floor_150": "lumina_core/birth/foundation_metrics.py:39",
+    "both_leg_license": "lumina_core/birth/awakening_strat_flags.py:171",
+    "genesis_eyes_ok_false": "lumina_core/birth/awakening_strat_flags.py:180",
+    "hooks_default_false": "lumina_core/birth/awakening_path_exit_k3.py:22",
+    "honesty_synthetic_0": "lumina_core/birth/data_source_honesty.py:22",
+    "missing_sites": [],
+    "gate0_complete": true
+  }
+}
