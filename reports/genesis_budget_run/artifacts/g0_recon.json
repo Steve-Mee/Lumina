@@ -1,0 +1,28 @@
+{
+  "origin_main": "6ce936359a5d668f1fec6bc76dd6bedc0df55f66",
+  "POLICY_EDGE_MIN_TRADES": 150,
+  "OBSERVATION_DIM": 43,
+  "pct_synthetic": 0.0,
+  "pct_real_historical": 0.0,
+  "pct_real": 100.0,
+  "inspect_complete": true,
+  "protocol": {
+    "seed_20260905": "lumina_core/birth/genesis_eyes_budget.py:26",
+    "start_et_2026_07_06": "lumina_core/birth/genesis_eyes_budget.py:140",
+    "holdout_pct_0_40": "lumina_core/birth/genesis_eyes_budget.py:28",
+    "min_ticks_per_leg_40000": "lumina_core/birth/genesis_eyes_budget.py:31",
+    "student_sha_d313b107": "lumina_core/birth/genesis_eyes_budget.py:32",
+    "student_sha_a9ffa852": "lumina_core/birth/genesis_eyes_budget.py:33",
+    "forbidden_hash_5726ae7e": "lumina_core/birth/genesis_eyes_budget.py:34",
+    "forbidden_hash_7e86c2bb": "lumina_core/birth/genesis_eyes_budget.py:35",
+    "floor_150": "lumina_core/birth/foundation_metrics.py:39",
+    "thin_refuses_budget_ok": "lumina_core/birth/genesis_eyes_budget_flags.py:144",
+    "genesis_eyes_ok_forced_false": "lumina_core/birth/genesis_eyes_budget_flags.py:163",
+    "learn_absent": "lumina_core/birth/genesis_eyes_budget.py:25",
+    "hooks_default_false": "lumina_core/birth/awakening_path_exit_k3.py:22",
+    "hooks_shape_default_false": "lumina_core/birth/awakening_path_shape_k3_dead.py:57",
+    "synthetic_pct_zero": "lumina_core/birth/data_source_honesty.py:22",
+    "missing_sites": [],
+    "gate0_complete": true
+  }
+}
