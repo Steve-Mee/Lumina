@@ -7,6 +7,7 @@ from typing import Any
 
 from lumina_core.birth.birth_constitution_guard import BirthConstitutionGuard
 from lumina_core.birth.birth_certificate import BirthCertificateThresholds
+from lumina_core.birth.data_source_honesty import real_data_percentage, synthetic_source_reasons
 from lumina_core.birth.foundation_metrics import S5_DD_EQUITY_USD
 from lumina_core.birth.sim_runner import run_policy_rollout
 
@@ -91,14 +92,20 @@ def build_certificate_failure_reasons(
     constitution_violations: int,
     thresholds: BirthCertificateThresholds,
     regime_breakdown: dict[str, dict[str, float | int]] | None = None,
+    holdout_ticks: list[dict[str, Any]] | None = None,
 ) -> list[str]:
     reasons: list[str] = []
+    honest_pct = (
+        real_data_percentage(holdout_ticks) if holdout_ticks else float(real_data_pct)
+    )
+    reported_pct = honest_pct if holdout_ticks else float(real_data_pct)
     if constitution_violations != 0:
         reasons.append(f"constitution_violations:{constitution_violations}/0")
-    if real_data_pct < thresholds.min_real_data_pct:
+    if reported_pct < thresholds.min_real_data_pct:
         reasons.append(
-            f"real_data_pct:{real_data_pct:.2f}/{thresholds.min_real_data_pct:.2f}"
+            f"real_data_pct:{reported_pct:.2f}/{thresholds.min_real_data_pct:.2f}"
         )
+    reasons.extend(synthetic_source_reasons(holdout_ticks))
     if winrate < thresholds.min_oos_winrate:
         reasons.append(f"oos_winrate:{winrate:.2f}/{thresholds.min_oos_winrate:.2f}")
     if sharpe < thresholds.min_oos_sharpe:
@@ -165,9 +172,12 @@ def evaluate_holdout_certificate(
     regime_breakdown = build_oos_regime_breakdown(
         list(getattr(rollout, "trajectories", None) or [])
     )
+    honest_pct = (
+        real_data_percentage(holdout_data) if holdout_data else float(real_data_pct)
+    )
 
     failure_reasons = build_certificate_failure_reasons(
-        real_data_pct=float(real_data_pct),
+        real_data_pct=honest_pct,
         winrate=winrate,
         sharpe=sharpe,
         drawdown=drawdown,
@@ -176,10 +186,11 @@ def evaluate_holdout_certificate(
         constitution_violations=total_violations,
         thresholds=thresholds,
         regime_breakdown=regime_breakdown,
+        holdout_ticks=list(holdout_data or []),
     )
 
     result = {
-        "real_data_pct": float(real_data_pct),
+        "real_data_pct": float(honest_pct),
         "oos_winrate": round(winrate, 4),
         "oos_sharpe": round(sharpe, 4),
         "oos_max_drawdown_pct": round(drawdown, 4),

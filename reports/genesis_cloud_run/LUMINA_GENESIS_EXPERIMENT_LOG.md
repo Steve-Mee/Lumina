@@ -38,3 +38,11 @@ Evolution Proof stamped: False.
 REAL: no.
 Playground: no.
 G6 tag: REAL_DOOR_LOCKED.
+
+## 2026-09-04T10:08:24.799544+00:00 — genesis HOLD_COMPARE follow-on
+
+- tag=`GENESIS_FOLLOWON_OK` gate1=`HONEST_OK` gate2=`HOLD_LONGER` law=`SHADOW`
+- licensed_next_family=`GENESIS_EYES_BUDGET`
+- n_policy_child A/B=`113`/`103` floor=150 GENESIS_EYES_OK=false learn_called=false REAL=no
+
+PR #35 G5 is GENESIS_EYES_FAIL. This PR does not convert it to EYES_OK. Floor 150 is unchanged. No second 10k. Engine 100% on certified synthetic is a lie; Gate 1 removes that lie. Source synthetic_cloud_fixture. REAL=no. Playground=no. Proof=false.

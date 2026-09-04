@@ -67,7 +67,7 @@ def test_certificate_evaluator_passes_when_regimes_met(monkeypatch: pytest.Monke
     )
     result = evaluate_holdout_certificate(
         runtime=MagicMock(),
-        holdout_data=[{"last": 5000.0}],
+        holdout_data=[{"last": 5000.0, "source": "real"}],
         policy=None,
         real_data_pct=98.0,
         holdout_days=10,

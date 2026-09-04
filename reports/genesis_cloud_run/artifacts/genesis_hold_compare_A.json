@@ -1,0 +1,46 @@
+{
+  "birth": {
+    "n_policy": 150,
+    "n_entries": 160,
+    "mean_r": -0.13306818214641977,
+    "n_H": 67,
+    "bars_held_p50": 15.5,
+    "bars_held_p90": 80.0,
+    "bars_held_present": true
+  },
+  "child": {
+    "n_policy": 113,
+    "n_entries": 113,
+    "mean_r": -0.06581195881282897,
+    "n_H": 31,
+    "bars_held_p50": 90.0,
+    "bars_held_p90": 280.8,
+    "bars_held_present": true,
+    "n_policy_restated": 113
+  },
+  "cause": "HOLD_LONGER",
+  "trades_per_10k_birth": 69.49270326615705,
+  "trades_per_10k_child": 52.35116979383832,
+  "holdout_ticks": 21585,
+  "child_last_close_reason": "stop",
+  "g5_ledgers_read_only": true,
+  "learn_called": false,
+  "n_child_rows": 113,
+  "t2": {
+    "leg": "A",
+    "n_policy_birth": 150,
+    "n_policy_child": 113,
+    "bars_held_p50_birth": 15.5,
+    "bars_held_p50_child": 90.0,
+    "bars_held_p90_birth": 80.0,
+    "bars_held_p90_child": 280.8,
+    "trades_per_10k_birth": 69.49270326615705,
+    "trades_per_10k_child": 52.35116979383832,
+    "n_H_birth": 67,
+    "n_H_child": 31,
+    "mean_r_birth": -0.13306818214641977,
+    "mean_r_child": -0.06581195881282897,
+    "cause_tag": "HOLD_LONGER",
+    "child_last_close_reason": "stop"
+  }
+}

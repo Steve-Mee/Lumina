@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from lumina_core.birth.data_source_honesty import real_data_percentage, tape_source_label
 from lumina_core.birth.purged_split import PurgedSplit
 from lumina_core.rl.trend_features import ENRICH_VERSION
 
@@ -127,6 +128,8 @@ def save_cache_manifest(
     instruments: list[str] | tuple[str, ...] | None = None,
     stitched: bool = False,
     stitched_from: list[str] | tuple[str, ...] | None = None,
+    source: str = "",
+    real_data_pct: float = 0.0,
 ) -> str:
     payload = {
         "cache_schema_version": CACHE_SCHEMA_VERSION,
@@ -144,6 +147,8 @@ def save_cache_manifest(
         "stitched": bool(stitched),
         "stitched_from": [str(item) for item in (stitched_from or ())],
         "purged_split_params": {"holdout_pct": float(holdout_pct)},
+        "source": str(source or ""),
+        "real_data_pct": float(real_data_pct),
     }
     path = cache_manifest_path(workspace_root)
     _atomic_write_text(path, json.dumps(payload, ensure_ascii=True, indent=2))
@@ -208,6 +213,7 @@ def save_birth_data_cache(
 ) -> dict[str, str]:
     ticks_path = save_ticks_cache(workspace_root, ticks)
     split_path = save_split_cache(workspace_root, split=split, holdout_pct=holdout_pct)
+    honest_pct = real_data_percentage(ticks)
     manifest_path = save_cache_manifest(
         workspace_root,
         raw_ticks_hash=raw_ticks_hash,
@@ -222,6 +228,8 @@ def save_birth_data_cache(
         instruments=instruments,
         stitched=stitched,
         stitched_from=stitched_from,
+        source=tape_source_label(ticks),
+        real_data_pct=honest_pct,
     )
     return {
         "ticks_cache_path": ticks_path,
