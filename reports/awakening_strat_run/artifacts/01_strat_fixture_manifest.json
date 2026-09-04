@@ -1,0 +1,63 @@
+{
+  "days": 88,
+  "fixture_seed": 20260911,
+  "gen_counts": {
+    "DOWN": 71040,
+    "RANGE": 71040,
+    "UP": 71040
+  },
+  "gen_down": 71040,
+  "gen_range": 71040,
+  "gen_up": 71040,
+  "hash": "7923fa61a414b51c",
+  "hold_down_frac": 0.2233131569069069,
+  "hold_gen_counts": {
+    "DOWN": 28416,
+    "RANGE": 28416,
+    "UP": 28416
+  },
+  "hold_gen_down": 28416,
+  "hold_gen_range": 28416,
+  "hold_gen_up": 28416,
+  "hold_up_frac": 0.2312546921921922,
+  "holdout_regime_counts": {
+    "NEUTRAL": 46497,
+    "TREND_DOWN": 19037,
+    "TREND_UP": 19714
+  },
+  "holdout_tick_count": 85248,
+  "host_real_data_pct": 0.0,
+  "path": "/workspace/reports/awakening_strat_run/workspace/state/lumina_birth_cache_manifest.json",
+  "phase_blocks": 6,
+  "raw_ticks_hash": "635837a84bd616f8",
+  "real_data_pct": 0.0,
+  "requested_days": 90,
+  "source": "synthetic_cloud_fixture",
+  "split_path": "/workspace/reports/awakening_strat_run/workspace/state/lumina_birth_split_cache.json",
+  "splitter": "per_phase_60_40",
+  "start_et": "2026-01-05T18:00:00-05:00",
+  "symbol": "NQ SEP26",
+  "tick_count": 213120,
+  "ticks_path": "/workspace/reports/awakening_strat_run/workspace/state/lumina_birth_ticks_cache.jsonl",
+  "ticks_per_leg": [
+    42624,
+    42624
+  ],
+  "train_down_frac": 0.24540165165165165,
+  "train_gen_counts": {
+    "DOWN": 42624,
+    "RANGE": 42624,
+    "UP": 42624
+  },
+  "train_gen_down": 42624,
+  "train_gen_range": 42624,
+  "train_gen_up": 42624,
+  "train_regime_counts": {
+    "NEUTRAL": 66385,
+    "TREND_DOWN": 31380,
+    "TREND_UP": 30107
+  },
+  "train_tick_count": 127872,
+  "train_up_frac": 0.2354463838838839,
+  "world_ok": false
+}
