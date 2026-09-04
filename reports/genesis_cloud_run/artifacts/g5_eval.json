@@ -1,0 +1,46 @@
+{
+  "holdout_a_ticks": 21585,
+  "holdout_b_ticks": 21585,
+  "birth_A": {
+    "n_policy": 150,
+    "wr_policy": 0.4,
+    "mean_r_policy": -0.13306818214641977,
+    "n_H": 67,
+    "ledger": "/workspace/reports/genesis_cloud_run/artifacts/genesis_birth_A_close_ledger.jsonl",
+    "n_rows": 160
+  },
+  "birth_B": {
+    "n_policy": 150,
+    "wr_policy": 0.22,
+    "mean_r_policy": -0.3946853762542806,
+    "n_H": 55,
+    "ledger": "/workspace/reports/genesis_cloud_run/artifacts/genesis_birth_B_close_ledger.jsonl",
+    "n_rows": 159
+  },
+  "eyes_A": {
+    "n_policy": 113,
+    "wr_policy": 0.4424778761061947,
+    "mean_r_policy": -0.06581195881282897,
+    "n_H": 31,
+    "ledger": "/workspace/reports/genesis_cloud_run/artifacts/genesis_mark_eyes_A_close_ledger.jsonl",
+    "n_rows": 113
+  },
+  "eyes_B": {
+    "n_policy": 103,
+    "wr_policy": 0.4854368932038835,
+    "mean_r_policy": -0.06422429818509125,
+    "n_H": 21,
+    "ledger": "/workspace/reports/genesis_cloud_run/artifacts/genesis_mark_eyes_B_close_ledger.jsonl",
+    "n_rows": 103
+  },
+  "baseline_present": true,
+  "G5_tag": "GENESIS_EYES_FAIL",
+  "HOLE_MOVED_A": false,
+  "HOLE_MOVED_B": false,
+  "delta_n_H_A": 36,
+  "delta_mean_r_A": 0.0672562233335908,
+  "delta_n_H_B": 34,
+  "delta_mean_r_B": 0.33046107806918934,
+  "used_old_path_early": false,
+  "eval_seeds_20260902_20260903": false
+}

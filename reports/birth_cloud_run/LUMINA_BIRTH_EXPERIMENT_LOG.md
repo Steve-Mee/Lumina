@@ -354,3 +354,8 @@ on parent 8cc435c6. This window is a new body with mark-path eyes. Proof=false.
 **Tag / law:** `EYES_OK` / `SHADOW` family=`AWAKENING_MARK_EYES`
 **Overall:** `GRIND_REGRESS_AWAKENING_OPEN MARK_EYES_WINDOW EYES_MEASURE`
 **SSOT:** `AWAKENING_MARK_EYES_AUDIT.md` / `AWAKENING_MARK_EYES_VERDICT.md`
+---
+
+## Pointer — genesis first-life ladder
+
+Genesis run lives under `reports/genesis_cloud_run`. Old `reports/birth_cloud_run` artifacts were **not** used as inputs (no path_early JSONL, no 8cc435c6 / 53df2d78 / 7e86c2bb tape, no parent zip load).

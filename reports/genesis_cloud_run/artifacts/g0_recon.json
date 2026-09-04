@@ -1,0 +1,13 @@
+{
+  "origin_main": "1d4f00631f480498522a2a036806ae076a2b588a",
+  "HEAD": "7be1e7cba5e2b650c046600614c5324e43e6b006",
+  "OBS": 43,
+  "SOURCE_LABEL": "synthetic_cloud_fixture",
+  "SCHEMA_VERSION": "cloud_fixture_v1",
+  "DAYS": 90,
+  "OLD_PARENT_PRESENT_DO_NOT_LOAD": true,
+  "old_parent_zip_sha256": "8cc435c68a37b0a070e38bccc4bfd402d4a802396bd7cd2fcce02f50acf69a03",
+  "fixture_seed": 20260904,
+  "mode": "sim",
+  "practice_mode": false
+}
