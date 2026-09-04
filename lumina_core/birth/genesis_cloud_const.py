@@ -13,6 +13,10 @@ GENESIS_FIXTURE_SEED = 20260904
 GENESIS_INSTRUMENT = "NQ SEP26"
 GENESIS_START_PRICE = 21_150.0
 GENESIS_HOLDOUT_PCT = 0.20
+# Default fixture calendar (2026-06-01) + 10s/60s bars fingerprints as 7e86c2bb
+# because train_hash is len+first+last timestamp, not prices. Offset +7d keeps
+# 90-day density and yields a distinct tape identity for this first life.
+GENESIS_START_ET_ISO = "2026-06-08T18:00:00-04:00"
 FORBIDDEN_TICKS_SHA16 = "7e86c2bb1c71d514"
 SOURCE_GENESIS = "genesis_cloud_ladder"
 G6_TAG = "REAL_DOOR_LOCKED"
@@ -93,6 +97,7 @@ __all__ = [
     "GENESIS_HOLDOUT_PCT",
     "GENESIS_INSTRUMENT",
     "GENESIS_ROOT",
+    "GENESIS_START_ET_ISO",
     "GENESIS_START_PRICE",
     "GENESIS_WORK",
     "HONESTY",

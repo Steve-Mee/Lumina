@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import shutil
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from lumina_core.birth.genesis_cloud_const import (
     GENESIS_HOLDOUT_PCT,
     GENESIS_INSTRUMENT,
     GENESIS_ROOT,
+    GENESIS_START_ET_ISO,
     GENESIS_START_PRICE,
     GENESIS_WORK,
     OLD_PARENT_ZIPS,
@@ -118,6 +120,7 @@ def persist_genesis_fixture(
     eth_bar_seconds: int = 60,
 ) -> dict[str, Any]:
     assert_genesis_seed(GENESIS_FIXTURE_SEED)
+    start_et = datetime.fromisoformat(GENESIS_START_ET_ISO)
     spec = CloudFixtureSpec(
         instrument=GENESIS_INSTRUMENT,
         calendar_days=int(FOUNDATION_HISTORY_START_DAYS),
@@ -126,6 +129,7 @@ def persist_genesis_fixture(
         seed=GENESIS_FIXTURE_SEED,
         rth_bar_seconds=int(rth_bar_seconds),
         eth_bar_seconds=int(eth_bar_seconds),
+        start_et=start_et,
     )
     result = persist_cloud_fixture(work, spec=spec)
     sidecar = art / "01_genesis_fixture_manifest.json"
@@ -135,6 +139,7 @@ def persist_genesis_fixture(
     payload["eth_bar_seconds"] = int(eth_bar_seconds)
     payload["real_data_pct"] = 0.0
     payload["fixture_seed"] = GENESIS_FIXTURE_SEED
+    payload["start_et"] = GENESIS_START_ET_ISO
     assert_genesis_fixture(work, payload)
     sidecar.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return payload

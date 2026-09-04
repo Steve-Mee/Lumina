@@ -13,6 +13,7 @@ from lumina_core.birth.genesis_cloud_const import (
     FORBIDDEN_TICKS_SHA16,
     G6_TAG,
     GENESIS_FIXTURE_SEED,
+    GENESIS_START_ET_ISO,
 )
 from lumina_core.birth.genesis_cloud_protocol import (
     GenesisProtocolError,
@@ -32,6 +33,7 @@ from lumina_core.rl.observation_builder import OBSERVATION_DIM
 def test_genesis_seed_is_20260904() -> None:
     assert GENESIS_FIXTURE_SEED == 20260904
     assert GENESIS_TRAIN_SEED == 20260904
+    assert GENESIS_START_ET_ISO.startswith("2026-06-08")
     assert assert_genesis_seed(20260904) == 20260904
     with pytest.raises(GenesisProtocolError):
         assert_genesis_seed(20260901)
