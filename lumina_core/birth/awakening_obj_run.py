@@ -148,9 +148,29 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, default=str) + "\n", encoding="utf-8")
 
 
+def _restore_exam_env(previous: dict[str, str | None]) -> None:
+    for key, value in previous.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+
+
 def run_awakening_obj(*, repo: Path | None = None) -> dict[str, Any]:
+    previous_env = {
+        "LUMINA_FABRIC_SUPERVISOR": os.environ.get("LUMINA_FABRIC_SUPERVISOR"),
+        "VOICE_ENABLED": os.environ.get("VOICE_ENABLED"),
+        "LUMINA_CONFIG": os.environ.get("LUMINA_CONFIG"),
+    }
     os.environ["LUMINA_FABRIC_SUPERVISOR"] = "0"
     os.environ["VOICE_ENABLED"] = "false"
+    try:
+        return _run_awakening_obj_body(repo=repo)
+    finally:
+        _restore_exam_env(previous_env)
+
+
+def _run_awakening_obj_body(*, repo: Path | None = None) -> dict[str, Any]:
     origin_before = snapshot_origin_artifacts(repo=repo)
     reports, work, art = prepare_obj_trees(repo=repo)
     os.environ["LUMINA_CONFIG"] = str((work / "config.yaml").resolve())
