@@ -1,0 +1,41 @@
+{
+  "cache_schema_version": 1,
+  "days": 88,
+  "enrich_version": "trend_features_v1",
+  "fixture_seed": 20260907,
+  "hash": "5e7eae98d1b4d228",
+  "holdout_pct": 0.4,
+  "holdout_regimes": [
+    "NEUTRAL",
+    "TREND_DOWN",
+    "TREND_UP"
+  ],
+  "holdout_tick_count": 86460,
+  "host_real_data_pct": 0.0,
+  "path": "/workspace/reports/awakening_eyes_v2_run/workspace/state/lumina_birth_cache_manifest.json",
+  "raw_ticks_hash": "1c15b552af34b4c3",
+  "real_data_pct": 0.0,
+  "regime_counts": {
+    "NEUTRAL": 161587,
+    "TREND_DOWN": 26288,
+    "TREND_UP": 25245
+  },
+  "requested_days": 90,
+  "schema_version": "cloud_fixture_v1",
+  "source": "synthetic_cloud_fixture",
+  "split_path": "/workspace/reports/awakening_eyes_v2_run/workspace/state/lumina_birth_split_cache.json",
+  "start_et": "2026-05-04T18:00:00-04:00",
+  "symbol": "NQ SEP26",
+  "tick_count": 213120,
+  "ticks_path": "/workspace/reports/awakening_eyes_v2_run/workspace/state/lumina_birth_ticks_cache.jsonl",
+  "ticks_per_leg": [
+    43230,
+    43230
+  ],
+  "train_regimes": [
+    "NEUTRAL",
+    "TREND_DOWN",
+    "TREND_UP"
+  ],
+  "train_tick_count": 123330
+}
