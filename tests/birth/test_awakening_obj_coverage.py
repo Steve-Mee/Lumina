@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,6 +10,8 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
+
+from lumina_core.config_loader import ConfigLoader
 
 from lumina_core.birth.awakening_obj_eval import (
     organism_stats,
@@ -45,6 +48,16 @@ from lumina_core.birth.awakening_obj_tape import (
 from lumina_core.birth.awakening_obj_train import pin_train_seed, run_obj_v1_train
 from lumina_core.birth.awakening_path_exit_k3 import PATH_EXIT_K3_SHADOW
 from lumina_core.birth.awakening_path_shape_k3_dead import PATH_SHAPE_K3_SHADOW
+
+
+@pytest.fixture(autouse=True)
+def _isolate_obj_process_env(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """Coverage Report is sequential: do not leak stub LUMINA_CONFIG into later suites."""
+    monkeypatch.setenv("LUMINA_CONFIG", os.environ.get("LUMINA_CONFIG", "config.yaml"))
+    monkeypatch.setenv("LUMINA_FABRIC_SUPERVISOR", os.environ.get("LUMINA_FABRIC_SUPERVISOR", "0"))
+    monkeypatch.setenv("VOICE_ENABLED", os.environ.get("VOICE_ENABLED", "false"))
+    yield
+    ConfigLoader.invalidate()
 
 
 def _book(*, n_policy: int = 0, mean_r: float = 0.0, n_h: int = 0) -> dict[str, Any]:
@@ -446,8 +459,12 @@ def test_coverage_generate_tape_thin_and_loop(monkeypatch: pytest.MonkeyPatch) -
 
 def test_coverage_run_mocked_exam(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import lumina_core.birth.awakening_obj_run as run_mod
-    from lumina_core.birth.awakening_obj_run import main, run_awakening_obj
+    from lumina_core.birth.awakening_obj_run import _restore_exam_env, main, run_awakening_obj
 
+    pinned_cfg = os.environ.get("LUMINA_CONFIG")
+    _restore_exam_env({"LUMINA_CONFIG": None})
+    assert "LUMINA_CONFIG" not in os.environ
+    _restore_exam_env({"LUMINA_CONFIG": pinned_cfg or "config.yaml"})
     (tmp_path / "config.yaml").write_text("mode: sim\n", encoding="utf-8")
     birth = tmp_path / "reports" / "birth_cloud_run"
     birth.mkdir(parents=True)
@@ -464,6 +481,7 @@ def test_coverage_run_mocked_exam(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(run_mod, "persist_obj_fixture", lambda *_a, **_k: (_ for _ in ()).throw(ObjProtocolError("G1 fail")))
     missing = run_awakening_obj(repo=tmp_path)
     assert missing["tag"] == TAG_S_MISSING
+    assert os.environ.get("LUMINA_CONFIG") == pinned_cfg
 
     monkeypatch.setattr(run_mod, "persist_obj_fixture", lambda *_a, **_k: _fixture())
     monkeypatch.setattr(run_mod, "run_obj_eval", lambda **_k: {"S_MISSING": True, "reason": "zip_unloadable", "both_loaded": False})
@@ -515,6 +533,7 @@ def test_coverage_run_mocked_exam(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr(run_mod, "run_awakening_obj", lambda **_k: {"tag": TAG_OBJ_THIN})
     assert main() == 0
+    assert os.environ.get("LUMINA_CONFIG") == pinned_cfg
 
 
 def test_coverage_force_open_factory(monkeypatch: pytest.MonkeyPatch) -> None:
