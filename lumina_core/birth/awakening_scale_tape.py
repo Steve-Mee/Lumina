@@ -168,11 +168,14 @@ def assert_forbidden_init(path: Path | str, sha: str = "") -> Path:
 
 
 def generate_scale_tape_ticks(
-    *, seed: int, start_price: float = START, drift_rth: float = DRIFT_RTH
+    *, seed: int, start_price: float = START, drift_rth: float = DRIFT_RTH, start_et: datetime | None = None
 ) -> tuple[list[dict[str, Any]], list[str], dict[str, int]]:
     pinned = assert_physical_drift(drift_rth)
     stamps = _iter_session_times(
-        start_et=SCALE_START_ET, calendar_days=SCALE_DAYS, rth_bar_seconds=SCALE_RTH_SEC, eth_bar_seconds=SCALE_ETH_SEC
+        start_et=start_et if start_et is not None else SCALE_START_ET,
+        calendar_days=SCALE_DAYS,
+        rth_bar_seconds=SCALE_RTH_SEC,
+        eth_bar_seconds=SCALE_ETH_SEC,
     )
     if len(stamps) < 1_000:
         raise ScaleProtocolError(f"scale fixture too thin: {len(stamps)}")

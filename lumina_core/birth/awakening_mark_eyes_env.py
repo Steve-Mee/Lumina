@@ -124,8 +124,16 @@ def make_mark_eyes_train_env(
     tax_r: float = 0.0,
     train_reward_fn: Any | None = None,
     force_open: bool = False,
+    use_geom_close_reward: bool = False,
 ) -> MarkEyesEnv:
-    if abs(float(tax_r)) > 0.0 or train_reward_fn is not None:
+    if abs(float(tax_r)) > 0.0:
+        raise MarkEyesProtocolError("MARK_EYES is not hole-tax; tax_r must stay 0.0")
+    reward_fn = None
+    if bool(use_geom_close_reward):
+        from lumina_core.birth.awakening_geom_reward import geom_close_reward
+
+        reward_fn = geom_close_reward
+    elif train_reward_fn is not None:
         raise MarkEyesProtocolError("MARK_EYES is not hole-tax; tax_r must stay 0.0")
     inner = make_select_train_env(
         data,
@@ -133,7 +141,7 @@ def make_mark_eyes_train_env(
         reports_dir=reports_dir,
         max_steps=int(max_steps),
         tax_r=0.0,
-        train_reward_fn=None,
+        train_reward_fn=reward_fn,
     )
     _apply_train_force_open(inner, force_open=bool(force_open))
     return MarkEyesEnv(inner)
@@ -157,6 +165,7 @@ def make_mark_eyes_eval_env(
         tax_r=0.0,
         train_reward_fn=None,
         force_open=False,
+        use_geom_close_reward=False,
     )
 
 
