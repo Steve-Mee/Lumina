@@ -1,0 +1,36 @@
+{
+  "origin_main": "9b312648c591b4f7a6ee97784a29f633d88b7b03",
+  "POLICY_EDGE_MIN_TRADES": 150,
+  "OBSERVATION_DIM": 43,
+  "pct_synthetic": 0.0,
+  "inspect_complete": true,
+  "scale_live": {
+    "tag": "SCALE_BODY",
+    "world_engineering_closed": true,
+    "n_policy_child": [
+      150,
+      150
+    ],
+    "floor": 150
+  },
+  "seeds": [
+    20260923,
+    20260924,
+    20260925
+  ],
+  "drift_rth": 8e-06,
+  "protocol": {
+    "target_frac_min_010": "lumina_core/birth/awakening_geom_touch.py:1",
+    "geom_win_r_121": "lumina_core/birth/awakening_geom_reward.py:1",
+    "geom_loss_r_104": "lumina_core/birth/awakening_geom_reward.py:1",
+    "learn_skipped_unhittable": "lumina_core/birth/awakening_geom_train.py:35",
+    "prod_slope_015": "lumina_core/birth/awakening_scale_enrich.py:14",
+    "drift_8e_6": "lumina_core/birth/awakening_geom_tape.py:1",
+    "force_open_train_only": "lumina_core/birth/awakening_mark_eyes_env.py:111",
+    "floor_150": "lumina_core/birth/foundation_metrics.py:39",
+    "world_engineering_closed_true": "lumina_core/birth/awakening_geom_flags.py:1",
+    "genesis_eyes_ok_false": "lumina_core/birth/awakening_geom_flags.py:88",
+    "missing_sites": [],
+    "gate0_complete": true
+  }
+}

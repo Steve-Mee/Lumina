@@ -424,3 +424,8 @@ Band identity DRIFT_RTH=8.0e-6 on a NEW tape + scratch 46-dim V1 10k lives under
 ## Pointer — AWAKENING_SLOPE_SCALE
 
 Isolated PHYSICS_SLOPE_ABS=0.004 on a NEW 8e-6 tape + scratch 46-dim V1 10k lives under `reports/awakening_scale_run`. Floor 150 stays. 1% guard intact. GENESIS_EYES_OK is false. REAL=no. Production ±0.15 unchanged. PHASE_BLOCKS=6. Last synthetic-world knob. world_engineering_closed=true.
+---
+
+## Pointer — AWAKENING_GEOMETRY_REWARD
+
+First-touch gate 0.10 then train-only +1.21/−1.04 close reward on a NEW SCALE-physics tape lives under `reports/awakening_geom_run`. Floor 150 stays. GENESIS_EYES_OK is false. REAL=no. world_engineering_closed stays true. Policy goal 0.46 is not the gate.
