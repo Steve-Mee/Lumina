@@ -1,0 +1,77 @@
+{
+  "attempts": [
+    {
+      "in_band": true,
+      "max": 25283.5,
+      "min": 16124.75,
+      "seed": 20260920
+    }
+  ],
+  "clipped": false,
+  "days": 88,
+  "drift_rth": 8e-06,
+  "enrich_fail": false,
+  "gen_counts": {
+    "DOWN": 71040,
+    "RANGE": 71040,
+    "UP": 71040
+  },
+  "gen_down": 71040,
+  "gen_range": 71040,
+  "gen_up": 71040,
+  "hash": "c9188a030e38e4bc",
+  "hold_down_frac": 0.5083521021021021,
+  "hold_gen_counts": {
+    "DOWN": 28416,
+    "RANGE": 28416,
+    "UP": 28416
+  },
+  "hold_up_frac": 0.4908854166666667,
+  "holdout_regime_counts": {
+    "NEUTRAL": 65,
+    "TREND_DOWN": 43336,
+    "TREND_UP": 41847
+  },
+  "holdout_tick_count": 85248,
+  "host_real_data_pct": 0.0,
+  "in_band": true,
+  "nq_max": 28000.0,
+  "nq_min": 12000.0,
+  "path": "/workspace/reports/awakening_scale_run/workspace/state/lumina_birth_cache_manifest.json",
+  "phase_blocks": 6,
+  "price_max": 25283.5,
+  "price_min": 16124.75,
+  "prod_slope_abs": 0.15,
+  "raw_ticks_hash": "2695dfa18b82e628",
+  "real_data_pct": 0.0,
+  "requested_days": 90,
+  "seed_used": 20260920,
+  "slope_abs_used": 0.004,
+  "source": "synthetic_cloud_fixture",
+  "split_path": "/workspace/reports/awakening_scale_run/workspace/state/lumina_birth_split_cache.json",
+  "splitter": "per_phase_60_40",
+  "start_et": "2025-09-08T18:00:00-04:00",
+  "start_price": 21150.0,
+  "symbol": "NQ SEP26",
+  "tick_count": 213120,
+  "ticks_path": "/workspace/reports/awakening_scale_run/workspace/state/lumina_birth_ticks_cache.jsonl",
+  "ticks_per_leg": [
+    42624,
+    42624
+  ],
+  "train_down_frac": 0.49378284534534533,
+  "train_gen_counts": {
+    "DOWN": 42624,
+    "RANGE": 42624,
+    "UP": 42624
+  },
+  "train_regime_counts": {
+    "NEUTRAL": 152,
+    "TREND_DOWN": 63141,
+    "TREND_UP": 64579
+  },
+  "train_tick_count": 127872,
+  "train_up_frac": 0.505028465965966,
+  "world_fail": false,
+  "world_ok": true
+}
