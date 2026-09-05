@@ -1,0 +1,13 @@
+{
+  "n_policy_A": 150,
+  "n_policy_B": 150,
+  "n_policy_pooled": 300,
+  "n_target": 117,
+  "n_stop": 183,
+  "n_time": 0,
+  "target_frac": 0.39,
+  "stop_frac": 0.61,
+  "time_frac": 0.0,
+  "unhittable": false,
+  "TARGET_FRAC_MIN": 0.1
+}

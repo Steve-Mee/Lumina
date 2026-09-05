@@ -1,0 +1,64 @@
+{
+  "attempts": [
+    {
+      "in_band": true,
+      "max": 26969.0,
+      "min": 20346.25,
+      "seed": 20260923
+    }
+  ],
+  "clipped": false,
+  "days": 88,
+  "drift_rth": 8e-06,
+  "eth_bar_seconds": 60,
+  "gen_counts": {
+    "DOWN": 71040,
+    "RANGE": 71040,
+    "UP": 71040
+  },
+  "hash": "6300d15d39d089fa",
+  "hold_down_frac": 0.48681493993993996,
+  "hold_up_frac": 0.5123991178678678,
+  "holdout_regime_counts": {
+    "NEUTRAL": 67,
+    "TREND_DOWN": 41500,
+    "TREND_UP": 43681
+  },
+  "holdout_tick_count": 85248,
+  "host_real_data_pct": 0.0,
+  "in_band": true,
+  "nq_max": 28000.0,
+  "nq_min": 12000.0,
+  "path": "/workspace/reports/awakening_geom_run/workspace/state/lumina_birth_cache_manifest.json",
+  "phase_blocks": 6,
+  "price_max": 26969.0,
+  "price_min": 20346.25,
+  "prod_slope_abs": 0.15,
+  "raw_ticks_hash": "df60a77dffa7ed2e",
+  "real_data_pct": 0.0,
+  "requested_days": 90,
+  "rth_bar_seconds": 10,
+  "seed_used": 20260923,
+  "slope_abs_used": 0.004,
+  "source": "synthetic_cloud_fixture",
+  "split_path": "/workspace/reports/awakening_geom_run/workspace/state/lumina_birth_split_cache.json",
+  "splitter": "per_phase_60_40",
+  "start_et": "2025-08-04T18:00:00-04:00",
+  "start_price": 21150.0,
+  "symbol": "NQ SEP26",
+  "tick_count": 213120,
+  "ticks_path": "/workspace/reports/awakening_geom_run/workspace/state/lumina_birth_ticks_cache.jsonl",
+  "ticks_per_leg": [
+    42624,
+    42624
+  ],
+  "train_down_frac": 0.5071790540540541,
+  "train_regime_counts": {
+    "NEUTRAL": 166,
+    "TREND_DOWN": 64854,
+    "TREND_UP": 62852
+  },
+  "train_tick_count": 127872,
+  "train_up_frac": 0.4915227727727728,
+  "world_ok": true
+}
