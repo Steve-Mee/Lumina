@@ -1,0 +1,85 @@
+{
+  "G6_tag": "REAL_DOOR_LOCKED",
+  "REAL": "no",
+  "rows": [
+    {
+      "function": "config.yaml mode",
+      "result": "PASS",
+      "why": "mode='sim' (must stay sim)"
+    },
+    {
+      "function": "BirthCertificateThresholds.min_real_data_pct lumina_core/birth/birth_certificate.py:14",
+      "result": "FAIL",
+      "why": "real_data_pct=0.0 < min_real_data_pct=95.0"
+    },
+    {
+      "function": "tick source",
+      "result": "FAIL-CLOSED",
+      "why": "source=synthetic_cloud_fixture (synthetic_cloud_fixture is not a REAL certificate)"
+    },
+    {
+      "function": "ApplicationContainer.start lumina_core/container/container_lifecycle.py:164",
+      "result": "PASS",
+      "why": "container.start not called (broker connect forbidden)"
+    },
+    {
+      "function": "NinjaTrader / Fabric / gRPC",
+      "result": "PASS",
+      "why": "NT/Fabric host not contacted"
+    },
+    {
+      "function": "PromotionGate.evaluate lumina_core/evolution/promotion_gate.py:136",
+      "result": "FAIL",
+      "why": "no proving certificate / no promotion evidence on synthetic first life"
+    },
+    {
+      "function": "evolution_proof_passed lumina_core/birth/evolution_proof_gate.py:137",
+      "result": "FAIL",
+      "why": "stamped=False (must stay false)"
+    },
+    {
+      "function": "maturation_eligible_for_real lumina_core/maturity/maturation_progress.py:190",
+      "result": "FAIL",
+      "why": "eligible=False blockers=['Birth Certificate v2 issued', 'Evolution Proof passed', 'SIM stability READY_FOR_REAL (5-day green streak)', 'Promotion gate passed (shadow validation)', 'Perfect Birth Phase complete (twin vs Steve accuracy + never-stop recovery + auto-approval + shadow alignment)']"
+    },
+    {
+      "function": "certificate OOS WR 0.48",
+      "result": "FAIL",
+      "why": "min_oos_winrate=0.48 not claimed"
+    },
+    {
+      "function": "kill-switch / Dead Man lumina_core/risk/risk_gates.py:169",
+      "result": "N/A",
+      "why": "not armed against a live broker (no broker connect)"
+    },
+    {
+      "function": "HardRiskController lumina_core/risk/risk_controller.py:36",
+      "result": "PRESENT",
+      "why": "risk engine independent of strategy (bounded context lumina_core/risk)"
+    },
+    {
+      "function": "first live/SIM broker order",
+      "result": "NONE",
+      "why": "no container.start, no order path"
+    },
+    {
+      "function": "lumina_core/rl/observation_builder.py:36 OBSERVATION_DIM",
+      "result": "PASS",
+      "why": "OBSERVATION_DIM=43 (must stay 43)"
+    },
+    {
+      "function": "PATH_EXIT_K3_SHADOW / PATH_SHAPE_K3_SHADOW",
+      "result": "PASS",
+      "why": "exit=False shape=False default False"
+    }
+  ],
+  "broken": [],
+  "real_data_pct": 0.0,
+  "source": "synthetic_cloud_fixture",
+  "mode": "sim",
+  "evolution_proof_stamped": false,
+  "promotion_passed": false,
+  "nt_called": false,
+  "container_start_called": false,
+  "observation_dim": 43
+}

@@ -419,3 +419,8 @@ Tradeable NQ band [12000, 28000] on a NEW #44-physics tape + scratch 46-dim V1 1
 ## Pointer — AWAKENING_PHYSICAL_DRIFT
 
 Band identity DRIFT_RTH=8.0e-6 on a NEW tape + scratch 46-dim V1 10k lives under `reports/awakening_drift_run`. Floor 150 stays. 1% guard intact. GENESIS_EYES_OK is false. REAL=no. Production ±0.15 unchanged. PHASE_BLOCKS=6.
+---
+
+## Pointer — AWAKENING_SLOPE_SCALE
+
+Isolated PHYSICS_SLOPE_ABS=0.004 on a NEW 8e-6 tape + scratch 46-dim V1 10k lives under `reports/awakening_scale_run`. Floor 150 stays. 1% guard intact. GENESIS_EYES_OK is false. REAL=no. Production ±0.15 unchanged. PHASE_BLOCKS=6. Last synthetic-world knob. world_engineering_closed=true.

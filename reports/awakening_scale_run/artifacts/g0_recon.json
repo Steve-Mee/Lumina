@@ -1,0 +1,37 @@
+{
+  "origin_main": "57707207212fb782e0174be656c7746fa6a5d3ae",
+  "POLICY_EDGE_MIN_TRADES": 150,
+  "OBSERVATION_DIM": 43,
+  "pct_synthetic": 0.0,
+  "PHYSICS_SLOPE_ABS": 0.004,
+  "PROD_SLOPE_ABS": 0.15,
+  "inspect_complete": true,
+  "drift_live": {
+    "tag": "DRIFT_ENRICH_FAIL",
+    "drift_rth": 8e-06,
+    "in_band": true,
+    "floor": 150
+  },
+  "seeds": [
+    20260920,
+    20260921,
+    20260922
+  ],
+  "drift_rth": 8e-06,
+  "protocol": {
+    "physics_slope_abs_0004": "lumina_core/birth/awakening_scale_enrich.py:1",
+    "identity_comment": "lumina_core/birth/awakening_scale_enrich.py:12",
+    "prod_default_015": "lumina_core/birth/awakening_scale_enrich.py:14",
+    "drift_rth_8e_6": "lumina_core/birth/awakening_scale_tape.py:57",
+    "band_gate_no_clip": "lumina_core/birth/awakening_scale_tape.py:351",
+    "max_three_seeds_20260920_22": "lumina_core/birth/awakening_scale_tape.py:60",
+    "guard_1pct_unedited": "lumina_core/birth/birth_constitution_guard.py:39",
+    "force_open_train_only": "lumina_core/birth/awakening_mark_eyes_env.py:111",
+    "eval_refuses_true": "lumina_core/birth/awakening_mark_eyes_env.py:150",
+    "floor_150": "lumina_core/birth/foundation_metrics.py:39",
+    "genesis_eyes_ok_false": "lumina_core/birth/awakening_scale_flags.py:86",
+    "world_engineering_stops": "lumina_core/birth/awakening_scale_flags.py:195",
+    "missing_sites": [],
+    "gate0_complete": true
+  }
+}
