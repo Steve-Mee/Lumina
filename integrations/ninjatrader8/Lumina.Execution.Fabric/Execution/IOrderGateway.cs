@@ -19,6 +19,12 @@ namespace Lumina.Execution.Fabric.Execution
 
         IReadOnlyList<WorkingOrder> GetWorkingOrders();
 
+        /// <summary>
+        /// Instruments this process successfully submitted via PlaceOrder.
+        /// Watchdog may flatten only these — leftover positions from earlier days are untouched.
+        /// </summary>
+        System.Collections.Generic.IReadOnlyCollection<string> SessionTouchedInstruments { get; }
+
         /// <summary>Place order. Returns order events (working/filled/rejected).</summary>
         IReadOnlyList<OrderEvent> PlaceOrder(PlaceOrderCommand command);
 

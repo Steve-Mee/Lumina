@@ -78,10 +78,11 @@ dotnet run --project integrations/ninjatrader8/Lumina.Execution.Fabric.SimHost -
 3. `broker.live_provider=ninjatrader`, `broker.ninjatrader.enabled=true`, account `Sim101`.
 4. Place one market order from Python; observe fill/order event on stream.
 5. Stop Brain heartbeats ≥ 5s; confirm working orders cancelled and SAFE_MODE entered.
-6. Attempt place while SAFE → reject; cancel/flatten still allowed.
-7. Re-auth / reconnect → SAFE clears; place works again.
-8. Record p99 command→ack RTT (baseline; &lt; 5 ms target is Phase 2).
-9. **Never** run this checklist against a REAL account.
+6. **Negative gate (capital):** start NT8 with Fabric AddOn, **do not** start Lumina. Wait ≥ 60s. NT log must show **zero** new `Name='Close'` / flatten orders. Audit may contain `watchdog_idle_unarmed` only.
+7. Attempt place while SAFE → reject; cancel/flatten still allowed.
+8. Re-auth / reconnect → SAFE clears; place works again.
+9. Record p99 command→ack RTT (baseline; &lt; 5 ms target is Phase 2).
+10. **Never** run this checklist against a REAL account.
 
 ## Non-goals for Phase 0
 

@@ -79,6 +79,8 @@ namespace Lumina.Execution.Fabric.Execution
 
         public IReadOnlyList<WorkingOrder> GetWorkingOrders() => Array.Empty<WorkingOrder>();
 
+        public IReadOnlyCollection<string> SessionTouchedInstruments => Array.Empty<string>();
+
         public IReadOnlyList<OrderEvent> PlaceOrder(PlaceOrderCommand command)
         {
             return new[] { Reject(command?.ClientOrderId, command?.CorrelationId, command?.Instrument, command?.Action ?? OrderAction.Unspecified, NotBoundReason()) };

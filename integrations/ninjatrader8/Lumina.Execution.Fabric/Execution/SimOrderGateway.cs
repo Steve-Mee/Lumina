@@ -17,6 +17,8 @@ namespace Lumina.Execution.Fabric.Execution
             new ConcurrentDictionary<string, WorkingOrder>(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, PositionUpdate> _positions =
             new ConcurrentDictionary<string, PositionUpdate>(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, byte> _sessionTouched =
+            new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
         private int _seq;
 
         public SimOrderGateway(string accountName = "Sim101")
@@ -53,6 +55,8 @@ namespace Lumina.Execution.Fabric.Execution
 
         public IReadOnlyList<WorkingOrder> GetWorkingOrders() => _working.Values.ToList();
 
+        public IReadOnlyCollection<string> SessionTouchedInstruments => _sessionTouched.Keys.ToArray();
+
         public IReadOnlyList<OrderEvent> PlaceOrder(PlaceOrderCommand command)
         {
             if (command == null)
@@ -71,6 +75,8 @@ namespace Lumina.Execution.Fabric.Execution
             {
                 return new[] { RejectEvent(command, ntId, "reduce_only_violation", now) };
             }
+
+            NoteSessionTouched(command.Instrument);
 
             var isMarket = command.OrderType == OrderType.Market ||
                            command.OrderType == OrderType.Unspecified ||
@@ -239,6 +245,9 @@ namespace Lumina.Execution.Fabric.Execution
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var instrumentFilter = command?.Instrument ?? "";
 
+            // Cancel entries first so flatten Close/reduce orders cannot be self-cancelled.
+            events.AddRange(CancelNonProtected("flatten_pre_cancel"));
+
             foreach (var pos in GetPositions().ToList())
             {
                 if (!string.IsNullOrEmpty(instrumentFilter) &&
@@ -263,13 +272,13 @@ namespace Lumina.Execution.Fabric.Execution
                     Quantity = Math.Abs(pos.Quantity),
                     OrderType = OrderType.Market,
                     ReduceOnly = true,
+                    Protected = true,
                     CorrelationId = command?.CorrelationId ?? "",
                     ModeContext = "sim",
                 };
                 events.AddRange(PlaceOrder(place));
             }
 
-            events.AddRange(CancelNonProtected("flatten"));
             if (events.Count == 0)
             {
                 events.Add(new OrderEvent
@@ -279,6 +288,7 @@ namespace Lumina.Execution.Fabric.Execution
                     State = OrderState.Submitted,
                     CorrelationId = command?.CorrelationId ?? "",
                     TimestampUnixMs = now,
+                    RejectionReason = "flatten_no_open_positions",
                 });
             }
             return events;
@@ -291,6 +301,8 @@ namespace Lumina.Execution.Fabric.Execution
             foreach (var kv in _working.ToArray())
             {
                 if (kv.Value.Protected)
+                    continue;
+                if (IsFlattenOrCloseId(kv.Value.ClientOrderId))
                     continue;
                 if (_working.TryRemove(kv.Key, out var wo))
                 {
@@ -307,6 +319,25 @@ namespace Lumina.Execution.Fabric.Execution
                 }
             }
             return events;
+        }
+
+        private void NoteSessionTouched(string? instrument)
+        {
+            var raw = (instrument ?? "").Trim();
+            if (raw.Length == 0)
+                return;
+            _sessionTouched[raw] = 1;
+        }
+
+        internal static bool IsFlattenOrCloseId(string? id)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                return false;
+            if (string.Equals(id, "Close", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (id!.StartsWith("flatten", StringComparison.OrdinalIgnoreCase))
+                return true;
+            return false;
         }
 
         private WorkingOrder? FindAndRemoveWorking(string? clientOrderId, string? ntOrderId)

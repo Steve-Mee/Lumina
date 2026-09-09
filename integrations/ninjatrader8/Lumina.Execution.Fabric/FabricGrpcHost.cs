@@ -91,11 +91,19 @@ namespace Lumina.Execution.Fabric
             });
 
             ExecutionFabricService? serviceRef = null;
+            HeartbeatWatchdog? watchdogRef = null;
             _watchdog = new HeartbeatWatchdog(
                 _config,
                 _safeMode,
                 onTimeoutCancel: reason =>
                 {
+                    // Fail-closed: null ref or unarmed = no book mutation.
+                    if (watchdogRef == null || !watchdogRef.IsArmed)
+                    {
+                        _audit?.Record("watchdog_idle_unarmed", reason, new { action = "cancel_skipped" });
+                        Log($"watchdog cancel skipped (not armed): {reason}");
+                        return;
+                    }
                     var events = _gateway.CancelNonProtected(reason);
                     serviceRef?.PublishOrderEvents(events);
                     _metrics?.IncSafeMode();
@@ -104,33 +112,81 @@ namespace Lumina.Execution.Fabric
                 },
                 onFlatten: reason =>
                 {
-                    // Probe/diagnostic thrash: never emergency-flatten an empty book.
-                    // Capital-safe: still flatten when any position or working order exists.
-                    int posCount = 0;
-                    int workCount = 0;
-                    try { posCount = _gateway.GetPositions()?.Count ?? 0; } catch { /* ignore */ }
-                    try { workCount = _gateway.GetWorkingOrders()?.Count ?? 0; } catch { /* ignore */ }
-                    if (posCount <= 0 && workCount <= 0)
+                    if (watchdogRef == null || !watchdogRef.IsArmed)
                     {
-                        _audit?.Record("watchdog_flatten_skipped", reason, new { positions = 0, working = 0 });
-                        Log($"watchdog flatten skipped (empty book): {reason}");
+                        _audit?.Record("watchdog_idle_unarmed", reason, new { action = "flatten_skipped" });
+                        Log($"watchdog flatten skipped (not armed): {reason}");
                         return;
                     }
-                    var events = _gateway.Flatten(new FlattenCommand
+                    int posCount = 0;
+                    int workCount = 0;
+                    int touchedCount = 0;
+                    IReadOnlyCollection<string>? owned = null;
+                    try { posCount = _gateway.GetPositions()?.Count ?? 0; } catch { /* ignore */ }
+                    try { workCount = _gateway.GetWorkingOrders()?.Count ?? 0; } catch { /* ignore */ }
+                    try
                     {
-                        Emergency = true,
-                        CorrelationId = Guid.NewGuid().ToString("D"),
-                    });
+                        owned = _gateway.SessionTouchedInstruments;
+                        touchedCount = owned?.Count ?? 0;
+                    }
+                    catch { /* ignore */ }
+
+                    var deny = EmergencyFlattenPolicy.DenyReason(
+                        armed: true,
+                        positionCount: posCount,
+                        workingCount: workCount,
+                        sessionTouchedCount: touchedCount);
+                    if (deny != null)
+                    {
+                        _audit?.Record("watchdog_flatten_skipped", reason, new
+                        {
+                            reason = deny,
+                            positions = posCount,
+                            working = workCount,
+                            session_touched = touchedCount,
+                        });
+                        Log($"watchdog flatten skipped ({deny}): {reason}");
+                        return;
+                    }
+
+                    var events = new List<OrderEvent>();
+                    foreach (var inst in owned ?? Array.Empty<string>())
+                    {
+                        if (string.IsNullOrWhiteSpace(inst))
+                            continue;
+                        var batch = _gateway.Flatten(new FlattenCommand
+                        {
+                            Emergency = true,
+                            Instrument = inst,
+                            CorrelationId = Guid.NewGuid().ToString("D"),
+                        });
+                        if (batch != null && batch.Count > 0)
+                            events.AddRange(batch);
+                    }
                     serviceRef?.PublishOrderEvents(events);
                     _metrics?.IncFlatten();
-                    _audit?.Record("watchdog_flatten", reason, new { events = events.Count, positions = posCount, working = workCount });
-                    Log($"watchdog flatten: {reason} events={events.Count} positions={posCount} working={workCount}");
+                    _audit?.Record("watchdog_flatten", reason, new
+                    {
+                        events = events.Count,
+                        positions = posCount,
+                        working = workCount,
+                        session_touched = touchedCount,
+                    });
+                    Log($"watchdog flatten: {reason} events={events.Count} positions={posCount} working={workCount} touched={touchedCount}");
                 },
                 onAlert: alert =>
                 {
+                    if (string.Equals(alert.RecommendedAction, HeartbeatWatchdog.IdleUnarmedAction, StringComparison.Ordinal))
+                    {
+                        _audit?.Record("watchdog_idle_unarmed", alert.Message ?? "", new
+                        {
+                            recommended = alert.RecommendedAction,
+                        });
+                    }
                     serviceRef?.PublishAlert(alert);
                     Log($"safety alert: {alert.AlertType} {alert.Message}");
                 });
+            watchdogRef = _watchdog;
 
             _service = new ExecutionFabricService(
                 _config,
