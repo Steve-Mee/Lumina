@@ -138,6 +138,29 @@ describe("credentialsVaultState", () => {
     ).toBe("ok");
   });
 
+  it("100% progress without birth_ready does not look sealed", () => {
+    const rows = buildVaultFocusRows({
+      creds: emptyCreds,
+      present: {},
+      emergencyFeed: false,
+      twinBirthReady: false,
+      twinCompletionPct: 100,
+    });
+    const twin = rows.find((r) => r.id === "twin_base");
+    expect(twin?.state).toBe("partial");
+    expect(twin?.summary).not.toBe("Birth-ready");
+    expect(
+      sealReadiness({
+        fabricGreen: true,
+        ntInstalled: true,
+        secState: "ok",
+        fabricState: "ok",
+        canContinue: false,
+        twinBirthReady: false,
+      }).title,
+    ).toBe("Seal blocked");
+  });
+
   it("defaults focus to twin_base after fabric green when twin incomplete", () => {
     expect(
       defaultVaultFocus({

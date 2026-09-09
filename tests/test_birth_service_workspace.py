@@ -33,6 +33,15 @@ def _fake_ppo_trainer() -> SimpleNamespace:
     return SimpleNamespace(create_fresh_birth_policy=lambda **_kwargs: object())
 
 
+@pytest.fixture(autouse=True)
+def _birth_physics_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unit tests of start wiring are not live physics installs."""
+    monkeypatch.setattr(
+        "lumina_core.birth.physics_preflight.enforce_birth_physics",
+        lambda *_a, **_k: None,
+    )
+
+
 class _BirthRunnerFakeContainerMixin:
     def register_birth_reload_host(self, host: object) -> None:
         self.birth_reload_host = host

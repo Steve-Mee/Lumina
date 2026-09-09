@@ -75,6 +75,75 @@ def test_incomplete_complete_raises(tmp_path: Path) -> None:
         assert "incomplete" in str(exc)
 
 
+def test_last_answer_auto_completes_birth_ready(tmp_path: Path) -> None:
+    svc = _svc(tmp_path)
+    svc.start_base_training()
+    qs = build_base_curriculum()
+    for q in qs:
+        status = svc.next_base_question()
+        qid = status["question"]["question_id"]
+        choice = status["question"]["choices"][0]["id"]
+        out = svc.submit_base_answer(question_id=qid, choice_id=choice, train_now=False)
+        assert out["recorded"] is True
+    assert is_twin_birth_ready(tmp_path / "readiness.json", session_path=tmp_path / "base_session.json") is True
+    ready = svc.readiness()
+    assert ready["birth_ready"] is True
+    assert ready["base_training_completion_pct"] >= 100.0
+
+
+def test_completed_session_heals_missing_readiness_flag(tmp_path: Path) -> None:
+    """100% session without twin_birth_readiness.json must still unlock the seal."""
+    import json
+
+    from lumina_core.evolution.twin_base_curriculum import BASE_CURRICULUM_VERSION
+    from lumina_core.evolution.twin_birth_readiness import is_twin_birth_ready as ready_fn
+
+    session_path = tmp_path / "twin_base_training.json"
+    readiness_path = tmp_path / "twin_birth_readiness.json"
+    qs = build_base_curriculum()
+    session_path.write_text(
+        json.dumps(
+            {
+                "session_id": "heal-test",
+                "status": "completed",
+                "curriculum_version": BASE_CURRICULUM_VERSION,
+                "question_ids": [q.question_id for q in qs],
+                "answers": {q.question_id: {"choice_id": "A"} for q in qs},
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert readiness_path.exists() is False
+    assert ready_fn(readiness_path, session_path=session_path) is True
+    assert readiness_path.is_file()
+    payload = json.loads(readiness_path.read_text(encoding="utf-8"))
+    assert payload["birth_ready"] is True
+    assert payload["curriculum_version"] == BASE_CURRICULUM_VERSION
+
+
+def test_stale_completed_session_does_not_heal(tmp_path: Path) -> None:
+    import json
+
+    from lumina_core.evolution.twin_birth_readiness import is_twin_birth_ready as ready_fn
+
+    session_path = tmp_path / "twin_base_training.json"
+    readiness_path = tmp_path / "twin_birth_readiness.json"
+    qs = build_base_curriculum()
+    session_path.write_text(
+        json.dumps(
+            {
+                "status": "completed",
+                "curriculum_version": "base_v1",
+                "question_ids": [q.question_id for q in qs],
+                "answers": {q.question_id: {"choice_id": "A"} for q in qs},
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert ready_fn(readiness_path, session_path=session_path) is False
+    assert readiness_path.exists() is False
+
+
 def test_stale_curriculum_version_not_birth_ready(tmp_path: Path) -> None:
     """Older curriculum versions are not valid for current base_v4 REAL-conscience seed."""
     from lumina_core.evolution.twin_base_training import write_birth_readiness

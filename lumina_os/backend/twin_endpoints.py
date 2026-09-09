@@ -275,6 +275,7 @@ from lumina_os.backend.twin_endpoints_curriculum import (  # noqa: E402
     twin_base_next,
     twin_base_start,
     twin_base_status,
+    twin_knowledge_wipe,
     twin_decision_feedback,
     twin_decisions_recent,
     twin_escalation_create,
@@ -296,6 +297,7 @@ twin_base_status = router.get("/base/status")(twin_base_status)
 twin_base_next = router.get("/base/next")(twin_base_next)
 twin_base_answer = router.post("/base/answer")(twin_base_answer)
 twin_base_complete = router.post("/base/complete")(twin_base_complete)
+twin_knowledge_wipe = router.post("/knowledge/wipe")(twin_knowledge_wipe)
 twin_readiness = router.get("/readiness")(twin_readiness)
 twin_micro_start = router.post("/micro/start")(twin_micro_start)
 twin_micro_answer = router.post("/micro/answer")(twin_micro_answer)

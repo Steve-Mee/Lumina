@@ -19,6 +19,11 @@ from lumina_core.evolution.twin_base_curriculum import (
     get_question,
     question_count,
 )
+from lumina_core.evolution.twin_birth_readiness import (
+    is_twin_birth_ready,
+    load_birth_readiness,
+    write_birth_readiness,
+)
 from lumina_core.evolution.twin_curriculum_types import (
     TwinMcQuestion,
     mc_answer_to_steve_fields,
@@ -30,67 +35,6 @@ _DEFAULT_READINESS = Path("state/twin_birth_readiness.json")
 
 def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def load_birth_readiness(path: Path | str = _DEFAULT_READINESS) -> dict[str, Any]:
-    p = Path(path)
-    if not p.exists():
-        return {
-            "base_trained": False,
-            "birth_ready": False,
-            "curriculum_version": BASE_CURRICULUM_VERSION,
-            "question_count": 0,
-            "completed_at": None,
-        }
-    try:
-        raw = json.loads(p.read_text(encoding="utf-8"))
-        if not isinstance(raw, dict):
-            return {"base_trained": False, "birth_ready": False}
-        return raw
-    except (OSError, json.JSONDecodeError):
-        return {"base_trained": False, "birth_ready": False}
-
-
-def is_twin_birth_ready(
-    path: Path | str = _DEFAULT_READINESS,
-    *,
-    required_version: str = BASE_CURRICULUM_VERSION,
-) -> bool:
-    """True only when base completed on the *current* curriculum version (fail-closed)."""
-    raw = load_birth_readiness(path)
-    if not bool(raw.get("base_trained") or raw.get("birth_ready")):
-        return False
-    # Missing or stale version → not ready (base_v4 REAL-conscience requires retrain)
-    ver = str(raw.get("curriculum_version") or "").strip()
-    if ver != str(required_version):
-        return False
-    return True
-
-
-def write_birth_readiness(
-    path: Path | str,
-    *,
-    base_trained: bool,
-    question_count: int,
-    curriculum_version: str = BASE_CURRICULUM_VERSION,
-    session_id: str | None = None,
-    extra: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    payload: dict[str, Any] = {
-        "base_trained": bool(base_trained),
-        "birth_ready": bool(base_trained),
-        "curriculum_version": curriculum_version,
-        "question_count": int(question_count),
-        "completed_at": _utcnow() if base_trained else None,
-        "session_id": session_id,
-        "local_only": True,
-    }
-    if extra:
-        payload.update(extra)
-    p.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    return payload
 
 
 class TwinBaseTrainingMixin:
@@ -135,7 +79,10 @@ class TwinBaseTrainingMixin:
         pct = round(100.0 * answered / max(1, total), 1)
         remaining = max(0, total - answered)
         eta_sec = remaining * 12
-        birth_ready = is_twin_birth_ready(self._readiness_file())
+        birth_ready = is_twin_birth_ready(
+            self._readiness_file(),
+            session_path=self._base_session_file(),
+        )
         return {
             "base_trained": bool(ready_raw.get("base_trained") or birth_ready),
             "birth_ready": birth_ready,
@@ -161,7 +108,10 @@ class TwinBaseTrainingMixin:
         ):
             return self.base_training_status()
 
-        if not force_restart and is_twin_birth_ready(self._readiness_file()):
+        if not force_restart and is_twin_birth_ready(
+            self._readiness_file(),
+            session_path=self._base_session_file(),
+        ):
             return {
                 **self.readiness(),
                 "started": False,
@@ -296,11 +246,25 @@ class TwinBaseTrainingMixin:
         next_idx = idx + 1
         session["answers"] = answers
         session["current_index"] = next_idx
-        if len(answers) >= len(qids):
+        finished = len(answers) >= len(qids)
+        if finished:
             session["status"] = "ready_to_complete"
         self._save_base_session(session)
+        completed: dict[str, Any] | None = None
+        if finished:
+            try:
+                completed = self.complete_base_training(train_batch=bool(train_now))
+            except Exception:
+                write_birth_readiness(
+                    self._readiness_file(),
+                    base_trained=True,
+                    question_count=len(answers),
+                    curriculum_version=str(session.get("curriculum_version") or BASE_CURRICULUM_VERSION),
+                    session_id=str(session.get("session_id") or ""),
+                    extra={"healed_from_session": True},
+                )
 
-        return {
+        payload: dict[str, Any] = {
             "recorded": True,
             "already_answered": False,
             "question_id": qid,
@@ -310,10 +274,26 @@ class TwinBaseTrainingMixin:
             "progress": self.base_training_status(),
             "local_only": True,
         }
+        if completed is not None:
+            payload["completed"] = True
+            payload["birth_ready"] = True
+        return payload
 
     def complete_base_training(self, *, train_batch: bool = True) -> dict[str, Any]:
         session = self._load_base_session()
         if not session:
+            if is_twin_birth_ready(
+                self._readiness_file(),
+                session_path=self._base_session_file(),
+            ):
+                return {
+                    "completed": True,
+                    "birth_ready": True,
+                    "base_trained": True,
+                    "readiness": load_birth_readiness(self._readiness_file()),
+                    "already_complete": True,
+                    "local_only": True,
+                }
             raise ValueError("no_base_session")
         qids = list(session.get("question_ids") or [])
         answers = dict(session.get("answers") or {})

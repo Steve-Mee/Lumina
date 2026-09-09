@@ -19,9 +19,13 @@ logger = get_logger("lumina.rl.ppo")
 
 def _sb3_ppo_load(path: str | Path) -> Any | None:
     try:
-        from stable_baselines3 import PPO
+        from lumina_core.birth.physics_preflight import import_sb3_ppo
 
-        return PPO.load(str(path))
+        return import_sb3_ppo().load(str(path))
+    except ModuleNotFoundError:
+        raise
+    except RuntimeError:
+        raise
     except Exception:
         logging.exception("Unhandled broad exception fallback in lumina_core/ppo_trainer.py:19")
         return None
@@ -195,8 +199,9 @@ class PPOTrainerEvalMixin:
             if active is not None:
                 return active
 
-        from stable_baselines3 import PPO
+        from lumina_core.birth.physics_preflight import import_sb3_ppo
 
+        PPO = import_sb3_ppo()
         hyperparams = self._get_training_hyperparams(birth_phase=True)
         env = self._bootstrap_birth_env()
         model = PPO(

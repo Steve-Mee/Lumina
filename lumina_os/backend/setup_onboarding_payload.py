@@ -340,14 +340,27 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
 def _twin_foundation_payload() -> dict[str, Any]:
     """Operator Vault foundation: Twin base curriculum status (ADR-0037)."""
     try:
-        from lumina_core.evolution.twin_base_training import is_twin_birth_ready, load_birth_readiness
+        from lumina_core.evolution.twin_birth_readiness import (
+            is_twin_birth_ready,
+            load_base_session,
+            load_birth_readiness,
+            session_qualifies_for_birth_ready,
+        )
 
         ready = bool(is_twin_birth_ready())
         raw = load_birth_readiness()
+        session = load_base_session()
+        qids = list(session.get("question_ids") or [])
+        answers = session.get("answers") if isinstance(session.get("answers"), dict) else {}
+        answered = len(answers) if isinstance(answers, dict) else 0
+        total = max(1, len(qids)) if qids else 0
+        if session.get("status") == "completed" or session_qualifies_for_birth_ready(session):
+            answered = max(answered, total)
+        pct = 100.0 if ready else (round(100.0 * answered / total, 1) if total else 0.0)
         return {
             "birth_ready": ready,
             "base_trained": ready or bool(raw.get("base_trained")),
-            "base_training_completion_pct": 100.0 if ready else 0.0,
+            "base_training_completion_pct": pct,
             "curriculum_version": raw.get("curriculum_version"),
             "local_only": True,
         }
