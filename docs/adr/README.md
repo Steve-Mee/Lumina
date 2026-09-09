@@ -59,6 +59,7 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0043 | Telegram I/O SSOT (journal + single door, no Twin diary spam) | Accepted | 2026-08-13 | [0043-telegram-io-ssot.md](./0043-telegram-io-ssot.md) |
 | 0045 | Champion/Challenger self-evolution ladder (overlay, venue, council, cutover) | Accepted | 2026-08-14 | [0045-champion-challenger-evolution-ladder.md](./0045-champion-challenger-evolution-ladder.md) |
 | 0046 | Birth Foundation: evolvable plant, sequential 1/5–5/5, process-R + first-touch (WR 20/35/40 pass retired) | Accepted | 2026-08-14 | [0046-birth-foundation-evolvable-plant.md](./0046-birth-foundation-evolvable-plant.md) |
+| 0048 | Lungs vs Voice organ SSOT (training engine ≠ talking assistant; news never orders) | Accepted | 2026-09-09 | [0048-lungs-voice-organs-ssot.md](./0048-lungs-voice-organs-ssot.md) |
 
 ## Legacy notitie
 

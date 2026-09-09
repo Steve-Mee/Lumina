@@ -52,7 +52,10 @@ export interface OnboardingPayload {
     hardware: Record<string, unknown>;
     adaptive_intelligence: Record<string, unknown>;
     missing: string[];
+    organs_truth_v1?: Record<string, unknown> | null;
+    voice_provider?: string;
   };
+  organs_truth_v1?: Record<string, unknown> | null;
   model_catalog: ModelCatalogEntry[];
   readiness: ReadinessRow[];
   credentials: {

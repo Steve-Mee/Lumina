@@ -191,6 +191,7 @@ class HardwareIntelligenceSnapshot:
     ram_gb: float
     gpu_vram_gb: float
     vllm_supported: bool
+    os_name: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -202,6 +203,7 @@ class HardwareIntelligenceSnapshot:
             "ram_gb": float(self.ram_gb),
             "gpu_vram_gb": float(self.gpu_vram_gb),
             "vllm_supported": bool(self.vllm_supported),
+            "os_name": self.os_name,
         }
 
 
@@ -231,10 +233,11 @@ class HardwareIntelligenceManager:
             hardware = HardwareInspector.load_cached() or HardwareInspector.capture()
         self._latest_hardware_snapshot = hardware
 
+        vllm_supported = bool(hardware.vllm_supported) and str(hardware.os_name) != "Windows"
         descriptor: ModelDescriptor = self.catalog.recommended_for(
             ram_gb=hardware.ram_gb,
             gpu_vram_gb=hardware.gpu_vram_gb,
-            vllm_supported=hardware.vllm_supported,
+            vllm_supported=vllm_supported,
         )
         snapshot = HardwareIntelligenceSnapshot(
             profile_tier=str(hardware.profile_tier),
@@ -244,7 +247,8 @@ class HardwareIntelligenceManager:
             recommended_context_length=int(descriptor.context_length),
             ram_gb=float(hardware.ram_gb),
             gpu_vram_gb=float(hardware.gpu_vram_gb),
-            vllm_supported=bool(hardware.vllm_supported),
+            vllm_supported=vllm_supported,
+            os_name=str(hardware.os_name),
         )
         self._latest_intelligence_snapshot = snapshot
         return snapshot

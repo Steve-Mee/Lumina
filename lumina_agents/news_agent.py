@@ -294,6 +294,52 @@ class NewsAgent:
         except Exception:
             logger.exception("NewsAgent failed to write decision log")
 
+    def _fail_closed_if_voice_off(self, now_utc: datetime) -> dict[str, Any] | None:
+        """Voice off → neutral 1.0, never throw into the order loop."""
+        from lumina_core.intelligence.resolve import VoiceWorkload, fail_closed_news_result, resolve_provider
+
+        try:
+            from lumina_core.adaptive_intelligence import AdaptiveIntelligenceManager
+
+            truth = AdaptiveIntelligenceManager().organs_truth()
+            allowed = [item for item in truth.voice.allowed_providers if item != "off"]
+            selected = truth.voice.selected_provider
+        except Exception:
+            return None
+        provider = resolve_provider(
+            VoiceWorkload.NEWS_INTERPRET,
+            allowed_providers=allowed,
+            selected_provider=selected,  # type: ignore[arg-type]
+        )
+        if selected != "off" and provider != "off":
+            return None
+        payload = fail_closed_news_result(reason="voice_off")
+        result = {
+            "news_data": {},
+            "sentiment_signal": "neutral",
+            "sentiment_score": 0.0,
+            "high_impact": False,
+            "high_impact_events": [],
+            "summary": str(payload["summary"]),
+            "dynamic_multiplier": 1.0,
+            "dynamic_multipliers": dict(getattr(self.engine.config, "news_impact_multipliers", {})),
+            "news_avoidance_window": False,
+            "news_avoidance_hold_until_ts": 0.0,
+            "news_avoidance_reason": "",
+            "last_update": now_utc.isoformat(),
+            "confidence": 0.0,
+            "fallback_level": 1,
+            "fallback_reason_code": "voice_off",
+            "cache_ttl_seconds": 300,
+            "degraded": True,
+            "order_path_coupled": False,
+        }
+        app = self._app()
+        app.logger.info("NEWS_CYCLE,sentiment=neutral,score=0.000,multiplier=1.000,avoid=false,degraded=true")
+        self._last_update_dt = now_utc
+        self._cached_result = dict(result)
+        return result
+
     def _contract_input_payload(self) -> dict[str, Any]:
         app = self._app()
         news_data = self._safe_dict(app.get_high_impact_news())
@@ -321,6 +367,10 @@ class NewsAgent:
             age_seconds = (now_utc - self._last_update_dt).total_seconds()
             if age_seconds < interval:
                 return dict(self._cached_result)
+
+        closed = self._fail_closed_if_voice_off(now_utc)
+        if closed is not None:
+            return closed
 
         news_data = self._safe_dict(app.get_high_impact_news())
         events = [e for e in self._safe_list(news_data.get("events")) if isinstance(e, dict)]

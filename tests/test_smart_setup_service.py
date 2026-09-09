@@ -456,8 +456,12 @@ def test_run_smart_setup_skips_ollama_for_vllm(
         "lumina_launcher.services.smart_setup_service.HardwareInspector.capture",
         _make_hardware_snapshot,
     )
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
     progress: list[SetupProgressEvent] = []
-    result = service.run_smart_setup(on_progress=progress.append)
+    result = service.run_smart_setup(
+        on_progress=progress.append,
+        options=SmartSetupOptions(voice_provider="vllm", install_ollama=False, download_recommended_model=False),
+    )
     assert result.success is True
     assert "skipped_vllm_provider" in [event.phase for event in progress]
     mock_setup_service.ensure_ollama.assert_not_called()

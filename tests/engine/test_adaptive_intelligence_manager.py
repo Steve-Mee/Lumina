@@ -74,6 +74,36 @@ def test_adaptive_intelligence_auto_mode_uses_detected_tier(monkeypatch: pytest.
 
 
 @pytest.mark.unit
+def test_adaptive_intelligence_force_high_windows_never_recommends_vllm(monkeypatch: pytest.MonkeyPatch) -> None:
+    manager = AdaptiveIntelligenceManager()
+    monkeypatch.setattr(
+        "lumina_core.adaptive_intelligence.ConfigLoader.get",
+        classmethod(lambda cls: {"intelligence": {"mode": "force_high"}}),
+    )
+    monkeypatch.setattr(
+        manager.hardware_manager,
+        "resolve",
+        lambda refresh_hardware=False: type(
+            "Snapshot",
+            (),
+            {
+                "intelligence_tier": "high",
+                "recommended_model_key": "qwen3.5-35b",
+                "recommended_provider": "vllm",
+                "recommended_context_length": 32768,
+                "os_name": "Windows",
+                "profile_tier": "beast",
+                "vllm_supported": True,
+            },
+        )(),
+    )
+
+    status = manager.refresh()
+    assert status.recommended_provider != "vllm"
+    assert status.recommended_provider == "ollama"
+
+
+@pytest.mark.unit
 def test_adaptive_intelligence_status_validates_against_event_contract() -> None:
     status = {
         "tier": "standard",

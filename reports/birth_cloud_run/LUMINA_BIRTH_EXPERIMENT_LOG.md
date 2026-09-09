@@ -429,3 +429,11 @@ Isolated PHYSICS_SLOPE_ABS=0.004 on a NEW 8e-6 tape + scratch 46-dim V1 10k live
 ## Pointer — AWAKENING_GEOMETRY_REWARD
 
 First-touch gate 0.10 then train-only +1.21/−1.04 close reward on a NEW SCALE-physics tape lives under `reports/awakening_geom_run`. Floor 150 stays. GENESIS_EYES_OK is false. REAL=no. world_engineering_closed stays true. Policy goal 0.46 is not the gate.
+---
+
+## This ticket — Lungs vs Voice organs SSOT (Genesis wiring)
+
+**Prompt:** Honest stack. Two organs. No vLLM-vs-CUDA radio. News is Voice, never orders.
+**Floors:** unchanged (S1–S5 pins above). No MES $5 move. No REAL door. No Evolution Proof stamp.
+**Shipped:** `organs_truth_v1`; Windows blocks vLLM; physics installer refuses `--with-vllm`; provider default `ollama,grok_remote` on Windows; three-card Setup; NewsAgent fail-closed when Voice=off (neutral, multiplier 1.0, `order_path_coupled=false`).
+**Verdict:** `ORGANS_CLOSED` pending test green on this branch. Fitness `707b5ab9d6b9af96` untouched. π* zips untouched.

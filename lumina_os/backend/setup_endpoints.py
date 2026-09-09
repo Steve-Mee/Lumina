@@ -91,6 +91,7 @@ class SmartSetupRequest(BaseModel):
     force_high_tier: bool = False
     pull_extra_models: bool = False
     selected_model_key: str | None = None
+    voice_provider: str = "ollama"
 
 
 @router.post("/smart-setup")
@@ -115,6 +116,7 @@ async def start_smart_setup(body: SmartSetupRequest | None = None) -> dict[str, 
                     force_high_tier=opts.force_high_tier,
                     pull_extra_models=opts.pull_extra_models,
                     graceful_degrade=True,
+                    voice_provider=str(opts.voice_provider or "ollama"),
                 ),
                 mark_complete=False,
             )

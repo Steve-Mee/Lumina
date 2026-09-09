@@ -244,6 +244,12 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
         credentials_missing=credentials_missing,
         setup_complete=setup_complete,
     )
+    organs_truth = intel_status.get("organs_truth_v1")
+    if not isinstance(organs_truth, dict):
+        try:
+            organs_truth = smart._intelligence_manager.organs_truth().model_dump()
+        except Exception:
+            organs_truth = None
     intelligence_payload = {
         "ollama_installed": bool(intel_status.get("ollama_installed")),
         "ollama_required": bool(intel_status.get("ollama_required")),
@@ -254,6 +260,8 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
         "hardware": intel_status.get("hardware", {}),
         "adaptive_intelligence": intel_status.get("adaptive_intelligence", {}),
         "missing": intelligence_missing,
+        "organs_truth_v1": organs_truth,
+        "voice_provider": str(intel_status.get("voice_provider") or "ollama"),
     }
     wizard_steps = resolve_wizard_steps(required_steps)
     backend_reachable = bool(backend.get("reachable"))
@@ -294,6 +302,7 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
             "real_trading_eligible": _birth.real_trading_eligible(),
         },
         "intelligence": intelligence_payload,
+        "organs_truth_v1": organs_truth,
         "model_catalog": (
             getattr(_ep, "_model_catalog_payload", _model_catalog_payload)(hardware, model_service)
             if _ep is not None

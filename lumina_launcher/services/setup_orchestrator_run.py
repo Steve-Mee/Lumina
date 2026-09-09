@@ -133,6 +133,13 @@ def run_smart_setup(
     degraded = False
     opts = options if options is not None else service.default_options()
     _s().apply_intelligence_mode(service, opts.force_high_tier)
+    _s().apply_voice_provider(service, opts.voice_provider)
+    if opts.voice_provider == "off":
+        opts.install_ollama = False
+        opts.download_recommended_model = False
+    elif opts.voice_provider == "grok_remote":
+        opts.install_ollama = False
+        opts.download_recommended_model = False
 
     intelligence_status = service._intelligence_manager.refresh(refresh_hardware=True)
     intelligence = intelligence_status.to_dict()
@@ -141,7 +148,7 @@ def run_smart_setup(
         service, intelligence_status, hardware_intel.to_dict()
     )
     provider = str(intelligence.get("recommended_provider", "ollama") or "ollama")
-    ollama_required = provider == "ollama"
+    ollama_required = str(opts.voice_provider or "ollama") == "ollama"
 
     emit_progress(
         on_progress,

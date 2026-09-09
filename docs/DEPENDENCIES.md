@@ -6,25 +6,32 @@ LUMINA gebruikt gesplitste requirements-profielen zodat elke omgeving alleen ins
 
 - `requirements-core.txt`: minimale runtime voor API, engine en observability.
 - `requirements-trading.txt`: live/paper trading add-ons (market calendars, scheduler, notificaties).
-- `requirements-ml.txt`: training/inference stack (RL, transformers, vLLM, ONNX, CV).
+- `requirements-ml.txt`: Linux/WSL2 **Voice serving** extras (vLLM, transformers, ONNX). **Not** the Windows Birth / NinjaTrader first-boot path. **Not** the physics venv.
+- `requirements-birth-physics.txt`: Lungs pins (SB3, gymnasium). Torch CUDA wheel comes from `scripts/install_birth_physics_stack.py`.
 - `requirements-dev.txt`: test/lint/security tooling.
-- `requirements.txt`: aggregator die alle bovenstaande profielen include.
+- `requirements.txt`: aggregator for a Linux ML node. Do not use this as Windows first-boot.
+
+## Two organs
+
+1. **Lungs (training engine / leermotor):** `python scripts/install_birth_physics_stack.py` — torch cu128+ + SB3. Never vLLM.
+2. **Voice (thinking assistant / denk-assistent):** Ollama or xAI on Windows. vLLM only on Linux/WSL2 in its **own** venv.
 
 ## Install voorbeelden
 
-Productie runtime:
+Productie runtime / Windows NinjaTrader first-boot:
 
 ```bash
 pip install -r requirements-core.txt -r requirements-trading.txt
+python scripts/install_birth_physics_stack.py
 ```
 
-Lokale development (alles):
+Lokale development (Linux ML node, not the NT machine):
 
 ```bash
 pip install -r requirements.txt
 ```
 
-ML-trainingsnode:
+vLLM serving node (Linux/WSL2, separate venv):
 
 ```bash
 pip install -r requirements-core.txt -r requirements-trading.txt -r requirements-ml.txt

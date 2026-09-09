@@ -1,7 +1,12 @@
-# ML training & inference stack — required for PPO training, neuroevolution,
-# and local model inference. NOT needed for paper/live execution without training.
+# ML inference extras (transformers, vLLM, ONNX, CV).
 #
-# Install after core: pip install -r requirements-core.txt -r requirements-ml.txt
+# LAW:
+# Do not install this on the Windows Birth / NinjaTrader machine.
+# Do not install this into the physics venv.
+# vLLM lives in a separate Linux/WSL2 serving venv.
+#
+# Birth physics (torch CUDA + SB3): python scripts/install_birth_physics_stack.py
+# First-boot: requirements-core.txt + requirements-trading.txt only.
 
 # -- Core ML frameworks ----------------------------------------------------
 torch==2.11.0

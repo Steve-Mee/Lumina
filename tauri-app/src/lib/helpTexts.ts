@@ -58,6 +58,16 @@ export const HELP_TEXTS: Record<string, string> = {
     "When on, mutations wait for human approve/reject in Decision Theater and Evolution deck. Off = faster auto path (weaker human-in-the-loop). REAL preset forces approval on.",
   config_instrument:
     "CME futures root for runtime (MES/MNQ recommended). Micros are ~1/10 full-size notional. Traded primarily via NinjaTrader 8 + Lumina Fabric. Front-month contract is resolved on the platform — you pick the root, not MES SEP26.",
+  cuda_gloss:
+    "CUDA is the way an NVIDIA graphics card does heavy math. LUMINA uses it to practise trades.",
+  vllm_gloss:
+    "vLLM is an optional extra-fast talking server. It is not the thing that learns to trade.",
+  ollama_gloss: "Ollama is a small local talking program. Safe to run next to learning.",
+  xai_gloss: "Cloud brain. Best for reading live news. Needs a key. Does not learn trades by itself.",
+  force_high_tier:
+    "Picks a larger local talking model if memory allows. Never unlocks REAL. Never installs vLLM on Windows. May be slow.",
+  organs_lungs: "How LUMINA learns trades. Detected, not chosen. No checkbox.",
+  organs_voice: "How LUMINA reads and explains. Optional. Not needed to start learning.",
   config_voice_enabled: "Enable TTS and voice input on the operator deck. No capital impact.",
   config_screen_share: "Live chart screen-share path for operator context. No capital impact.",
 };

@@ -45,6 +45,7 @@ class SmartSetupOptions:
     force_high_tier: bool = False
     pull_extra_models: bool = False
     graceful_degrade: bool = True
+    voice_provider: str = "ollama"
 
 
 @dataclass(slots=True)

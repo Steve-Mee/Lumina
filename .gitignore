@@ -212,6 +212,9 @@ lumina_analyse._*
 lumina_core/ppo_trainer_birth_extensions.py
 LUMINA_BIRTH_ENGINE_INTEGRATION_GUIDE.md
 
+# Machine-only Cursor/Grok agent briefs — not product, never commit
+LUMINA_CURSOR_*_PROMPT.md
+
 # Local reset snapshots (blank-state script); never commit
 backups/
 *.backup-*

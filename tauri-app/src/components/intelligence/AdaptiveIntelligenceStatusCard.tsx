@@ -124,7 +124,7 @@ export function AdaptiveIntelligenceStatusCard({ className }: AdaptiveIntelligen
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <DetailRow label="Provider" value={formatProviderLabel(status.recommended_provider)} />
+            <DetailRow label="Thinking assistant" value={formatProviderLabel(status.recommended_provider)} />
             <DetailRow label="Mode" value={formatModeLabel(status.mode)} />
             <DetailRow label="Reasoning" value={formatReasoningLabel(status.reasoning_mode)} />
             <DetailRow label="Context" value={status.context_length.toLocaleString()} />

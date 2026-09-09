@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { fetchSmartSetupProgress } from "@/lib/setupClient";
 import type { ModelCatalogEntry, OnboardingPayload } from "@/lib/onboardingSteps";
 import { luminaSurfaceMutedClass } from "@/lib/glassGlowTaxonomy";
-import { distressPanelClass, warnOverlayBodyClass } from "@/lib/modePresentation";
+import { CUDA_GLOSS, type VoiceChoiceId, resolveSmartSetupView } from "@/lib/organsSetup";
 import { cn } from "@/lib/utils";
 
 interface SmartSetupStepProps {
@@ -14,7 +14,11 @@ interface SmartSetupStepProps {
   running: boolean;
   selectedModelKey: string;
   onSelectModel: (key: string) => void;
-  onRun: (options?: { force_high_tier?: boolean; pull_extra_models?: boolean }) => void;
+  onRun: (options?: {
+    force_high_tier?: boolean;
+    pull_extra_models?: boolean;
+    voice_provider?: VoiceChoiceId;
+  }) => void;
   onContinue: () => void;
   onRefresh: () => void;
 }
@@ -46,23 +50,20 @@ export function SmartSetupStep({
   const [instructionSummary, setInstructionSummary] = useState("");
   const [forceHighTier, setForceHighTier] = useState(false);
   const [pullExtraModels, setPullExtraModels] = useState(false);
+  const defaultVoice = (payload.intelligence.voice_provider as VoiceChoiceId | undefined) ?? "ollama";
+  const [voice, setVoice] = useState<VoiceChoiceId>(defaultVoice);
 
-  const needsOllama = payload.intelligence.missing.includes("ollama");
-  const needsModel = payload.intelligence.missing.some((m) => m.startsWith("model:"));
-  const ready =
-    !needsOllama &&
-    !needsModel &&
-    payload.intelligence.recommended_model_present;
-
+  const view = resolveSmartSetupView(payload, voice);
   const catalog = payload.model_catalog ?? [];
   const activeKey =
     selectedModelKey ||
     payload.intelligence.recommended_model_key ||
     catalog.find((m) => m.is_recommended)?.key ||
     "";
+  const selectedEntry = catalog.find((m) => m.key === activeKey);
 
   useEffect(() => {
-    if (!running && ready) return;
+    if (!running) return;
     const timer = setInterval(async () => {
       try {
         const prog = await fetchSmartSetupProgress();
@@ -78,7 +79,7 @@ export function SmartSetupStep({
         const manualSteps = prog.instructions?.steps ?? [];
         setInstructions(manualSteps);
         setInstructionSummary(String(prog.instructions?.summary ?? ""));
-        if (!prog.running && ready) {
+        if (!prog.running) {
           onRefresh();
         }
       } catch {
@@ -86,11 +87,7 @@ export function SmartSetupStep({
       }
     }, 1500);
     return () => clearInterval(timer);
-  }, [running, ready, onRefresh]);
-
-  useEffect(() => {
-    if (ready) setPercent(100);
-  }, [ready]);
+  }, [running, onRefresh]);
 
   useEffect(() => {
     if (!failed && !running) return;
@@ -100,11 +97,12 @@ export function SmartSetupStep({
     });
   }, [failed, running]);
 
-  const tier = String(
-    (payload.intelligence.adaptive_intelligence as { tier?: string })?.tier ?? "light",
-  ).toUpperCase();
-
-  const selectedEntry = catalog.find((m) => m.key === activeKey);
+  const handleContinue = () => {
+    if (voice !== "ollama") {
+      onRun({ force_high_tier: forceHighTier, pull_extra_models: pullExtraModels, voice_provider: voice });
+    }
+    onContinue();
+  };
 
   return (
     <motion.div
@@ -112,25 +110,90 @@ export function SmartSetupStep({
       animate={{ opacity: 1, y: 0 }}
       className="mx-auto max-w-xl p-2 md:p-4"
     >
-      <h2 className="mb-2 text-lg font-semibold">Intelligence Stack</h2>
+      <h2 className="mb-2 text-lg font-semibold">How LUMINA is wired</h2>
       <p className="mb-6 text-sm text-muted-foreground">
-        Hardware tier <span className="text-cyan-300/90">{tier}</span> — choose a LUMINA-tested
-        trading model for your stack.
+        Two organs. The training engine learns trades. The thinking assistant talks. They are not
+        alternatives.
       </p>
 
-      <ul className="mb-6 space-y-2 text-sm">
-        <li className={needsOllama ? "text-amber-300/90" : "text-emerald-400/90"}>
-          Ollama: {payload.intelligence.ollama_installed ? "Installed" : "Missing"}
-        </li>
-        <li className={needsModel ? "text-amber-300/90" : "text-emerald-400/90"}>
-          Model: {payload.intelligence.recommended_model_present ? "Ready" : "Not pulled"}
-        </li>
-      </ul>
+      <section className={cn("mb-4 rounded-lg border border-white/10 p-4", luminaSurfaceMutedClass(""))}>
+        <h3 className="text-sm font-semibold">How LUMINA learns trades</h3>
+        <p className="mt-2 text-sm">{view.lungsStatus}</p>
+        <p className="mt-2 text-xs text-muted-foreground">{CUDA_GLOSS}</p>
+        {view.lungsNextAction && (
+          <div className="mt-3">
+            <p className="text-xs text-muted-foreground">
+              Does not install the talking assistant.
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <code className="flex-1 overflow-x-auto rounded bg-black/40 px-2 py-1 text-[11px] text-cyan-100/90">
+                {view.lungsNextAction}
+              </code>
+              <Button type="button" variant="outline" size="sm" onClick={() => copyCommand(view.lungsNextAction!)}>
+                Copy
+              </Button>
+            </div>
+          </div>
+        )}
+      </section>
 
-      {catalog.length > 0 && payload.intelligence.recommended_provider === "ollama" && (
+      <section className={cn("mb-4 rounded-lg border border-white/10 p-4", luminaSurfaceMutedClass(""))}>
+        <h3 className="text-sm font-semibold">How LUMINA reads and explains</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Not needed to start learning. News reading uses this assistant later and never places orders.
+        </p>
+        <div className="mt-3 space-y-2">
+          {view.voiceChoices.map((choice) => {
+            const selected = voice === choice.id;
+            return (
+              <label
+                key={choice.id}
+                className={cn(
+                  "block rounded-lg border px-3 py-3 text-sm",
+                  selected ? "border-cyan-400/45 bg-cyan-400/10" : "border-white/10",
+                  !choice.enabled && "opacity-60",
+                )}
+              >
+                <span className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="voice-provider"
+                    checked={selected}
+                    disabled={!choice.enabled}
+                    onChange={() => setVoice(choice.id as VoiceChoiceId)}
+                  />
+                  <span className="font-medium">{choice.label}</span>
+                </span>
+                <p className="mt-1 text-xs text-muted-foreground">{choice.help}</p>
+                {selected && (
+                  <p className="mt-1 text-xs text-cyan-100/80">{choice.consequence_if_yes}</p>
+                )}
+              </label>
+            );
+          })}
+        </div>
+        {!view.showVllmOption && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Extra-fast local assistant (vLLM) is not available on this Windows PC.
+          </p>
+        )}
+      </section>
+
+      <section className={cn("mb-4 rounded-lg border border-white/10 p-4", luminaSurfaceMutedClass(""))}>
+        <h3 className="text-sm font-semibold">What happens next</h3>
+        <ul className="mt-2 list-disc space-y-1 pl-4 text-sm">
+          {view.nextSteps.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ul>
+        <p className="mt-2 text-sm font-medium">Learning to trade does not wait for the assistant.</p>
+        <p className="mt-1 text-xs text-muted-foreground">{view.newsStatus}</p>
+      </section>
+
+      {view.showCatalog && catalog.length > 0 && (
         <div className="mb-6">
           <label className="mb-2 block text-xs tracking-wider text-muted-foreground uppercase">
-            Trading-capable model
+            Local talking model
           </label>
           <div className="space-y-2">
             {catalog.map((model: ModelCatalogEntry) => {
@@ -158,7 +221,7 @@ export function SmartSetupStep({
                   <p className="mt-1 font-mono text-xs text-muted-foreground">{model.ollama_tag}</p>
                   {!model.fits_hardware && (
                     <p className="mt-1 text-xs text-amber-300/90">
-                      Heavier than your current hardware tier — may run slowly.
+                      Heavier than your current hardware — may run slowly.
                     </p>
                   )}
                 </button>
@@ -167,19 +230,11 @@ export function SmartSetupStep({
           </div>
           {selectedEntry && (
             <p className="mt-2 text-xs text-muted-foreground">
-              Selected: {selectedEntry.display_name} ({selectedEntry.recommended_tier} tier)
+              Selected: {selectedEntry.display_name} ({selectedEntry.recommended_tier} tier). Size
+              unknown — check the model card if the catalog does not list download size.
             </p>
           )}
         </div>
-      )}
-
-      {payload.intelligence.recommended_provider !== "ollama" && (
-        <p className={cn("mb-4 rounded-lg p-3 text-xs", distressPanelClass())}>
-          <span className={warnOverlayBodyClass()}>
-            High-tier provider ({payload.intelligence.recommended_provider}) requires manual vLLM
-            setup. See launcher documentation for GPU requirements.
-          </span>
-        </p>
       )}
 
       {(running || percent > 0) && (
@@ -194,8 +249,8 @@ export function SmartSetupStep({
         </div>
       )}
 
-      {(failed || (!ready && !running && instructions.length > 0)) && (
-        <div className={cn("mb-6 rounded-lg p-4", distressPanelClass())}>
+      {(failed || (!running && instructions.length > 0)) && (
+        <div className="mb-6 rounded-lg border border-white/10 p-4">
           <p className="mb-2 text-xs font-semibold tracking-wider uppercase text-muted-foreground">
             Manual setup fallback
           </p>
@@ -212,12 +267,7 @@ export function SmartSetupStep({
                     <code className="flex-1 overflow-x-auto rounded bg-black/40 px-2 py-1 text-[11px] text-cyan-100/90">
                       {step.command}
                     </code>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyCommand(step.command!)}
-                    >
+                    <Button type="button" variant="outline" size="sm" onClick={() => copyCommand(step.command!)}>
                       Copy
                     </Button>
                   </div>
@@ -228,42 +278,46 @@ export function SmartSetupStep({
         </div>
       )}
 
-      {!ready && payload.intelligence.recommended_provider === "ollama" && (
-        <div className="mb-4 space-y-2 text-sm">
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={forceHighTier}
-              onChange={(e) => setForceHighTier(e.target.checked)}
-            />
-            Force high tier profile
-          </label>
+      <div className="mb-4 space-y-2 text-sm">
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={forceHighTier}
+            onChange={(e) => setForceHighTier(e.target.checked)}
+          />
+          <span>
+            Larger local talking model
+            <span className="block text-xs text-muted-foreground">{view.forceHighHelp}</span>
+          </span>
+        </label>
+        {view.showInstall && (
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
               checked={pullExtraModels}
               onChange={(e) => setPullExtraModels(e.target.checked)}
             />
-            Download extra recommended models
+            Download extra recommended talking models
           </label>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="flex flex-wrap gap-3">
-        {!ready && payload.intelligence.recommended_provider === "ollama" && (
+        {view.showInstall && (
           <Button
             className="onboarding-cta"
-            onClick={() => onRun({ force_high_tier: forceHighTier, pull_extra_models: pullExtraModels })}
+            onClick={() =>
+              onRun({ force_high_tier: forceHighTier, pull_extra_models: pullExtraModels, voice_provider: voice })
+            }
             disabled={running || !activeKey}
           >
-            {running ? "Installing…" : "Install & Configure"}
+            {running ? "Installing…" : "Install local assistant"}
           </Button>
         )}
-        {ready && (
-          <Button className="onboarding-cta" onClick={onContinue}>
-            Continue
-          </Button>
-        )}
+        <Button className="onboarding-cta" onClick={handleContinue} disabled={running}>
+          Continue
+        </Button>
       </div>
     </motion.div>
   );

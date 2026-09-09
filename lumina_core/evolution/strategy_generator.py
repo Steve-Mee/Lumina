@@ -107,7 +107,11 @@ class StrategyGenerator:
             os.getenv("LUMINA_VLLM_STRATEGY_MODEL") or os.getenv("LUMINA_VLLM_MUTATOR_MODEL") or "grok-trader-1b"
         ).strip()
         self._ollama_model = str(os.getenv("LUMINA_OLLAMA_STRATEGY_MODEL") or "qwen2.5:7b-instruct").strip()
-        provider_chain = str(os.getenv("LUMINA_STRATEGY_PROVIDERS") or "vllm,ollama").strip().lower()
+        from lumina_core.intelligence.organs import default_strategy_provider_chain
+
+        provider_chain = str(
+            os.getenv("LUMINA_STRATEGY_PROVIDERS") or default_strategy_provider_chain()
+        ).strip().lower()
         self._providers = [item.strip() for item in provider_chain.split(",") if item.strip()]
 
     def generate_new_strategy(self, hypothesis: str) -> str:

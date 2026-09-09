@@ -294,6 +294,7 @@ export async function startSmartSetup(options?: {
   selected_model_key?: string;
   force_high_tier?: boolean;
   pull_extra_models?: boolean;
+  voice_provider?: string;
 }): Promise<{ status: string; message: string }> {
   return apiFetch("/api/setup/smart-setup", {
     method: "POST",

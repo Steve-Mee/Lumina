@@ -51,7 +51,17 @@ def main() -> int:
         [str(python_bin), "-m", "pip", "install", "--upgrade", "pip", "wheel", "setuptools>=77.0.3,<82"],
         check=True,
     )
-    subprocess.run([str(python_bin), "-m", "pip", "install", "-r", str(ROOT / "requirements.txt")], check=True)
+    subprocess.run(
+        [str(python_bin), "-m", "pip", "install", "-r", str(ROOT / "requirements-core.txt")],
+        check=True,
+    )
+    subprocess.run(
+        [str(python_bin), "-m", "pip", "install", "-r", str(ROOT / "requirements-trading.txt")],
+        check=True,
+    )
+    print("Training engine (Lungs): python scripts/install_birth_physics_stack.py")
+    print("Do not pip install -r requirements-ml.txt on this Windows / NinjaTrader machine.")
+    print("That file is Linux/WSL2 vLLM serving — not the learning engine.")
     subprocess.run(
         [str(python_bin), "-m", "pip", "install", "pyyaml", "psutil", "ollama"],
         check=True,
