@@ -109,6 +109,16 @@ def get_birth_status(svc: Any) -> Dict[str, Any]:
             demote_stale_history_failure_progress(svc)
         except Exception as exc:
             logger.debug("birth.status.demote_residual_history_failed: %s", exc)
+        try:
+            from lumina_launcher.services.birth_residual_cleanup import (
+                demote_fixed_birth_residuals,
+            )
+
+            cleared = demote_fixed_birth_residuals(svc.workspace_root)
+            if cleared.get("changed"):
+                svc._error = None
+        except Exception as exc:
+            logger.debug("birth.status.demote_fixed_residual_failed: %s", exc)
     svc._maybe_auto_resume_stalled_birth()
     progress = svc._load_progress()
     lightweight = _m().should_use_lightweight_status_enrichment(svc, progress)

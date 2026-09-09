@@ -18,8 +18,10 @@ from lumina_core.birth.physics_preflight import (
     enforce_birth_physics,
     import_sb3_ppo,
     is_physics_failure,
+    operator_physics_detail,
     probe_birth_physics,
     reject_birth_if_physics_missing,
+    require_sb3_base_callback,
     trainer_requires_physics,
 )
 
@@ -33,6 +35,11 @@ def _importer(**modules: Any) -> Any:
             if isinstance(value, BaseException):
                 raise value
             return value
+        if name.startswith("stable_baselines3.") and "stable_baselines3" in modules:
+            parent = modules["stable_baselines3"]
+            if isinstance(parent, BaseException):
+                raise parent
+            return SimpleNamespace(BaseCallback=object, PPO=getattr(parent, "PPO", None))
         raise ModuleNotFoundError(name)
 
     return load
@@ -49,6 +56,26 @@ def _torch(*, cuda: bool, device: str = "NVIDIA GeForce RTX 5070 Ti") -> Any:
 
 def _sb3(*, ppo: Any = object) -> Any:
     return SimpleNamespace(PPO=ppo)
+
+
+def test_probe_fails_closed_when_sb3_callbacks_missing() -> None:
+    result = probe_birth_physics(
+        importer=_importer(
+            torch=_torch(cuda=True),
+            gymnasium=SimpleNamespace(),
+            stable_baselines3=_sb3(),
+            **{
+                "stable_baselines3.common.callbacks": ModuleNotFoundError(
+                    "No module named 'stable_baselines3.common.callbacks'"
+                )
+            },
+        ),
+        has_nvidia=True,
+    )
+    assert result.ok is False
+    assert result.retryable is False
+    assert result.sb3_ok is False
+    assert any("callbacks" in item for item in result.missing)
 
 
 def test_probe_fails_closed_when_sb3_missing() -> None:
@@ -250,11 +277,31 @@ def test_physics_failure_classifier_does_not_wipe() -> None:
     assert attn.reason_code == PHYSICS_UNAVAILABLE
     assert "wipe_and_retry" not in attn.actions
     assert "install_birth_physics_stack" in attn.actions
+    logger_exc = RuntimeError(
+        "stable-baselines3 is required for PPOEvolutionLogger. "
+        "Install with: pip install stable-baselines3"
+    )
+    assert is_physics_failure(logger_exc) is True
+    logger_attn = birth_exception_attention(logger_exc)
+    assert logger_attn.retryable is False
+    assert logger_attn.reason_code == PHYSICS_UNAVAILABLE
+    assert "wipe_and_retry" not in logger_attn.actions
+    assert "install_birth_physics_stack" in logger_attn.actions
+    assert INSTALL_HINT in operator_physics_detail(logger_exc)
+    assert "RuntimeError" not in operator_physics_detail(logger_exc)
     other = RuntimeError("Fabric host down")
     assert is_physics_failure(other) is False
     default = birth_exception_attention(other)
     assert default.retryable is True
     assert "wipe_and_retry" in default.actions
+
+
+def test_require_sb3_base_callback_matches_ppo_gate() -> None:
+    if importlib.util.find_spec("stable_baselines3") is not None:
+        assert require_sb3_base_callback() is not None
+        return
+    with pytest.raises(RuntimeError, match="install_birth_physics_stack"):
+        require_sb3_base_callback()
 
 
 def test_live_interpreter_probe_is_honest() -> None:

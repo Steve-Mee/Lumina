@@ -475,17 +475,21 @@ export function BirthGenesisDeck({
                             : "text-cyan-200/90"
                         }
                       >
-                        {checkpointAvailable
-                          ? "Checkpoint ready — choose one path:"
-                          : presentation.hasAttention
-                            ? "Recovery required:"
-                            : "Recovery tools:"}
+                        {presentation.physicsMissing
+                          ? "Training engine missing:"
+                          : checkpointAvailable
+                            ? "Checkpoint ready — choose one path:"
+                            : presentation.hasAttention
+                              ? "Recovery required:"
+                              : "Recovery tools:"}
                       </strong>{" "}
-                      {checkpointAvailable
-                        ? "Continue resumes training. Start clean clears curriculum (tick cache kept). Full wipe also drops tick cache."
-                        : presentation.hasAttention
-                          ? "Start clean or Full wipe below. Retry activation from the footer when the issue is clear."
-                          : "Start clean clears curriculum. Full wipe includes tick cache. Stop engine if the host is still live."}
+                      {presentation.physicsMissing
+                        ? "Run python scripts/install_birth_physics_stack.py, then retry. Do not wipe — tick cache stays valid."
+                        : checkpointAvailable
+                          ? "Continue resumes training. Start clean clears curriculum (tick cache kept). Full wipe also drops tick cache."
+                          : presentation.hasAttention
+                            ? "Start clean or Full wipe below. Retry activation from the footer when the issue is clear."
+                            : "Start clean clears curriculum. Full wipe includes tick cache. Stop engine if the host is still live."}
                     </p>
                   </div>
 
@@ -528,7 +532,7 @@ export function BirthGenesisDeck({
                       !checkpointAvailable && !engineLive && "genesis-recovery-action-grid--2",
                     )}
                   >
-                    {checkpointAvailable ? (
+                    {checkpointAvailable && !presentation.physicsMissing ? (
                       <RecoveryActionCard
                         label="Continue"
                         tip="Resume training from the last resumable checkpoint. Curriculum and stage progress are preserved."
@@ -560,6 +564,8 @@ export function BirthGenesisDeck({
                       </RecoveryActionCard>
                     ) : null}
 
+                    {presentation.physicsMissing ? null : (
+                      <>
                     <RecoveryActionCard
                       label="Start clean"
                       tip="Clear birth curriculum and start a new run. Tick cache is kept by default for faster reload."
@@ -630,6 +636,8 @@ export function BirthGenesisDeck({
                         <span>Full wipe</span>
                       </button>
                     </RecoveryActionCard>
+                      </>
+                    )}
 
                     {engineLive ? (
                       <RecoveryActionCard

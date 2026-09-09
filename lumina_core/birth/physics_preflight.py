@@ -63,6 +63,29 @@ def import_sb3_ppo() -> Any:
     return PPO
 
 
+def require_sb3_base_callback() -> Any:
+    """Import SB3 BaseCallback or fail closed with the operator install hint."""
+    try:
+        from stable_baselines3.common.callbacks import BaseCallback
+    except ImportError as exc:
+        name = str(getattr(exc, "name", None) or "stable_baselines3").strip() or "stable_baselines3"
+        raise RuntimeError(physics_missing_message(missing=(name,))) from exc
+    return BaseCallback
+
+
+def operator_physics_detail(exc: BaseException) -> str:
+    """Operator-facing physics message. Never prefix RuntimeError / pip-install theatre."""
+    text = str(exc).strip()
+    if INSTALL_HINT in text or "Leermotor ontbreekt" in text or "CUDA-torch ontbreekt" in text:
+        return text
+    missing = ("stable_baselines3",)
+    if isinstance(exc, ModuleNotFoundError):
+        name = str(getattr(exc, "name", None) or "").strip()
+        if name:
+            missing = (name,)
+    return physics_missing_message(missing=missing)
+
+
 @dataclass(frozen=True, slots=True)
 class BirthPhysicsProbe:
     ok: bool
@@ -109,15 +132,34 @@ _DEFAULT_BIRTH_ERROR_ACTIONS: tuple[str, ...] = (
 )
 
 
-def is_physics_failure(exc: BaseException) -> bool:
+_PHYSICS_TEXT_MARKERS: tuple[str, ...] = (
+    INSTALL_HINT,
+    "Leermotor ontbreekt",
+    "CUDA-torch ontbreekt",
+    "PPOEvolutionLogger",
+    "stable-baselines3",
+    "stable_baselines3",
+    "pip install stable-baselines3",
+)
+
+
+def is_physics_failure(exc: BaseException, *, _depth: int = 0) -> bool:
     if isinstance(exc, ModuleNotFoundError):
         name = str(getattr(exc, "name", "") or "").strip().lower()
-        if name in {"torch", "stable_baselines3", "gymnasium"}:
+        if name in {"torch", "stable_baselines3", "gymnasium"} or name.startswith(
+            "stable_baselines3"
+        ):
             return True
-        text = str(exc).lower()
-        return "stable_baselines3" in text or "no module named 'torch'" in text
     text = str(exc)
-    return INSTALL_HINT in text or "Leermotor ontbreekt" in text or "CUDA-torch ontbreekt" in text
+    lowered = text.lower()
+    if any(marker.lower() in lowered for marker in _PHYSICS_TEXT_MARKERS):
+        return True
+    if _depth >= 3:
+        return False
+    cause = exc.__cause__ or exc.__context__
+    if cause is not None and cause is not exc:
+        return is_physics_failure(cause, _depth=_depth + 1)
+    return False
 
 
 def birth_exception_attention(exc: BaseException) -> BirthExceptionAttention:
@@ -187,6 +229,16 @@ def probe_birth_physics(
             sb3_ok = True
     except Exception:
         missing.append("stable_baselines3")
+
+    if sb3_ok:
+        try:
+            callbacks = load("stable_baselines3.common.callbacks")
+            if getattr(callbacks, "BaseCallback", None) is None:
+                missing.append("stable_baselines3.common.callbacks.BaseCallback")
+                sb3_ok = False
+        except Exception:
+            missing.append("stable_baselines3.common.callbacks")
+            sb3_ok = False
 
     nvidia = bool(_has_nvidia()) if has_nvidia is None else bool(has_nvidia)
     if not torch_ok or not sb3_ok or not gym_ok or missing:

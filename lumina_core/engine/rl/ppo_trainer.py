@@ -16,15 +16,17 @@ logger = logging.getLogger(__name__)
 
 
 def _load_sb3() -> tuple:
+    from lumina_core.birth.physics_preflight import import_sb3_ppo, physics_missing_message
+
     try:
-        ppo_cls = importlib.import_module("stable_baselines3").PPO
+        ppo_cls = import_sb3_ppo()
         make_vec_env = importlib.import_module("stable_baselines3.common.env_util").make_vec_env
         return ppo_cls, make_vec_env
+    except RuntimeError:
+        raise
     except Exception as exc:  # pragma: no cover - depends on optional package install
         logging.exception("Unhandled broad exception fallback in lumina_core/engine/rl/ppo_trainer.py:23")
-        raise RuntimeError(
-            "stable-baselines3 is required for PPOTrainer. Install with: pip install stable-baselines3"
-        ) from exc
+        raise RuntimeError(physics_missing_message(missing=("stable_baselines3",))) from exc
 
 
 def _simulator_data_from_context(context: RuntimeContext) -> list[dict[str, Any]]:

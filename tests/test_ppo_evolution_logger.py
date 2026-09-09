@@ -57,6 +57,15 @@ def test_rolling_step_metrics_records_actions_and_info() -> None:
     assert compute_avg_pct(rolling.stop_pcts, default=0.0) == pytest.approx(0.011, abs=0.001)
 
 
+def test_ppo_evolution_logger_binds_live_sb3_callback(tmp_path: Path) -> None:
+    pytest.importorskip("stable_baselines3")
+    from stable_baselines3.common.callbacks import BaseCallback
+
+    logger = PPOEvolutionLogger(log_path=tmp_path / "ppo.jsonl", log_interval=1)
+    assert isinstance(logger, PPOEvolutionLogger)
+    assert isinstance(logger, BaseCallback)
+
+
 def test_ppo_evolution_logger_writes_jsonl(tmp_path: Path, monkeypatch) -> None:
     pytest.importorskip("stable_baselines3")
 
@@ -142,6 +151,27 @@ def test_ppo_evolution_logger_flushes_on_training_end(tmp_path: Path, monkeypatc
     assert entry["step"] == 3000
     assert entry["entropy"] == pytest.approx(0.33)
     assert logger.last_entropy == pytest.approx(0.33)
+
+
+def test_ppo_evolution_logger_fails_closed_without_sb3(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import lumina_core.rl.ppo_evolution_logger as logger_mod
+
+    def _missing() -> type:
+        raise RuntimeError(
+            "Leermotor ontbreekt (stable_baselines3). Birth start niet tot de physics-installer klaar is. "
+            "Run: python scripts/install_birth_physics_stack.py — daarna Reuse data. "
+            "Niet WIPE_FULL (tick-cache blijft geldig)."
+        )
+
+    monkeypatch.setattr(logger_mod, "_require_sb3_base_callback", _missing)
+    logger_mod._LIVE_LOGGER_TYPE = None
+    logger_mod._LIVE_LOGGER_BASE = None
+    with pytest.raises(RuntimeError, match="install_birth_physics_stack") as caught:
+        PPOEvolutionLogger(log_path=tmp_path / "ppo.jsonl")
+    assert "WIPE_FULL" in str(caught.value)
+    assert "pip install stable-baselines3" not in str(caught.value)
 
 
 def test_resolve_entropy_prefers_sb3_28_entropy_loss() -> None:

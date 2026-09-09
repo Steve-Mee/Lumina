@@ -479,16 +479,22 @@ def start_birth(
                     os.environ.pop("LUMINA_CONFIG", None)
             logger.info("Birth Phase completed successfully")
         except Exception as e:
-            detail = f"{type(e).__name__}: {e}"
+            from lumina_core.birth.physics_preflight import (
+                birth_exception_attention,
+                operator_physics_detail,
+            )
+
+            attn = birth_exception_attention(e)
+            if attn.reason_code != "birth_error":
+                detail = operator_physics_detail(e)
+            else:
+                detail = f"{type(e).__name__}: {e}"
             svc._error = detail
             logger.exception("Birth Phase failed: %s", detail)
             # Persist durable error progress so UI matches Telegram after in-memory
             # svc._error is cleared by a later start/restart.
             try:
-                from lumina_core.birth.physics_preflight import birth_exception_attention
-
                 prev = read_birth_progress(svc.workspace_root) or {}
-                attn = birth_exception_attention(e)
                 write_birth_progress(
                     svc.workspace_root,
                     stage="error",

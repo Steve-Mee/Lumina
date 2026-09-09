@@ -150,8 +150,10 @@ secrets.json
 credentials.json
 # Fabric / NT8 local install artifacts (compiled AddOn deploy output)
 integrations/ninjatrader8/deploy/
-# Local operator overrides (machine-specific broker/models/hardware)
+# Local operator overrides (machine-specific broker/models/hardware).
+# Tracked config.yaml is product SSOT — never commit hardware_profile / model / ctx drift.
 config.yaml.local
+config.yaml.pre_*.bak
 state/launcher_admin_password.json
 scripts/state/launcher_admin_password.json
 state/hardware_snapshot.json
