@@ -65,6 +65,8 @@ class SimRolloutResult:
     participation_passthrough: int = 0
     participation_overrides_total: int = 0
     participation_last_mode: str = "PASSTHROUGH"
+    passthrough_range_flat_bars: int = 0
+    passthrough_range_total_signals: int = 0
     # Exit physics telemetry (truthful expectancy forensics).
     closes_stop: int = 0
     closes_target: int = 0
@@ -283,6 +285,8 @@ def run_policy_rollout(
     range_hold_signals = 0
     range_total_signals = 0
     range_flat_bars = 0
+    passthrough_range_flat_bars = 0
+    passthrough_range_total_signals = 0
     range_round_trips = 0
     total_pnl = 0.0
     pnl_series: list[float] = []
@@ -635,6 +639,10 @@ def run_policy_rollout(
         )
         if occupancy_tick and pos_after == 0:
             range_flat_bars += 1
+        if occupancy_tick and last_participation_mode == MODE_PASSTHROUGH:
+            passthrough_range_total_signals += 1
+            if pos_after == 0:
+                passthrough_range_flat_bars += 1
         if occupancy_tick and occ_win is not None:
             occ_win.append(1 if pos_after == 0 else 0)
             if len(occ_win) > occ_cap:
@@ -827,6 +835,8 @@ def run_policy_rollout(
         participation_passthrough=int(telem["participation_passthrough"]),
         participation_overrides_total=int(telem["participation_overrides_total"]),
         participation_last_mode=str(last_participation_mode),
+        passthrough_range_flat_bars=int(passthrough_range_flat_bars),
+        passthrough_range_total_signals=int(passthrough_range_total_signals),
         closes_stop=closes_stop,
         closes_target=closes_target,
         closes_flatten=closes_flatten,

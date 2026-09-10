@@ -17,6 +17,9 @@ export interface BirthProgressPayload {
   patterns_mined?: number;
   oracle_wins?: number;
   data_days_loaded?: number;
+  data_manifest_calendar_days?: number;
+  stage_window_calendar_days?: number;
+  foundation_unique_calendar_days?: number;
   expansion_step?: number;
   learning_attempt?: number;
   birth_start_time?: number;
@@ -43,6 +46,11 @@ export interface BirthProgressPayload {
   ppo_steps?: number;
   ppo_steps_cumulative?: number;
   ppo_batch_count?: number;
+  ppo_batch_steps?: number;
+  ppo_batch_total?: number;
+  ppo_batch_progress_pct?: number;
+  ppo_n_envs?: number;
+  ppo_device?: string;
   message?: string;
   curriculum_stage?: string;
   prior_stage?: string;
@@ -166,6 +174,8 @@ export interface BirthProgressPayload {
   sim_ticks_processed_cumulative?: number;
   wall_clock_rollout_sec_avg?: number;
   wall_clock_trades_per_min?: number;
+  wall_clock_trades_per_min_outer?: number;
+  progress_truth?: Record<string, unknown>;
   evolution_last_action_applied?: boolean;
   evolution_last_action_detail?: string;
   needs_attention?: boolean;

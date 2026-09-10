@@ -137,6 +137,9 @@ SCORECARD_PRESERVE_KEYS: tuple[str, ...] = (
     "foundation_schema",
     "foundation_replay_ok",
     "foundation_unique_calendar_days",
+    "data_manifest_calendar_days",
+    "stage_window_calendar_days",
+    "progress_truth",
     "geometry_net_rr_after_cost",
     "geometry_breakeven_wr_after_cost",
     "geometry_cost_usd",
@@ -282,6 +285,11 @@ SCORECARD_PRESERVE_KEYS: tuple[str, ...] = (
     "runway_phase",
     "micro_oos_probe",
     "birth_exit_winrate",
+    "wall_clock_trades_per_min",
+    "wall_clock_trades_per_min_outer",
+    "wall_clock_rollout_sec_avg",
+    "ppo_n_envs",
+    "ppo_device",
 )
 
 

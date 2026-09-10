@@ -78,7 +78,16 @@ class BirthDataPipelineResumeMixin:
         resume_reenrich_only = False
 
         reuse_data = bool(getattr(host, "_reuse_data_manifest", False))
-        if not ((resume and host._data_manifest) or reuse_data):
+        from lumina_core.birth.tick_cache_persist import ensure_certified_tick_cache
+
+        certified = False
+        try:
+            certified = bool(ensure_certified_tick_cache(host.workspace_root))
+        except Exception:
+            logger.warning("birth.resume.certified_probe_failed", exc_info=True)
+        # Certified tape is SSOT until an explicit wipe. A fresh start without
+        # reuse_data must not cold-load a thinner Fabric window over it.
+        if not ((resume and host._data_manifest) or reuse_data or certified):
             return {
                 "ticks": ticks,
                 "split": split,
@@ -90,7 +99,9 @@ class BirthDataPipelineResumeMixin:
         cached_split = load_split_cache(host.workspace_root, holdout_pct=cfg.holdout_pct)
         cached_ticks = load_ticks_cache(host.workspace_root)
         cache_manifest = load_cache_manifest(host.workspace_root)
-        if reuse_data and not host._data_manifest and cache_manifest:
+        if certified:
+            host._reuse_data_manifest = True
+        if (reuse_data or certified) and not host._data_manifest and cache_manifest:
             host._data_manifest = _manifest_from_cache_file(cache_manifest)
         cached_hash = train_hash(cached_split.train) if cached_split else ""
         current_instrument = resolve_birth_history_instrument(
@@ -160,7 +171,7 @@ class BirthDataPipelineResumeMixin:
             )
 
         if resume_skip_load:
-            if reuse_data and not resume:
+            if (reuse_data or certified) and not resume:
                 resume_message = (
                     "Certified tick-cache geladen — Stage 1 herstart "
                     "(reused_manifest, geen Fabric history-probe)."

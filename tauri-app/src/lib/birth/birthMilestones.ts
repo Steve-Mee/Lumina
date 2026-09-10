@@ -2,7 +2,7 @@ import type { BirthProgressPayload, BirthStatusPayload } from "@/lib/birthClient
 
 import { isBirthCertificateFailed } from "@/lib/birth/birthStatusPredicates";
 import { normalizeToken } from "@/lib/birth/birthModelUtils";
-
+import { resolveManifestCalendarDays } from "@/lib/birth/birthProgressTruth";
 
 export type BirthMilestoneId = "dna" | "fitness" | "strategies" | "refinement" | "awakening";
 
@@ -250,7 +250,7 @@ export function resolveBirthHeadline(
   if (curriculum) {
     return `Curriculum ${curriculum.replace(/_/g, " ")}…`;
   }
-  const days = Number(progress?.actual_real_days_loaded ?? 0);
+  const days = resolveManifestCalendarDays(progress) ?? 0;
   if (days > 0 && phase.includes("loading")) {
     return `Loading real history (${days} days)…`;
   }

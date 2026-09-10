@@ -485,7 +485,7 @@ class TelegramNotifier:
             source=source,
         )
 
-    def send_milestone_alert(self, title: str, body: str) -> bool:
+    def send_milestone_alert(self, title: str, body: str, *, kind: str = "milestone") -> bool:
         """Send a positive birth milestone alert (ADR-0025)."""
         if not self._api_token or not self._chat_id:
             logger.warning("Telegram milestone alert skipped: credentials missing.")
@@ -493,7 +493,7 @@ class TelegramNotifier:
         message = f"LUMINA MILESTONE — {title}\n\n{body}"
         return self._send_telegram_message(
             message,
-            kind="milestone",
+            kind=str(kind or "milestone"),
             source="milestone_notifier",
         )
 

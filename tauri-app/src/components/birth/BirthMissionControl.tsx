@@ -5,7 +5,7 @@ import {
   isBirthEdgeScoreCriteria,
 } from "@/lib/birth/birthMetricFormat";
 import type { BirthMilestone } from "@/lib/birthPhaseModel";
-import { extractBirthSessionHud, extractStageScorecard } from "@/lib/birthPhaseModel";
+import { extractBirthProgressTruth, extractBirthSessionHud, extractStageScorecard } from "@/lib/birthPhaseModel";
 import { cn } from "@/lib/utils";
 
 import { BirthCompletionSummary } from "@/components/birth/BirthCompletionSummary";
@@ -202,8 +202,12 @@ export function BirthMissionControl({
 }: BirthMissionControlProps) {
   const scorecard = extractStageScorecard(progress);
   const sessionHud = extractBirthSessionHud(progress);
-  const overallPct = Number(progress?.progress_pct ?? 0);
+  const truth = extractBirthProgressTruth(progress);
   const phaseLabel = finale ? "Birth complete" : resolveOverallPhaseLabel(progress);
+  const curriculumShort =
+    truth.stageIndex > 0
+      ? `${Math.min(truth.stageIndex, truth.stageCount)}/${truth.stageCount}`
+      : "—";
   const phaseToken = String(progress?.phase ?? "").trim() || "—";
   const stageToken = String(progress?.stage ?? "").trim() || "—";
   const chips = resolveMissionChips(progress);
@@ -254,7 +258,7 @@ export function BirthMissionControl({
           {showStopControl && running && !finale ? (
             <div className="birth-mission-control__stop-stack">
               <span className="birth-mission-control__progress-pct font-mono text-[0.55rem] tabular-nums tracking-wide text-cyan-200/80">
-                {overallPct.toFixed(1)}%
+                {finale ? "passed" : curriculumShort}
               </span>
               <BirthControlDock
                 mode="running"
@@ -265,7 +269,7 @@ export function BirthMissionControl({
             </div>
           ) : running || finale ? (
             <span className="birth-mission-control__progress-pct font-mono text-[0.55rem] tabular-nums tracking-wide text-cyan-200/80">
-              {overallPct.toFixed(1)}%
+              {finale ? "passed" : curriculumShort}
             </span>
           ) : null}
         </div>
@@ -299,10 +303,18 @@ export function BirthMissionControl({
 
           <div className="birth-kpi-grid birth-intel-field-grid shrink-0">
             <BirthKpiTile
-              label="Overall"
-              value={`${overallPct.toFixed(1)}%`}
-              detail={phaseLabel}
-              tone="accent"
+              label="Curriculum"
+              value={finale ? "passed" : curriculumShort}
+              detail={
+                finale
+                  ? phaseLabel
+                  : truth.stagePassNow
+                    ? "stage passed"
+                    : truth.blocker
+                      ? `not passed · ${truth.blocker.replace(/_/g, " ")}`
+                      : "not passed"
+              }
+              tone={finale || truth.stagePassNow ? "success" : "warn"}
             />
             <BirthKpiTile
               label={scorecard ? "Stage trades" : "Trades"}

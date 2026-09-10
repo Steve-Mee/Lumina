@@ -23,8 +23,10 @@ from lumina_core.birth.progress import read_birth_progress, write_birth_progress
 from lumina_launcher.services.birth_history_skip import skip_launcher_history_preflight
 from lumina_launcher.services.birth_runner_lock import (
     clear_runner_lock,
+    clear_start_inflight,
     clear_stale_runner_lock,
     write_runner_lock,
+    write_start_inflight,
 )
 from lumina_launcher.services.birth_status_enricher import (
     adaptive_intelligence_status,
@@ -139,7 +141,12 @@ def start_birth(
 
     svc._result = None
     svc._error = None
-    svc._start_time = time.time()
+    prev_progress = read_birth_progress(svc.workspace_root)
+    prev_start = float((prev_progress or {}).get("birth_start_time") or 0)
+    if continue_training and prev_start > 0:
+        svc._start_time = prev_start
+    else:
+        svc._start_time = time.time()
     saved_settings = load_saved_birth_settings(svc)
     requested_target = (
         normalize_first_boot_training_trades(target_trades)
@@ -167,14 +174,15 @@ def start_birth(
     ).exists()
     reuse_existing_policy = bool(continue_training or (checkpoint_exists and not force))
     try:
-        from lumina_core.birth.tick_cache_persist import certified_tick_cache_present
+        from lumina_core.birth.tick_cache_persist import ensure_certified_tick_cache
 
-        certified_cache_exists = certified_tick_cache_present(svc.workspace_root)
+        certified_cache_exists = ensure_certified_tick_cache(svc.workspace_root)
     except Exception:
         certified_cache_exists = False
 
     from lumina_core.birth.physics_preflight import enforce_birth_physics
 
+    write_start_inflight(svc)
     physics_block = enforce_birth_physics(
         svc,
         target_trades=int(resolved_target),
@@ -182,6 +190,7 @@ def start_birth(
         training_mode="practice" if practice_mode else "certified",
     )
     if physics_block is not None:
+        clear_start_inflight(svc)
         return physics_block
 
     skip_history_preflight = skip_launcher_history_preflight(
@@ -254,6 +263,7 @@ def start_birth(
             except Exception as progress_exc:
                 logger.warning("birth.preflight_progress_write_failed: %s", progress_exc)
             logger.warning("Birth preflight rejected (sync, no started): %s", detail)
+            clear_start_inflight(svc)
             return {
                 "status": "history_unavailable",
                 "message": detail,
@@ -531,6 +541,7 @@ def start_birth(
     svc._thread = threading.Thread(target=_run_birth, daemon=True, name="LuminaBirthThread")
     svc._thread.start()
     svc._stalled_auto_resume_attempted = False
+    clear_start_inflight(svc)
 
     return {
         "status": "started",

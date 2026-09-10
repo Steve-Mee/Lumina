@@ -776,7 +776,10 @@ def test_start_birth_reuse_cache_skips_preflight_without_checkpoint(
         "first_boot:\n  training_trades: 10000\n  prefer_real_data_only: true\n  max_real_days: 90\n",
         encoding="utf-8",
     )
-    (state / "lumina_birth_ticks_cache.jsonl").write_text("{}\n", encoding="utf-8")
+    (state / "lumina_birth_ticks_cache.jsonl").write_text(
+        "\n".join("{}" for _ in range(1000)) + "\n",
+        encoding="utf-8",
+    )
     (state / "lumina_birth_split_cache.json").write_text("{}", encoding="utf-8")
     (state / "lumina_birth_cache_manifest.json").write_text(
         json.dumps(
@@ -784,7 +787,7 @@ def test_start_birth_reuse_cache_skips_preflight_without_checkpoint(
                 "train_hash": "abc123",
                 "requested_days": 90,
                 "actual_calendar_days": 89,
-                "tick_count": 345648,
+                "tick_count": 1000,
             }
         ),
         encoding="utf-8",
@@ -986,15 +989,15 @@ def test_reconcile_orphaned_marks_interrupted(tmp_path: Path) -> None:
     svc = BirthService()
     svc.configure_workspace(tmp_path)
     reconciled = json.loads((tmp_path / "state" / "lumina_birth_progress.json").read_text(encoding="utf-8"))
-    # Starship pause SSOT: orphan reconcile uses paused + user_initiated_stop on both files.
+    # Orphan reconcile is not a user stop — operator-stop is a separate SSOT.
     assert reconciled.get("stage") == "paused"
     assert reconciled.get("phase") == "paused"
-    assert reconciled.get("user_initiated_stop") is True
+    assert reconciled.get("user_initiated_stop") is False
     assert reconciled.get("prior_stage") == "loading_data"
-    assert "Hervat checkpoint" in str(reconciled.get("message", ""))
+    assert "gebruikersstop" in str(reconciled.get("message", "")).lower()
     legacy = json.loads((tmp_path / "state" / "first_boot_progress.json").read_text(encoding="utf-8"))
     assert legacy.get("stage") == "paused"
-    assert legacy.get("user_initiated_stop") is True
+    assert legacy.get("user_initiated_stop") is False
     BirthService._instance = None  # type: ignore[attr-defined]
 
 
@@ -1032,7 +1035,7 @@ def test_reconcile_orphaned_skips_attention_when_checkpoint_exists(tmp_path: Pat
     svc.configure_workspace(tmp_path)
     reconciled = json.loads((tmp_path / "state" / "lumina_birth_progress.json").read_text(encoding="utf-8"))
     assert reconciled.get("stage") == "paused"
-    assert reconciled.get("user_initiated_stop") is True
+    assert reconciled.get("user_initiated_stop") is False
     assert not reconciled.get("needs_attention")
     BirthService._instance = None  # type: ignore[attr-defined]
 
@@ -1092,10 +1095,10 @@ def test_get_status_reconciles_orphaned_progress_after_dead_runner(tmp_path: Pat
         encoding="utf-8",
     )
     status = svc.get_status()
-    assert status["status"] == "interrupted"
+    assert status["status"] == "paused"
     assert status.get("live") is False
     progress = status.get("progress") or {}
-    assert progress.get("user_initiated_stop") is True
+    assert progress.get("user_initiated_stop") is not True
     assert progress.get("stage") == "paused"
     BirthService._instance = None  # type: ignore[attr-defined]
 
@@ -1124,7 +1127,7 @@ def test_reconcile_orphaned_plateau_evolution_phase(tmp_path: Path) -> None:
     )
     assert reconciled.get("stage") == "paused"
     assert reconciled.get("phase") == "paused"
-    assert reconciled.get("user_initiated_stop") is True
+    assert reconciled.get("user_initiated_stop") is False
     BirthService._instance = None  # type: ignore[attr-defined]
 
 

@@ -599,7 +599,7 @@ def test_twin_escalate_or_notify_falls_back_when_service_raises(
         stall_reason="stall",
         curriculum_stage="stage2_range",
         fitness_signal=0.2,
-        fork="expand_data_or_wipe_genesis",
+        fork="expand_data_or_wipe_birth",
         t_conf=0.3,
     )
     assert decision.dispatch == RecoveryDispatch.TERMINAL_NOTIFY_ONLY
@@ -727,7 +727,7 @@ def test_expand_data_twin_not_eligible_escalates(
         recovery_no_lift_brake=False,
     )
     assert decision.dispatch == RecoveryDispatch.TERMINAL_NOTIFY_ONLY
-    assert decision.recommended_action == "expand_data_or_wipe_genesis"
+    assert decision.recommended_action == "expand_data_or_wipe_birth"
     assert twin.calls >= 1
 
 

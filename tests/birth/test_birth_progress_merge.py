@@ -46,6 +46,29 @@ def test_write_birth_progress_refreshes_session_start_on_restart(tmp_path: Path)
 
 
 @pytest.mark.unit
+def test_write_birth_progress_mirrors_existing_first_boot(tmp_path: Path) -> None:
+    boot = tmp_path / "state" / "first_boot_progress.json"
+    boot.parent.mkdir(parents=True, exist_ok=True)
+    boot.write_text('{"stage": "paused", "user_initiated_stop": true}', encoding="utf-8")
+    write_birth_progress(
+        tmp_path,
+        stage="loading_data",
+        phase="ticks_ready",
+        message="Checkpoint hervat",
+        progress_pct=24.0,
+        cumulative_trades=2155,
+        ppo_steps=36500,
+        birth_start_time=1_700_000_100.0,
+        user_initiated_stop=False,
+    )
+    canonical = json.loads((tmp_path / "state" / "lumina_birth_progress.json").read_text(encoding="utf-8"))
+    legacy = json.loads(boot.read_text(encoding="utf-8"))
+    assert canonical == legacy
+    assert legacy.get("user_initiated_stop") is False
+    assert legacy.get("stage") == "loading_data"
+
+
+@pytest.mark.unit
 def test_write_birth_progress_preserves_session_start_within_same_run(tmp_path: Path) -> None:
     """Mid-run writes that omit birth_start_time keep the session clock."""
     start = 1_710_000_000.0

@@ -177,6 +177,9 @@ class StageLoopRecoveryAdaptationMixin(StageLoopMixinBase):
         trigger_type: str = "certified_stall",
         constitution_blocked: bool = False,
     ) -> bool:
+        if getattr(self, "_foundation_eval_only", False):
+            logger.info("birth.s5.recovery_skipped_eval_only failure=%s", failure_key)
+            return False
         if not self.cur_cfg.adaptation_enabled or self.cur_cfg.wall_behavior != "adaptive":
             return False
         # Raptor v11: beyond hard-stop require min train laps between recoveries.
@@ -216,6 +219,9 @@ class StageLoopRecoveryAdaptationMixin(StageLoopMixinBase):
 
     def _force_never_stop_recovery(self, *, failure_key: str) -> bool:
         """Keep curriculum loop alive when recovery tiers remain (ADR-0017)."""
+        if getattr(self, "_foundation_eval_only", False):
+            logger.info("birth.s5.never_stop_skipped_eval_only failure=%s", failure_key)
+            return False
         if not self.cur_cfg.adaptation_enabled or self.cur_cfg.wall_behavior != "adaptive":
             return False
         if self._should_terminal_stall_in_adaptive():

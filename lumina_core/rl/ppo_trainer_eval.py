@@ -120,12 +120,16 @@ class PPOTrainerEvalMixin:
 
 
     def _resolve_intelligence_tier(self) -> str:
+        """Lungs knobs from CUDA/VRAM profile — never Voice RAM-tier."""
         try:
-            from lumina_core.adaptive_intelligence import AdaptiveIntelligenceManager
+            from lumina_core.hardware_intelligence import get_or_create_hardware_profile
 
-            tier = str(AdaptiveIntelligenceManager().get_status().tier or "standard").strip().lower()
-            if tier in {"high", "standard", "light"}:
-                return tier
+            payload = get_or_create_hardware_profile()
+            profile = str(payload.get("profile") or "").strip().lower()
+            if profile == "gpu_accelerated":
+                return "standard"
+            if profile == "cpu_efficient":
+                return "light"
         except Exception:
             self.logger.debug("ppo.intelligence_tier_fallback", exc_info=True)
         return "standard"

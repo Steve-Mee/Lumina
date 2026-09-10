@@ -395,6 +395,26 @@ def test_pause_ssot_writes_both_files(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_pause_ssot_orphan_is_not_user_stop(tmp_path: Path) -> None:
+    progress = {
+        "stage": "training_running",
+        "phase": "curriculum_learning",
+        "autonomous_recovery_pending": True,
+        "curriculum_stage": "stage5_probe_handoff",
+    }
+    payload = build_pause_ssot_payload(
+        progress=progress,
+        message="Runner gestopt zonder gebruikersstop",
+        user_initiated=False,
+    )
+    assert payload["user_initiated_stop"] is False
+    assert payload["autonomous_recovery_pending"] is True
+    user_payload = build_pause_ssot_payload(progress=progress, user_initiated=True)
+    assert user_payload["user_initiated_stop"] is True
+    assert user_payload["autonomous_recovery_pending"] is False
+
+
+@pytest.mark.unit
 def test_expectancy_proxy_winrate_centered() -> None:
     assert compute_expectancy_proxy(wins=5, trades=10, total_pnl=25.0) == pytest.approx(0.0)
     assert compute_expectancy_proxy(wins=4, trades=10, total_pnl=None) == pytest.approx(-0.1)

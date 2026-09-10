@@ -591,6 +591,21 @@ describe("birthPhaseModel", () => {
     expect(scorecard?.dataManifestDaysLoaded).toBe(71);
   });
 
+  it("uses manifest actual_calendar_days as data-window SSOT", () => {
+    const scorecard = extractStageScorecard({
+      timestamp: new Date().toISOString(),
+      curriculum_stage: "stage5_probe_handoff",
+      phase: "curriculum_learning",
+      stage_trades: 50,
+      stage_target_trades: 50,
+      data_days_loaded: 91,
+      data_manifest: { days_loaded: 91, actual_calendar_days: 366 },
+      data_manifest_calendar_days: 366,
+      pass_criteria_id: "probe_handoff",
+    });
+    expect(scorecard?.dataManifestDaysLoaded).toBe(366);
+  });
+
   it("surfaces Starship EdgeScore pass criteria and entropy blocker", () => {
     const scorecard = extractStageScorecard({
       timestamp: new Date().toISOString(),

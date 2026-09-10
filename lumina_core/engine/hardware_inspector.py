@@ -99,10 +99,21 @@ class HardwareInspector:
             logging.exception("Unhandled broad exception fallback in lumina_core/engine/hardware_inspector.py:97")
             return None
         try:
-            return HardwareSnapshot(**payload)
+            snap = HardwareSnapshot(**payload)
         except Exception:
             logging.exception("Unhandled broad exception fallback in lumina_core/engine/hardware_inspector.py:101")
             return None
+        # Classifier updates (e.g. 32 GB DIMM hysteresis) must apply without recapture.
+        recomputed = HardwareInspector._classify_tier(
+            float(snap.ram_gb), float(snap.gpu_vram_gb), float(snap.compute_capability)
+        )
+        if recomputed != str(snap.profile_tier):
+            snap.profile_tier = recomputed
+            try:
+                path.write_text(json.dumps(snap.to_dict(), indent=2), encoding="utf-8")
+            except Exception:
+                logging.exception("Failed to persist reclassified hardware snapshot")
+        return snap
 
     @staticmethod
     def tier_requirements() -> dict[str, dict[str, Any]]:
@@ -205,7 +216,9 @@ class HardwareInspector:
     def _classify_tier(cls, ram_gb: float, gpu_vram_gb: float, compute_capability: float) -> str:
         if ram_gb >= 64 and gpu_vram_gb >= 20 and compute_capability >= 7.0:
             return "beast"
-        if ram_gb >= 32 and gpu_vram_gb >= 8:
+        # 32 GB DIMMs often report ~30.9 GB usable (reserved/shared). Do not
+        # cliff a sweet GPU box to light over 1 GB of accounting.
+        if ram_gb >= 30.0 and gpu_vram_gb >= 8:
             return "sweet"
         return "light"
 
@@ -249,7 +262,7 @@ class HardwareInspector:
             )
         if profile_tier == "light":
             notes.append(
-                f"Huidig profiel light: minimaal 32 GB RAM en 8 GB VRAM is nodig voor sweet, 64 GB RAM en 20 GB VRAM voor beast. Huidig RAM={ram_gb:.1f} GB."
+                f"Huidig profiel light: minimaal 30 GB usable RAM (32 GB DIMMs) en 8 GB VRAM is nodig voor sweet, 64 GB RAM en 20 GB VRAM voor beast. Huidig RAM={ram_gb:.1f} GB."
             )
         elif profile_tier == "sweet":
             notes.append(

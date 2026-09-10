@@ -114,6 +114,28 @@ class StageLoopIterationPassMixin:
         )
         if unique_days > 0:
             self._unique_calendar_days = unique_days
+        try:
+            from lumina_core.birth.history_loader import actual_calendar_days_from_ticks
+
+            self._stage_window_calendar_days = actual_calendar_days_from_ticks(
+                self.stage_ticks
+            )
+        except Exception:
+            self._stage_window_calendar_days = int(
+                getattr(self, "_stage_window_calendar_days", 0) or 0
+            )
+        passthrough = int(getattr(self, "participation_passthrough", 0) or 0)
+        overrides = int(getattr(self, "participation_overrides_total", 0) or 0)
+        envelope_frac = (
+            float(overrides) / float(passthrough + overrides)
+            if (passthrough + overrides) > 0
+            else None
+        )
+        pt_flat = int(getattr(self, "passthrough_range_flat_bars", 0) or 0)
+        pt_tot = int(getattr(self, "passthrough_range_total_signals", 0) or 0)
+        occupancy_for_pass: float | None = None
+        if pt_tot >= 50:
+            occupancy_for_pass = float(pt_flat) / float(pt_tot)
         p_ft = None
         net_rr = None
         stop_pct = None
@@ -175,6 +197,7 @@ class StageLoopIterationPassMixin:
             geometry_net_rr=net_rr,
             first_touch_hit_rate=p_ft,
             unique_calendar_days=unique_days,
+            occupancy=occupancy_for_pass,
             oos_sharpe=(
                 stage_val_sharpe
                 if self.stage == CurriculumStage.STAGE5_PROBE_HANDOFF
@@ -190,6 +213,8 @@ class StageLoopIterationPassMixin:
             settlement_ssot_pending=bool(
                 getattr(self, "_settlement_ssot_pending", False)
             ),
+            envelope_override_fraction=envelope_frac,
+            passthrough_occupancy_signals=pt_tot if (passthrough + overrides) > 0 else None,
         )
         if not stage_result.passed:
             now = time.time()

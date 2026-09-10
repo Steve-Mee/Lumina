@@ -29,9 +29,9 @@ async def start_birth(
     skip_live_fabric = False
     if reuse_data is True:
         try:
-            from lumina_core.birth.tick_cache_persist import certified_tick_cache_present
+            from lumina_core.birth.tick_cache_persist import ensure_certified_tick_cache
 
-            skip_live_fabric = certified_tick_cache_present(birth_service.workspace_root)
+            skip_live_fabric = ensure_certified_tick_cache(birth_service.workspace_root)
         except Exception:
             skip_live_fabric = False
     if not skip_live_fabric:

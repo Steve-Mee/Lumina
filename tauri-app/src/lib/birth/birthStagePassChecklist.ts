@@ -6,6 +6,7 @@
  */
 
 import type { BirthProgressPayload } from "@/lib/birthClient";
+import { occupancyEnvelopeDominated } from "@/lib/birth/birthProgressTruth";
 import type { StageScorecardModel } from "@/lib/birth/birthStageScorecardTypes";
 import {
   resolveBooleanConditionTone,
@@ -268,20 +269,26 @@ function occupancyReq(
   );
   const min = scorecard.stageRangeFlatMin ?? lo;
   const max = scorecard.stageRangeFlatMax ?? hi;
-  const met = occ != null && occ >= min - 1e-12 && occ <= max + 1e-12;
-  const tone = resolveConditionTone({
-    value: occ,
-    min,
-    max,
-    direction: "band",
-    criticalGap: 0.15,
-  });
+  const envelopeLie = occupancyEnvelopeDominated(progress);
+  const met =
+    !envelopeLie && occ != null && occ >= min - 1e-12 && occ <= max + 1e-12;
+  const tone = envelopeLie
+    ? "danger"
+    : resolveConditionTone({
+        value: occ,
+        min,
+        max,
+        direction: "band",
+        criticalGap: 0.15,
+      });
   return {
     id: "occupancy",
     label: "Occupancy",
-    current: pct(occ, 0),
-    need: `${pct(min, 0)}–${pct(max, 0)} flat`,
-    tone: gateTone(met, tone),
+    current: envelopeLie ? "envelope override" : pct(occ, 0),
+    need: envelopeLie
+      ? "passthrough occupancy only"
+      : `${pct(min, 0)}–${pct(max, 0)} flat`,
+    tone: envelopeLie ? "danger" : gateTone(met, tone),
     met,
     kind: "gate",
   };

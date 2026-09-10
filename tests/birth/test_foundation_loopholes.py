@@ -274,6 +274,43 @@ def test_fail_closed_stage_ticks_never_falls_back_to_train() -> None:
     ) == []
 
 
+def test_envelope_dominated_cannot_buy_occupancy_pass() -> None:
+    p_ft = 0.29
+    rr = 1.35
+    e_mech = mechanical_ev_r(p_ft=p_ft, net_rr=rr)
+    kwargs = _base(
+        trades=150,
+        wins=50,
+        first_touch_hit_rate=p_ft,
+        geometry_net_rr=rr,
+        mean_r=e_mech,
+        occupancy=0.4,
+        unique_calendar_days=20,
+        policy_trades=150,
+        policy_wins=50,
+    )
+    clean = evaluate_stage_pass(
+        CurriculumStage.STAGE4_VIABLE_PLANT,
+        **kwargs,  # type: ignore[arg-type]
+    )
+    assert clean.passed is True
+    dominated = evaluate_stage_pass(
+        CurriculumStage.STAGE4_VIABLE_PLANT,
+        **kwargs,  # type: ignore[arg-type]
+        envelope_override_fraction=0.93,
+    )
+    assert dominated.passed is False
+    assert "occupancy_envelope_dominated" in dominated.message
+    thin = evaluate_stage_pass(
+        CurriculumStage.STAGE4_VIABLE_PLANT,
+        **kwargs,  # type: ignore[arg-type]
+        envelope_override_fraction=0.2,
+        passthrough_occupancy_signals=12,
+    )
+    assert thin.passed is False
+    assert "occupancy_passthrough_sample" in thin.message
+
+
 def test_stage4_passes_only_when_both_skill_legs_true() -> None:
     p_ft = 0.29
     rr = 1.35

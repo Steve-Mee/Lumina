@@ -28,6 +28,8 @@ class StageLoopIterationStagnationMixin:
 
         if self.stagnation_count < self.cur_cfg.stagnation_rollouts_before_expand:
             return "fallthrough", None
+        if getattr(self, "_foundation_eval_only", False):
+            return "fallthrough", None
 
         self._mine_and_inject()
         if not self._maybe_expand_data():
@@ -115,6 +117,21 @@ class StageLoopIterationStagnationMixin:
                 failure_key=force_failure_key,
                 force=True,
             )
+            if getattr(self, "_foundation_eval_only", False):
+                self.cur_cfg.rollout_chunk_trades = self.original_rollout_chunk
+                pending = (
+                    dict(stall_pending)
+                    if isinstance(stall_pending, dict)
+                    else {
+                        "failure_key": force_failure_key,
+                        "terminal_stall_reason": "s5_holdout_probe_failed",
+                        "blocker_reason": "s5_holdout_probe_failed",
+                    }
+                )
+                return (
+                    "return",
+                    self._finalize_certified_stage_stall(pending, human_gate=False),
+                )
             if stall_pending is not None:
                 if self._try_adaptive_stall_recovery(failure_key=force_failure_key):
                     self.attempt = 0

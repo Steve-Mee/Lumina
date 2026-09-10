@@ -329,7 +329,7 @@ def _next_action(
     if active == "terminal_stall" or (
         trade_budget_remaining is not None and trade_budget_remaining <= 0
     ):
-        return "expand_data_or_wipe_genesis"
+        return "expand_data_or_wipe_birth"
     # Champion freeze is sacred: accept/wipe only (Track A / T11)
     if champion_freeze or (
         (swarm_rejected_no_lift or active == "swarm_block") and needs_attention

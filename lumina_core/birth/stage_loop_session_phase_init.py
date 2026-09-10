@@ -94,8 +94,11 @@ class SessionPhaseInitMixin:
         self.patterns_mined = 0
         self.oracle_wins = 0
         self.expansion_step = 0
+        manifest = self.host._data_manifest or {}
         self.data_days_loaded = int(
-            (self.host._data_manifest or {}).get("requested_days")
+            manifest.get("actual_calendar_days")
+            or manifest.get("days_loaded")
+            or manifest.get("requested_days")
             or foundation_history_start_days()
         )
         self.hold_stagnation_count = 0
@@ -113,8 +116,14 @@ class SessionPhaseInitMixin:
                 host=self.host,
                 ticks=self.stage_ticks,
             )
+            from lumina_core.birth.history_loader import actual_calendar_days_from_ticks
+
+            self._stage_window_calendar_days = actual_calendar_days_from_ticks(
+                self.stage_ticks
+            )
         except Exception:
             self._unique_calendar_days = 0
+            self._stage_window_calendar_days = 0
         self.budget_milestones_notified: set[int] = set()
         self.hold_trap_milestone_sent = False
         self.over_trading_milestone_sent = False

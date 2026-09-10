@@ -114,7 +114,14 @@ class MilestoneNotifier:
             logger.debug("milestone.already_notified id=%s", event.milestone_id)
             return False
 
-        ok = self._telegram.send_milestone_alert(event.title, event.telegram_body())
+        kind = (
+            "birth_milestones"
+            if str(event.milestone_id).startswith("curriculum_stage")
+            else "milestone"
+        )
+        ok = self._telegram.send_milestone_alert(
+            event.title, event.telegram_body(), kind=kind
+        )
         if ok:
             self._record_notified(event.milestone_id)
             logger.info("milestone.sent id=%s title=%s", event.milestone_id, event.title)

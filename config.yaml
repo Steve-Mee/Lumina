@@ -28,6 +28,7 @@ telegram:
     - promotion
     - freeze
     - real_safety
+    - birth_milestones
 participant_id: LUMINA_Steve
 sim:
   aggressive_evolution: false

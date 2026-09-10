@@ -26,7 +26,7 @@ def test_priority_terminal_beats_plateau() -> None:
     # C2: terminal stall must never be silent
     assert out["flags"]["needs_attention"] is True
     assert "needs_attention" in out["layers"]
-    assert out["next_action"] == "expand_data_or_wipe_genesis"
+    assert out["next_action"] == "expand_data_or_wipe_birth"
 
 
 def test_plateau_evolution_exhausted_forces_attention() -> None:
@@ -42,7 +42,7 @@ def test_plateau_evolution_exhausted_forces_attention() -> None:
     assert out["active"] == "terminal_stall"
     assert out["productive"] is False
     assert out["flags"]["needs_attention"] is True
-    assert out["next_action"] == "expand_data_or_wipe_genesis"
+    assert out["next_action"] == "expand_data_or_wipe_birth"
 
 
 def test_swarm_block_before_phoenix() -> None:

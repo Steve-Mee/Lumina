@@ -24,7 +24,12 @@ from lumina_core.rl.ppo_callbacks import (
 )
 from lumina_core.rl.ppo_device import _resolve_ppo_device, _scale_timesteps_for_device
 from lumina_core.rl.ppo_evolution_logger import PPOEvolutionLogger
-from lumina_core.rl import RLTradingEnvironment
+from lumina_core.rl.ppo_vec_env import (
+    align_ppo_hyperparams,
+    make_birth_ppo_env,
+    transfer_ppo_policy_weights,
+    _resolve_ppo_n_envs,
+)
 
 logger = get_logger("lumina.rl.ppo")
 
@@ -95,16 +100,41 @@ class PPOTrainerTrainMixin:
                 }
             },
         )
-        env = RLTradingEnvironment(self.engine, bars, config=rl_cfg)
-        if dna_hash:
-            env.set_dna_hash(dna_hash)
+        n_envs = _resolve_ppo_n_envs()
+        hyperparams = align_ppo_hyperparams(
+            self._get_training_hyperparams(birth_phase=birth_phase),
+            n_envs,
+        )
+        env = make_birth_ppo_env(
+            engine=self.engine,
+            bars=bars,
+            rl_cfg=rl_cfg,
+            dna_hash=str(dna_hash) if dna_hash else None,
+            n_envs=n_envs,
+        )
+        logger.info(
+            "ppo.train.vec_env",
+            extra={
+                "event_data": {
+                    "event": "ppo.train.vec_env",
+                    "n_envs": int(n_envs),
+                    "n_steps": int(hyperparams.get("n_steps", 0) or 0),
+                    "batch_size": int(hyperparams.get("batch_size", 0) or 0),
+                    "device": _resolve_ppo_device(),
+                }
+            },
+        )
+        device = _resolve_ppo_device()
         model = PPO(
             policy="MlpPolicy",
             env=env,
             verbose=0,
-            device=_resolve_ppo_device(),
-            **self._get_training_hyperparams(birth_phase=birth_phase),
+            device=device,
+            **hyperparams,
         )
+        active = self._resolve_active_model()
+        if active is not None and transfer_ppo_policy_weights(active, model):
+            logger.info("ppo.train.weights_transferred n_envs=%s", int(n_envs))
         heartbeat = _ppo_heartbeat_callbacks()
         callbacks: list[Any] = list(heartbeat)
         if report_first_boot_progress:
@@ -150,6 +180,8 @@ class PPOTrainerTrainMixin:
                     "event": "ppo.train.complete",
                     "model_path": str(policy_path),
                     "training_time_sec": round(__import__("time").time() - started, 2),
+                    "n_envs": int(n_envs),
+                    "device": device,
                 }
             },
         )
@@ -163,6 +195,8 @@ class PPOTrainerTrainMixin:
                 total_training_steps=int(total_timesteps),
                 training_time_sec=round(__import__("time").time() - started, 2),
                 status="trained",
+                n_envs=int(n_envs),
+                device=str(device),
             )
         except Exception:
             logging.exception("Unhandled broad exception fallback in lumina_core/ppo_trainer.py:train_metadata")
@@ -264,6 +298,8 @@ class PPOTrainerTrainMixin:
             rows,
             total_timesteps=max(1_000, _scale_timesteps_for_device(int(timesteps))),
             birth_phase=birth_phase,
+            report_first_boot_progress=bool(birth_phase),
+            ppo_progress_interval=1000 if birth_phase else None,
         )
         updated = self._resolve_active_model()
         if updated is None:

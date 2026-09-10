@@ -77,7 +77,7 @@ def check_ninjatrader_update_and_reprobe(
     ):
         result["changed"] = True
         result["action"] = "reprobe"
-        report = run_fabric_connection_diagnostics(include_safe_mode=True)
+        report = run_fabric_connection_diagnostics(include_safe_mode=False, allow_live_order_probe=False)
         result["overall"] = report.overall
         if report.overall == "green":
             try:

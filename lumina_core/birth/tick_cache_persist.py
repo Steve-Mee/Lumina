@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from lumina_core.birth.data_source_honesty import real_data_percentage, tape_source_label
 from lumina_core.birth.purged_split import PurgedSplit
+from lumina_core.birth.tick_cache_split_codec import (
+    load_purged_split_payload,
+    split_payload,
+    ticks_jsonl,
+)
+from lumina_core.io.atomic_fs import atomic_write_text, atomic_write_text_many, tmp_siblings
 from lumina_core.rl.trend_features import ENRICH_VERSION
 
 CACHE_SCHEMA_VERSION = 1
@@ -38,17 +43,25 @@ def compute_ticks_fingerprint(ticks: list[dict[str, Any]]) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
+def jsonl_row_count(path: Path | str) -> int:
+    target = Path(path)
+    if not target.is_file():
+        return 0
+    count = 0
+    with target.open("rb") as handle:
+        for raw in handle:
+            if raw.strip():
+                count += 1
+    return count
+
+
 def _atomic_write_text(path: Path, encoded: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_name(f"{path.name}.tmp")
-    tmp_path.write_text(encoded, encoding="utf-8")
-    os.replace(tmp_path, path)
+    atomic_write_text(path, encoded)
 
 
 def save_ticks_cache(workspace_root: Path | str, ticks: list[dict[str, Any]]) -> str:
     path = ticks_cache_path(workspace_root)
-    lines = [json.dumps(item, ensure_ascii=True) for item in ticks]
-    _atomic_write_text(path, "\n".join(lines) + ("\n" if lines else ""))
+    atomic_write_text(path, ticks_jsonl(ticks))
     return str(path)
 
 
@@ -75,16 +88,16 @@ def save_split_cache(
     *,
     split: PurgedSplit,
     holdout_pct: float,
+    ticks: list[dict[str, Any]] | None = None,
 ) -> str:
     path = split_cache_path(workspace_root)
-    payload = {
-        "holdout_pct": float(holdout_pct),
-        "train": list(split.train),
-        "holdout": list(split.holdout),
-        "holdout_days": int(split.holdout_days),
-        "train_days": int(split.train_days),
-    }
-    _atomic_write_text(path, json.dumps(payload, ensure_ascii=True))
+    payload = split_payload(
+        split,
+        holdout_pct,
+        ticks=ticks,
+        ticks_fingerprint=compute_ticks_fingerprint(ticks) if ticks else "",
+    )
+    atomic_write_text(path, json.dumps(payload, ensure_ascii=True))
     return str(path)
 
 
@@ -98,19 +111,55 @@ def load_split_cache(workspace_root: Path | str, *, holdout_pct: float) -> Purge
         return None
     if not isinstance(payload, dict):
         return None
-    cached_pct = float(payload.get("holdout_pct", holdout_pct) or holdout_pct)
-    if abs(cached_pct - float(holdout_pct)) > 1e-6:
-        return None
-    train = payload.get("train")
-    holdout = payload.get("holdout")
-    if not isinstance(train, list) or not isinstance(holdout, list):
-        return None
-    return PurgedSplit(
-        train=[dict(item) for item in train if isinstance(item, dict)],
-        holdout=[dict(item) for item in holdout if isinstance(item, dict)],
-        holdout_days=int(payload.get("holdout_days", 0) or 0),
-        train_days=int(payload.get("train_days", 0) or 0),
+    ticks = load_ticks_cache(workspace_root) if "train_indices" in payload else []
+    return load_purged_split_payload(
+        payload,
+        holdout_pct=holdout_pct,
+        ticks=ticks,
+        ticks_fingerprint=compute_ticks_fingerprint(ticks) if ticks else "",
     )
+
+
+def _manifest_payload(
+    *,
+    raw_ticks_hash: str,
+    train_hash: str,
+    holdout_pct: float,
+    enrich_version: str,
+    tick_count: int,
+    train_tick_count: int,
+    holdout_tick_count: int,
+    requested_days: int,
+    actual_calendar_days: int,
+    instruments: list[str] | tuple[str, ...] | None,
+    stitched: bool,
+    stitched_from: list[str] | tuple[str, ...] | None,
+    source: str,
+    real_data_pct: float,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "cache_schema_version": CACHE_SCHEMA_VERSION,
+        "cache_written_at": datetime.now(timezone.utc).isoformat(),
+        "raw_ticks_hash": str(raw_ticks_hash or ""),
+        "train_hash": str(train_hash or ""),
+        "holdout_pct": float(holdout_pct),
+        "enrich_version": str(enrich_version or ENRICH_VERSION),
+        "tick_count": int(tick_count),
+        "train_tick_count": int(train_tick_count),
+        "holdout_tick_count": int(holdout_tick_count),
+        "requested_days": int(requested_days),
+        "actual_calendar_days": int(actual_calendar_days),
+        "instruments": [str(item) for item in (instruments or ())],
+        "stitched": bool(stitched),
+        "stitched_from": [str(item) for item in (stitched_from or ())],
+        "purged_split_params": {"holdout_pct": float(holdout_pct)},
+        "source": str(source or ""),
+        "real_data_pct": float(real_data_pct),
+    }
+    if extra:
+        payload.update(extra)
+    return payload
 
 
 def save_cache_manifest(
@@ -130,28 +179,27 @@ def save_cache_manifest(
     stitched_from: list[str] | tuple[str, ...] | None = None,
     source: str = "",
     real_data_pct: float = 0.0,
+    extra: dict[str, Any] | None = None,
 ) -> str:
-    payload = {
-        "cache_schema_version": CACHE_SCHEMA_VERSION,
-        "cache_written_at": datetime.now(timezone.utc).isoformat(),
-        "raw_ticks_hash": str(raw_ticks_hash or ""),
-        "train_hash": str(train_hash or ""),
-        "holdout_pct": float(holdout_pct),
-        "enrich_version": str(enrich_version or ENRICH_VERSION),
-        "tick_count": int(tick_count),
-        "train_tick_count": int(train_tick_count),
-        "holdout_tick_count": int(holdout_tick_count),
-        "requested_days": int(requested_days),
-        "actual_calendar_days": int(actual_calendar_days),
-        "instruments": [str(item) for item in (instruments or ())],
-        "stitched": bool(stitched),
-        "stitched_from": [str(item) for item in (stitched_from or ())],
-        "purged_split_params": {"holdout_pct": float(holdout_pct)},
-        "source": str(source or ""),
-        "real_data_pct": float(real_data_pct),
-    }
+    payload = _manifest_payload(
+        raw_ticks_hash=raw_ticks_hash,
+        train_hash=train_hash,
+        holdout_pct=holdout_pct,
+        enrich_version=enrich_version,
+        tick_count=tick_count,
+        train_tick_count=train_tick_count,
+        holdout_tick_count=holdout_tick_count,
+        requested_days=requested_days,
+        actual_calendar_days=actual_calendar_days,
+        instruments=instruments,
+        stitched=stitched,
+        stitched_from=stitched_from,
+        source=source,
+        real_data_pct=real_data_pct,
+        extra=extra,
+    )
     path = cache_manifest_path(workspace_root)
-    _atomic_write_text(path, json.dumps(payload, ensure_ascii=True, indent=2))
+    atomic_write_text(path, json.dumps(payload, ensure_ascii=True, indent=2))
     return str(path)
 
 
@@ -169,7 +217,9 @@ def load_cache_manifest(workspace_root: Path | str) -> dict[str, Any] | None:
 def certified_tick_cache_present(workspace_root: Path | str) -> bool:
     """True when ticks + split + SLA-depth manifest are on disk (no Fabric probe needed).
 
-    Cheap existence/metadata check — does not parse the jsonl tape.
+    Cheap existence/metadata check — does not parse the jsonl tape, but does
+    require jsonl row count == manifest tick_count so a partial Windows
+    replace cannot look certified.
     """
     root = Path(workspace_root)
     ticks = ticks_cache_path(root)
@@ -193,7 +243,17 @@ def certified_tick_cache_present(workspace_root: Path | str) -> bool:
     # Foundation start rung is 90d at 0.95 ratio → 86 calendar days.
     if actual_days < 86 or requested_days < 90 or tick_count < 1_000:
         return False
-    return True
+    from lumina_core.birth.tick_cache_guard import cache_files_coherent
+
+    return cache_files_coherent(root, manifest)
+
+
+def ensure_certified_tick_cache(workspace_root: Path | str) -> bool:
+    """Heal split-brain leftovers, then report certified presence honestly."""
+    from lumina_core.birth.tick_cache_guard import heal_tick_cache_coherence
+
+    heal_tick_cache_coherence(workspace_root)
+    return certified_tick_cache_present(workspace_root)
 
 
 def save_birth_data_cache(
@@ -211,11 +271,34 @@ def save_birth_data_cache(
     stitched: bool = False,
     stitched_from: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, str]:
-    ticks_path = save_ticks_cache(workspace_root, ticks)
-    split_path = save_split_cache(workspace_root, split=split, holdout_pct=holdout_pct)
+    from lumina_core.birth.tick_cache_guard import (
+        heal_tick_cache_coherence,
+        refuse_shallower_certified_overwrite,
+    )
+
+    heal_tick_cache_coherence(workspace_root)
     honest_pct = real_data_percentage(ticks)
-    manifest_path = save_cache_manifest(
+    refuse_shallower_certified_overwrite(
         workspace_root,
+        tick_count=len(ticks),
+        requested_days=requested_days,
+        actual_calendar_days=actual_calendar_days,
+        instruments=instruments,
+    )
+    ticks_path = ticks_cache_path(workspace_root)
+    split_path = split_cache_path(workspace_root)
+    manifest_path = cache_manifest_path(workspace_root)
+    existing = load_cache_manifest(workspace_root)
+    skip_ticks = False
+    if isinstance(existing, dict) and ticks_path.is_file() and ticks_path.stat().st_size > 0:
+        same_hash = str(existing.get("raw_ticks_hash") or "") == str(raw_ticks_hash or "")
+        same_enrich = str(existing.get("enrich_version") or "") == str(enrich_version or ENRICH_VERSION)
+        try:
+            same_n = int(existing.get("tick_count") or 0) == len(ticks)
+        except (TypeError, ValueError):
+            same_n = False
+        skip_ticks = bool(same_hash and same_enrich and same_n)
+    manifest = _manifest_payload(
         raw_ticks_hash=raw_ticks_hash,
         train_hash=train_hash,
         holdout_pct=holdout_pct,
@@ -231,10 +314,30 @@ def save_birth_data_cache(
         source=tape_source_label(ticks),
         real_data_pct=honest_pct,
     )
+    # Split dest first: if that replace fails, ticks+manifest dests stay as they were.
+    # Skip rewriting a matching jsonl — a 900MB replace is what killed the runner.
+    staged: list[tuple[Path, str]] = [
+        (
+            split_path,
+            json.dumps(
+                split_payload(
+                    split,
+                    holdout_pct,
+                    ticks=ticks,
+                    ticks_fingerprint=compute_ticks_fingerprint(ticks),
+                ),
+                ensure_ascii=True,
+            ),
+        )
+    ]
+    if not skip_ticks:
+        staged.append((ticks_path, ticks_jsonl(ticks)))
+    staged.append((manifest_path, json.dumps(manifest, ensure_ascii=True, indent=2)))
+    atomic_write_text_many(staged)
     return {
-        "ticks_cache_path": ticks_path,
-        "split_cache_path": split_path,
-        "cache_manifest_path": manifest_path,
+        "ticks_cache_path": str(ticks_path),
+        "split_cache_path": str(split_path),
+        "cache_manifest_path": str(manifest_path),
     }
 
 
@@ -248,6 +351,11 @@ def clear_ticks_cache(workspace_root: Path | str) -> None:
             path.unlink(missing_ok=True)
         except OSError:
             pass
+        for leftover in tmp_siblings(path):
+            try:
+                leftover.unlink(missing_ok=True)
+            except OSError:
+                pass
     enrich_dir = Path(workspace_root) / "state" / "birth_enrichment_cache"
     if enrich_dir.is_dir():
         for child in enrich_dir.glob("*"):

@@ -662,7 +662,7 @@ def evaluate_terminal_stall(
                     stall_reason=stall_reason,
                     curriculum_stage=curriculum_stage,
                     fitness_signal=fitness_signal,
-                    fork="expand_data_or_wipe_genesis",
+                    fork="expand_data_or_wipe_birth",
                     twin_res=twin_res if isinstance(twin_res, dict) else {},
                     t_conf=t_conf,
                     t_risks=list(twin_res.get("risk_flags") or [])

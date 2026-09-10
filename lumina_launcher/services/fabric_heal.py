@@ -996,7 +996,7 @@ def run_fabric_heal(
 
             # Give host a moment after listen for AddOn Active
             time.sleep(2.0)
-            report = run_fabric_connection_diagnostics(include_safe_mode=True, instrument="")
+            report = run_fabric_connection_diagnostics(include_safe_mode=False, instrument="", allow_live_order_probe=False)
             report_dict = report.to_dict()
             overall = str(report.overall or "red")
             if overall == "green":

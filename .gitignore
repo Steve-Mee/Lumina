@@ -25,6 +25,8 @@ reports/*
 !reports/birth_cloud_run/**
 reports/birth_cloud_run/workspace/state/lumina_birth_ticks_cache.jsonl
 reports/birth_cloud_run/workspace/state/lumina_birth_split_cache.json
+# Live operator exam dumps (named experiment ledgers stay tracked)
+reports/birth_cloud_run/artifacts/s5_close_ledger.jsonl
 !reports/genesis_cloud_run/
 !reports/genesis_cloud_run/**
 reports/genesis_cloud_run/workspace/

@@ -5,9 +5,23 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from lumina_core.notifications.telegram_gateway import TelegramGateway, reset_telegram_gateway_for_tests
+from lumina_core.notifications.telegram_gateway import (
+    TelegramGateway,
+    kind_for_attention_event,
+    reset_telegram_gateway_for_tests,
+)
 from lumina_core.notifications.telegram_journal import list_records
 from lumina_core.notifications.telegram_notifier import TelegramNotifier, reset_telegram_notifier_for_tests
+
+
+def test_birth_attention_bypasses_as_birth_milestones() -> None:
+    event = SimpleNamespace(
+        category=SimpleNamespace(value="birth"),
+        reason_code="s5_holdout_probe_failed",
+    )
+    kind, expects = kind_for_attention_event(event)
+    assert kind == "birth_milestones"
+    assert expects is False
 
 
 def test_poll_offset_persists_across_instances(tmp_path: Path) -> None:

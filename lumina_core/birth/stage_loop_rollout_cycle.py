@@ -203,6 +203,12 @@ class StageLoopRolloutCycleMixin(
         self.participation_overrides_total = int(
             getattr(self, "participation_overrides_total", 0) or 0
         ) + int(getattr(rollout, "participation_overrides_total", 0) or 0)
+        self.passthrough_range_flat_bars = int(
+            getattr(self, "passthrough_range_flat_bars", 0) or 0
+        ) + int(getattr(rollout, "passthrough_range_flat_bars", 0) or 0)
+        self.passthrough_range_total_signals = int(
+            getattr(self, "passthrough_range_total_signals", 0) or 0
+        ) + int(getattr(rollout, "passthrough_range_total_signals", 0) or 0)
         self.participation_last_mode = str(
             getattr(rollout, "participation_last_mode", "") or "PASSTHROUGH"
         )

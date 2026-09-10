@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { BirthFieldCard } from "@/components/birth/BirthFieldCard";
 import { BirthStagePassChecklistCard } from "@/components/birth/BirthStagePassChecklistCard";
 import { formatDataWindow } from "@/components/birth/BirthStageScorecardFormat";
+import { formatLungsThroughputHint } from "@/lib/birth/birthProgressTruth";
 
 function BirthBlockerGateCard({
   label,
@@ -125,11 +126,7 @@ export function StageTabFields({
       <BirthFieldCard
         label="Data window"
         value={formatDataWindow(scorecard)}
-        hint={
-          scorecard.wallClockTradesPerMin != null
-            ? `~${scorecard.wallClockTradesPerMin.toLocaleString()} trades/min`
-            : undefined
-        }
+        hint={formatLungsThroughputHint(progress, scorecard.dataManifestDaysLoaded)}
       />
       {scorecard.provisionalPass ? (
         <BirthFieldCard

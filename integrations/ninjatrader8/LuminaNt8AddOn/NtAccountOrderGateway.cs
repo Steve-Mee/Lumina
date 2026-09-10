@@ -318,6 +318,13 @@ namespace NinjaTrader.NinjaScript.AddOns
             if (command == null)
                 return new[] { Reject(null, "null_command") };
 
+            var probeId = command.ClientOrderId ?? "";
+            if (probeId.StartsWith("diag-", StringComparison.OrdinalIgnoreCase) ||
+                probeId.StartsWith("diag_", StringComparison.OrdinalIgnoreCase))
+            {
+                return new[] { Reject(command, "diagnostic_probe_forbidden") };
+            }
+
             Account? acct;
             lock (_gate) acct = _account;
             if (acct == null)

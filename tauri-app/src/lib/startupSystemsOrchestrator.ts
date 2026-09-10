@@ -219,7 +219,7 @@ export async function ensureFabricGreen(opts: {
       detail(lastReason);
     }
 
-    // One light diagnostic mid-window (no SAFE_MODE) to settle host after launch.
+    // One light diagnostic mid-window (auth + historical bars only — never place).
     if (!triedLightTest && Date.now() > deadline - timeoutMs + 8_000) {
       triedLightTest = true;
       detail("Light Fabric diagnostic…");

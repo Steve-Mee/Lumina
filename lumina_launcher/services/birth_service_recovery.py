@@ -93,6 +93,11 @@ class BirthServiceRecoveryMixin:
         if not self._autonomous_recovery_enabled():
             return {"status": "rejected", "message": "Autonomous recovery disabled in config."}
         progress = self._load_progress()
+        if progress.get("user_initiated_stop") is True:
+            return {
+                "status": "rejected",
+                "message": "Autonomous recovery blocked: operator stop is in effect.",
+            }
         from lumina_launcher.services.birth_runner_recovery import reject_if_champion_freeze
 
         blocked = reject_if_champion_freeze(self, progress=progress)
@@ -114,6 +119,8 @@ class BirthServiceRecoveryMixin:
         if self.is_running():
             return
         progress = self._load_progress()
+        if progress.get("user_initiated_stop") is True:
+            return
         if not self._autonomous_recovery_enabled():
             return
         if progress.get("retryable") is False:

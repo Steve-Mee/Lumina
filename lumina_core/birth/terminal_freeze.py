@@ -20,6 +20,8 @@ _RESOLVED_ACTIONS = frozenset(
         "accept_champion",
         "wipe_and_retry",
         "wipe_genesis",
+        "expand_data_or_wipe_birth",
+        "expand_data_or_wipe_genesis",
     }
 )
 
@@ -45,7 +47,7 @@ def build_terminal_freeze(
     reject = bool(swarm_rejected_no_lift) and not bool(swarm_champion_accepted)
     action = str(next_action or "").strip()
     if not action:
-        action = "accept_champion_or_wipe" if reject else "expand_data_or_wipe_genesis"
+        action = "accept_champion_or_wipe" if reject else "expand_data_or_wipe_birth"
     return {
         "schema": TERMINAL_FREEZE_SCHEMA,
         "reason": str(reason or "stage_stalled"),
@@ -143,7 +145,7 @@ def freeze_attention_fields(freeze: Mapping[str, Any]) -> dict[str, Any]:
     """Progress fields that keep freeze honest across resume."""
     if not freeze_is_active(freeze):
         return {}
-    next_action = str(freeze.get("next_action") or "expand_data_or_wipe_genesis")
+    next_action = str(freeze.get("next_action") or "expand_data_or_wipe_birth")
     reason = str(freeze.get("reason") or "stage_stalled")
     return {
         "needs_attention": True,

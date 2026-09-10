@@ -127,9 +127,11 @@ export async function postFabricConnectionTest(options?: {
   return apiFetch("/api/setup/fabric-connection-test", {
     method: "POST",
     body: JSON.stringify({
-      include_safe_mode: options?.include_safe_mode ?? true,
+      include_safe_mode: options?.include_safe_mode ?? false,
       // Empty → backend uses trading.instrument from config (e.g. MES SEP26).
       instrument: options?.instrument ?? "",
+      // Never request a live NT order from Test connection / Systems Go.
+      allow_live_order_probe: false,
     }),
   });
 }

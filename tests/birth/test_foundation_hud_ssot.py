@@ -207,4 +207,4 @@ def test_resolve_unique_calendar_days_prefers_manifest_then_progress() -> None:
         )
         == 89
     )
-    assert resolve_unique_calendar_days(12, manifest={"actual_calendar_days": 89}) == 12
+    assert resolve_unique_calendar_days(12, manifest={"actual_calendar_days": 89}) == 89

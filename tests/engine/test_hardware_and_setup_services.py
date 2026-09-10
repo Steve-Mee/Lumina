@@ -145,6 +145,45 @@ def test_setup_service_upgrade_model_uses_cached_hardware(monkeypatch, tmp_path:
     assert updated["models"]["reasoning"] == "qwen3.5:9b"
 
 
+def test_load_cached_reclassifies_light_snapshot_to_sweet(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    state = tmp_path / "state"
+    state.mkdir()
+    snap = HardwareSnapshot(
+        os_name="Windows",
+        os_version="test",
+        cpu_name="cpu",
+        cpu_cores_physical=16,
+        cpu_cores_logical=32,
+        ram_gb=30.9,
+        gpu_name="NVIDIA GeForce RTX 5070 Ti",
+        gpu_vram_gb=15.9,
+        compute_capability=12.0,
+        ollama_installed=True,
+        ollama_running=True,
+        nvidia_smi_available=True,
+        vllm_supported=False,
+        profile_tier="light",
+        recommended_model_key="qwen3.5-4b",
+        recommended_provider="ollama",
+        recommended_context_length=8192,
+        notes=[],
+    )
+    path = tmp_path / "state" / "hardware_snapshot.json"
+    path.write_text(json.dumps(snap.to_dict(), indent=2), encoding="utf-8")
+    monkeypatch.setattr(HardwareInspector, "STATE_FILE", path)
+    loaded = HardwareInspector.load_cached()
+    assert loaded is not None
+    assert loaded.profile_tier == "sweet"
+
+
+def test_classify_tier_sweet_hysteresis_for_32gb_dimms() -> None:
+    assert HardwareInspector._classify_tier(30.9, 15.9, 12.0) == "sweet"
+    assert HardwareInspector._classify_tier(32.0, 8.0, 8.9) == "sweet"
+    assert HardwareInspector._classify_tier(16.0, 15.9, 12.0) == "light"
+    assert HardwareInspector._classify_tier(30.9, 4.0, 12.0) == "light"
+
+
 def test_hardware_inspector_notes_include_vllm_blockers_once() -> None:
     notes = HardwareInspector._build_notes(
         profile_tier="sweet",

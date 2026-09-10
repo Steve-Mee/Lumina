@@ -100,10 +100,15 @@ def _resolve_diag_instrument(explicit: str | None = None) -> str:
 
 def run_fabric_connection_diagnostics(
     *,
-    include_safe_mode: bool = True,
+    include_safe_mode: bool = False,
     instrument: str = "",
+    allow_live_order_probe: bool = False,
 ) -> FabricConnectionReport:
-    """Run ordered SIM-only Fabric diagnostics. Never touches CrossTrade."""
+    """Run ordered SIM-only Fabric diagnostics. Never touches CrossTrade.
+
+    Never submits NT orders. GREEN is auth + historical bars.
+    ``include_safe_mode`` / ``allow_live_order_probe`` are ignored (fail-closed).
+    """
     t0 = time.perf_counter()
     started = datetime.now(timezone.utc).isoformat()
     instrument = _resolve_diag_instrument(instrument)
@@ -128,6 +133,7 @@ def run_fabric_connection_diagnostics(
         token=ctx.token,
         instrument=instrument,
         include_safe_mode=include_safe_mode,
+        allow_live_order_probe=allow_live_order_probe,
         checks=ctx.checks,
         remediation=ctx.remediation,
         audit_path=_audit_path,

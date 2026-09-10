@@ -69,10 +69,11 @@ def test_certified_tick_cache_present_requires_sla_manifest(tmp_path: Path) -> N
     state = tmp_path / "state"
     state.mkdir()
     assert certified_tick_cache_present(tmp_path) is False
-    (state / "lumina_birth_ticks_cache.jsonl").write_text("{}\n", encoding="utf-8")
+    rows = "\n".join("{}" for _ in range(1000)) + "\n"
+    (state / "lumina_birth_ticks_cache.jsonl").write_text(rows, encoding="utf-8")
     (state / "lumina_birth_split_cache.json").write_text("{}", encoding="utf-8")
     (state / "lumina_birth_cache_manifest.json").write_text(
-        '{"train_hash":"abc","requested_days":90,"actual_calendar_days":89,"tick_count":345648}',
+        '{"train_hash":"abc","requested_days":90,"actual_calendar_days":89,"tick_count":1000}',
         encoding="utf-8",
     )
     assert certified_tick_cache_present(tmp_path) is True

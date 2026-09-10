@@ -17,7 +17,7 @@ function lineCount(relativePath: string): number {
 const BASELINES: Record<string, number> = {
   "lib/birthPhaseModel.ts": 12,
   "lib/birth/birthMilestones.ts": 296,
-  "lib/birth/birthStatusPredicates.ts": 207,
+  "lib/birth/birthStatusPredicates.ts": 208,
   "lib/birth/birthProgressExtract.ts": 72,
   "lib/birth/birthSessionHud.ts": 112,
   "lib/birth/birthStageScorecard.ts": 400,

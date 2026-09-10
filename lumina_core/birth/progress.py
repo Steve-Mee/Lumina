@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import json
 import time
 from datetime import datetime, timezone
@@ -11,6 +10,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from lumina_core.birth.stage_scorecard import SCORECARD_PRESERVE_KEYS, enrich_progress_scorecard
+from lumina_core.io.atomic_fs import atomic_write_text
 
 _PHASES_NO_STAGES_PRESERVE = frozenset({"stage_stalled", "curriculum_learning"})
 
@@ -61,10 +61,7 @@ def merge_birth_progress_extra(*parts: Mapping[str, Any] | None) -> dict[str, An
 
 
 def _atomic_write_text(path: Path, encoded: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_name(f"{path.name}.tmp")
-    tmp_path.write_text(encoded, encoding="utf-8")
-    os.replace(tmp_path, path)
+    atomic_write_text(path, encoded)
 
 
 def write_birth_progress(
@@ -161,9 +158,16 @@ def write_birth_progress(
             payload["user_initiated_stop"] = False
     payload = enrich_progress_scorecard(payload)
     encoded = json.dumps(payload, ensure_ascii=True, indent=2)
-    # Write canonical only. Legacy dual write removed for radical simplicity.
     path = root / "state" / "lumina_birth_progress.json"
     try:
         _atomic_write_text(path, encoded)
     except OSError:
         pass
+    # Pause SSOT still dual-writes first_boot. Mirror canonical so the two
+    # files cannot disagree after resume (paused vs hervat split-brain).
+    legacy = root / "state" / "first_boot_progress.json"
+    if legacy.is_file():
+        try:
+            _atomic_write_text(legacy, encoded)
+        except OSError:
+            pass

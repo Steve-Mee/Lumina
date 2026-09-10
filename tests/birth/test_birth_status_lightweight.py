@@ -152,7 +152,7 @@ def test_write_birth_progress_uses_atomic_replace(tmp_path: Path, monkeypatch: p
     def _tracked_replace(src: str | Path, dst: str | Path) -> None:
         replaced.append((str(src), str(dst)))
 
-    monkeypatch.setattr("lumina_core.birth.progress.os.replace", _tracked_replace)
+    monkeypatch.setattr("lumina_core.io.atomic_fs.os.replace", _tracked_replace)
     write_birth_progress(
         tmp_path,
         stage="loading_data",
@@ -161,5 +161,8 @@ def test_write_birth_progress_uses_atomic_replace(tmp_path: Path, monkeypatch: p
         progress_pct=22.0,
     )
     assert replaced
-    assert replaced[0][0].endswith("lumina_birth_progress.json.tmp")
+    assert "lumina_birth_progress.json." in Path(replaced[0][0]).name or Path(replaced[0][0]).name.endswith(
+        "lumina_birth_progress.json.tmp"
+    )
+    assert replaced[0][0].endswith(".tmp")
     assert replaced[0][1].endswith("lumina_birth_progress.json")

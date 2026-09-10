@@ -6,6 +6,7 @@ import json
 import os
 import socket
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict
 
 from lumina_core.first_boot_progress import (
@@ -19,6 +20,73 @@ from lumina_core.logging_utils import get_logger
 from lumina_launcher.services.birth_status_mapper import BIRTH_ACTIVE_STAGES
 
 logger = get_logger(__name__)
+
+_INFLIGHT_NAME = "birth_start_inflight.flag"
+_INFLIGHT_TTL_SEC = 180.0
+_TERMINAL_STALL_REASONS = frozenset(
+    {
+        "phoenix_cycle",
+        "plateau_evolution_exhausted",
+        "stall_remediation_exhausted",
+    }
+)
+
+
+def _inflight_path(workspace_root: Path | str) -> Path:
+    return Path(workspace_root) / "state" / _INFLIGHT_NAME
+
+
+def write_start_inflight(svc: Any) -> None:
+    """Mark start/resume handshake so status polls cannot fake a user-stop."""
+    root = getattr(svc, "workspace_root", None)
+    if root is None:
+        return
+    path = _inflight_path(root)
+    payload = {
+        "pid": int(os.getpid()),
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, ensure_ascii=True), encoding="utf-8")
+    except OSError:
+        logger.warning("birth.start_inflight.write_failed path=%s", path, exc_info=True)
+
+
+def clear_start_inflight(svc: Any) -> None:
+    root = getattr(svc, "workspace_root", None)
+    if root is None:
+        return
+    path = _inflight_path(root)
+    try:
+        if path.is_file():
+            path.unlink()
+    except OSError:
+        logger.warning("birth.start_inflight.clear_failed path=%s", path, exc_info=True)
+
+
+def start_inflight_active(workspace_root: Path | str | None) -> bool:
+    if workspace_root is None:
+        return False
+    path = _inflight_path(workspace_root)
+    if not path.is_file():
+        return False
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        ts = str((raw or {}).get("ts") or "").strip()
+        parsed = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - parsed.astimezone(timezone.utc)).total_seconds()
+        if age <= _INFLIGHT_TTL_SEC:
+            return True
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return True
+    try:
+        path.unlink()
+    except OSError:
+        pass
+    return False
 
 
 def write_runner_lock(svc: Any) -> None:
@@ -158,9 +226,22 @@ def mark_user_stopped_progress(svc: Any) -> None:
 def reconcile_orphaned_birth_progress(svc: Any) -> bool:
     """Mark on-disk active progress as interrupted when no live Birth runner exists."""
     clear_stale_runner_lock(svc)
+    if start_inflight_active(svc.workspace_root):
+        logger.info("birth.reconcile_orphaned skip start_inflight")
+        return False
     progress = svc._load_progress()
     stage = resolve_first_boot_stage(progress)
     phase = str(progress.get("phase", "") or "").strip().lower()
+    if progress.get("user_initiated_stop") is True and stage in {"paused", "interrupted"}:
+        return False
+    try:
+        from lumina_core.birth.terminal_freeze import extract_terminal_freeze, freeze_is_active
+
+        if freeze_is_active(extract_terminal_freeze(progress)):
+            logger.info("birth.reconcile_orphaned skip unresolved terminal_freeze")
+            return False
+    except Exception:
+        logger.debug("birth.reconcile_orphaned freeze_check_failed", exc_info=True)
     # Starship: also reconcile plateau/stall death-modes (where birth most often dies).
     orphan_recovery_phases = {
         "plateau_evolution",
@@ -174,6 +255,7 @@ def reconcile_orphaned_birth_progress(svc: Any) -> bool:
         return False
     if birth_training_is_live(svc.workspace_root, thread_running=svc.is_running()):
         return False
+    terminal = str(progress.get("terminal_stall_reason") or "").strip().lower()
     from lumina_core.birth.starship_birth import build_pause_ssot_payload, write_pause_ssot
 
     merged = dict(progress)
@@ -196,11 +278,15 @@ def reconcile_orphaned_birth_progress(svc: Any) -> bool:
     payload = build_pause_ssot_payload(
         progress=merged,
         message=(
-            "Vorige sessie onderbroken — klik Hervat checkpoint om verder te gaan."
+            "Runner gestopt zonder gebruikersstop — "
+            "kies Hervat checkpoint of Wis birth-data."
         ),
+        user_initiated=False,
     )
     write_pause_ssot(svc.workspace_root, payload)
     logger.info("birth.reconcile_orphaned prior_stage=%s workspace=%s", stage, svc.workspace_root)
+    if terminal in _TERMINAL_STALL_REASONS:
+        return True
     try:
         from lumina_core.notifications.attention_events import birth_interrupted_event
         from lumina_core.notifications.operator_notifier import notify_problem

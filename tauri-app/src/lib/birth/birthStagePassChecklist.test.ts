@@ -464,4 +464,23 @@ describe("buildStagePassChecklist", () => {
     expect(ids).not.toContain("hygiene");
     expect(list!.allMet).toBe(true);
   });
+
+  it("fails occupancy when the envelope bought the band", () => {
+    const list = buildStagePassChecklist(
+      baseScorecard({
+        passCriteriaId: "probe_handoff",
+        occupancy: 0.4,
+        medianLossR: 1.1,
+        edgeVsFirstTouch: 0,
+      }),
+      {
+        occupancy: 0.4,
+        pass_reason: "foundation_fail:occupancy_envelope_dominated=0.93",
+      },
+    );
+    const occ = list!.requirements.find((r) => r.id === "occupancy");
+    expect(occ?.met).toBe(false);
+    expect(occ?.current).toBe("envelope override");
+    expect(occ?.tone).toBe("danger");
+  });
 });

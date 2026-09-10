@@ -173,6 +173,7 @@ def resume_stalled_stage(svc: Any, target_trades: int | None = None) -> Dict[str
         force=False,
         explicit_user_start=True,
         continue_training=True,
+        reuse_data=True,
     )
 
 

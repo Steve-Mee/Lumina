@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from lumina_core.birth.config import BirthCurriculumConfig
+from lumina_core.io.atomic_fs import atomic_write_text
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.starship_swarm_gates")
@@ -434,27 +435,35 @@ def build_pause_ssot_payload(
     *,
     progress: dict[str, Any],
     message: str | None = None,
+    user_initiated: bool = True,
 ) -> dict[str, Any]:
-    """Single pause/interrupt truth for birth + first_boot progress files."""
+    """Single pause/interrupt truth for birth + first_boot progress files.
+
+    ``user_initiated=True`` is only for an operator stop. Orphan/crash
+    reconcile must pass False — otherwise phoenix stalls look like a user abort
+    and autonomous recovery can fight a fake stop flag.
+    """
     stage = str(progress.get("stage", "") or "").strip().lower()
     phase = str(progress.get("phase", "") or "").strip().lower()
     prior_stage = str(progress.get("prior_stage") or progress.get("curriculum_stage") or stage)
     prior_phase = str(progress.get("prior_phase") or phase)
-    # Canonical: paused checkpoint with user stop flag (UI treats as interrupted).
+    if user_initiated:
+        default_message = (
+            "Birth Phase gepauzeerd door gebruiker. "
+            "Kies Hervat checkpoint of Wis birth-data voor schone run."
+        )
+    else:
+        default_message = (
+            "Runner gestopt zonder gebruikersstop — "
+            "kies Hervat checkpoint of Wis birth-data."
+        )
     payload = dict(progress)
     payload.update(
         {
             "stage": "paused",
             "phase": "paused",
-            "message": str(
-                message
-                or progress.get("message")
-                or (
-                    "Birth Phase gepauzeerd door gebruiker. "
-                    "Kies Hervat checkpoint of Wis birth-data voor schone run."
-                )
-            ),
-            "user_initiated_stop": True,
+            "message": str(message or progress.get("message") or default_message),
+            "user_initiated_stop": bool(user_initiated),
             "prior_stage": (
                 prior_stage
                 if prior_stage not in {"paused", "interrupted", ""}
@@ -468,6 +477,9 @@ def build_pause_ssot_payload(
             "needs_attention": False,
         }
     )
+    if user_initiated:
+        # A real operator stop must not be overwritten by never-stop recovery.
+        payload["autonomous_recovery_pending"] = False
     return payload
 
 
@@ -478,9 +490,6 @@ def write_pause_ssot(workspace_root: Path | str, payload: dict[str, Any]) -> Non
     for rel in ("state/lumina_birth_progress.json", "state/first_boot_progress.json"):
         path = root / rel
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = path.with_name(f"{path.name}.tmp")
-            tmp.write_text(encoded, encoding="utf-8")
-            tmp.replace(path)
+            atomic_write_text(path, encoded)
         except OSError as exc:
             logger.warning("birth.starship.pause_ssot_write_failed path=%s err=%s", path, exc)
