@@ -3,18 +3,25 @@ import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 
 interface BirthOrganismVisualProps {
   awakening?: boolean;
+  /** When false, rings freeze — do not fake a living clock. */
+  alive?: boolean;
   className?: string;
 }
 
-export function BirthOrganismVisual({ awakening = false, className }: BirthOrganismVisualProps) {
+export function BirthOrganismVisual({
+  awakening = false,
+  alive,
+  className,
+}: BirthOrganismVisualProps) {
   const reducedMotion = usePrefersReducedMotion();
+  const frozen = reducedMotion || alive === false;
 
   return (
     <div
       className={cn(
         "birth-organism relative mx-auto flex size-48 items-center justify-center md:size-56",
         awakening && "birth-organism--awakening",
-        reducedMotion && "birth-organism--static",
+        frozen && "birth-organism--static",
         className,
       )}
       aria-hidden

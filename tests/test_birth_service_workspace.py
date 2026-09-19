@@ -126,7 +126,7 @@ def test_artifacts_ok_requires_v2_certificate_and_policy(tmp_path: Path, monkeyp
 
 
 @pytest.mark.unit
-def test_is_completed_requires_valid_certificate(tmp_path: Path) -> None:
+def test_is_completed_requires_birth_exit_not_certificate(tmp_path: Path) -> None:
     BirthService._instance = None  # type: ignore[attr-defined]
     svc = BirthService()
     svc.configure_workspace(tmp_path)
@@ -134,6 +134,25 @@ def test_is_completed_requires_valid_certificate(tmp_path: Path) -> None:
     assert svc.is_completed() is False
     svc.completed_flag.write_text("done", encoding="utf-8")
     assert svc.is_completed() is False
+    from tests.maturity.test_hub_birth_exit_heal import _seed_foundation_exit
+
+    _seed_foundation_exit(tmp_path)
+    assert svc.is_completed() is True
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_start_and_retry_refuse_when_foundation_exited(tmp_path: Path) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    from tests.maturity.test_hub_birth_exit_heal import _seed_foundation_exit
+
+    _seed_foundation_exit(tmp_path)
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    started = svc.start_birth(explicit_user_start=True)
+    assert started.get("status") == "already_completed"
+    retried = svc.retry_birth()
+    assert retried.get("status") == "completed"
     BirthService._instance = None  # type: ignore[attr-defined]
 
 
@@ -203,7 +222,27 @@ def test_retry_birth_preserves_checkpoint_on_certificate_failed(
 
 
 @pytest.mark.unit
-def test_get_status_flag_without_certificate_reports_certificate_failed(
+def test_retry_birth_rejects_when_foundation_already_complete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    svc.completed_flag.write_text("done", encoding="utf-8")
+
+    def _fake_start(_svc: BirthService, **kwargs: object) -> dict[str, str]:
+        raise AssertionError("must not restart Birth after Foundation complete")
+
+    monkeypatch.setattr(birth_runner_start_module, "start_birth", _fake_start)
+    result = svc.retry_birth(target_trades=25000, wipe=False)
+    assert result["status"] == "completed"
+    assert "Awakening" in str(result.get("message"))
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_get_status_flag_without_certificate_reports_completed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     BirthService._instance = None  # type: ignore[attr-defined]
@@ -212,7 +251,7 @@ def test_get_status_flag_without_certificate_reports_certificate_failed(
     (tmp_path / "state").mkdir(parents=True, exist_ok=True)
     svc.completed_flag.write_text("done", encoding="utf-8")
     status = svc.get_status()
-    assert status["status"] == "certificate_failed"
+    assert status["status"] == "completed"
     assert svc.certificate_ok() is False
     BirthService._instance = None  # type: ignore[attr-defined]
 

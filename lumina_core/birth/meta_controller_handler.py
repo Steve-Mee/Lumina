@@ -197,6 +197,17 @@ class MetaControllerHandler:
                         if ctx.get("median_loss_r") is not None
                         else None
                     ),
+                    mean_r=(
+                        float(ctx["mean_r"]) if ctx.get("mean_r") is not None else None
+                    ),
+                    e_mech=(
+                        float(ctx["e_mech"]) if ctx.get("e_mech") is not None else None
+                    ),
+                    occupancy_exam_armed=(
+                        bool(ctx["occupancy_exam_armed"])
+                        if ctx.get("occupancy_exam_armed") is not None
+                        else None
+                    ),
                 )
                 self._set_response(cid, "snapshot", serialize_learning_snapshot(observed))
                 self._set_response(cid, "stall", asdict(stall))

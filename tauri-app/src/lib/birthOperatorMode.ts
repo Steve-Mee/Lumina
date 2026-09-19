@@ -2,7 +2,7 @@
  * Birth operator mode SSOT — one intent, one screen, no thrash.
  *
  * Priority (high → low):
- *   launching > training/finale > stall/cert overlays > decision > idle
+ *   launching > finale > freeze/stall/cert overlays > training > decision > idle
  */
 
 import type { BirthStatusPayload } from "@/lib/birthClient";
@@ -11,9 +11,12 @@ import {
   isBirthEngineActive,
   isBirthInterrupted,
   isBirthStageStalled,
+  isUnresolvedTerminalFreeze,
 } from "@/lib/birthPhaseModel";
 import { detectBirthRecoveryKind, isBirthCheckpointResumable } from "@/lib/birthRecoveryModel";
 import type { BirthUiPhase } from "@/lib/birth/birthClientTypes";
+
+export { isUnresolvedTerminalFreeze };
 
 export type BirthOperatorMode =
   | "idle"
@@ -74,8 +77,14 @@ export function resolveBirthOperatorMode(input: BirthOperatorModeInput): BirthOp
     return "finale";
   }
 
-  const engineActive =
-    status != null && !genesisPinned && (status.live === true || isBirthEngineActive(status));
+  const freezeUnresolved = isUnresolvedTerminalFreeze(status);
+  // Sacred surface: unresolved champion/phoenix freeze is stall overlay, even if
+  // a stale uiPhase=running or brief live flicker remains from start-then-freeze.
+  if (freezeUnresolved && !genesisPinned && !recoveryDismissed) {
+    return "stall_overlay";
+  }
+
+  const engineActive = status != null && !genesisPinned && isBirthEngineActive(status);
 
   // Cold-start after successful start — stay on training shell.
   if (runPinned && !genesisPinned) {
@@ -92,7 +101,11 @@ export function resolveBirthOperatorMode(input: BirthOperatorModeInput): BirthOp
     return "training";
   }
 
-  if (engineActive || uiPhase === "running") {
+  if (
+    (engineActive || uiPhase === "running") &&
+    !(status != null && isBirthStageStalled(status)) &&
+    !freezeUnresolved
+  ) {
     return "training";
   }
 
@@ -117,7 +130,32 @@ export function resolveBirthOperatorMode(input: BirthOperatorModeInput): BirthOp
   return "idle";
 }
 
-/** True when the operator must choose Continue / Start clean (not silent training). */
+export type BirthPaintSurface =
+  | "launching"
+  | "genesis"
+  | "mission"
+  | "stall_overlay"
+  | "certificate_overlay";
+
+/**
+ * One full-screen tree. Stall/cert never fall through to Genesis (helix remount thrash).
+ */
+export function resolveBirthPaintSurface(mode: BirthOperatorMode): BirthPaintSurface {
+  switch (mode) {
+    case "launching":
+      return "launching";
+    case "training":
+    case "finale":
+      return "mission";
+    case "stall_overlay":
+      return "stall_overlay";
+    case "certificate_overlay":
+      return "certificate_overlay";
+    default:
+      return "genesis";
+  }
+}
+
 export function needsOperatorDecision(
   status: BirthStatusPayload,
   uiPhase?: BirthUiPhase,

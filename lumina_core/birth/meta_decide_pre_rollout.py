@@ -42,6 +42,7 @@ class MetaDecidePreRolloutMixin:
         secondary: list[RecoveryStrategy] = []
         rationale = "default_rollout"
         force_mine = False
+        reward_tweak = None
 
         if snap.strong_recovery_mode:
             explore_fraction = float(self.cfg.strong_recovery_explore_fraction)
@@ -137,7 +138,7 @@ class MetaDecidePreRolloutMixin:
                 secondary = [RecoveryStrategy.REWARD_SHAPING_TWEAK]
                 force_mine = False
                 escalation_delta = 1
-                rationale = "stage3_over_trading"
+                rationale = "stage3_occupancy_taxi"
             # Pass-vector single controller first (multi-blocker) — Stage-2 primarily.
             try:
                 pv_fields = (
@@ -254,7 +255,7 @@ class MetaDecidePreRolloutMixin:
                     escalation_delta = 1
                     stage_s = str(getattr(getattr(snap, "stage", None), "value", "") or "")
                     rationale = (
-                        "stage3_over_trading"
+                        "stage3_occupancy_taxi"
                         if "stage3" in stage_s
                         else "stage2_over_trading"
                     )
@@ -315,6 +316,35 @@ class MetaDecidePreRolloutMixin:
                     primary = RecoveryStrategy.EXPLORE_BOOST
                     escalation_delta = 1
                     rationale = "wall_budget_exhausted"
+        elif (
+            snap.stage == CurriculumStage.STAGE4_VIABLE_PLANT
+            and snap.volume_gate_passed
+        ):
+            from lumina_core.birth.stage4_mean_r_meta import stage4_mean_r_pre_rollout_fields
+
+            s4 = stage4_mean_r_pre_rollout_fields(
+                snap,
+                exploration_steps=int(self.cfg.exploration_steps),
+                strong_recovery_explore_fraction=float(
+                    self.cfg.strong_recovery_explore_fraction
+                ),
+                reward_tweak_step=float(self.cfg.meta_reward_tweak_step),
+                reward_tweak_cap=float(self.cfg.meta_max_expectancy_coeff),
+                active_reward=self.active_reward,
+            )
+            if s4 is not None:
+                primary = RecoveryStrategy(str(s4.get("primary") or "reward_shaping_tweak"))
+                secondary = []
+                for sec in s4.get("secondary") or ():
+                    try:
+                        secondary.append(RecoveryStrategy(str(sec)))
+                    except ValueError:
+                        continue
+                explore_steps = max(explore_steps, int(s4.get("explore_steps") or explore_steps))
+                escalation_delta = max(escalation_delta, int(s4.get("escalation_delta") or 1))
+                force_mine = bool(s4.get("mine"))
+                rationale = str(s4.get("rationale") or "stage4_mean_r_capture")
+                reward_tweak = s4.get("reward_tweak")
         elif wall_budget_exhausted:
             explore_steps = max(explore_steps, self.cfg.exploration_steps * 4)
             primary = RecoveryStrategy.EXPLORE_BOOST
@@ -331,7 +361,11 @@ class MetaDecidePreRolloutMixin:
             escalation_delta = 1
             rationale = "stage1_winrate_stagnation"
 
-        if snap.learning_health == LearningHealth.IMPROVING and not snap.strong_recovery_mode:
+        if (
+            snap.learning_health == LearningHealth.IMPROVING
+            and not snap.strong_recovery_mode
+            and rationale != "stage4_mean_r_capture"
+        ):
             escalation_delta = min(escalation_delta, -1)
 
         mine = bool(
@@ -355,6 +389,7 @@ class MetaDecidePreRolloutMixin:
             mine=mine,
             rationale=rationale,
             snapshot=snap,
+            reward_tweak=reward_tweak,
         )
         # Record pre-rollout quality decisions so history matches scorecard.
         if "stage2_expectancy" in rationale or "stage2_" in rationale:

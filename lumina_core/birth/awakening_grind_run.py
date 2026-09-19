@@ -42,6 +42,7 @@ from lumina_core.birth.s5_close_ledger_archive import (
 from lumina_core.birth.s5_close_ledger_trace import close_ledger_row
 from lumina_core.birth.s5_occupancy_continuity import (
     S5_SEED_SIGNALS,
+    occupancy_from_receipts,
     s4_occupancy_from_receipts,
     s4_occupancy_in_s5_exam_band,
 )
@@ -109,8 +110,60 @@ def _s4_receipts(reports_dir: Path) -> list[Any]:
     return []
 
 
-def occupancy_seed_kwargs(reports_dir: Path) -> dict[str, Any]:
-    occ = s4_occupancy_from_receipts(_s4_receipts(reports_dir))
+def _workspace_foundation_receipts(workspace_root: Path) -> list[Any]:
+    path = Path(workspace_root) / "state" / "lumina_birth_foundation_receipts.json"
+    if not path.is_file():
+        return []
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, dict) and isinstance(raw.get("receipts"), list):
+        return list(raw["receipts"])
+    return []
+
+
+def resolve_awakening_occupancy_seed(
+    reports_dir: Path,
+    workspace_root: Path | str | None = None,
+) -> tuple[float | None, str]:
+    """Seed from the live Birth plant. Never invent 0.50. Stale artifact S4 is last."""
+    candidates: list[tuple[str, float | None]] = []
+    if workspace_root is not None:
+        root = Path(workspace_root)
+        receipts = _workspace_foundation_receipts(root)
+        candidates.append(("s5_receipt", occupancy_from_receipts(receipts, S5_STAGE)))
+        try:
+            from lumina_core.birth.fitness_vector import load_fitness_vector
+
+            vec = load_fitness_vector(root)
+            occ = float(vec.occupancy) if vec is not None and vec.occupancy is not None else None
+        except Exception:
+            occ = None
+        candidates.append(("fitness_vector", occ))
+        candidates.append(("s4_receipt_state", s4_occupancy_from_receipts(receipts)))
+    candidates.append(("s4_receipt", s4_occupancy_from_receipts(_s4_receipts(reports_dir))))
+    for source, occ in candidates:
+        if s4_occupancy_in_s5_exam_band(occ):
+            return float(occ), source
+    return None, "missing"
+
+
+def occupancy_rolling_seed(occupancy: float, *, n: int) -> list[int]:
+    """1=flat, 0=in-position. Never invent a 0.50 midpoint window."""
+    size = max(50, int(n))
+    flats = int(round(float(occupancy) * float(size)))
+    flats = min(size, max(0, flats))
+    return [1] * flats + [0] * (size - flats)
+
+
+def occupancy_seed_kwargs(
+    reports_dir: Path,
+    workspace_root: Path | str | None = None,
+) -> dict[str, Any]:
+    occ, _source = resolve_awakening_occupancy_seed(reports_dir, workspace_root)
     if not s4_occupancy_in_s5_exam_band(occ):
         return {
             "stage_range_flat_bars": 0,
@@ -118,10 +171,12 @@ def occupancy_seed_kwargs(reports_dir: Path) -> dict[str, Any]:
             "occupancy_in_band_seen": False,
         }
     n = int(S5_SEED_SIGNALS)
+    seeded = float(occ)
     return {
-        "stage_range_flat_bars": int(round(float(occ) * float(n))),
+        "stage_range_flat_bars": int(round(seeded * float(n))),
         "stage_range_total_signals": n,
         "occupancy_in_band_seen": True,
+        "occupancy_control_window": occupancy_rolling_seed(seeded, n=n),
     }
 
 
@@ -144,6 +199,8 @@ def s5_envelope_kwargs(cfg: BirthCurriculumConfig, geometry: Any) -> dict[str, A
         "trade_geometry": geometry,
         "exploration_steps": 0,
         "expectancy_gap": 0.0,
+        "geometry_max_hold_in_band": False,
+        "policy_edge_min_trades": int(ADR0026_MIN_TRADES),
     }
 
 
@@ -206,7 +263,9 @@ def run_evaluate_only(
     cfg = BirthCurriculumConfig()
     n_bars = len(holdout)
     kwargs = s5_envelope_kwargs(cfg, geometry)
-    kwargs.update(occupancy_seed_kwargs(reports_dir))
+    kwargs.update(occupancy_seed_kwargs(reports_dir, workspace_root=root))
+    _occ, seed_source = resolve_awakening_occupancy_seed(reports_dir, root)
+    logger.info("awakening.grind.occupancy_seed source=%s occ=%s", seed_source, _occ)
     fn = rollout_fn or run_policy_rollout
     from lumina_core.birth.awakening_path_exit_k3 import PATH_EXIT_K3_SHADOW
 
@@ -272,6 +331,9 @@ __all__ = [
     "START_CHOICE",
     "grind_ledger_path",
     "inconclusive_leg",
+    "occupancy_rolling_seed",
+    "occupancy_seed_kwargs",
+    "resolve_awakening_occupancy_seed",
     "run_evaluate_only",
     "write_grind_closes",
 ]

@@ -48,6 +48,27 @@ def test_resolve_terminal_birth_status_error_phase() -> None:
 
 
 @pytest.mark.unit
+def test_resolve_terminal_birth_status_prefers_freeze_message_over_hollow_pass_reason() -> None:
+    status, message = resolve_terminal_birth_status(
+        {
+            "stage": "stage_stalled",
+            "phase": "stage_stalled",
+            "pass_reason": "foundation_fail:median_loss_r=None missing_or_gt_1.5;replay_cap trades=2331 days=0",
+            "message": "Terminal freeze: phoenix_cycle — Twin/operator next_action=accept_champion_or_wipe",
+            "terminal_freeze": {
+                "schema": "terminal_freeze_v1",
+                "reason": "phoenix_cycle",
+                "resolved": False,
+                "next_action": "accept_champion_or_wipe",
+            },
+        }
+    )
+    assert status == "stage_stalled"
+    assert "phoenix_cycle" in message
+    assert "median_loss_r=None" not in message
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("method_name,target", list(_DELEGATING_METHODS.items()))
 def test_birth_service_methods_delegate(method_name: str, target: str) -> None:
     source = inspect.getsource(getattr(BirthService, method_name))

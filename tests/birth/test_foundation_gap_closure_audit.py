@@ -36,6 +36,7 @@ def test_stage2_skill_wired_everywhere() -> None:
     assert "policy_trades" in _read("lumina_core/birth/stage_loop_progress_write.py")
     assert "policy_trades" in _read("lumina_core/birth/plateau_evolution_detect.py")
     assert "policy_trades" in _read("lumina_core/birth/stage_loop_recovery_terminal.py")
+    assert "policy_trades" in _read("lumina_core/birth/stage_loop_recovery_blocker.py")
     assert "policy_trades" in _read("lumina_core/birth/wall_trigger_engine.py")
     assert "policy_trades" in _read("lumina_core/birth/wall_adaptation_triggers.py")
     assert "policy_trades" in _read("lumina_core/birth/stage_pass_receipt_verify.py")

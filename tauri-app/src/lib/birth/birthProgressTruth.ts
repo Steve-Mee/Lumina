@@ -48,6 +48,23 @@ export function resolveStageWindowDays(
   );
 }
 
+export function occupancyEnvelopeDominated(
+  progress: BirthProgressPayload | undefined,
+): boolean {
+  const reason = String(progress?.pass_reason ?? "").toLowerCase();
+  if (reason.includes("occupancy_envelope_dominated")) return true;
+  // Stale lifetime/taxi fraction must not paint "envelope override" while the
+  // exam window is unarmed (live S4: 0.92 leftover, plant-flat 0.2477).
+  if (progress?.occupancy_exam_armed !== true) return false;
+  const frac = Number(progress?.envelope_override_fraction);
+  return Number.isFinite(frac) && frac > 0.5 + 1e-12;
+}
+
+function foundationFailReason(progress: BirthProgressPayload | undefined): boolean {
+  const reason = String(progress?.pass_reason ?? "").toLowerCase();
+  return reason.includes("foundation_fail") || occupancyEnvelopeDominated(progress);
+}
+
 export function extractBirthProgressTruth(
   progress: BirthProgressPayload | undefined,
 ): BirthProgressTruth {
@@ -62,9 +79,22 @@ export function extractBirthProgressTruth(
     0,
     Number(truth.stage_index ?? progress?.curriculum_index ?? 0) || 0,
   );
-  const stagePassNow = Boolean(truth.stage_pass_now ?? progress?.stage_pass_now);
-  const blocker =
-    String(truth.blocker ?? progress?.stage_blocker_metric ?? "").trim() || null;
+  const freeze = progress?.terminal_freeze;
+  const freezeActive =
+    freeze != null &&
+    typeof freeze === "object" &&
+    freeze.resolved !== true &&
+    String(freeze.reason ?? "").trim() !== "";
+  const reasonFail = foundationFailReason(progress);
+  const stagePassNow =
+    freezeActive || reasonFail
+      ? false
+      : Boolean(truth.stage_pass_now ?? progress?.stage_pass_now);
+  const blocker = freezeActive
+    ? String(freeze?.reason || "terminal_freeze").trim()
+    : reasonFail
+      ? String(progress?.stage_blocker_metric || "foundation_fail").trim()
+      : String(truth.blocker ?? progress?.stage_blocker_metric ?? "").trim() || null;
   const pctIsNotComplete =
     truth.pct_is_not_complete == null ? !stagePassNow : Boolean(truth.pct_is_not_complete);
   const pos =
@@ -148,13 +178,6 @@ export function extractThroughput(progress: BirthProgressPayload | undefined): {
   };
 }
 
-export function occupancyEnvelopeDominated(
-  progress: BirthProgressPayload | undefined,
-): boolean {
-  const reason = String(progress?.pass_reason ?? "").toLowerCase();
-  return reason.includes("occupancy_envelope_dominated");
-}
-
 export function formatLungsThroughputHint(
   progress: BirthProgressPayload | undefined,
   manifestDays: number | null,
@@ -163,8 +186,11 @@ export function formatLungsThroughputHint(
   const lungs = extractPpoLungs(progress);
   const windowDays = resolveStageWindowDays(progress);
   const parts: string[] = [];
-  if (tpm.outerTpm != null) parts.push(`session ${tpm.outerTpm.toLocaleString()}/min`);
-  if (tpm.innerTpm != null) parts.push(`rollout ${tpm.innerTpm.toLocaleString()}/min`);
+  if (tpm.outerTpm != null) {
+    parts.push(`session ${tpm.outerTpm.toLocaleString()}/min`);
+  } else if (tpm.innerTpm != null) {
+    parts.push(`rollout ${tpm.innerTpm.toLocaleString()}/min`);
+  }
   if (windowDays != null && windowDays !== manifestDays) {
     parts.push(`stage window ${windowDays}d`);
   }

@@ -168,6 +168,18 @@ class PPOTrainerTrainMixin:
                 total_timesteps=int(total_timesteps),
                 elapsed_sec=float(elapsed),
             )
+            try:
+                from lumina_core.rl.ppo_callbacks import _heartbeat_birth_ppo_progress
+
+                _heartbeat_birth_ppo_progress(
+                    message="PPO batch complete · saving policy",
+                    current=int(total_timesteps),
+                    total=int(total_timesteps),
+                    ppo_pct=100.0,
+                    elapsed_sec=float(elapsed),
+                )
+            except Exception:
+                logger.debug("ppo.train.save_heartbeat_failed", exc_info=True)
 
         if not policy_path:
             policy_path = str(self.model_dir / "lumina_ppo_policy.zip")

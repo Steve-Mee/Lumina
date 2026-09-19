@@ -158,11 +158,29 @@ def awakening_evolution_proof_from_fitness(
             detail=detail,
         )
     baseline = float(vector.oos_wr)
-    probe = float(polish_oos_winrate) if polish_oos_winrate is not None else baseline
+    if polish_oos_winrate is None:
+        blockers.append("polish_oos_winrate_missing")
+        return PostBirthGateResult(
+            passed=False,
+            gate_id="evolution_proof",
+            home_phase="awakening",
+            blockers=tuple(blockers),
+            detail=detail,
+        )
+    if int(holdout_trades) <= 0:
+        blockers.append("holdout_trades_missing")
+        return PostBirthGateResult(
+            passed=False,
+            gate_id="evolution_proof",
+            home_phase="awakening",
+            blockers=tuple(blockers),
+            detail=detail,
+        )
+    probe = float(polish_oos_winrate)
     result = evaluate_evolution_proof(
         birth_exit_winrate=baseline,
         polish_oos_winrate=probe,
-        holdout_trades=int(holdout_trades) if holdout_trades > 0 else int(vector.trades),
+        holdout_trades=int(holdout_trades),
         cfg=EvolutionProofConfig(
             min_winrate_lift=EVOLUTION_PROOF_LIFT_MIN,
             polish_oos_winrate_min=EVOLUTION_PROOF_OOS_WR_MIN,

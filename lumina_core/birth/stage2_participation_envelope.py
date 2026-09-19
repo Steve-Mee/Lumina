@@ -24,21 +24,21 @@ for S2. Dual IMU (do not invert):
 - In-band PASSTHROUGH when **both** IMUs are inside the band (after
   hysteresis / settle-corridor). Under-band still wins when both fire.
 
-Live forensics 2026-08: hysteresis dead-zone left flat stuck at ~28% (pass needs
-≥30%) while FORCE_FLAT only fired below 28%. Asymmetric law: **enter under-band
-control at band_lo**. Empty-suppress **release** hysteresis default is **0.02**
-so FORCE_FLAT holds until flat ≥ 0.32 (settle inside the exam, no 0.2996 chatter).
-
-In-position FORCE_HOLD only when truly under exam (flat < 0.30). Once
-``band_lo ≤ flat < release`` the exam is already in-band: PASSTHROUGH so the
-envelope is not a 90% HOLD puppet at 0.319. Stage-3 keeps release hyst 0.0
-(wider 25–75% exam). Floors unchanged.
+Enter under-band at band_lo. S2 empty-suppress release default 0.02 (no 0.2996
+chatter). S3/S4/S5 exam 25–75%: in-band PASSTHROUGH; fencepost after exam-seen
+is empty FORCE_FLAT + in-position PASSTHROUGH (no 8-bar blender). Floors pinned.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Literal
+
+from lumina_core.birth.foundation_metrics import S3_OCCUPANCY_MAX, S3_OCCUPANCY_MIN
+from lumina_core.birth.foundation_occupancy_envelope import (
+    exam_empty_settle_lo,
+    occupancy_under_exam_fencepost,
+)
 
 ParticipationMode = Literal[
     "PASSTHROUGH",
@@ -161,10 +161,13 @@ def decide_stage2_participation(
     # Rolling occupancy window (last N bars). None → cumulative-only (legacy tests).
     rolling_flat_ratio: float | None = None,
     # S3 application flag: exam grades cumulative occupancy. Once cumulative is
-    # inside the controller band, PASSTHROUGH so rolling IMU cannot keep
-    # FORCE_OPEN / FORCE_FLAT owning the book. S2 keeps dual-IMU (False).
-    # Does not change band_lo / band_hi.
+    # inside the *exam* band (0.25–0.75), PASSTHROUGH so rolling IMU / controller
+    # 0.28 cannot keep FORCE_HOLD owning a 0.2799 plant. S2 dual-IMU stays False.
+    # Does not change band_lo / band_hi (controller IMU for S2 / under-exam).
     cumulative_in_band_passthrough: bool = False,
+    # Optional exam floors for the PASSTHROUGH check. None → S3 0.25–0.75.
+    exam_band_lo: float | None = None,
+    exam_band_hi: float | None = None,
     # After a FORCE_OPEN plant settles, block a second FORCE_OPEN until
     # min-dwell bars elapse. Position==0 on the close bar is chatter.
     force_open_refractory: bool = False,
@@ -173,6 +176,10 @@ def decide_stage2_participation(
     # entry into the band is unchanged (in_band_seen=False).
     in_band_seen: bool = False,
     rearm_hysteresis: float = 0.04,
+    # Awakening eval/train only. Birth S3–S5 keep False (exam PASSTHROUGH).
+    # In-band zombie holds (live 3180 bars) starve n_B. Geometry max-hold is
+    # plant time-stop airframe, not a floor cut.
+    geometry_max_hold_in_band: bool = False,
 ) -> ParticipationDecision:
     """Return participation mode for one SIM step.
 
@@ -198,20 +205,16 @@ def decide_stage2_participation(
 
     cum_flat = float(range_flat_ratio)
     roll_flat = float(rolling_flat_ratio) if rolling_flat_ratio is not None else None
-    under_flat = occupancy_control_flat(
-        cumulative_flat=cum_flat, rolling_flat=roll_flat
-    )
-    over_flat = occupancy_control_over(
-        cumulative_flat=cum_flat, rolling_flat=roll_flat
-    )
+    under_flat = occupancy_control_flat(cumulative_flat=cum_flat, rolling_flat=roll_flat)
+    over_flat = occupancy_control_over(cumulative_flat=cum_flat, rolling_flat=roll_flat)
     lo = float(band_lo)
     hi = float(band_hi)
     if lo >= hi:
         lo, hi = 0.30, 0.70
-    # S3: cumulative exam in-band owns PASSTHROUGH. Rolling 0.278 vs band_lo 0.28
-    # must not FORCE_FLAT while exam occupancy is 0.57. Bands unchanged.
-    if bool(cumulative_in_band_passthrough) and lo - 1e-12 <= cum_flat <= hi + 1e-12:
-        return ParticipationDecision(MODE_PASSTHROUGH, None, "exam_cumulative_in_band")
+    exam_lo = float(S3_OCCUPANCY_MIN if exam_band_lo is None else exam_band_lo)
+    exam_hi = float(S3_OCCUPANCY_MAX if exam_band_hi is None else exam_band_hi)
+    if exam_lo >= exam_hi:
+        exam_lo, exam_hi = float(S3_OCCUPANCY_MIN), float(S3_OCCUPANCY_MAX)
     hyst = max(0.0, min(0.08, float(hysteresis)))
     release_hyst = max(0.0, min(0.08, float(under_band_release_hysteresis)))
     # Over-flat enter only clearly above band (hysteresis).
@@ -243,6 +246,10 @@ def decide_stage2_participation(
     stop = max(_stop_lo, min(_stop_hi, float(stop_pct)))
     target = max(stop * 1.25, min(0.05, float(target_pct)))
     q = max(0.0, min(1.0, float(qty_frac)))
+    exam_cum = exam_lo - 1e-12 <= cum_flat <= exam_hi + 1e-12
+    fence_keep = bool(in_band_seen) and occupancy_under_exam_fencepost(
+        cum_flat, exam_lo=exam_lo
+    )
 
     def _force_exit(reason: str) -> ParticipationDecision:
         # Geometry time-stop: gym prefers stop/target if already hit, else mark
@@ -256,31 +263,37 @@ def decide_stage2_participation(
             force_time_stop=True,
         )
 
+    if bool(cumulative_in_band_passthrough) and (exam_cum or fence_keep):
+        exam_empty_release = exam_empty_settle_lo(exam_lo, release_hyst)
+        if pos != 0:
+            if bool(geometry_max_hold_in_band) and dwell >= max_hold:
+                return _force_exit("in_band_geometry_max_hold")
+            return ParticipationDecision(MODE_PASSTHROUGH, None, "exam_cumulative_in_band")
+        if cum_flat + 1e-12 < exam_empty_release:
+            return ParticipationDecision(
+                MODE_FORCE_FLAT,
+                (0.0, 0.5, stop, target),
+                "exam_settle_empty_suppress",
+                suppress_flatten=False,
+            )
+        return ParticipationDecision(MODE_PASSTHROUGH, None, "exam_cumulative_in_band")
+
     # Under-band first (occupancy exam + recent crash). Dual-signal: rolling 15%
     # with cumulative 35% must FORCE_FLAT — IMU, not T-0 average.
     if under_flat < under_band_release - 1e-12:
         deep_under = under_flat < under_band_enter - 1e-12
         sticky_exit = bool(force_exit_on_sticky_under) or deep_under
         if pos != 0 and dwell >= max_hold and sticky_exit:
-            return _force_exit(
-                "under_flat_max_dwell_exit_deep"
-                if deep_under
-                else "under_flat_max_dwell_exit_sticky"
-            )
+            return _force_exit("under_flat_max_dwell_exit_deep" if deep_under else "under_flat_max_dwell_exit_sticky")
         if pos == 0:
             return ParticipationDecision(
                 MODE_FORCE_FLAT,
                 (0.0, 0.5, stop, target),
-                (
-                    "under_flat_suppress_entry"
-                    if deep_under
-                    else "under_flat_release_hyst_suppress"
-                ),
+                ("under_flat_suppress_entry" if deep_under else "under_flat_release_hyst_suppress"),
                 suppress_flatten=False,
             )
-        # True under-exam: no reverse/add. Settle corridor (flat ≥ band_lo, still
-        # < release): exam already in-band — PASSTHROUGH so 0.30–0.32 is not a
-        # FORCE_HOLD puppet. Empty-suppress above still blocks the next entry.
+        # Settle corridor in-position is PASSTHROUGH. Under exam_lo: HOLD only
+        # until min_dwell, then time-stop so empty FORCE_FLAT can climb occupancy.
         if deep_under:
             return ParticipationDecision(
                 MODE_FORCE_HOLD,

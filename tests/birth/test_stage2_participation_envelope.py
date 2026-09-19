@@ -287,6 +287,50 @@ def test_in_band_no_gap_no_force_exit() -> None:
 
 
 @pytest.mark.unit
+def test_s4_under_exam_holds_geometry_then_empty_flat() -> None:
+    """Live 17:57 blender: min_dwell=8 FORCE_EXIT then re-entry. Forbidden.
+
+    Under exam: HOLD until geometry max_hold. Empty FORCE_FLAT until 0.27.
+    """
+    kwargs = dict(
+        enabled=True,
+        range_flat_ratio=0.23998,
+        range_total_signals=28878,
+        band_lo=0.28,
+        band_hi=0.72,
+        hysteresis=0.0,
+        under_band_release_hysteresis=0.0,
+        min_signals=50,
+        min_dwell_bars=8,
+        max_hold_bars=120,
+        cumulative_in_band_passthrough=True,
+    )
+    early = decide_stage2_participation(position=1, bars_in_position=3, **kwargs)
+    assert early.mode == MODE_FORCE_HOLD
+    eight = decide_stage2_participation(position=1, bars_in_position=8, **kwargs)
+    assert eight.mode == MODE_FORCE_HOLD
+    assert eight.force_time_stop is False
+    horizon = decide_stage2_participation(position=1, bars_in_position=120, **kwargs)
+    assert horizon.mode == MODE_FORCE_EXIT
+    empty = decide_stage2_participation(position=0, bars_in_position=0, **kwargs)
+    assert empty.mode == MODE_FORCE_FLAT
+    settled = decide_stage2_participation(
+        enabled=True,
+        position=0,
+        bars_in_position=0,
+        range_flat_ratio=0.27,
+        range_total_signals=53535,
+        band_lo=0.28,
+        band_hi=0.72,
+        hysteresis=0.0,
+        min_signals=50,
+        cumulative_in_band_passthrough=True,
+        in_band_seen=True,
+    )
+    assert settled.mode == MODE_PASSTHROUGH
+
+
+@pytest.mark.unit
 def test_under_flat_in_position_hold_no_reverse() -> None:
     """Over-trading + open pos: hold-only (no reverse thrash) until max-dwell exit."""
     d = decide_stage2_participation(
@@ -461,26 +505,16 @@ def test_live_flat_018_force_flat() -> None:
 
 @pytest.mark.unit
 def test_occupancy_control_flat_is_min_of_rolling_and_cumulative() -> None:
-    assert occupancy_control_flat(cumulative_flat=0.35, rolling_flat=0.15) == pytest.approx(
-        0.15
-    )
-    assert occupancy_control_flat(cumulative_flat=0.18, rolling_flat=None) == pytest.approx(
-        0.18
-    )
+    assert occupancy_control_flat(cumulative_flat=0.35, rolling_flat=0.15) == pytest.approx(0.15)
+    assert occupancy_control_flat(cumulative_flat=0.18, rolling_flat=None) == pytest.approx(0.18)
 
 
 @pytest.mark.unit
 def test_occupancy_control_over_is_max_of_rolling_and_cumulative() -> None:
     """Over-band IMU: exam-empty (high cumulative) cannot hide behind in-band rolling."""
-    assert occupancy_control_over(cumulative_flat=0.90, rolling_flat=0.50) == pytest.approx(
-        0.90
-    )
-    assert occupancy_control_over(cumulative_flat=0.50, rolling_flat=0.90) == pytest.approx(
-        0.90
-    )
-    assert occupancy_control_over(cumulative_flat=0.50, rolling_flat=None) == pytest.approx(
-        0.50
-    )
+    assert occupancy_control_over(cumulative_flat=0.90, rolling_flat=0.50) == pytest.approx(0.90)
+    assert occupancy_control_over(cumulative_flat=0.50, rolling_flat=0.90) == pytest.approx(0.90)
+    assert occupancy_control_over(cumulative_flat=0.50, rolling_flat=None) == pytest.approx(0.50)
 
 
 @pytest.mark.unit
@@ -488,7 +522,7 @@ def test_force_open_stop_from_atr_dwell_scale_and_constitution_clip() -> None:
     """Documented ATR floor: atr=0.002, min_dwell=8 → 0.002×√8, clipped to [0.0004, 0.01]."""
     atr = 0.002
     dwell = 8
-    floor = atr * (dwell ** 0.5)
+    floor = atr * (dwell**0.5)
     stop = force_open_stop_from_atr(atr_pct=atr, min_dwell_bars=dwell)
     assert stop == pytest.approx(floor)
     assert 0.0004 <= stop <= 0.01
@@ -606,12 +640,161 @@ def test_pre_caps_never_disables_envelope_on_quality_lock() -> None:
     """Airframe law: quality lock must not set participation_envelope_enabled=False."""
     from pathlib import Path
 
-    src = Path("lumina_core/birth/stage_loop_rollout_pre_caps.py").read_text(
-        encoding="utf-8"
-    )
+    src = Path("lumina_core/birth/stage_loop_rollout_pre_caps.py").read_text(encoding="utf-8")
     assert "participation_envelope_enabled = False" not in src
     assert "Quality window: PASSTHROUGH so geometry can finish" not in src
     assert "quality_lock_active" not in src
+
+
+@pytest.mark.unit
+def test_s3_exam_in_band_passthrough_at_controller_fencepost() -> None:
+    """Live S3: occupancy 0.2799 is exam-in-band (0.25–0.75). Controller 0.28 must not FORCE_HOLD."""
+    d = decide_stage2_participation(
+        enabled=True,
+        range_flat_ratio=0.2799,
+        rolling_flat_ratio=0.2799,
+        range_total_signals=112461,
+        position=1,
+        bars_in_position=40,
+        band_lo=0.28,
+        band_hi=0.72,
+        hysteresis=0.0,
+        under_band_release_hysteresis=0.0,
+        min_signals=50,
+        cumulative_in_band_passthrough=True,
+    )
+    assert d.mode == MODE_PASSTHROUGH
+    assert d.reason == "exam_cumulative_in_band"
+    held = decide_stage2_participation(
+        enabled=True,
+        range_flat_ratio=0.2799,
+        rolling_flat_ratio=0.2799,
+        range_total_signals=112461,
+        position=1,
+        bars_in_position=120,
+        band_lo=0.28,
+        band_hi=0.72,
+        hysteresis=0.0,
+        under_band_release_hysteresis=0.0,
+        min_signals=50,
+        max_hold_bars=120,
+        cumulative_in_band_passthrough=True,
+        geometry_max_hold_in_band=True,
+    )
+    assert held.mode == MODE_FORCE_EXIT
+    assert held.reason == "in_band_geometry_max_hold"
+    assert held.force_time_stop is True
+    birth_held = decide_stage2_participation(
+        enabled=True,
+        range_flat_ratio=0.2799,
+        rolling_flat_ratio=0.2799,
+        range_total_signals=112461,
+        position=1,
+        bars_in_position=120,
+        band_lo=0.28,
+        band_hi=0.72,
+        hysteresis=0.0,
+        under_band_release_hysteresis=0.0,
+        min_signals=50,
+        max_hold_bars=120,
+        cumulative_in_band_passthrough=True,
+        geometry_max_hold_in_band=False,
+    )
+    assert birth_held.mode == MODE_PASSTHROUGH
+    empty = decide_stage2_participation(
+        enabled=True,
+        range_flat_ratio=0.2799,
+        range_total_signals=112461,
+        position=0,
+        bars_in_position=0,
+        band_lo=0.28,
+        band_hi=0.72,
+        hysteresis=0.0,
+        min_signals=50,
+        cumulative_in_band_passthrough=True,
+    )
+    assert empty.mode == MODE_PASSTHROUGH
+    below_exam = decide_stage2_participation(
+        enabled=True,
+        range_flat_ratio=0.24,
+        range_total_signals=8000,
+        position=0,
+        bars_in_position=0,
+        band_lo=0.28,
+        band_hi=0.72,
+        hysteresis=0.0,
+        min_signals=50,
+        cumulative_in_band_passthrough=True,
+    )
+    assert below_exam.mode == MODE_FORCE_FLAT
+
+
+@pytest.mark.unit
+def test_s3_exam_fencepost_empty_settles_not_passthrough() -> None:
+    """Climb: 0.24996 FORCE_FLAT; 0.2501 settle until 0.27; 0.27 PASSTHROUGH."""
+    kwargs = dict(
+        enabled=True,
+        range_total_signals=29621,
+        position=0,
+        bars_in_position=0,
+        band_lo=0.28,
+        band_hi=0.72,
+        hysteresis=0.0,
+        under_band_release_hysteresis=0.0,
+        min_signals=50,
+        cumulative_in_band_passthrough=True,
+        in_band_seen=False,
+    )
+    under = decide_stage2_participation(range_flat_ratio=0.24996, **kwargs)
+    assert under.mode == MODE_FORCE_FLAT
+    hairline = decide_stage2_participation(range_flat_ratio=0.2501, **kwargs)
+    assert hairline.mode == MODE_FORCE_FLAT
+    assert hairline.reason == "exam_settle_empty_suppress"
+    settled = decide_stage2_participation(range_flat_ratio=0.27, **kwargs)
+    assert settled.mode == MODE_PASSTHROUGH
+    assert settled.reason == "exam_cumulative_in_band"
+
+
+@pytest.mark.unit
+def test_s4_inband_seen_empty_below_settle_force_flat() -> None:
+    """0.2694 < 0.27 settle: empty FORCE_FLAT (no re-entry). 0.27 PASSTHROUGH."""
+    kwargs = dict(
+        enabled=True,
+        range_total_signals=53222,
+        position=0,
+        bars_in_position=0,
+        band_lo=0.28,
+        band_hi=0.72,
+        hysteresis=0.0,
+        under_band_release_hysteresis=0.0,
+        min_signals=50,
+        cumulative_in_band_passthrough=True,
+        in_band_seen=True,
+    )
+    below = decide_stage2_participation(range_flat_ratio=0.2694, **kwargs)
+    assert below.mode == MODE_FORCE_FLAT
+    settled = decide_stage2_participation(range_flat_ratio=0.27, **kwargs)
+    assert settled.mode == MODE_PASSTHROUGH
+
+
+@pytest.mark.unit
+def test_s3_exam_fencepost_in_position_still_passthrough() -> None:
+    """In-position 0.2501 stays PASSTHROUGH — do not FORCE_HOLD a valid exam plant."""
+    d = decide_stage2_participation(
+        enabled=True,
+        range_flat_ratio=0.2501,
+        range_total_signals=29621,
+        position=1,
+        bars_in_position=10,
+        band_lo=0.28,
+        band_hi=0.72,
+        hysteresis=0.0,
+        under_band_release_hysteresis=0.0,
+        min_signals=50,
+        cumulative_in_band_passthrough=True,
+    )
+    assert d.mode == MODE_PASSTHROUGH
+    assert d.reason == "exam_cumulative_in_band"
 
 
 @pytest.mark.unit
@@ -690,4 +873,3 @@ def test_participation_telemetry_dumps_passthrough() -> None:
     assert telem["participation_force_exit"] == 4
     assert telem["participation_passthrough"] == 100
     assert telem["participation_overrides_total"] == 64
-

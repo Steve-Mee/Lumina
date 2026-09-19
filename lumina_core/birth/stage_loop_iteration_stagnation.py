@@ -94,7 +94,37 @@ class StageLoopIterationStagnationMixin:
                 self._capture_trainer_policy_entropy()
         return "fallthrough", None
 
+    def _s5_holdout_exam_gate(self) -> tuple[LoopAction, dict[str, Any] | None]:
+        from lumina_core.birth.foundation_skill_clock import s5_holdout_exam_stop_reason
+        from lumina_core.birth.runway import risk_metrics_from_pnl
+
+        dd: float | None = None
+        series = list(getattr(self, "stage_val_pnl", None) or [])
+        if series:
+            _, dd = risk_metrics_from_pnl(series)
+        reason = s5_holdout_exam_stop_reason(
+            eval_only=True,
+            oos_dd_pct=dd,
+            data_exhausted=bool(getattr(self, "data_exhausted", False)),
+            stage_trades=int(getattr(self, "stage_trades", 0) or 0),
+        )
+        if not reason:
+            return "fallthrough", None
+        pending = {
+            "failure_key": "oos_dd" if "dd" in reason else "s5_holdout_probe_failed",
+            "terminal_stall_reason": reason,
+            "blocker_reason": reason,
+        }
+        return (
+            "return",
+            self._finalize_certified_stage_stall(pending, human_gate=False),
+        )
+
     def _iteration_handle_max_rollouts(self) -> tuple[LoopAction, dict[str, Any] | None]:
+        if getattr(self, "_foundation_eval_only", False):
+            action, payload = self._s5_holdout_exam_gate()
+            if action != "fallthrough":
+                return action, payload
         if self.attempt < self._effective_max_rollouts():
             return "fallthrough", None
 
@@ -118,6 +148,10 @@ class StageLoopIterationStagnationMixin:
                 force=True,
             )
             if getattr(self, "_foundation_eval_only", False):
+                from lumina_core.birth.foundation_skill_clock import skill_clock_open_from_loop
+
+                if skill_clock_open_from_loop(self):
+                    return "continue", None
                 self.cur_cfg.rollout_chunk_trades = self.original_rollout_chunk
                 pending = (
                     dict(stall_pending)

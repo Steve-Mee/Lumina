@@ -1,4 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+
+import { setPreferApprenticeshipHub } from "@/lib/apprenticeship/apprenticeshipSurfacePref";
+import { setPreferAwakeningHub } from "@/lib/awakening/awakeningSurfacePref";
+import { setPreferPlaygroundHub } from "@/lib/playground/playgroundSurfacePref";
+import { setPreferProvingGroundHub } from "@/lib/provingGround/provingGroundSurfacePref";
 
 import {
   mapAppPhase,
@@ -66,6 +71,94 @@ function coldStart(p: OnboardingPayload): AppPhase {
     activating: false,
   });
 }
+
+describe("awakening cinematic surface", () => {
+  beforeEach(() => {
+    setPreferAwakeningHub(false);
+  });
+
+  it("maps app_surface awakening to awakening phase", () => {
+    const p = payload({ setup_complete: true, skip_wizard: true }, "awakening");
+    expect(coldStart(p)).toBe("awakening");
+  });
+
+  it("honors session prefer-hub override", () => {
+    setPreferAwakeningHub(true);
+    const p = payload({ setup_complete: true, skip_wizard: true }, "awakening");
+    expect(coldStart(p)).toBe("hub");
+  });
+
+  it("preserves awakening on refresh error", () => {
+    const p = payload({ setup_complete: true }, "awakening");
+    expect(resolvePhaseOnRefreshError("awakening", p)).toBe("awakening");
+  });
+});
+
+describe("playground habitat surface", () => {
+  beforeEach(() => {
+    setPreferPlaygroundHub(false);
+  });
+
+  it("maps app_surface playground to playground phase", () => {
+    const p = payload({ setup_complete: true, skip_wizard: true }, "playground");
+    expect(coldStart(p)).toBe("playground");
+  });
+
+  it("honors session prefer-hub override", () => {
+    setPreferPlaygroundHub(true);
+    const p = payload({ setup_complete: true, skip_wizard: true }, "playground");
+    expect(coldStart(p)).toBe("hub");
+  });
+
+  it("preserves playground on refresh error", () => {
+    const p = payload({ setup_complete: true }, "playground");
+    expect(resolvePhaseOnRefreshError("playground", p)).toBe("playground");
+  });
+});
+
+describe("apprenticeship cinematic surface", () => {
+  beforeEach(() => {
+    setPreferApprenticeshipHub(false);
+  });
+
+  it("maps app_surface apprenticeship to apprenticeship phase", () => {
+    const p = payload({ setup_complete: true, skip_wizard: true }, "apprenticeship");
+    expect(coldStart(p)).toBe("apprenticeship");
+  });
+
+  it("honors session prefer-hub override", () => {
+    setPreferApprenticeshipHub(true);
+    const p = payload({ setup_complete: true, skip_wizard: true }, "apprenticeship");
+    expect(coldStart(p)).toBe("hub");
+  });
+
+  it("preserves apprenticeship on refresh error", () => {
+    const p = payload({ setup_complete: true }, "apprenticeship");
+    expect(resolvePhaseOnRefreshError("apprenticeship", p)).toBe("apprenticeship");
+  });
+});
+
+describe("proving ground cinematic surface", () => {
+  beforeEach(() => {
+    setPreferProvingGroundHub(false);
+  });
+
+  it("maps app_surface proving_ground to proving_ground phase", () => {
+    const p = payload({ setup_complete: true, skip_wizard: true }, "proving_ground");
+    expect(coldStart(p)).toBe("proving_ground");
+  });
+
+  it("honors session prefer-hub override", () => {
+    setPreferProvingGroundHub(true);
+    const p = payload({ setup_complete: true, skip_wizard: true }, "proving_ground");
+    expect(coldStart(p)).toBe("hub");
+  });
+
+  it("preserves proving_ground on refresh error", () => {
+    const p = payload({ setup_complete: true }, "proving_ground");
+    expect(resolvePhaseOnRefreshError("proving_ground", p)).toBe("proving_ground");
+  });
+});
 
 describe("setup review from Birth", () => {
   it("forces wizard while setupReviewActive even when app_surface is birth", () => {

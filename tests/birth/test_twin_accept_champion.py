@@ -213,3 +213,33 @@ def test_terminal_freeze_restore_identity() -> None:
     assert stage == "stage2_range"
     resolved = mark_freeze_resolved(freeze, action="expand_data", resolved_by="twin")
     assert freeze_blocks_curriculum_grind(resolved) is False
+
+
+@pytest.mark.unit
+def test_terminal_freeze_expand_before_champion_when_ladder_open() -> None:
+    from lumina_core.birth.terminal_freeze import (
+        build_terminal_freeze,
+        freeze_attention_fields,
+    )
+
+    freeze = build_terminal_freeze(
+        reason="phoenix_cycle",
+        curriculum_stage="stage3_mixed",
+        stages_passed=["stage1_trend", "stage2_range"],
+        swarm_rejected_no_lift=True,
+        expansion_step=0,
+    )
+    assert freeze["next_action"] == "expand_data_or_accept_or_wipe"
+    actions = freeze_attention_fields(freeze)["attention_recommended_actions"]
+    assert actions[0] == "expand_data"
+    assert "accept_champion" in actions
+
+    exhausted = build_terminal_freeze(
+        reason="phoenix_cycle",
+        curriculum_stage="stage3_mixed",
+        stages_passed=["stage1_trend", "stage2_range"],
+        swarm_rejected_no_lift=True,
+        expansion_step=2,
+        expansion_exhausted=True,
+    )
+    assert exhausted["next_action"] == "accept_champion_or_wipe"

@@ -76,6 +76,12 @@ class EngineTrajectoryMixin:
         s2_easy_pool: list[dict[str, Any]] | None = None,
         s2_hard_pool: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
+        # S5 is a one-shot holdout probe. Escalation must not splice train
+        # windows onto the reserved tape or restart it from bar 0.
+        if stage == CurriculumStage.STAGE5_PROBE_HANDOFF:
+            ticks = list(stage_ticks or [])
+            cur = int(getattr(self, "_s5_holdout_cursor", 0) or 0)
+            return ticks[cur:] if cur > 0 else ticks
         cfg = cur_cfg or self.birth_config.curriculum
         if (
             stage == CurriculumStage.STAGE1_TREND

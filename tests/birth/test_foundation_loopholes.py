@@ -255,6 +255,29 @@ def test_missing_calendar_days_fails_replay_cap() -> None:
     assert "replay" in result.message
 
 
+def test_stage4_occupancy_hairline_does_not_pass() -> None:
+    """Live 2026-09-14: occupancy 0.24957 vs 25% band must not round into a pass."""
+    result = evaluate_stage_pass(
+        CurriculumStage.STAGE4_VIABLE_PLANT,
+        **_base(  # type: ignore[arg-type]
+            trades=628,
+            wins=222,
+            occupancy=0.24957,
+            range_flat_bars=16980,
+            range_total_signals=68036,
+            unique_calendar_days=186,
+            median_loss_r=1.225,
+            mean_r=-0.2988,
+            first_touch_hit_rate=0.2966,
+            geometry_net_rr=1.1533,
+            policy_trades=628,
+            policy_wins=222,
+        ),
+    )
+    assert result.passed is False
+    assert "occupancy" in result.message
+
+
 def test_fail_closed_stage_ticks_never_falls_back_to_train() -> None:
     from lumina_core.birth.foundation_stages import fail_closed_stage_ticks
 
@@ -553,3 +576,8 @@ def test_complete_foundation_birth_uses_s5_oos_sharpe(tmp_path) -> None:  # type
     assert out["status"] == "completed"
     assert out["fitness_vector"]["oos_sharpe"] == -1.25
     assert out["fitness_vector"]["oos_sharpe"] != 0.0
+    from lumina_core.maturity.continuum import load_continuum, next_phase_id
+
+    data = load_continuum(tmp_path)
+    assert "birth" in (data.get("completed_phases") or [])
+    assert next_phase_id(data["completed_phases"]) == "awakening"

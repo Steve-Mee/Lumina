@@ -45,6 +45,20 @@ def test_plateau_evolution_exhausted_forces_attention() -> None:
     assert out["next_action"] == "expand_data_or_wipe_birth"
 
 
+def test_terminal_stall_plus_champion_freeze_is_accept_wipe() -> None:
+    """Freeze must beat terminal_stall expand CTA (live 2026-09-14 loop)."""
+    out = compress_recovery(
+        phase="stage_stalled",
+        terminal_stall_reason="phoenix_cycle",
+        swarm_rejected_no_lift=True,
+        needs_attention=True,
+        trade_budget_remaining=22269,
+    )
+    assert out["flags"].get("champion_freeze") is True
+    assert out["next_action"] == "accept_champion_or_wipe"
+    assert out["active"] in {"terminal_stall", "swarm_block", "needs_attention"}
+
+
 def test_swarm_block_before_phoenix() -> None:
     out = compress_recovery(
         phase="phoenix_cycle",

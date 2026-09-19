@@ -8,6 +8,7 @@ import {
   isBirthInterrupted,
   isBirthResidualHistoryFailure,
   isBirthStageStalled,
+  isUnresolvedTerminalFreeze,
   resolveBirthHeadline,
   type BirthMilestone,
 } from "@/lib/birthPhaseModel";
@@ -52,10 +53,16 @@ export function computeBirthApplyStatusPatch(
   let runPinned = current.runPinned;
   const genesisPinned = current.genesisPinned;
 
-  const engineActive = payload.live === true || isBirthEngineActive(payload);
+  const freezeUnresolved = isUnresolvedTerminalFreeze(payload);
+  const engineActive =
+    !freezeUnresolved && (payload.live === true || isBirthEngineActive(payload));
 
   if (current.uiPhase === "finale") {
     /* keep finale until parent transitions */
+  } else if (freezeUnresolved && !genesisPinned) {
+    // Sacred freeze: never paint running from a live leftover or start-then-freeze flash.
+    uiPhase = "stage_stalled";
+    runPinned = false;
   } else if (runPinned && !genesisPinned) {
     // Raptor v14: keep training shell during cold-start; clear pin once live or terminal.
     if (engineActive) {

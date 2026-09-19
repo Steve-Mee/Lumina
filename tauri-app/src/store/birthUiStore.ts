@@ -57,6 +57,14 @@ export const useBirthUiStore = create<BirthUiState>((set, get) => ({
   shouldBlockDismiss: () => Date.now() < get().dismissGuardUntil,
 
   openWipeConfirm: (kind: WipeConfirmKind = "reset") => {
+    // A click-through from the stall overlay must not reset step 2 back to step 1.
+    if (get().wipeConfirmStep > 0) {
+      traceBirthWipe("ui.wipe_dialog.open_ignored_already_open", {
+        wipeConfirmStep: get().wipeConfirmStep,
+        kind,
+      });
+      return;
+    }
     get().armDismissGuard();
     set({
       wipeConfirmStep: 1,

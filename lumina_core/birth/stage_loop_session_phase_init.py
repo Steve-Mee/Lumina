@@ -66,16 +66,13 @@ class SessionPhaseInitMixin:
         from lumina_core.birth.foundation_stages import foundation_eval_only
 
         self._foundation_eval_only = foundation_eval_only(self.stage)
+        # Eval-only = no PPO. Not one rollout: live S5 froze at 50 volume / 44 policy.
         self.max_rollouts = (
-            1
-            if self._foundation_eval_only
-            else (
-                self.cur_cfg.max_rollouts_per_stage
-                if self.training_mode == "practice"
-                else min(
-                    self.cur_cfg.max_rollouts_per_stage,
-                    self.cur_cfg.certified_max_rollouts_per_stage,
-                )
+            self.cur_cfg.max_rollouts_per_stage
+            if self.training_mode == "practice"
+            else min(
+                self.cur_cfg.max_rollouts_per_stage,
+                self.cur_cfg.certified_max_rollouts_per_stage,
             )
         )
         self.stage_trades = 0
@@ -86,6 +83,7 @@ class SessionPhaseInitMixin:
         self.stage_range_total_signals = 0
         self.stage_range_flat_bars = 0
         self.stage_range_round_trips = 0
+        self.occupancy_exam_window = None
         self.attempt = 0
         self._foundation_epoch_count = 0
         self._foundation_epoch_hash = ""
@@ -107,6 +105,7 @@ class SessionPhaseInitMixin:
         self.winrate_history: list[float] = []
         self.stage_val_pnl: list[float] = []
         self.stage_val_r: list[float] = []
+        self.host._s5_holdout_cursor = 0
         self._unique_calendar_days = 0
         try:
             from lumina_core.birth.history_loader import session_unique_calendar_days
@@ -156,7 +155,7 @@ class SessionPhaseInitMixin:
         self.occupancy_in_band_seen = False
         self.occupancy_seed_source = "n/a"
         self.occupancy_seed_value = None
-        from lumina_core.birth.s5_occupancy_continuity import apply_s5_occupancy_seed
+        from lumina_core.birth.s5_occupancy_continuity import apply_foundation_occupancy_seed
 
-        apply_s5_occupancy_seed(self)
+        apply_foundation_occupancy_seed(self)
         return None

@@ -4,7 +4,10 @@ import {
   BIRTH_ACTIVE_PROGRESS_PHASES,
   BIRTH_ACTIVE_PROGRESS_STAGES,
 } from "@/lib/birth/birthActiveProgress";
+import { isUnresolvedTerminalFreeze } from "@/lib/birth/birthFreeze";
 import { normalizeToken } from "@/lib/birth/birthModelUtils";
+
+export { isUnresolvedTerminalFreeze };
 
 export function isBirthComplete(payload: BirthStatusPayload): boolean {
   if (payload.birth_exit_ok === false) return false;
@@ -46,6 +49,9 @@ export function isBirthProgressActive(payload: BirthStatusPayload): boolean {
  * that would hide Resume/Wipe behind a fake "running" surface.
  */
 export function isBirthEngineActive(payload: BirthStatusPayload): boolean {
+  if (isUnresolvedTerminalFreeze(payload)) {
+    return false;
+  }
   if (isBirthInterrupted(payload)) {
     return false;
   }
@@ -59,6 +65,9 @@ export function isBirthEngineActive(payload: BirthStatusPayload): boolean {
 /** True when backend reports a live runner/thread (or top-level running status). */
 export function isBirthEngineLive(payload: BirthStatusPayload | null | undefined): boolean {
   if (!payload) {
+    return false;
+  }
+  if (isUnresolvedTerminalFreeze(payload)) {
     return false;
   }
   if (isBirthInterrupted(payload)) {
@@ -116,9 +125,6 @@ export function isBirthCertificateFailed(payload: BirthStatusPayload): boolean {
   if (phase === "certificate_failed" || phase === "certificate_remediation") {
     return true;
   }
-  if (payload.certificate_ok === false) {
-    return status === "completed";
-  }
   return false;
 }
 
@@ -163,6 +169,9 @@ export function isBirthResidualHistoryFailure(
 export function isBirthStageStalled(payload: BirthStatusPayload | null): boolean {
   if (!payload) {
     return false;
+  }
+  if (isUnresolvedTerminalFreeze(payload)) {
+    return true;
   }
   if (payload.live === true || isBirthEngineActive(payload)) {
     return false;

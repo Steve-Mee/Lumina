@@ -54,9 +54,9 @@ MILESTONE_LABELS: dict[str, str] = {
 MILESTONE_TO_PHASE: dict[str, MaturationPhase] = {
     "genesis_contract_signed": MaturationPhase.GENESIS,
     "birth_started": MaturationPhase.BIRTH,
-    "birth_certificate_issued": MaturationPhase.AWAKENING,
     "evolution_proof_passed": MaturationPhase.AWAKENING,
-    "perfect_birth_autonomy_proven": MaturationPhase.AWAKENING,
+    "birth_certificate_issued": MaturationPhase.PROVING_GROUND,
+    "perfect_birth_autonomy_proven": MaturationPhase.PROVING_GROUND,
     "deck_unlocked": MaturationPhase.PLAYGROUND,
     "first_sim_order_placed": MaturationPhase.PLAYGROUND,
     "sim_mirror_api_ok": MaturationPhase.PLAYGROUND,
@@ -217,6 +217,11 @@ def sync_maturation_from_birth_state(workspace_root: Path | str) -> MaturationPr
         proof = load_evolution_proof_record(workspace_root)
         if proof and "evolution_proof_passed" not in progress.milestones_reached:
             progress.milestones_reached.append("evolution_proof_passed")
+    elif "evolution_proof_passed" in progress.milestones_reached:
+        progress.milestones_reached = [
+            m for m in progress.milestones_reached if m != "evolution_proof_passed"
+        ]
+        progress.metadata.pop("evolution_proof_passed", None)
     if svc.artifacts_ok():
         from lumina_core.maturity.birth_exit import is_birth_exit_sufficient
 

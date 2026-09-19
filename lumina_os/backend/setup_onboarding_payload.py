@@ -273,6 +273,7 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
         birth_exit_ok=birth_exit_ok,
         backend_reachable=backend_reachable,
         required_steps=required_steps,
+        workspace_root=_workspace_root(),
     )
 
     return {
@@ -288,6 +289,7 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
             birth_exit_ok=birth_exit_ok,
             required_steps=required_steps,
             backend_reachable=backend_reachable,
+            workspace_root=_workspace_root(),
         ),
         "birth": {
             "status": birth_status,

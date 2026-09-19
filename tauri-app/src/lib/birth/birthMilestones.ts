@@ -206,7 +206,7 @@ export function resolveBirthHeadline(
     return "Birth Certificate v2 required";
   }
   if (normalizeToken(status) === "completed") {
-    return "Birth Certificate v2 issued";
+    return certificateOk ? "Birth Certificate v2 issued" : "Birth Foundation complete — next is Awakening";
   }
   if (normalizeToken(status) === "certificate_failed") {
     return "Birth Certificate thresholds not met — review OOS metrics and retry";

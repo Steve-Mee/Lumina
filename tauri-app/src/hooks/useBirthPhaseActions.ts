@@ -10,6 +10,11 @@ import {
   type BirthPhaseDerived,
 } from "@/hooks/useBirthPhaseDerived";
 import { resolveCertificateFailureSubtitle } from "@/lib/birthCertificateDiagnostics";
+import {
+  freezeRequiresOperatorFork,
+  occupancyFencepostRetry,
+} from "@/lib/birth/birthStallOverlay";
+import { isUnresolvedTerminalFreeze } from "@/lib/birthPhaseModel";
 import { traceBirthWipe } from "@/lib/birthWipeTrace";
 import {
   clearBirthForExtraTraining,
@@ -30,6 +35,7 @@ export function useBirthPhaseActions() {
   const [realPreviewActive, setRealPreviewActive] = useState(false);
   const [milestoneVeilActive, setMilestoneVeilActive] = useState(false);
   const veiledMilestonesRef = useRef<Set<string>>(new Set());
+  const recoveryDispatchAtRef = useRef(0);
   const { transition, startTransition, completeTransition } = useDeckTransition();
 
   const derived: BirthPhaseDerived = useBirthPhaseDerived(recoveryDismissed);
@@ -39,8 +45,10 @@ export function useBirthPhaseActions() {
   const resumeBirth = useBirthStore((s) => s.resumeBirth);
   const reuseDataBirth = useBirthStore((s) => s.reuseDataBirth);
   const resumeStalledStage = useBirthStore((s) => s.resumeStalledStage);
+  const retryCurrentStage = useBirthStore((s) => s.retryCurrentStage);
   const expandAndRetryStalledStage = useBirthStore((s) => s.expandAndRetryStalledStage);
   const executeRecommendedRecovery = useBirthStore((s) => s.executeRecommendedRecovery);
+  const acceptChampion = useBirthStore((s) => s.acceptChampion);
   const returnToGenesis = useBirthStore((s) => s.returnToGenesis);
   const openWipeConfirm = useBirthUiStore((s) => s.openWipeConfirm);
   const activateBirth = useOnboardingStore((s) => s.activateBirth);
@@ -99,6 +107,9 @@ export function useBirthPhaseActions() {
     if (!autonomousMode || !certificateFailed || retrying || activating || engineActive) {
       return;
     }
+    if (String(status?.status ?? "").toLowerCase() === "completed") {
+      return;
+    }
     setRetrying(true);
     void retryBirth()
       .then((ok) => {
@@ -107,10 +118,13 @@ export function useBirthPhaseActions() {
         }
       })
       .finally(() => setRetrying(false));
-  }, [autonomousMode, certificateFailed, retrying, activating, engineActive, retryBirth]);
+  }, [autonomousMode, certificateFailed, retrying, activating, engineActive, retryBirth, status]);
 
   useEffect(() => {
     if (!autonomousMode || !stageStalledActive || retrying || activating || engineActive) {
+      return;
+    }
+    if (isUnresolvedTerminalFreeze(status)) {
       return;
     }
     const pending =
@@ -119,6 +133,11 @@ export function useBirthPhaseActions() {
     if (!pending) {
       return;
     }
+    const now = Date.now();
+    if (now - recoveryDispatchAtRef.current < 10_000) {
+      return;
+    }
+    recoveryDispatchAtRef.current = now;
     setRetrying(true);
     void executeRecommendedRecovery()
       .then((ok) => {
@@ -346,14 +365,49 @@ export function useBirthPhaseActions() {
     toast.info("Review genesis settings, save, then use Expand & retry.");
   };
 
-  const stalledRecoveryActions = buildStalledRecoveryActions(evolutionExhausted, {
-    openWipeConfirm,
-    handleReviewGenesisSettings,
-    handleCopyForensicsCommand,
-    handleExpandAndRetryStalledStage,
-    handleResumeStalledStage,
-    setRecoveryDismissed,
-  });
+  const handleRetryCurrentStage = () => {
+    setRetrying(true);
+    void retryCurrentStage()
+      .then((ok) => {
+        if (ok) {
+          toast.success("Stage sample reset — retrying current stage");
+          return;
+        }
+        toast.error(useBirthStore.getState().pollError ?? "Stage retry failed");
+      })
+      .finally(() => setRetrying(false));
+  };
+
+  const handleAcceptChampion = () => {
+    setRetrying(true);
+    void acceptChampion()
+      .then((ok) => {
+        if (ok) {
+          toast.success("Champion accepted — training may continue");
+          return;
+        }
+        toast.error(useBirthStore.getState().pollError ?? "Accept champion failed");
+      })
+      .finally(() => setRetrying(false));
+  };
+
+  const championFreeze = freezeRequiresOperatorFork(status);
+  const retryStage = occupancyFencepostRetry(status);
+
+  const stalledRecoveryActions = buildStalledRecoveryActions(
+    evolutionExhausted,
+    {
+      openWipeConfirm,
+      handleReviewGenesisSettings,
+      handleCopyForensicsCommand,
+      handleExpandAndRetryStalledStage,
+      handleResumeStalledStage,
+      handleRetryCurrentStage,
+      handleAcceptChampion,
+      setRecoveryDismissed,
+    },
+    { championFreeze, retryStage },
+  );
 
   const certificateFailureDetail = resolveCertificateFailureSubtitle(status);
 

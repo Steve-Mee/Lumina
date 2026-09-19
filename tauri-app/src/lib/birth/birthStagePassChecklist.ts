@@ -284,9 +284,9 @@ function occupancyReq(
   return {
     id: "occupancy",
     label: "Occupancy",
-    current: envelopeLie ? "envelope override" : pct(occ, 0),
+    current: envelopeLie ? "envelope override" : pct(occ, 1),
     need: envelopeLie
-      ? "passthrough occupancy only"
+      ? "exam-window passthrough (airframe taxi does not count)"
       : `${pct(min, 0)}–${pct(max, 0)} flat`,
     tone: envelopeLie ? "danger" : gateTone(met, tone),
     met,
@@ -354,10 +354,16 @@ function meanRVsMechReq(
   const met =
     meanR != null && eMech != null && meanR + 1e-12 >= eMech - slack;
   const need = eMech == null ? "E_mech − 0.10" : `≥ ${(eMech - slack).toFixed(2)}R`;
+  const winR = finiteOrNull(progress?.mean_win_r);
+  const lossR = finiteOrNull(progress?.mean_loss_r);
+  const split =
+    winR != null && lossR != null
+      ? ` (W ${winR.toFixed(2)} / L ${lossR.toFixed(2)})`
+      : "";
   return {
     id: "mean_r",
     label: "Mean R vs mechanical",
-    current: meanR == null ? "—" : `${meanR.toFixed(2)}R`,
+    current: meanR == null ? "—" : `${meanR.toFixed(2)}R${split}`,
     need,
     tone: met ? "ok" : meanR == null || eMech == null ? "warn" : "danger",
     met,

@@ -88,6 +88,7 @@ class SimRolloutResult:
     s3_inband_idle_armed: bool = False
     force_open_refractory_active: bool = False
     occupancy_in_band_seen: bool = False
+    occupancy_exam_window: Any = None
     last_cap_usd: float = 0.0
     last_close_gap: bool = False
     occ_floor_band_bars: int = 0
@@ -147,6 +148,9 @@ def run_policy_rollout(
     stage_policy_trades_prior: int = 0,
     s3_inband_min_idle_hold_bars: int | None = None,
     occupancy_in_band_seen: bool = False,
+    occupancy_exam_window: Any = None,
+    geometry_max_hold_in_band: bool = False,
+    policy_edge_min_trades: int | None = None,
 ) -> SimRolloutResult:
     from lumina_core.birth.stage2_participation_envelope import (
         MODE_FORCE_EXIT,
@@ -164,6 +168,7 @@ def run_policy_rollout(
         S3_INBAND_DEFAULT_MIN_IDLE_HOLD_BARS,
         S3InbandIdleState,
         maybe_s3_passthrough_mask,
+        plant_tag_for_close,
         plant_tag_for_entry,
     )
 
@@ -345,11 +350,24 @@ def run_policy_rollout(
     closes_unknown = 0
     last_force_open_stop_pct = 0.0
     chatter = ForceOpenChatterBound()
+    from lumina_core.birth.foundation_metrics import S2_OCCUPANCY_MAX, S2_OCCUPANCY_MIN, S3_OCCUPANCY_MAX, S3_OCCUPANCY_MIN
     from lumina_core.birth.foundation_occupancy_envelope import (
+        OccupancyExamWindow,
         foundation_cumulative_in_band_passthrough,
+        step_occupancy_exam_window,
     )
 
     occupancy_all_ticks = foundation_cumulative_in_band_passthrough(curriculum_regime)
+    exam_lo, exam_hi = (
+        (S3_OCCUPANCY_MIN, S3_OCCUPANCY_MAX)
+        if occupancy_all_ticks
+        else (S2_OCCUPANCY_MIN, S2_OCCUPANCY_MAX)
+    )
+    exam_win = (
+        occupancy_exam_window
+        if isinstance(occupancy_exam_window, OccupancyExamWindow)
+        else OccupancyExamWindow()
+    )
     occ_win = occupancy_control_window
     occ_cap = max(50, int(occupancy_control_window_bars or 500))
     envelope_flat_bars = max(0, int(stage_range_flat_bars))
@@ -546,6 +564,7 @@ def run_policy_rollout(
             cumulative_in_band_passthrough=bool(occupancy_all_ticks),
             force_open_refractory=chatter.blocks(int(participation_min_dwell_bars)),
             in_band_seen=bool(occupancy_in_band_seen),
+            geometry_max_hold_in_band=bool(geometry_max_hold_in_band),
         )
         last_participation_mode = decision.mode
         participation_counts[decision.mode] = int(participation_counts.get(decision.mode, 0) or 0) + 1
@@ -579,11 +598,15 @@ def run_policy_rollout(
                 curriculum_regime=str(curriculum_regime or ""),
                 position=pos_now,
                 cumulative_flat=float(envelope_flat_ratio),
-                band_lo=float(participation_band_lo),
-                band_hi=float(participation_band_hi),
+                band_lo=float(exam_lo),
+                band_hi=float(exam_hi),
                 policy_trades=int(policy_trades_prior) + int(policy_trades),
                 min_idle_hold_bars=int(min_idle_hold),
-                policy_edge_min_trades=int(POLICY_EDGE_MIN_TRADES),
+                policy_edge_min_trades=int(
+                    POLICY_EDGE_MIN_TRADES
+                    if policy_edge_min_trades is None
+                    else policy_edge_min_trades
+                ),
                 geometry=geometry,
                 row=enriched[idx_mask],
                 equity=float(getattr(env, "_equity", 0.0) or 0.0),
@@ -643,6 +666,20 @@ def run_policy_rollout(
             passthrough_range_total_signals += 1
             if pos_after == 0:
                 passthrough_range_flat_bars += 1
+        if occupancy_tick:
+            exam_win = step_occupancy_exam_window(
+                exam_win,
+                plant_flat=(
+                    float(envelope_flat_bars + range_flat_bars)
+                    / float(envelope_signals + range_total_signals)
+                    if (envelope_signals + range_total_signals) > 0
+                    else 0.0
+                ),
+                exam_lo=exam_lo,
+                exam_hi=exam_hi,
+                passthrough=last_participation_mode == MODE_PASSTHROUGH,
+                empty=pos_after == 0,
+            )
         if occupancy_tick and occ_win is not None:
             occ_win.append(1 if pos_after == 0 else 0)
             if len(occ_win) > occ_cap:
@@ -661,18 +698,13 @@ def run_policy_rollout(
             trades += 1
             total_pnl += pnl
             pnl_series.append(pnl)
-            trade_r_raw = info.get("trade_r")
-            if trade_r_raw is not None:
-                r_series.append(float(trade_r_raw))
-            else:
-                risk_raw = float(info.get("risk_usd", 0.0) or 0.0)
-                if risk_raw > 1e-12:
-                    r_series.append(float(pnl) / risk_raw)
             is_win = pnl > 0
             if is_win:
                 wins += 1
-            # Skill split: FORCE_OPEN plant entries do not grade the pilot.
-            closed_was_plant = bool(entry_is_plant)
+            closed_was_plant = plant_tag_for_close(
+                entry_is_plant=bool(entry_is_plant),
+                participation_mode=str(last_participation_mode),
+            )
             if closed_was_plant:
                 plant_trades += 1
                 if is_win:
@@ -681,6 +713,13 @@ def run_policy_rollout(
                 policy_trades += 1
                 if is_win:
                     policy_wins += 1
+                trade_r_raw = info.get("trade_r")
+                if trade_r_raw is not None:
+                    r_series.append(float(trade_r_raw))
+                else:
+                    risk_raw = float(info.get("risk_usd", 0.0) or 0.0)
+                    if risk_raw > 1e-12:
+                        r_series.append(float(pnl) / risk_raw)
             entry_is_plant = False
             reason = str(info.get("close_reason", "") or "")
             if reason == "stop":
@@ -855,6 +894,7 @@ def run_policy_rollout(
         s3_inband_idle_armed=bool(s3_idle.last_armed),
         force_open_refractory_active=chatter.blocks(int(participation_min_dwell_bars)),
         occupancy_in_band_seen=bool(occupancy_in_band_seen),
+        occupancy_exam_window=exam_win,
         occ_floor_band_bars=int(occ_floor_band_bars),
         occ_total_bars=int(occ_total_bars),
     )

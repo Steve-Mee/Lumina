@@ -49,6 +49,22 @@ export function resolveChromeMaturationPhase(input: {
     return "genesis";
   }
 
+  if (app === "awakening") {
+    return "awakening";
+  }
+
+  if (app === "playground") {
+    return "playground";
+  }
+
+  if (app === "apprenticeship") {
+    return "apprenticeship";
+  }
+
+  if (app === "proving_ground") {
+    return "proving_ground";
+  }
+
   if (app === "cockpit" || app === "deck") {
     return api ?? "playground";
   }

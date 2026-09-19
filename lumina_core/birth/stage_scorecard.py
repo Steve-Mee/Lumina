@@ -1,12 +1,6 @@
-"""Birth curriculum stage scorecard helpers for UI transparency.
-
-Blocker logic: ``stage_blocker.compute_stage_blocker`` (re-exported).
-Criteria: ``stage_scorecard_criteria`` (re-exported).
-Enrichment: ``stage_scorecard_enrich`` (re-exported).
-"""
+"""Birth curriculum stage scorecard helpers for UI transparency."""
 
 from __future__ import annotations
-
 from typing import Any
 
 from lumina_core.birth.config import BirthCurriculumConfig
@@ -54,6 +48,14 @@ SCORECARD_PRESERVE_KEYS: tuple[str, ...] = (
     "median_loss_r",
     "mean_r",
     "occupancy",
+    "envelope_override_fraction",
+    "airframe_override_fraction",
+    "occupancy_exam_armed",
+    "oos_sharpe",
+    "oos_dd_pct",
+    "exam_passthrough_total_signals",
+    "exam_flat_bars",
+    "exam_total_signals",
     "edge_vs_first_touch",
     "stages_passed",
     "pass_criteria_id",
@@ -341,6 +343,15 @@ def build_scorecard_payload(
     oos_sharpe: float | None = None,
     oos_dd_pct: float | None = None,
     r_series: list[float] | None = None,
+    envelope_override_fraction: float | None = None,
+    passthrough_range_flat_bars: int = 0,
+    passthrough_range_total_signals: int = 0,
+    airframe_override_fraction: float | None = None,
+    exam_passthrough_flat_bars: int = 0,
+    exam_passthrough_total_signals: int = 0,
+    exam_flat_bars: int = 0,
+    exam_total_signals: int = 0,
+    occupancy_exam_armed: bool | None = None,
 ) -> dict[str, Any]:
     criteria = pass_criteria_for_stage(stage, cfg=cfg, target_trades=target_trades)
     trades = max(0, int(stage_trades))
@@ -357,12 +368,23 @@ def build_scorecard_payload(
     required = stage_pass_trades(stage, cfg) if cfg is not None else criteria.target_trades
     range_flat_ratio = float(stage_range_flat_bars) / float(max(1, stage_range_total_signals))
     from lumina_core.birth.curriculum import evaluate_stage_pass
+    from lumina_core.birth.foundation_occupancy_envelope import occupancy_for_foundation_pass
 
-    occupancy_for_pass = (
-        None
-        if stage == CurriculumStage.STAGE1_TREND
-        else (range_flat_ratio if int(stage_range_total_signals) > 0 else None)
+    pt_tot = int(passthrough_range_total_signals or 0)
+    exam_n = int(exam_passthrough_total_signals or 0)
+    occupancy_for_pass = occupancy_for_foundation_pass(
+        stage=stage,
+        range_flat_bars=int(stage_range_flat_bars),
+        range_total_signals=int(stage_range_total_signals),
+        passthrough_flat_bars=int(passthrough_range_flat_bars or 0),
+        passthrough_total_signals=pt_tot,
+        exam_armed=occupancy_exam_armed,
+        exam_passthrough_flat_bars=int(exam_passthrough_flat_bars or 0),
+        exam_passthrough_total_signals=exam_n,
+        exam_flat_bars=int(exam_flat_bars or 0),
+        exam_total_signals=int(exam_total_signals or 0),
     )
+    pass_sample_n = exam_n if occupancy_exam_armed is True else pt_tot
     engine = evaluate_stage_pass(
         stage,
         trades=trades,
@@ -400,6 +422,8 @@ def build_scorecard_payload(
         oos_sharpe=oos_sharpe,
         oos_dd_pct=oos_dd_pct,
         r_series=r_series,
+        envelope_override_fraction=envelope_override_fraction,
+        passthrough_occupancy_signals=pass_sample_n if envelope_override_fraction is not None else None,
     )
     engine_days = int(engine.unique_calendar_days or 0)
     blocker_metric, blocker_value, pass_reason = compute_stage_blocker(
@@ -428,6 +452,9 @@ def build_scorecard_payload(
         closes_time_stop=int(closes_time_stop),
         closes_flatten=int(closes_flatten),
         closes_unknown=int(closes_unknown),
+        occupancy=occupancy_for_pass,
+        envelope_override_fraction=envelope_override_fraction,
+        passthrough_occupancy_signals=pass_sample_n if envelope_override_fraction is not None else None,
         median_loss_r=engine.median_loss_r,
         mean_r=engine.mean_r,
         first_touch_hit_rate=engine.p_ft,
@@ -478,4 +505,24 @@ def build_scorecard_payload(
     payload.update(dict(engine.progress_fields))
     if engine.net_rr is not None:
         payload["geometry_net_rr_after_cost"] = round(float(engine.net_rr), 4)
+    env = envelope_override_fraction
+    payload["envelope_override_fraction"] = None if env is None else round(float(env), 4)
+    if airframe_override_fraction is not None:
+        payload["airframe_override_fraction"] = round(float(airframe_override_fraction), 4)
+    payload["occupancy_exam_armed"] = bool(occupancy_exam_armed)
+    payload["exam_passthrough_total_signals"] = int(exam_n)
+    reason_l = str(payload.get("pass_reason") or pass_reason or "").strip().lower()
+    fail_reason = reason_l.startswith("foundation_fail") or "occupancy_envelope_dominated" in reason_l
+    if blocker_metric or fail_reason:
+        payload["stage_pass_now"] = False
+        if blocker_metric:
+            payload["stage_blocker_metric"] = blocker_metric
+            payload["stage_blocker_value"] = blocker_value
+        if pass_reason and not payload.get("pass_reason"):
+            payload["pass_reason"] = pass_reason
+    elif engine.passed:
+        payload["stage_pass_now"] = True
+        payload["stage_blocker_metric"] = None
+        payload["stage_blocker_value"] = None
+        payload["pass_reason"] = None
     return payload

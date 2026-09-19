@@ -142,6 +142,7 @@ class StageLoopRolloutCycleMixin(
             occupancy_control_window_bars=int(
                 getattr(pre, "occupancy_control_window_bars", 500) or 500
             ),
+            occupancy_exam_window=getattr(self, "occupancy_exam_window", None),
             **s3_inband_rollout_kwargs(self),
         )
         self.rollout_wall_clock_total_sec += max(0.0, time.time() - rollout_started_at)
@@ -209,6 +210,7 @@ class StageLoopRolloutCycleMixin(
         self.passthrough_range_total_signals = int(
             getattr(self, "passthrough_range_total_signals", 0) or 0
         ) + int(getattr(rollout, "passthrough_range_total_signals", 0) or 0)
+        self.occupancy_exam_window = getattr(rollout, "occupancy_exam_window", None)
         self.participation_last_mode = str(
             getattr(rollout, "participation_last_mode", "") or "PASSTHROUGH"
         )
@@ -268,6 +270,13 @@ class StageLoopRolloutCycleMixin(
         # Starship: realized PnL for all stages (EdgeScore expectancy must not fall back to WR−0.5).
         self.stage_val_pnl.extend(rollout.pnl_series)
         self.stage_val_r.extend(list(getattr(rollout, "r_series", None) or []))
+        if getattr(self, "_foundation_eval_only", False):
+            host = self.host
+            host._s5_holdout_cursor = int(getattr(host, "_s5_holdout_cursor", 0) or 0) + int(
+                getattr(rollout, "rollout_steps", 0) or 0
+            )
+            if int(host._s5_holdout_cursor) >= max(0, len(self.active_stage_ticks or []) - 32):
+                self.data_exhausted = True
 
         if self.intra_state is not None and rollout.easy_trades > 0:
             update_stage1_intra_state(

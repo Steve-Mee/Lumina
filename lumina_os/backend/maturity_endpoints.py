@@ -99,20 +99,42 @@ async def get_maturity_honesty() -> dict[str, Any]:
 async def get_maturity_hub() -> dict[str, Any]:
     """Genesis-like inter-phase hub: learned, next steps, advance mode, wipe controls."""
     _configure_service()
-    # Keep continuum synced with birth artifacts on every hub open / restart
-    try:
-        if birth_service.certificate_ok() or birth_service.artifacts_ok():
-            from lumina_core.maturity.birth_exit import is_birth_exit_sufficient
-
-            if not is_birth_exit_sufficient(birth_service.workspace_root):
-                return maturity_service.get_hub()
-            continuum = maturity_service.get_hub()
-            completed = set(continuum.get("completed_phases") or [])
-            if "birth" not in completed:
-                maturity_service.mark_birth_complete_from_artifacts()
-    except Exception:
-        pass
     return maturity_service.get_hub()
+
+
+@router.get("/awakening/progress")
+async def get_awakening_progress() -> dict[str, Any]:
+    """Awakening AND-gates for the operator HUD. pass_now ≡ engine."""
+    _configure_service()
+    return maturity_service.awakening_progress()
+
+
+@router.get("/playground/progress")
+async def get_playground_progress() -> dict[str, Any]:
+    """Playground AND-gates for the operator HUD. pass_now ≡ engine."""
+    _configure_service()
+    return maturity_service.playground_progress()
+
+
+@router.post("/playground/deck-live")
+async def post_playground_deck_live() -> dict[str, Any]:
+    """Operator opened the Command Deck during Playground."""
+    _configure_service()
+    return maturity_service.mark_playground_deck_live()
+
+
+@router.get("/apprenticeship/progress")
+async def get_apprenticeship_progress() -> dict[str, Any]:
+    """Apprenticeship AND-gates for the operator HUD. pass_now ≡ engine."""
+    _configure_service()
+    return maturity_service.apprenticeship_progress()
+
+
+@router.get("/proving-ground/progress")
+async def get_proving_ground_progress() -> dict[str, Any]:
+    """Proving Ground AND-gates for the operator HUD. pass_now ≡ engine."""
+    _configure_service()
+    return maturity_service.proving_ground_progress()
 
 
 @router.post("/preferences")

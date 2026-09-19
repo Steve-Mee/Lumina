@@ -23,7 +23,8 @@ from lumina_core.birth.force_open_plant import (
     apply_force_open_side,
     apply_force_open_stop,
 )
-from lumina_core.birth.foundation_metrics import POLICY_EDGE_MIN_TRADES
+from lumina_core.birth.awakening_grind import ADR0026_MIN_TRADES
+from lumina_core.birth.foundation_metrics import S3_OCCUPANCY_MAX, S3_OCCUPANCY_MIN
 from lumina_core.birth.foundation_occupancy_envelope import foundation_cumulative_in_band_passthrough
 from lumina_core.birth.stage2_participation_envelope import (
     MODE_FORCE_EXIT,
@@ -40,6 +41,8 @@ from lumina_core.rl.gym_environment import RLConfig, RLTradingEnvironment
 from lumina_core.rl.gym_stop_fill import birth_force_qty_one
 
 S5_STAGE = CurriculumStage.STAGE5_PROBE_HANDOFF
+POLICY_PARTICIPATION_BONUS_R = 0.05
+OVERHOLD_TAX_R = 0.01
 
 
 def select_runtime() -> SimpleNamespace:
@@ -100,7 +103,8 @@ class SelectPhysicsEnv(gym.Env):
         self.occupancy_in_band_seen = bool(envelope.get("occupancy_in_band_seen"))
         self.entry_is_plant = False
         self.policy_trades = 0
-        self._occ_win: list[int] = []
+        seed_win = envelope.get("occupancy_control_window")
+        self._occ_win: list[int] = list(seed_win) if isinstance(seed_win, list) else []
 
     def reset(self, **kwargs: Any) -> Any:
         self.chatter = ForceOpenChatterBound()
@@ -162,6 +166,7 @@ class SelectPhysicsEnv(gym.Env):
             cumulative_in_band_passthrough=foundation_cumulative_in_band_passthrough(S5_STAGE.value),
             force_open_refractory=self.chatter.blocks(min_dwell),
             in_band_seen=bool(self.occupancy_in_band_seen),
+            geometry_max_hold_in_band=False,
         )
         force_open_this_step = False
         idx_sel = min(int(getattr(env, "_idx", 0) or 0), len(self.enriched) - 1)
@@ -194,7 +199,7 @@ class SelectPhysicsEnv(gym.Env):
                 band_hi=band_hi,
                 policy_trades=self.policy_trades,
                 min_idle_hold_bars=S3_INBAND_DEFAULT_MIN_IDLE_HOLD_BARS,
-                policy_edge_min_trades=int(POLICY_EDGE_MIN_TRADES),
+                policy_edge_min_trades=int(ADR0026_MIN_TRADES),
                 geometry=self.geometry,
                 row=row_sel,
                 equity=float(getattr(env, "_equity", 0.0) or 0.0),
@@ -228,7 +233,17 @@ class SelectPhysicsEnv(gym.Env):
                 from lumina_core.birth.awakening_hole_tax import apply_hole_tax
 
                 reward = apply_hole_tax(process_r, reason, regime)
+            plant_close = bool(self.entry_is_plant)
+            if not plant_close:
+                reward = float(reward) + policy_participation_bonus(envelope_flat_ratio)
             info["select_step_r"] = float(reward)
+        hold_cap = max(20, int(getattr(self.geometry, "hold_bars", 90) or 90))
+        if not bool(self.entry_is_plant):
+            reward = float(reward) + overhold_train_tax(
+                plant=False,
+                bars_in_position=int(self.bars_in_position),
+                hold_bars=hold_cap,
+            )
         closed_was_plant = bool(self.entry_is_plant) if closed else False
         if closed:
             if not closed_was_plant:
@@ -249,6 +264,26 @@ class SelectPhysicsEnv(gym.Env):
         return obs, reward, terminated, truncated, info
 
 
+def overhold_train_tax(*, plant: bool, bars_in_position: int, hold_bars: int) -> float:
+    """Train-only: tax policy holds longer than geometry. Never plant. Eval untouched."""
+    if plant:
+        return 0.0
+    cap = max(20, int(hold_bars or 90))
+    if int(bars_in_position) <= cap:
+        return 0.0
+    return -abs(float(OVERHOLD_TAX_R))
+
+
+def policy_participation_bonus(occupancy: float | None) -> float:
+    """Train-only process bonus for policy closes in the exam band. Never plant."""
+    if occupancy is None:
+        return 0.0
+    occ = float(occupancy)
+    if S3_OCCUPANCY_MIN - 1e-12 <= occ <= S3_OCCUPANCY_MAX + 1e-12:
+        return float(POLICY_PARTICIPATION_BONUS_R)
+    return 0.0
+
+
 def make_select_train_env(
     data: list[dict[str, Any]],
     *,
@@ -264,7 +299,7 @@ def make_select_train_env(
     geometry = calibrate_birth_stops(enriched)
     cfg_cur = BirthCurriculumConfig()
     envelope = s5_envelope_kwargs(cfg_cur, geometry)
-    envelope.update(occupancy_seed_kwargs(reports_dir))
+    envelope.update(occupancy_seed_kwargs(reports_dir, workspace_root=workspace_root))
     rl_cfg = RLConfig(
         trade_mode="birth",
         max_steps=int(max_steps),
@@ -289,4 +324,12 @@ def make_select_train_env(
     )
 
 
-__all__ = ["SelectPhysicsEnv", "make_select_train_env", "select_runtime"]
+__all__ = [
+    "OVERHOLD_TAX_R",
+    "POLICY_PARTICIPATION_BONUS_R",
+    "SelectPhysicsEnv",
+    "make_select_train_env",
+    "overhold_train_tax",
+    "policy_participation_bonus",
+    "select_runtime",
+]

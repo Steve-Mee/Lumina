@@ -316,6 +316,7 @@ from lumina_os.backend.birth_endpoints_actions import (  # noqa: E402
     resume_birth,
     resume_stalled_stage,
     retry_birth,
+    retry_current_stage,
     reuse_data_birth,
     start_birth,
     stop_birth,
@@ -329,6 +330,7 @@ wipe_all_birth_data = router.post("/wipe-all")(wipe_all_birth_data)
 extra_training = router.post("/extra-training")(extra_training)
 retry_birth = router.post("/retry")(retry_birth)
 resume_stalled_stage = router.post("/resume-stage")(resume_stalled_stage)
+retry_current_stage = router.post("/retry-stage")(retry_current_stage)
 expand_and_retry_stalled_stage = router.post("/expand-and-retry")(expand_and_retry_stalled_stage)
 autonomous_recovery = router.post("/autonomous-recovery")(autonomous_recovery)
 resume_birth = router.post("/resume")(resume_birth)

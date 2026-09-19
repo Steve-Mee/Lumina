@@ -1,6 +1,8 @@
 # ADR-0026: Post-Birth Evolution Proof Gate
 
 > **Supersession (2026-08-14):** Birth Foundation no longer uses a WR 35–45% curriculum pass ([ADR-0046](./0046-birth-foundation-evolvable-plant.md)). Evolution Proof remains an **Awakening / post-Birth** wall. Certificate OOS ≥48% remains Proving Ground — not Birth exit.
+>
+> **Implementation (2026-09-18, [ADR-0049](./0049-awakening-eyes-open.md)):** n_B ≥ 500 is hard (`effective_min_trades` deleted). Lift ≥5pp or OOS ≥45% is necessary, not sufficient — Awakening AND also requires occupancy, process-R, STABLE, Twin-watch of this run, recovery, freeze.
 
 ## Status
 

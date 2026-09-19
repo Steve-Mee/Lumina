@@ -26,12 +26,19 @@ describe("BirthLaunchButton interaction contract", () => {
     expect(birthLaunchButtonSource).toMatch(/activating[\s\S]*sequenceStartedRef\.current = false/);
   });
 
-  it("handles pointer cancel on Windows/Tauri", () => {
-    expect(birthLaunchButtonSource).toContain("onPointerCancel={handlePointerRelease}");
+  it("commits a press on pointer up and Windows/Tauri pointer cancel", () => {
+    expect(birthLaunchButtonSource).toContain("onPointerUp={commitPointerPress}");
+    expect(birthLaunchButtonSource).toContain("onPointerCancel={commitPointerPress}");
+    expect(birthLaunchButtonSource).toMatch(/commitPointerPress[\s\S]*beginSequence\(\)/);
   });
 
-  it("explains click and hold affordance in sublabel", () => {
-    expect(birthLaunchButtonSource).toContain("Hold until the ring completes");
+  it("cancels hold on pointer leave without starting", () => {
+    expect(birthLaunchButtonSource).toContain("onPointerLeave={handlePointerLeave}");
+    expect(birthLaunchButtonSource).toMatch(/handlePointerLeave[\s\S]*cancelHold\(\)/);
+  });
+
+  it("explains click affordance in sublabel", () => {
+    expect(birthLaunchButtonSource).toContain("Click to start");
   });
 
   it("keeps particle effects out of document flow", () => {

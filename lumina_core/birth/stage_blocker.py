@@ -1,4 +1,5 @@
 """Stage pass blocker computation for birth scorecard UI."""
+
 from __future__ import annotations
 
 from lumina_core.birth.config import BirthCurriculumConfig
@@ -29,9 +30,7 @@ def _settlement_blocker(
         closes_unknown=int(closes_unknown),
         trades=int(trades),
         required=int(required),
-        min_share=float(getattr(cfg, "settlement_min_decisive_share", 0.70) or 0.70)
-        if cfg
-        else 0.70,
+        min_share=float(getattr(cfg, "settlement_min_decisive_share", 0.70) or 0.70) if cfg else 0.70,
     )
     if ok:
         return None
@@ -83,6 +82,9 @@ def compute_stage_blocker(
     settlement_share: float = 1.0,
     entropy_alive: bool = True,
     r_series: list[float] | None = None,
+    occupancy: float | None = None,
+    envelope_override_fraction: float | None = None,
+    passthrough_occupancy_signals: int | None = None,
 ) -> tuple[str | None, float | None, str | None]:
     """Return (blocker_metric_id, blocker_value, human pass/block reason)."""
     from lumina_core.birth.stage_blocker_foundation import compute_foundation_hud_blocker
@@ -93,7 +95,11 @@ def compute_stage_blocker(
         wins=max(0, int(stage_wins)),
         required=int(required),
         constitution_violations=int(constitution_violations),
-        occupancy=(float(range_flat_ratio) if int(range_total_signals) >= 50 else None),
+        occupancy=(
+            occupancy
+            if occupancy is not None
+            else (float(range_flat_ratio) if int(range_total_signals) >= 50 else None)
+        ),
         median_loss_r=median_loss_r,
         mean_r=mean_r,
         first_touch_hit_rate=first_touch_hit_rate,
@@ -111,6 +117,8 @@ def compute_stage_blocker(
         entropy_alive=bool(entropy_alive),
         skill_trades=policy_trades,
         skill_wins=policy_wins,
+        envelope_override_fraction=envelope_override_fraction,
+        passthrough_occupancy_signals=passthrough_occupancy_signals,
     )
     if foundation is not None:
         return foundation
@@ -218,9 +226,7 @@ def compute_stage_blocker(
                 policy_wins=policy_wins,
                 plant_trades=plant_trades,
                 plant_wins=plant_wins,
-                consecutive_rolling_pass_windows=int(
-                    consecutive_rolling_pass_windows or 0
-                ),
+                consecutive_rolling_pass_windows=int(consecutive_rolling_pass_windows or 0),
                 closes_stop=int(closes_stop),
                 closes_target=int(closes_target),
                 closes_time_stop=int(closes_time_stop),
@@ -288,18 +294,12 @@ def compute_stage_blocker(
                             policy_wins=policy_wins,
                             plant_trades=plant_trades,
                             plant_wins=plant_wins,
-                            skill_only=bool(
-                                getattr(cfg, "stage2_skill_metric_policy_only", True)
-                            ),
+                            skill_only=bool(getattr(cfg, "stage2_skill_metric_policy_only", True)),
                             required=required,
                         )
-                        exp, _, *_rest = skill_expectancy_for_pass(
-                            sc, rolling_winrate=rolling_winrate
-                        )
+                        exp, _, *_rest = skill_expectancy_for_pass(sc, rolling_winrate=rolling_winrate)
                     except Exception:
-                        exp = compute_expectancy_proxy(
-                            wins=wins, trades=trades, rolling_winrate=rolling_winrate
-                        )
+                        exp = compute_expectancy_proxy(wins=wins, trades=trades, rolling_winrate=rolling_winrate)
                     return ("expectancy", round(float(exp), 4), reason)
                 if not edge.constitution_ok:
                     return (
@@ -368,9 +368,7 @@ def compute_stage_blocker(
                 range_flat_ratio=float(range_flat_ratio),
                 range_total_signals=int(range_total_signals),
                 range_round_trips=int(range_round_trips),
-                consecutive_rolling_pass_windows=int(
-                    consecutive_rolling_pass_windows or 0
-                ),
+                consecutive_rolling_pass_windows=int(consecutive_rolling_pass_windows or 0),
                 closes_stop=int(closes_stop),
                 closes_target=int(closes_target),
                 closes_time_stop=int(closes_time_stop),
@@ -428,20 +426,12 @@ def compute_stage_blocker(
         roll = float(rolling_winrate) if rolling_winrate is not None else None
         use_rolling = bool(getattr(cfg, "stage3_use_rolling_pass", True)) if cfg else True
         lifetime_ok = winrate >= wr_floor
-        rolling_ok = (
-            use_rolling and roll is not None and float(roll) >= wr_floor
-        )
+        rolling_ok = use_rolling and roll is not None and float(roll) >= wr_floor
         if not lifetime_ok and not rolling_ok:
             if roll is not None:
-                reason = (
-                    f"mixed lifetime {winrate:.1%} / rolling {float(roll):.1%} "
-                    f"< {wr_floor:.0%}"
-                )
+                reason = f"mixed lifetime {winrate:.1%} / rolling {float(roll):.1%} < {wr_floor:.0%}"
             else:
-                reason = (
-                    f"mixed lifetime {winrate:.1%} < {wr_floor:.0%} "
-                    f"(rolling window still building)"
-                )
+                reason = f"mixed lifetime {winrate:.1%} < {wr_floor:.0%} (rolling window still building)"
             return (
                 "winrate",
                 round(winrate, 4),

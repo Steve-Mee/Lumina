@@ -195,16 +195,22 @@ def collect_birth_exit_proofs(workspace_root: Path | str) -> tuple[list[str], di
     progress = read_birth_progress(root)
     receipts = parse_stage_pass_receipts(progress.get("stage_pass_receipts"))
     if not receipts:
-        ckpt = root / "state" / "lumina_birth_checkpoint.json"
-        if ckpt.is_file():
-            try:
-                import json
+        import json
 
-                raw = json.loads(ckpt.read_text(encoding="utf-8"))
-                if isinstance(raw, dict):
-                    receipts = parse_stage_pass_receipts(raw.get("stage_pass_receipts"))
+        for rel in (
+            root / "state" / "lumina_birth_checkpoint.json",
+            root / "state" / "lumina_birth_foundation_receipts.json",
+        ):
+            if receipts or not rel.is_file():
+                continue
+            try:
+                raw = json.loads(rel.read_text(encoding="utf-8"))
             except (OSError, ValueError):
-                receipts = []
+                continue
+            if isinstance(raw, list):
+                receipts = parse_stage_pass_receipts(raw)
+            elif isinstance(raw, dict):
+                receipts = parse_stage_pass_receipts(raw.get("stage_pass_receipts") or raw.get("receipts"))
 
     required = [s.value for s in ordered_stages()]
     missing_stages: list[str] = []

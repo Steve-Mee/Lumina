@@ -51,13 +51,19 @@ def _load_raw_config(workspace_root: Path) -> dict[str, Any]:
 
 def _resolve_hardware_profile(raw: dict[str, Any]) -> str:
     profile = str(raw.get("hardware_profile", "sweet") or "sweet").strip().lower()
-    if profile in {"lite", "sweet", "beast"}:
+    if profile == "lite":
+        profile = "light"
+    if profile in {"light", "sweet", "beast"}:
         return profile
     return "sweet"
 
 
 def compute_genesis_charter(workspace_root: Path | str) -> GenesisCharter:
-    """Derive birth charter from hardware profile + birth_v2 SSOT."""
+    """Derive birth charter from YAML budget cap + hardware profile.
+
+    Hardware scale may reduce the cap (light). It never raises trades above
+    ``birth_v2.trade_budget_cap`` / ``first_boot.training_trades``.
+    """
     root = Path(workspace_root)
     raw = _load_raw_config(root)
     cfg = load_birth_v2_config(root)
@@ -65,11 +71,12 @@ def compute_genesis_charter(workspace_root: Path | str) -> GenesisCharter:
     cap, cap_source = resolve_trade_budget_cap(raw)
     profile = _resolve_hardware_profile(raw)
 
-    profile_scale = {"lite": 0.65, "sweet": 1.0, "beast": 1.35}.get(profile, 1.0)
-    training_trades = max(5000, min(int(cap), int(round(cap * profile_scale))))
+    profile_scale = {"light": 0.65, "sweet": 1.0, "beast": 1.35}.get(profile, 1.0)
+    # Scale may reduce the budget (light). It never raises the YAML ceiling.
+    training_trades = max(5000, min(int(cap), int(round(int(cap) * float(profile_scale)))))
 
     winrate_threshold = float(cur.stage1_winrate_recommended or cur.stage1_winrate_pass_threshold)
-    if profile == "lite":
+    if profile == "light":
         winrate_threshold = max(float(cur.stage1_winrate_pass_floor), winrate_threshold - 0.02)
     elif profile == "beast":
         winrate_threshold = min(0.55, winrate_threshold + 0.02)
@@ -77,11 +84,18 @@ def compute_genesis_charter(workspace_root: Path | str) -> GenesisCharter:
     max_real_days = foundation_history_max_days()
 
     rationale = {
-        "training_trades": f"trade_budget_cap={cap} ({cap_source}) × profile_scale={profile_scale}",
-        "stage1_winrate_pass_threshold": f"recommended={cur.stage1_winrate_recommended} profile={profile}",
+        "training_trades": (
+            f"budget_cap={cap} ({cap_source}); profile={profile} scale={profile_scale}; "
+            "ceiling wins — scale cannot raise trades above cap"
+        ),
+        "stage1_winrate_pass_threshold": (
+            f"diagnostic pressure only (not Birth pass); "
+            f"recommended={cur.stage1_winrate_recommended} profile={profile}"
+        ),
         "max_real_days": (
             f"Foundation history ceiling {max_real_days}d "
-            f"(start {foundation_history_start_days()}d; not sized from trades)"
+            f"(start {foundation_history_start_days()}d; expand 180/365 on stall; "
+            "not sized from trades)"
         ),
         "prefer_real_data_only": "birth_v2.prefer_real_data_only",
     }

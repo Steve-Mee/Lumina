@@ -192,6 +192,11 @@ export async function resumeStalledStageSession(targetTrades: number): Promise<B
   }
 }
 
+export async function retryCurrentStageSession(targetTrades: number): Promise<BirthStatusPayload> {
+  const params = new URLSearchParams({ target_trades: String(targetTrades) });
+  return postBirthMutation("/api/birth/retry-stage", params);
+}
+
 export async function autonomousRecoverySession(
   targetTrades: number,
 ): Promise<BirthStatusPayload> {

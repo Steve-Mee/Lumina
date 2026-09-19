@@ -209,11 +209,26 @@ class StageLoopRolloutTailMixin(StageLoopMixinBase):
                 )
                 self.host.ppo_steps += self.ppo_steps_per_update
                 self._capture_trainer_policy_entropy()
+                self._write_progress(
+                    phase="ppo_training",
+                    message="PPO batch complete · persisting checkpoint",
+                    hold_ratio=float(self.stage_hold_signals)
+                    / float(max(1, self.stage_total_signals)),
+                )
                 self.host._persist_checkpoint(
                     training_mode=self.training_mode,
                     curriculum_stage=self.stage.value,
                     phase="ppo_training",
                     stage_metrics=self._stage_metrics_payload(),
+                )
+                self._write_progress(
+                    phase="curriculum_learning",
+                    message=(
+                        f"PPO done · {self.stage_trades:,} trades · "
+                        f"resuming {self.stage.value}"
+                    ),
+                    hold_ratio=float(self.stage_hold_signals)
+                    / float(max(1, self.stage_total_signals)),
                 )
 
         if rollout.stalled and self.stage_trades == 0 and self.patterns_mined == 0:

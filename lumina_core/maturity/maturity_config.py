@@ -12,6 +12,7 @@ class MaturityConfig:
     awakening_min_twin_samples: int = 10
     apprenticeship_min_green_days: int = 5
     playground_require_first_order: bool = True
+    # Inert (ADR-0052): law is AND. Slider kept so old config.yaml still loads.
     proving_require_promotion_or_shadow: bool = True
     # Multi-day SIM for apprenticeship (real evaluate_variants bridge)
     apprenticeship_sim_days: int = 5

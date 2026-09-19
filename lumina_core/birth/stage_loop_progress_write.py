@@ -99,6 +99,8 @@ class StageLoopProgressWriteMixin(
         )
         if unique_days > 0:
             self._unique_calendar_days = unique_days
+        from lumina_core.birth.foundation_occupancy_envelope import loop_envelope_scorecard_kwargs
+
         scorecard = build_scorecard_payload(
             stage=self.stage,
             curriculum_index=self.stage_index + 1,
@@ -144,6 +146,7 @@ class StageLoopProgressWriteMixin(
             geometry_net_rr=net_rr,
             first_touch_hit_rate=p_ft,
             unique_calendar_days=unique_days,
+            **loop_envelope_scorecard_kwargs(self),
         )
         self._enrich_progress_scorecard(
             scorecard,

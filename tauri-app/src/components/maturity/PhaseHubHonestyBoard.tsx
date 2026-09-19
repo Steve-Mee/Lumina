@@ -1,47 +1,50 @@
-/** Continuum honesty board for Phase Hub (M6/M7). */
+/** Continuum honesty strip for Phase Hub (M6/M7). */
+import { StatusChip } from "@/components/birth/BirthGenesisDeckPrimitives";
 import type { MaturityHubPayload } from "@/lib/maturationClient";
+import type { TwinReadiness } from "@/lib/twinClient";
 
-export function PhaseHubHonestyBoard({ hub }: { hub: MaturityHubPayload }) {
-  if (
-    !(
-      hub.next_honest_steps?.length ||
-      hub.conflation_warnings?.length ||
-      hub.honesty
-    )
-  ) {
-    return null;
-  }
+export function PhaseHubHonestyBoard({
+  hub,
+  twinReady,
+}: {
+  hub: MaturityHubPayload;
+  twinReady?: TwinReadiness | null;
+}) {
+  const warning = hub.conflation_warnings?.[0] ?? null;
   return (
-    <div className="mt-2 rounded-md border border-violet-500/25 bg-violet-950/20 px-3 py-2">
-      <p className="font-mono text-[9px] tracking-[0.14em] text-violet-200/80 uppercase">
-        Continuum honesty
-      </p>
-      <div className="mt-1 flex flex-wrap gap-2 font-mono text-[10px]">
-        <span className={hub.birth_exit_exited ? "text-emerald-200/90" : "text-zinc-400"}>
-          Birth exit: {hub.birth_exit_exited ? "yes" : "no"}
-        </span>
-        <span className="text-zinc-600">·</span>
-        <span className={hub.ready_for_real ? "text-amber-200/90" : "text-zinc-400"}>
-          READY_FOR_REAL: {hub.ready_for_real ? "yes" : "no"}
-        </span>
-        <span className="text-zinc-600">·</span>
-        <span className={hub.real_eligible ? "text-rose-200/90" : "text-zinc-400"}>
-          REAL eligible: {hub.real_eligible ? "yes" : "no"}
-        </span>
+    <div className="phase-hub-honesty-strip shrink-0 px-1">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {twinReady ? (
+          <StatusChip
+            label={
+              twinReady.birth_ready
+                ? "Twin Birth-ready"
+                : `Twin ${Number(twinReady.base_training_completion_pct ?? 0).toFixed(0)}%`
+            }
+            state={twinReady.birth_ready ? "ok" : "warn"}
+            tip="Twin sole-auto stays fail-closed until base curriculum is complete."
+          />
+        ) : null}
+        <StatusChip
+          label={`Birth exit ${hub.birth_exit_exited ? "yes" : "no"}`}
+          state={hub.birth_exit_exited ? "ok" : "warn"}
+          tip="Five foundation v2 receipts + fitness. Not a certificate. Not REAL."
+        />
+        <StatusChip
+          label={`READY_FOR_REAL ${hub.ready_for_real ? "yes" : "no"}`}
+          state={hub.ready_for_real ? "ok" : "idle"}
+          tip="Apprenticeship multi-day SIM green streak — not Birth exit."
+        />
+        <StatusChip
+          label={`REAL ${hub.real_eligible ? "yes" : "no"}`}
+          state={hub.real_eligible ? "warn" : "idle"}
+          tip="Promotion + Perfect Birth + human approve-real. Fail-closed."
+        />
       </div>
-      {hub.conflation_warnings && hub.conflation_warnings.length > 0 ? (
-        <ul className="mt-1.5 space-y-0.5 font-mono text-[10px] text-amber-200/85">
-          {hub.conflation_warnings.slice(0, 4).map((w) => (
-            <li key={w}>⚠ {w}</li>
-          ))}
-        </ul>
-      ) : null}
-      {hub.next_honest_steps && hub.next_honest_steps.length > 0 ? (
-        <ul className="mt-1.5 space-y-0.5 font-mono text-[10px] text-cyan-200/85">
-          {hub.next_honest_steps.slice(0, 5).map((s) => (
-            <li key={s}>→ {s}</li>
-          ))}
-        </ul>
+      {warning ? (
+        <p className="mt-1 truncate font-mono text-[10px] text-amber-200/80" title={warning}>
+          {warning}
+        </p>
       ) : null}
     </div>
   );

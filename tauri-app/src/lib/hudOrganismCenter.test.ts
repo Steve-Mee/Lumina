@@ -26,7 +26,7 @@ describe("HudOrganismCenter contract", () => {
   it("organism center defers labeled readout to hover/focus", () => {
     expect(organismCenterSource).toContain("hud-organism-center__readout");
     expect(organismCenterSource).toContain("onMouseEnter");
-    expect(organismCenterSource).toContain("useOrganismEnvelope");
+    expect(organismCenterSource).toContain("--organism-envelope");
   });
 
   it("CommandHud passes hero readout to PresenceRail for rail deferral", () => {

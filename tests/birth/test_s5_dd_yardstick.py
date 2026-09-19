@@ -9,6 +9,7 @@ import pytest
 from lumina_core.birth.certificate_evaluator import (
     _peak_to_end_drawdown_pct,
     max_drawdown_pct,
+    sharpe_from_pnl,
 )
 from lumina_core.birth.curriculum import CurriculumStage
 from lumina_core.birth.fitness_vector import (
@@ -25,6 +26,7 @@ from lumina_core.birth.foundation_metrics import (
     S5_MIN_TRADES,
     S5_SHARPE_FLOOR,
     build_foundation_snapshot,
+    s5_holdout_sharpe,
 )
 from lumina_core.birth.foundation_pass import evaluate_foundation_pass
 from lumina_core.birth.foundation_skill_clock import skill_clock_keeps_stage_open
@@ -54,6 +56,23 @@ def test_a_two_losses_are_four_percent_of_50k() -> None:
     assert dd == pytest.approx(4.0)
     assert dd == max_drawdown_pct([-1000.0, -1000.0], equity=S5_DD_EQUITY_USD)
     assert sharpe == pytest.approx(0.0)  # <5 samples
+
+
+def test_a_s5_trade_ir_does_not_treat_closes_as_days() -> None:
+    """Live 22:50: first-touch MES 1-lot (WR~30%, +$32 / −$25.5) had annualized Sharpe −4.9.
+
+    sqrt(252) treated each close as a session. Floor stays −2 on the trade IR.
+    """
+    series = [-25.5] * 70 + [32.0] * 30
+    ir = s5_holdout_sharpe(series)
+    annualized = sharpe_from_pnl(series)
+    assert ir is not None
+    assert ir > S5_SHARPE_FLOOR
+    assert annualized <= S5_SHARPE_FLOOR
+    assert s5_holdout_sharpe([-25.5] * 3) is None
+    clipper = s5_holdout_sharpe([-25.5] * 20)
+    assert clipper is not None
+    assert clipper <= S5_SHARPE_FLOOR
 
 
 def test_a_v_shape_reports_trough_not_peak_to_end() -> None:

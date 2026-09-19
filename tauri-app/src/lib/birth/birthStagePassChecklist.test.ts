@@ -481,6 +481,48 @@ describe("buildStagePassChecklist", () => {
     const occ = list!.requirements.find((r) => r.id === "occupancy");
     expect(occ?.met).toBe(false);
     expect(occ?.current).toBe("envelope override");
+    expect(occ?.need).toContain("exam-window");
     expect(occ?.tone).toBe("danger");
+  });
+
+  it("fails occupancy from exam-window envelope_override_fraction even without pass_reason", () => {
+    const list = buildStagePassChecklist(
+      baseScorecard({
+        passCriteriaId: "mixed_regimes",
+        occupancy: 0.28,
+        medianLossR: 1.18,
+        edgeVsFirstTouch: 0.023,
+      }),
+      {
+        occupancy: 0.28,
+        occupancy_exam_armed: true,
+        envelope_override_fraction: 0.90,
+      },
+    );
+    const occ = list!.requirements.find((r) => r.id === "occupancy");
+    expect(occ?.met).toBe(false);
+    expect(occ?.current).toBe("envelope override");
+    expect(occ?.need).toContain("exam-window");
+    expect(occ?.tone).toBe("danger");
+  });
+
+  it("does not paint envelope override from a stale fraction while the exam is unarmed", () => {
+    const list = buildStagePassChecklist(
+      baseScorecard({
+        passCriteriaId: "viable_plant",
+        occupancy: 0.2477,
+        medianLossR: 0.615,
+        edgeVsFirstTouch: 0,
+      }),
+      {
+        occupancy: 0.2477,
+        occupancy_exam_armed: false,
+        envelope_override_fraction: 0.9231,
+      },
+    );
+    const occ = list!.requirements.find((r) => r.id === "occupancy");
+    expect(occ?.met).toBe(false);
+    expect(occ?.current).not.toBe("envelope override");
+    expect(occ?.current).toBe("24.8%");
   });
 });

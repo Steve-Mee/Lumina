@@ -27,36 +27,23 @@ SCHEMA = "continuum_honesty_v1"
 
 
 def _ready_for_real_status(workspace_root: Path) -> dict[str, Any]:
-    """Honest READY_FOR_REAL: milestone and/or last stability report — never invents."""
-    progress = load_maturation_progress(workspace_root)
-    reached = set(progress.milestones_reached)
-    milestone = "sim_real_guard_stable" in reached
-    report_ready = False
-    report_detail: dict[str, Any] = {}
-    report_path = workspace_root / "state" / "sim_stability_report.json"
-    if report_path.is_file():
-        try:
-            import json
+    """Honest READY_FOR_REAL: ADR-0051 apprenticeship AND — never a stability JSON stamp."""
+    from lumina_core.maturity.apprenticeship.law import evaluate_apprenticeship_exit
 
-            raw = json.loads(report_path.read_text(encoding="utf-8"))
-            if isinstance(raw, dict):
-                report_ready = bool(raw.get("READY_FOR_REAL"))
-                report_detail = {
-                    "path": str(report_path),
-                    "READY_FOR_REAL": report_ready,
-                    "consecutive_green_days": raw.get("consecutive_green_days"),
-                    "updated_at": raw.get("generated_at") or raw.get("timestamp"),
-                }
-        except Exception:
-            report_detail = {"path": str(report_path), "error": "unreadable"}
-    ready = bool(milestone or report_ready)
+    ok, missing, learned = evaluate_apprenticeship_exit(workspace_root)
+    progress = load_maturation_progress(workspace_root)
+    milestone = "sim_real_guard_stable" in set(progress.milestones_reached)
     return {
-        "ready": ready,
-        "milestone_sim_real_guard_stable": milestone,
-        "stability_report": report_detail,
+        "ready": bool(ok),
+        "milestone_sim_real_guard_stable": bool(ok and milestone),
+        "law_ok": bool(ok),
+        "missing": list(missing),
+        "n_d": learned.get("n_d"),
+        "sharpe": learned.get("sharpe"),
+        "dd_pct": learned.get("dd_pct"),
         "note": (
-            "READY_FOR_REAL is apprenticeship multi-day SIM stability — "
-            "not Birth exit and not automatic REAL capital arm."
+            "READY_FOR_REAL is apprenticeship AND (5 green SIM days, Sharpe≥0.20, DD≤12%) — "
+            "not a stability-report stamp and not automatic REAL capital arm."
         ),
     }
 
@@ -104,7 +91,7 @@ def _continuum_milestone_drift(
             drifts.append(
                 {
                     "code": "birth_exit_without_continuum",
-                    "severity": "info",
+                    "severity": "warning",
                     "message": (
                         "Birth exit proofs present but continuum has not marked birth complete — "
                         "hub should call mark_birth_complete_from_artifacts."
@@ -192,7 +179,12 @@ def _next_honest_steps(
             "Apprenticeship: run multi-day SIM until READY_FOR_REAL "
             "(sim_real_guard_stable / consecutive green days)."
         )
-    if focus_id in {"proving_ground", "real"} or ready:
+    if focus_id == "proving_ground":
+        steps.append(
+            "Proving Ground is the driving test (cert 48%/0.35/8% + this-run shadow + PromotionGate). "
+            "Human approve-real is REAL, not this phase."
+        )
+    elif focus_id == "real" or ready:
         if not real_eligible:
             steps.append(
                 "REAL still blocked: " + ("; ".join(real_blockers[:6]) if real_blockers else "eligibility gaps")

@@ -60,6 +60,10 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0045 | Champion/Challenger self-evolution ladder (overlay, venue, council, cutover) | Accepted | 2026-08-14 | [0045-champion-challenger-evolution-ladder.md](./0045-champion-challenger-evolution-ladder.md) |
 | 0046 | Birth Foundation: evolvable plant, sequential 1/5–5/5, process-R + first-touch (WR 20/35/40 pass retired) | Accepted | 2026-08-14 | [0046-birth-foundation-evolvable-plant.md](./0046-birth-foundation-evolvable-plant.md) |
 | 0048 | Lungs vs Voice organ SSOT (training engine ≠ talking assistant; news never orders) | Accepted | 2026-09-09 | [0048-lungs-voice-organs-ssot.md](./0048-lungs-voice-organs-ssot.md) |
+| 0049 | Awakening eyes-open: prefer-better AND, n_B≥500 hard, no Twin-dump, no effective_min | Accepted | 2026-09-18 | [0049-awakening-eyes-open.md](./0049-awakening-eyes-open.md) |
+| 0050 | Playground first contact: NT SIM crawl, n_P≥150, WR≥BE, mean R≥0, no JSON stamps | Accepted | 2026-09-19 | [0050-playground-first-contact.md](./0050-playground-first-contact.md) |
+| 0051 | Apprenticeship walk: 5 green sim_real_guard days, Sharpe≥0.20, DD≤12%, no backtest | Accepted | 2026-09-19 | [0051-apprenticeship-walk.md](./0051-apprenticeship-walk.md) |
+| 0052 | Proving Ground exam: cert OOS 48%/0.35/8% + this-run shadow + PromotionGate AND, no Birth JSON | Accepted | 2026-09-19 | [0052-proving-ground-exam.md](./0052-proving-ground-exam.md) |
 
 ## Legacy notitie
 

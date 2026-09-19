@@ -117,7 +117,9 @@ class SessionPhaseResumeMixin:
 
             self.stage_val_pnl = restore_stage_val_pnl(self.stage_metrics.get("stage_val_pnl"))
             buffer_trajs: list[Any] = []
-            if not self.stage_val_pnl or not restore_stage_val_r(self.stage_metrics.get("stage_val_r")):
+            if int(self.stage_trades or 0) > 0 and (
+                not self.stage_val_pnl or not restore_stage_val_r(self.stage_metrics.get("stage_val_r"))
+            ):
                 host_buffer = getattr(self.host, "buffer", None)
                 raw_trajs = getattr(host_buffer, "trajectories", None)
                 if isinstance(raw_trajs, list) and raw_trajs:
@@ -126,7 +128,7 @@ class SessionPhaseResumeMixin:
                     from lumina_core.birth.buffer_persist import load_buffer
 
                     buffer_trajs = load_buffer(self.host.workspace_root)
-            if not self.stage_val_pnl:
+            if int(self.stage_trades or 0) > 0 and not self.stage_val_pnl:
                 self.stage_val_pnl = restore_stage_val_pnl_from_buffer(
                     buffer_trajs,
                     stage_trades=int(self.stage_trades or 0),
@@ -138,7 +140,7 @@ class SessionPhaseResumeMixin:
                         int(self.stage_trades or 0),
                     )
             self.stage_val_r = restore_stage_val_r(self.stage_metrics.get("stage_val_r"))
-            if not self.stage_val_r:
+            if int(self.stage_trades or 0) > 0 and not self.stage_val_r:
                 self.stage_val_r = restore_stage_val_r_from_buffer(
                     buffer_trajs,
                     stage_trades=int(self.stage_trades or 0),

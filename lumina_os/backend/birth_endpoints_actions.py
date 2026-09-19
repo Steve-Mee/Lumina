@@ -180,6 +180,13 @@ async def resume_stalled_stage(
     result = birth_service.resume_stalled_stage(target_trades=target_trades)
     return _enrich_status(_merge_start_result(result))
 
+async def retry_current_stage(
+    target_trades: int | None = Query(None, ge=1000, le=5_000_000),
+) -> dict[str, Any]:
+    """Reset the current-stage sample (keep S1/S2 + tape) and resume. No expand."""
+    result = birth_service.retry_current_stage(target_trades=target_trades)
+    return _enrich_status(_merge_start_result(result))
+
 async def expand_and_retry_stalled_stage(
     target_trades: int | None = Query(None, ge=1000, le=5_000_000),
 ) -> dict[str, Any]:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Literal
 
 OnboardingStepId = Literal[
@@ -14,7 +15,7 @@ OnboardingStepId = Literal[
     "birth",
 ]
 
-AppSurface = Literal["setup", "birth", "hub", "deck"]
+AppSurface = Literal["setup", "birth", "hub", "deck", "awakening", "playground", "apprenticeship", "proving_ground"]
 AppSurfaceReason = Literal[
     "fresh_install",
     "setup_incomplete",
@@ -25,6 +26,14 @@ AppSurfaceReason = Literal[
     "certificate_failed",
     "birth_complete",
     "maturation_hub",
+    "awakening_running",
+    "awakening_incomplete",
+    "playground_running",
+    "playground_incomplete",
+    "apprenticeship_running",
+    "apprenticeship_incomplete",
+    "proving_ground_running",
+    "proving_ground_incomplete",
     "backend_unreachable",
 ]
 
@@ -134,6 +143,7 @@ def should_skip_wizard(
     backend_reachable: bool = True,
     certificate_ok: bool | None = None,
     birth_exit_ok: bool | None = None,
+    workspace_root: Path | str | None = None,
 ) -> bool:
     """True when wizard can be skipped (hub after Foundation exit)."""
     surface, _ = resolve_app_surface(
@@ -144,8 +154,9 @@ def should_skip_wizard(
         birth_exit_ok=birth_exit_ok,
         backend_reachable=backend_reachable,
         required_steps=required_steps,
+        workspace_root=workspace_root,
     )
-    return surface in ("hub", "deck")
+    return surface in ("hub", "deck", "awakening", "playground", "apprenticeship", "proving_ground")
 
 
 def _has_pending_setup_steps(required_steps: list[OnboardingStepId]) -> bool:
@@ -163,6 +174,7 @@ def resolve_app_surface(
     required_steps: list[OnboardingStepId],
     certificate_ok: bool | None = None,
     birth_exit_ok: bool | None = None,
+    workspace_root: Path | str | None = None,
 ) -> tuple[AppSurface, AppSurfaceReason]:
     """Canonical lifecycle surface for cold start. Fail-closed on Foundation exit."""
     if not backend_reachable:
@@ -187,8 +199,61 @@ def resolve_app_surface(
             return "birth", "certificate_failed"
         return "birth", "birth_pending"
 
-    # Post-birth home is Phase Hub (checkpoint + learned + next steps).
-    # Operator opens Command Deck from hub; deck is no longer cold-start default.
+    if workspace_root is not None:
+        try:
+            from lumina_core.maturity.awakening.surface import awakening_cinematic_wanted
+
+            wanted, why = awakening_cinematic_wanted(workspace_root)
+            if wanted:
+                reason: AppSurfaceReason = (
+                    "awakening_running" if why == "awakening_running" else "awakening_incomplete"
+                )
+                return "awakening", reason
+        except Exception:
+            pass
+        try:
+            from lumina_core.maturity.playground.surface import playground_habitat_wanted
+
+            wanted_pg, why_pg = playground_habitat_wanted(workspace_root)
+            if wanted_pg:
+                reason_pg: AppSurfaceReason = (
+                    "playground_running"
+                    if why_pg == "playground_running"
+                    else "playground_incomplete"
+                )
+                return "playground", reason_pg
+        except Exception:
+            pass
+        try:
+            from lumina_core.maturity.apprenticeship.surface import (
+                apprenticeship_cinematic_wanted,
+            )
+
+            wanted_a, why_a = apprenticeship_cinematic_wanted(workspace_root)
+            if wanted_a:
+                reason_a: AppSurfaceReason = (
+                    "apprenticeship_running"
+                    if why_a == "apprenticeship_running"
+                    else "apprenticeship_incomplete"
+                )
+                return "apprenticeship", reason_a
+        except Exception:
+            pass
+        try:
+            from lumina_core.maturity.proving_ground.surface import (
+                proving_ground_cinematic_wanted,
+            )
+
+            wanted_p, why_p = proving_ground_cinematic_wanted(workspace_root)
+            if wanted_p:
+                reason_p: AppSurfaceReason = (
+                    "proving_ground_running"
+                    if why_p == "proving_ground_running"
+                    else "proving_ground_incomplete"
+                )
+                return "proving_ground", reason_p
+        except Exception:
+            pass
     return "hub", "maturation_hub"
 
 

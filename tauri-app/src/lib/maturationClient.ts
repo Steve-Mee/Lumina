@@ -71,7 +71,7 @@ export interface MaturityHubPayload {
   birth_exit_exited?: boolean;
   ready_for_real?: boolean;
   real_eligible?: boolean;
-  last_completed: string;
+  last_completed: string | null;
   learned: Record<string, unknown>;
   focus_learned: Record<string, unknown>;
   focus_status: string;
@@ -112,11 +112,70 @@ export async function fetchMaturityHub(): Promise<MaturityHubPayload> {
   return maturityJson<MaturityHubPayload>("/api/maturity/hub");
 }
 
+export async function fetchAwakeningProgress(): Promise<{
+  ok: boolean;
+  pass_now: boolean;
+  missing: string[];
+  learned: Record<string, unknown>;
+  runner_active?: boolean;
+  progress?: Record<string, unknown>;
+}> {
+  return maturityJson("/api/maturity/awakening/progress");
+}
+
+export async function fetchPlaygroundProgress(): Promise<{
+  ok: boolean;
+  pass_now: boolean;
+  missing: string[];
+  learned: Record<string, unknown>;
+  runner_active?: boolean;
+  progress?: Record<string, unknown>;
+}> {
+  return maturityJson("/api/maturity/playground/progress");
+}
+
+export async function postPlaygroundDeckLive(): Promise<{
+  ok: boolean;
+  pass_now: boolean;
+  missing: string[];
+  learned: Record<string, unknown>;
+  runner_active?: boolean;
+  progress?: Record<string, unknown>;
+}> {
+  return maturityJson("/api/maturity/playground/deck-live", { method: "POST" });
+}
+
+export async function fetchApprenticeshipProgress(): Promise<{
+  ok: boolean;
+  pass_now: boolean;
+  missing: string[];
+  learned: Record<string, unknown>;
+  runner_active?: boolean;
+  progress?: Record<string, unknown>;
+}> {
+  return maturityJson("/api/maturity/apprenticeship/progress");
+}
+
+export async function fetchProvingGroundProgress(): Promise<{
+  ok: boolean;
+  pass_now: boolean;
+  missing: string[];
+  learned: Record<string, unknown>;
+  runner_active?: boolean;
+  progress?: Record<string, unknown>;
+}> {
+  return maturityJson("/api/maturity/proving-ground/progress");
+}
+
 export async function postMaturityPreferences(advanceMode: AdvanceMode): Promise<{ ok: boolean; advance_mode?: string }> {
   return maturityJson("/api/maturity/preferences", {
     method: "POST",
     body: JSON.stringify({ advance_mode: advanceMode }),
   });
+}
+
+export async function postStopMaturityPhase(): Promise<{ ok: boolean; running?: boolean }> {
+  return maturityJson("/api/maturity/stop-phase", { method: "POST" });
 }
 
 export async function postStartMaturityPhase(phase: string): Promise<{ ok: boolean; status?: string; phase?: string }> {

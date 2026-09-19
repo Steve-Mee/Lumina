@@ -21,6 +21,8 @@ export const DECK_WINDOW = {
 } as const;
 
 let mode: "systems-go" | "deck" | "unknown" = "unknown";
+/** Live ColdStart mounts — StrictMode unmount+remount must not restore deck size. */
+let coverMounts = 0;
 
 async function getWindowApi(): Promise<{
   setSize: (s: { width: number; height: number }) => Promise<void>;
@@ -71,6 +73,26 @@ export async function applySystemsGoWindowSize(): Promise<void> {
   } catch {
     /* non-fatal — UI still works in large window */
   }
+}
+
+/** ColdStart mounted — shrink to Systems Go. Pair with releaseStartupCoverWindow. */
+export function retainStartupCoverWindow(): void {
+  coverMounts += 1;
+  void applySystemsGoWindowSize();
+}
+
+/**
+ * ColdStart unmounting. Defer restore so React StrictMode remount keeps the
+ * compact window instead of flashing deck size under the cover.
+ */
+export function releaseStartupCoverWindow(): void {
+  coverMounts = Math.max(0, coverMounts - 1);
+  const remaining = coverMounts;
+  queueMicrotask(() => {
+    if (coverMounts === 0 && remaining === 0) {
+      void restoreDeckWindowSize();
+    }
+  });
 }
 
 /** Restore full Command Deck window after Systems Go. */

@@ -27,14 +27,15 @@ def _resolve_s5_holdout_oos(
     sharpe = oos_sharpe
     dd = oos_dd_pct
     series = list(pnl_series) if pnl_series else []
-    if (sharpe is None or dd is None) and series:
-        from lumina_core.birth.runway import risk_metrics_from_pnl
+    if series:
+        from lumina_core.birth.certificate_evaluator import max_drawdown_pct
+        from lumina_core.birth.foundation_metrics import s5_holdout_sharpe
 
-        computed_s, computed_d = risk_metrics_from_pnl(series)
-        if sharpe is None:
+        computed_s = s5_holdout_sharpe(series)
+        if computed_s is not None:
             sharpe = float(computed_s)
         if dd is None:
-            dd = float(computed_d)
+            dd = float(max_drawdown_pct(series))
     return sharpe, dd
 
 

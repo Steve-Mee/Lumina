@@ -84,18 +84,19 @@ def compute_foundation_hud_blocker(
     ref_price: float | None = None,
     skill_trades: int | None = None,
     skill_wins: int | None = None,
+    envelope_override_fraction: float | None = None,
+    passthrough_occupancy_signals: int | None = None,
 ) -> tuple[str | None, float | None, str | None] | None:
     """Process-R blocker for Foundation stages.
 
     Returns ``None`` when this path should defer to EdgeScore/legacy HUD.
-    Returns ``(None, None, None)`` when trades are still below the gate.
+    Volume shortfalls stay in ``evaluate_foundation_pass`` (honest occupancy
+    must not hide behind trades < floor).
     """
     if not is_foundation_stage(stage):
         return None
     floor = max(int(required), _min_trades(stage))
-    if int(trades) < floor:
-        return (None, None, None)
-    # Missing process-R after the volume gate is a blocker, not EdgeScore theater.
+    # Missing process-R is a blocker, not EdgeScore theater — including below volume.
     snap = build_foundation_snapshot(
         trades=int(trades),
         wins=int(wins),
@@ -123,6 +124,8 @@ def compute_foundation_hud_blocker(
         snap,
         round_trips=int(range_round_trips),
         required_round_trips=max(3, floor // 10),
+        envelope_override_fraction=envelope_override_fraction,
+        passthrough_occupancy_signals=passthrough_occupancy_signals,
     )
     if decision.passed:
         return (None, None, None)

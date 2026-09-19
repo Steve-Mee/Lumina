@@ -26,6 +26,24 @@ _ATTENTION_PRESERVE_KEYS: frozenset[str] = frozenset(
         "attention_notified_at",
     }
 )
+# Stall/freeze leftovers must not poison a new session (wipe → Activate).
+_NEW_SESSION_DROP_KEYS: frozenset[str] = frozenset(
+    {
+        *_ATTENTION_PRESERVE_KEYS,
+        "retryable",
+        "auto_recovery_active",
+        "is_advancing",
+        "terminal_freeze",
+        "terminal_stall_reason",
+        "pass_reason",
+        "stage_blocker_metric",
+        "stage_blocker_value",
+        "swarm_rejected_no_lift",
+        "swarm_champion_accepted",
+        "oos_sharpe",
+        "oos_dd_pct",
+    }
+)
 
 
 def read_birth_progress(workspace_root: Path | str) -> dict[str, Any]:
@@ -137,15 +155,26 @@ def write_birth_progress(
         # Explicit session clock from this write must win over stale preserve.
         if key in _SESSION_CLOCK_KEYS and birth_start_time > 0:
             continue
-        # Do not carry attention banners from a previous birth into a new session.
-        if new_session and key in _ATTENTION_PRESERVE_KEYS and key not in extra:
+        # Do not carry attention / freeze leftovers from a previous birth into a new session.
+        if new_session and key in _NEW_SESSION_DROP_KEYS and key not in extra:
             continue
         if key not in extra and key in prev:
             payload[key] = prev[key]
     for key in _OOS_PRESERVE_KEYS:
+        if new_session and key in _NEW_SESSION_DROP_KEYS and key not in extra:
+            continue
         if key not in extra and key in prev:
             payload[key] = prev[key]
     payload.update(extra)
+    # S5 HUD Sharpe/DD must not flicker to "—" when a later write omits or nulls them.
+    if (
+        not new_session
+        and str(payload.get("curriculum_stage") or prev.get("curriculum_stage") or "")
+        == "stage5_probe_handoff"
+    ):
+        for key in ("oos_sharpe", "oos_dd_pct"):
+            if payload.get(key) is None and prev.get(key) is not None:
+                payload[key] = prev[key]
     # Re-assert session clock after extra merge (extras must not smuggle old start).
     if birth_start_time > 0:
         payload["birth_start_time"] = float(birth_start_time)
@@ -156,6 +185,40 @@ def write_birth_progress(
     if stage_l not in {"paused", "interrupted"} and phase_l not in {"paused", "interrupted"}:
         if "user_initiated_stop" not in extra:
             payload["user_initiated_stop"] = False
+    # Terminal stall must not keep live-training HUD fields (is_advancing / PPO sub-phase).
+    # Those leftovers make the operator UI flip genesis ↔ mission ↔ stall overlay.
+    _LIVE_SUB_PHASES = frozenset(
+        {
+            "ppo_training",
+            "curriculum_learning",
+            "curriculum_stage",
+            "curriculum_research",
+            "parallel_simulation",
+            "policy_init",
+            "ppo_polish",
+            "loading_history",
+            "loading_data",
+            "ticks_ready",
+            "enriching_regimes",
+            "enriching_news",
+        }
+    )
+    if stage_l == "stage_stalled" or phase_l == "stage_stalled":
+        payload["is_advancing"] = False
+        sub = str(payload.get("sub_phase") or "").strip().lower()
+        if sub in _LIVE_SUB_PHASES or not sub:
+            payload["sub_phase"] = "stage_stalled"
+            payload["sub_phase_label"] = "Curriculum stalled"
+        if payload.get("retryable") is False:
+            payload["auto_recovery_active"] = False
+        if int(payload.get("ppo_steps") or 0) == 0 and not new_session:
+            prev_steps = int(prev.get("ppo_steps") or 0)
+            if prev_steps > 0:
+                payload["ppo_steps"] = prev_steps
+        pass_reason = str(payload.get("pass_reason") or "")
+        if "None" in pass_reason or "days=0" in pass_reason:
+            # Hollow foundation_fail must not override an honest freeze/stall message.
+            payload["pass_reason"] = None
     payload = enrich_progress_scorecard(payload)
     encoded = json.dumps(payload, ensure_ascii=True, indent=2)
     path = root / "state" / "lumina_birth_progress.json"

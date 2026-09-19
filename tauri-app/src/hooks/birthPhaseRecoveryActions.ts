@@ -7,13 +7,21 @@ export interface StalledRecoveryActionHandlers {
   handleCopyForensicsCommand: () => void;
   handleExpandAndRetryStalledStage: () => void;
   handleResumeStalledStage: () => void;
+  handleRetryCurrentStage?: () => void;
+  handleAcceptChampion?: () => void;
   setRecoveryDismissed: (dismissed: boolean) => void;
+}
+
+export interface StalledRecoveryActionOptions {
+  championFreeze?: boolean;
+  retryStage?: boolean;
 }
 
 /** Build stalled-stage recovery CTA row (exhausted vs expandable ladder). */
 export function buildStalledRecoveryActions(
   evolutionExhausted: boolean,
   handlers: StalledRecoveryActionHandlers,
+  options?: StalledRecoveryActionOptions,
 ): BirthRecoveryAction[] {
   const {
     openWipeConfirm,
@@ -21,8 +29,70 @@ export function buildStalledRecoveryActions(
     handleCopyForensicsCommand,
     handleExpandAndRetryStalledStage,
     handleResumeStalledStage,
+    handleRetryCurrentStage,
+    handleAcceptChampion,
     setRecoveryDismissed,
   } = handlers;
+
+  if (options?.retryStage) {
+    return [
+      {
+        id: "retry",
+        label: "Retry stage",
+        loadingLabel: "Resetting stage sample…",
+        variant: "primary",
+        onClick: () => {
+          if (handleRetryCurrentStage) {
+            handleRetryCurrentStage();
+            return;
+          }
+          handleResumeStalledStage();
+        },
+      },
+      {
+        id: "wipe_full",
+        label: "Wipe & restart",
+        variant: "outline",
+        onClick: () => openWipeConfirm("full"),
+      },
+      {
+        id: "forensics",
+        label: "Copy forensics cmd",
+        variant: "outline",
+        onClick: handleCopyForensicsCommand,
+      },
+    ];
+  }
+
+  if (options?.championFreeze) {
+    return [
+      {
+        id: "accept_champion",
+        label: "Accept champion",
+        loadingLabel: "Accepting…",
+        variant: "primary",
+        onClick: () => {
+          if (handleAcceptChampion) {
+            handleAcceptChampion();
+            return;
+          }
+          handleResumeStalledStage();
+        },
+      },
+      {
+        id: "wipe_full",
+        label: "Wipe & restart",
+        variant: "outline",
+        onClick: () => openWipeConfirm("full"),
+      },
+      {
+        id: "forensics",
+        label: "Copy forensics cmd",
+        variant: "outline",
+        onClick: handleCopyForensicsCommand,
+      },
+    ];
+  }
 
   if (evolutionExhausted) {
     return [

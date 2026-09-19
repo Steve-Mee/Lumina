@@ -121,6 +121,23 @@ def start_birth(
     if svc.is_running():
         return {"status": "already_running", "message": "Birth Phase is already in progress"}
 
+    prev_progress = read_birth_progress(svc.workspace_root)
+    from lumina_core.birth.starship_swarm_gates import (
+        champion_freeze_blocks_recovery_payload,
+        is_champion_freeze_active,
+    )
+    from lumina_core.birth.terminal_freeze import extract_terminal_freeze, freeze_is_active
+
+    freeze = extract_terminal_freeze(prev_progress)
+    if freeze_is_active(freeze) or is_champion_freeze_active(progress=prev_progress):
+        logger.warning(
+            "birth.start.blocked_unresolved_freeze continue=%s expand=%s force=%s",
+            continue_training,
+            expand_data,
+            force,
+        )
+        return champion_freeze_blocks_recovery_payload()
+
     if svc.is_completed() and not force and not practice_mode and not continue_training:
         return {"status": "already_completed", "message": "Birth Phase already completed"}
 

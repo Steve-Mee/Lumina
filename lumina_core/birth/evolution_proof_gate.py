@@ -1,4 +1,7 @@
-"""Post-birth Evolution Proof gate before REAL promotion (ADR-0026)."""
+"""Post-birth Evolution Proof gate before REAL promotion (ADR-0026 / ADR-0049).
+
+n_B >= 500 is hard. ``effective_min_trades`` was a cheat and is gone.
+"""
 
 from __future__ import annotations
 
@@ -13,9 +16,12 @@ from lumina_core.logging_utils import get_logger
 logger = get_logger("lumina.birth.evolution_proof")
 
 
+N_B_MIN = 500
+
+
 @dataclass(slots=True)
 class EvolutionProofConfig:
-    min_trades: int = 500
+    min_trades: int = N_B_MIN
     min_winrate_lift: float = 0.05
     polish_oos_winrate_min: float = 0.45
 
@@ -62,14 +68,11 @@ def evaluate_evolution_proof(
     reasons: list[str] = []
     lift = float(polish_oos_winrate) - float(birth_exit_winrate)
     passed = False
+    min_trades = int(proof_cfg.min_trades)
 
-    effective_min_trades = min(
-        int(proof_cfg.min_trades),
-        max(50, int(holdout_trades * 0.8)) if holdout_trades > 0 else int(proof_cfg.min_trades),
-    )
-    if int(holdout_trades) < effective_min_trades:
+    if int(holdout_trades) < min_trades:
         reasons.append(
-            f"holdout_trades {holdout_trades} < min {effective_min_trades}"
+            f"holdout_trades {holdout_trades} < min {min_trades}"
         )
     if float(polish_oos_winrate) >= float(proof_cfg.polish_oos_winrate_min):
         passed = True
@@ -89,7 +92,7 @@ def evaluate_evolution_proof(
         )
 
     return EvolutionProofResult(
-        passed=passed and int(holdout_trades) >= effective_min_trades,
+        passed=passed and int(holdout_trades) >= min_trades,
         reasons=reasons,
         birth_exit_winrate=float(birth_exit_winrate),
         polish_oos_winrate=float(polish_oos_winrate),
@@ -121,6 +124,7 @@ def record_and_evaluate_at_certificate(
         "reasons": list(result.reasons),
         "birth_exit_winrate": result.birth_exit_winrate,
         "polish_oos_winrate": result.polish_oos_winrate,
+        "oos_winrate": result.polish_oos_winrate,
         "winrate_lift": result.winrate_lift,
         "holdout_trades": result.holdout_trades,
     }
@@ -139,25 +143,28 @@ def evolution_proof_passed(
     *,
     allow_legacy_grandfather: bool | None = None,
 ) -> bool:
-    """True only when a persisted record exists and passed.
+    """True only when a persisted record exists and still passes ADR-0049.
 
-    Missing file is fail-closed (False). Legacy grandfather is opt-in via
-    ``birth_v2.curriculum.evolution_proof_grandfather_missing`` or the
-    explicit ``allow_legacy_grandfather`` argument.
+    Missing file is fail-closed (False). Grandfather is gone.
+    A disk ``passed: true`` with n_B < 500 re-evaluates to False.
     """
+    del allow_legacy_grandfather
     record = load_evolution_proof_record(workspace_root)
     if not record:
-        if allow_legacy_grandfather is None:
-            allow_legacy_grandfather = _legacy_grandfather_enabled(workspace_root)
-        return bool(allow_legacy_grandfather)
-    return bool(record.get("passed"))
-
-
-def _legacy_grandfather_enabled(workspace_root: Path | str) -> bool:
+        return False
+    if not record.get("passed"):
+        return False
     try:
-        from lumina_core.birth.config import load_birth_v2_config
-
-        cur = load_birth_v2_config(Path(workspace_root)).curriculum
-        return bool(getattr(cur, "evolution_proof_grandfather_missing", False))
+        result = evaluate_evolution_proof(
+            birth_exit_winrate=float(record.get("birth_exit_winrate") or 0.0),
+            polish_oos_winrate=float(
+                record.get("polish_oos_winrate") or record.get("oos_winrate") or 0.0
+            ),
+            holdout_trades=int(record.get("holdout_trades") or 0),
+        )
+        return bool(result.passed)
     except Exception:
         return False
+
+
+

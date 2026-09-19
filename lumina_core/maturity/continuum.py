@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import secrets
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -17,6 +18,7 @@ from lumina_core.maturity.maturation_progress import (
 )
 
 logger = get_logger("lumina.maturity.continuum")
+_SAVE_LOCK = threading.Lock()
 
 CONTINUUM_REL = Path("state") / "lumina_phase_continuum.json"
 SCHEMA_VERSION = 1
@@ -79,14 +81,16 @@ def load_continuum(workspace_root: Path | str) -> dict[str, Any]:
 
 
 def save_continuum(workspace_root: Path | str, data: dict[str, Any]) -> None:
+    from lumina_core.io.atomic_fs import atomic_write_text
+
     path = continuum_path(workspace_root)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = dict(data)
     payload["schema_version"] = SCHEMA_VERSION
     payload["updated_at"] = _utcnow()
-    tmp = path.with_name(f"{path.name}.tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    encoded = json.dumps(payload, ensure_ascii=True, indent=2) + "\n"
+    with _SAVE_LOCK:
+        atomic_write_text(path, encoded)
 
 
 
@@ -188,6 +192,7 @@ def mark_phase_failed(
     rec = dict(data["phase_records"].get(phase) or {})
     rec["status"] = "failed"
     rec["error"] = str(error)[:500]
+    rec["message"] = f"Failed: {str(error)[:220]}"
     rec["failed_at"] = _utcnow()
     data["phase_records"][phase] = rec
     save_continuum(workspace_root, data)

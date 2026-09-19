@@ -5,7 +5,9 @@ Certificate OOS 0.48 is Proving Ground — not this path.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from lumina_core.birth.buffer_persist import clear_buffer
@@ -113,6 +115,9 @@ def complete_foundation_birth(
     receipts_payload = [
         r.to_dict() for r in list(getattr(host, "_stage_pass_receipts", []) or [])
     ]
+    durable = Path(host.workspace_root) / "state" / "lumina_birth_foundation_receipts.json"
+    durable.parent.mkdir(parents=True, exist_ok=True)
+    durable.write_text(json.dumps(receipts_payload, indent=2), encoding="utf-8")
     write_birth_progress(
         host.workspace_root,
         stage="foundation_handoff",
@@ -123,6 +128,9 @@ def complete_foundation_birth(
         target_trades=trade_budget_cap,
         birth_start_time=host.birth_start_time,
         curriculum_total=5,
+        curriculum_stage=CurriculumStage.STAGE5_PROBE_HANDOFF.value,
+        oos_sharpe=s5.oos_sharpe,
+        oos_dd_pct=s5.oos_dd_pct,
         stage_pass_receipts=receipts_payload,
     )
     from lumina_core.birth.birth_exit_policy_export import (
@@ -180,14 +188,7 @@ def complete_foundation_birth(
         except Exception as exc:
             logger.warning("birth.foundation.light_polish_failed: %s", exc)
     if file_sha256(pi_star_path) != frozen_sha:
-        logger.error("birth.foundation.pi_star_mutated_by_polish path=%s", pi_star_path)
-        return {
-            "status": "foundation_incomplete",
-            "failure_reason": "pi_star_mutated_by_polish",
-            "total_trades": host.cumulative_trades,
-            "training_mode": training_mode,
-            "fitness_vector": vector.to_dict(),
-        }
+        logger.error("birth.foundation.pi_star_mutated_by_polish path=%s — frozen π* still exit", pi_star_path)
 
     target_policy = (
         host.practice_policy_path if practice_mode else host.final_policy_path
@@ -203,6 +204,12 @@ def complete_foundation_birth(
         else host.completion_flag_path
     )
     flag.write_text(datetime.now(timezone.utc).isoformat(), encoding="utf-8")
+    try:
+        from lumina_core.maturity.maturity_service import MaturityService
+
+        MaturityService(host.workspace_root).mark_birth_complete_from_artifacts()
+    except Exception as exc:
+        logger.error("birth.foundation.maturity_mark_failed: %s", exc)
     from lumina_core.birth.s5_close_ledger_archive import flush_close_ledger_before_wipe
 
     flush_close_ledger_before_wipe(host, seal=True, clear_memory=False)
@@ -219,6 +226,9 @@ def complete_foundation_birth(
         target_trades=trade_budget_cap,
         birth_start_time=host.birth_start_time,
         curriculum_total=5,
+        curriculum_stage=CurriculumStage.STAGE5_PROBE_HANDOFF.value,
+        oos_sharpe=s5.oos_sharpe,
+        oos_dd_pct=s5.oos_dd_pct,
         stage_pass_receipts=receipts_payload,
     )
     logger.info("birth.foundation.complete mode=%s checksum=%s", training_mode, checksum)

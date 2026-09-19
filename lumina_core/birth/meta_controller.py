@@ -163,6 +163,9 @@ class BirthMetaController(MetaControllerDecisionsMixin, MetaControllerSelfEvalMi
         volume_gate_passed: bool | None = None,
         edge_vs_random: float | None = None,
         median_loss_r: float | None = None,
+        mean_r: float | None = None,
+        e_mech: float | None = None,
+        occupancy_exam_armed: bool | None = None,
     ) -> tuple[LearningSnapshot, StallDetectionResult]:
         stall = detect_stall(
             winrate_history=winrate_history,
@@ -218,6 +221,9 @@ class BirthMetaController(MetaControllerDecisionsMixin, MetaControllerSelfEvalMi
             median_loss_r=(
                 float(median_loss_r) if median_loss_r is not None else None
             ),
+            mean_r=float(mean_r) if mean_r is not None else None,
+            e_mech=float(e_mech) if e_mech is not None else None,
+            occupancy_exam_armed=occupancy_exam_armed,
         )
         return snap, stall
 

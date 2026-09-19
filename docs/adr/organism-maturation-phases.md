@@ -15,8 +15,8 @@ Maturation is a **capability ladder**, not a single certificate wall.
 | **Birth** | Evolvable plant (closed loop → probe) | five `foundation_v2` receipts + fitness vector | Phase-exit: WR≥35% / artifacts-only / OOS 0.48 / Perfect Birth / REAL as exit grades |
 | **Awakening** | Prefer better, perceive regimes | twin/shadow rising, recovery works, evolution proof | REAL capital |
 | **Playground** | Move safely in SIM | first SIM order, deck unlock, skill EdgeScore/hygiene | REAL |
-| **Apprenticeship** | Stable multi-day SIM | sim_real_guard streak, never-stop recovery | REAL |
-| **Proving Ground** | Prove before capital | shadow validation, promotion gate, **full cert thresholds** | Live capital |
+| **Apprenticeship** | Walk under REAL rules on SIM | 5 green session days, Sharpe≥0.20, DD≤12%, constitution 0 (ADR-0051) | REAL |
+| **Proving Ground** | Prove before capital | cert OOS 48%/Sharpe 0.35/DD 8% + this-run shadow + PromotionGate AND (ADR-0052) | Live capital, human approve-real, Birth JSON |
 | **Real** | Trade money + keep evolving | fail-closed live + offline evolution | — |
 
 ## Birth survival pass (implementation)
@@ -64,22 +64,26 @@ Default `maturity.strict_exit_proofs: true` in `config.yaml`:
 | Phase | Hard exit |
 |-------|-----------|
 | Awakening | evolution proof **and** twin samples ≥ N |
-| Playground | deck + envelope sealed + first SIM order evidence |
-| Apprenticeship | `sim_real_guard_stable` / READY_FOR_REAL (honest incomplete if not) |
-| Proving Ground | promotion/shadow audit pass (never fabricated) |
+| Playground | ADR-0050 AND: envelope + deck live + orderpath fill + n_P≥150 + WR≥BE + mean R≥0 (not JSON, not Birth tape) |
+| Apprenticeship | ADR-0051 AND: 5 green `sim_real_guard` session days + Sharpe≥0.20 + DD≤12% + constitution 0 (not backtest JSON, not READY stamp) |
+| Proving Ground | ADR-0052 AND: cert OOS 48%/0.35/8% + this-run shadow + PromotionGate 4/4 (not Birth JSON, not audit scan) |
 | REAL | human `approve-real` + eligibility milestones |
 
 Lab override: `maturity.experimental_soft_complete: true` re-enables soft stamps (hub warns).
 
 Telegram: `TelegramNotifier.poll_for_replies` handles `YES`/`CONFIRM` + token; autopilot tick polls when `advance_mode=telegram`.
 
-### Apprenticeship multi-day SIM
+### Apprenticeship multi-day SIM (ADR-0051)
 
-`maturity/apprenticeship_sim.py` runs `MultiDaySimRunner.evaluate_variants` and writes
-`state/test_runs/apprenticeship_sim_day_YYYY-MM-DD.json` (`mode=sim`) into the stability ledger.
-Never fabricates `READY_FOR_REAL` — re-evaluates `generate_stability_report` after writes.
+SSOT: `lumina_core/maturity/apprenticeship/law.py`. Tape `state/lumina_apprenticeship_tape.jsonl`.
+A DNA backtest (`apprenticeship_sim.py`) is not a session day and must not write green-day files.
+`sim_real_guard_stable` fires only after the AND passes.
 
-Config: `maturity.apprenticeship_sim_days` (default 5).
+### Proving Ground exam (ADR-0052)
+
+SSOT: `lumina_core/maturity/proving_ground/law.py`. Tape `state/lumina_proving_ground_tape.jsonl`.
+A Birth certificate JSON and an old `promotion_gate_audit.jsonl` pass row are not this exam.
+`promotion_gate_passed` / `shadow_validation_passed` fire only after the AND passes. Human `approve-real` is REAL.
 
 ### Telegram token TTL
 

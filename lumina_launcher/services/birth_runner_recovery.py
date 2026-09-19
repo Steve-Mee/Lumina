@@ -72,29 +72,38 @@ def retry_birth(
     *,
     wipe: bool = False,
 ) -> Dict[str, Any]:
-    """Resume from checkpoint on certificate failure / user pause; wipe only when asked.
-
-    Critical: user-paused runs with a checkpoint must **continue**, never
-    ``clear_stale_for_certified_retry`` (that deletes checkpoint + progress).
-    """
+    """Resume from checkpoint on certificate failure / user pause; wipe only when asked."""
     from lumina_core.birth.config import BRO_ENGINE_VERSION
+    from lumina_core.maturity.birth_exit import is_birth_exit_sufficient
+
+    flag = getattr(svc, "completed_flag", None)
+    progress0 = svc._load_progress()
+    phase0 = str(progress0.get("phase", "") or "").strip().lower()
+    if not wipe and (
+        bool(flag is not None and flag.exists())
+        or (
+            phase0 not in {"certificate_failed", "certificate_remediation"}
+            and is_birth_exit_sufficient(svc.workspace_root)
+        )
+    ):
+        return {
+            "status": "completed",
+            "message": "Birth Foundation already complete — next is Awakening.",
+        }
     from lumina_core.birth.checkpoint import load_checkpoint_state
     from lumina_core.birth.remediation import (
         reconstruct_checkpoint_from_progress,
         should_fast_path_remediation_from_state,
     )
 
-    progress = svc._load_progress()
-    phase = str(progress.get("phase", "") or "").strip().lower()
+    progress = progress0
+    phase = phase0
     checkpoint_state = load_checkpoint_state(svc.workspace_root)
-    checkpoint_exists = (
-        svc.checkpoint_file.exists()
-        or (svc.workspace_root / "state" / "first_boot_checkpoint.json").exists()
-    )
+    ckpt_boot = svc.workspace_root / "state" / "first_boot_checkpoint.json"
+    checkpoint_exists = svc.checkpoint_file.exists() or ckpt_boot.exists()
     fast_path_eligible = (
         should_fast_path_remediation_from_state(progress, checkpoint_state) if not wipe else False
     )
-    # Paused/interrupted + checkpoint = honest resume (not cert fast-path only).
     paused_resume = (
         not wipe and checkpoint_exists and _is_paused_or_interrupted_progress(progress)
     )
@@ -108,26 +117,12 @@ def retry_birth(
             checkpoint=checkpoint_state,
         )
         if not reconstructed:
-            logger.warning(
-                "birth.retry reconstruct_failed phase=%s policy_exists=%s",
-                phase,
-                svc.policy_path.exists(),
-            )
+            logger.warning("birth.retry reconstruct_failed phase=%s", phase)
             preserve_checkpoint = False
-        checkpoint_exists = (
-            svc.checkpoint_file.exists()
-            or (svc.workspace_root / "state" / "first_boot_checkpoint.json").exists()
-        )
+        checkpoint_exists = svc.checkpoint_file.exists() or ckpt_boot.exists()
     logger.info(
-        "birth.retry preserve_checkpoint=%s phase=%s checkpoint_exists=%s wipe=%s "
-        "fast_path_eligible=%s paused_resume=%s engine_version=%s",
-        preserve_checkpoint,
-        phase,
-        checkpoint_exists,
-        wipe,
-        fast_path_eligible,
-        paused_resume,
-        BRO_ENGINE_VERSION,
+        "birth.retry preserve=%s phase=%s ckpt=%s wipe=%s evo=%s",
+        preserve_checkpoint, phase, checkpoint_exists, wipe, BRO_ENGINE_VERSION,
     )
     if wipe:
         from lumina_launcher.services.birth_runner_wipe import wipe_birth_training_artifacts

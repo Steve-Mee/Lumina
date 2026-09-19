@@ -13,6 +13,10 @@ import {
 } from "@/lib/birthPhaseModel";
 import type { BirthSettingsPayload } from "@/lib/birthClient";
 import { resolveGenesisDeckPresentation } from "@/lib/birthGenesisPresentation";
+import {
+  freezeRequiresOperatorFork,
+  resolveStallPhysicsBlocker,
+} from "@/lib/birth/birthStallOverlay";
 import { resolveBirthOperatorMode } from "@/lib/birthOperatorMode";
 import { resolveBirthScreenPhaseHeader } from "@/lib/luminaPhasePresentation";
 import { useBirthStore } from "@/store/birthStore";
@@ -59,9 +63,7 @@ export function useBirthPhaseDerived(recoveryDismissed: boolean) {
       isBirthEngineActive(status ?? { status: "idle" })) &&
     !stageStalledActive;
   const engineActive =
-    status != null &&
-    !genesisPinned &&
-    (status.live === true || isBirthEngineActive(status));
+    status != null && !genesisPinned && isBirthEngineActive(status);
   const genesisMode =
     (operatorMode === "idle" || operatorMode === "decision") &&
     !awakening &&
@@ -164,9 +166,8 @@ export function useBirthPhaseDerived(recoveryDismissed: boolean) {
     phaseSubtitle,
   });
 
-  const stalledBlocker =
-    String(status?.progress?.pass_reason ?? "").trim() ||
-    String(status?.progress?.stage_blocker_metric ?? "").trim().replace(/_/g, " ");
+  const stalledBlocker = resolveStallPhysicsBlocker(status?.progress);
+  const freezeOperatorFork = freezeRequiresOperatorFork(status);
   const adaptationTier = Math.max(0, Number(status?.progress?.adaptation_tier ?? 0) || 0);
   const maxAdaptationTiers = Math.max(1, Number(status?.progress?.max_adaptation_tiers ?? 4) || 4);
   const stalledRetries = Math.max(0, Number(status?.progress?.retries_this_stage ?? 0) || 0);
@@ -235,6 +236,7 @@ export function useBirthPhaseDerived(recoveryDismissed: boolean) {
     missionMode,
     phaseHeader,
     stalledBlocker,
+    freezeOperatorFork,
     adaptationTier,
     maxAdaptationTiers,
     stalledRetries,

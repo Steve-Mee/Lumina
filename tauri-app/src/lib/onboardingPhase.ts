@@ -1,6 +1,10 @@
+import { preferAwakeningHub } from "@/lib/awakening/awakeningSurfacePref";
+import { preferApprenticeshipHub } from "@/lib/apprenticeship/apprenticeshipSurfacePref";
+import { preferPlaygroundHub } from "@/lib/playground/playgroundSurfacePref";
+import { preferProvingGroundHub } from "@/lib/provingGround/provingGroundSurfacePref";
 import type { AppSurface, OnboardingPayload } from "@/lib/onboardingSteps";
 
-export type AppPhase = "loading" | "wizard" | "birth" | "hub" | "cockpit";
+export type AppPhase = "loading" | "wizard" | "birth" | "hub" | "cockpit" | "awakening" | "playground" | "apprenticeship" | "proving_ground";
 
 export interface MapAppPhaseContext {
   priorPhase: AppPhase;
@@ -22,6 +26,14 @@ function surfaceToPhase(surface: AppSurface): AppPhase {
       return "hub";
     case "deck":
       return "cockpit";
+    case "awakening":
+      return "awakening";
+    case "playground":
+      return "playground";
+    case "apprenticeship":
+      return "apprenticeship";
+    case "proving_ground":
+      return "proving_ground";
   }
 }
 
@@ -78,6 +90,18 @@ export function mapAppPhase(
       (context.priorPhase === "cockpit" || context.operatorDeckActive)
     ) {
       return "cockpit";
+    }
+    if (mapped === "awakening" && preferAwakeningHub()) {
+      return "hub";
+    }
+    if (mapped === "playground" && preferPlaygroundHub()) {
+      return "hub";
+    }
+    if (mapped === "apprenticeship" && preferApprenticeshipHub()) {
+      return "hub";
+    }
+    if (mapped === "proving_ground" && preferProvingGroundHub()) {
+      return "hub";
     }
     return mapped;
   }
@@ -153,6 +177,18 @@ export function resolvePhaseOnRefreshError(
   }
   if (priorPhase === "birth" || lastPayload?.app_surface === "birth") {
     return "birth";
+  }
+  if (priorPhase === "awakening" || lastPayload?.app_surface === "awakening") {
+    return "awakening";
+  }
+  if (priorPhase === "playground" || lastPayload?.app_surface === "playground") {
+    return "playground";
+  }
+  if (priorPhase === "apprenticeship" || lastPayload?.app_surface === "apprenticeship") {
+    return "apprenticeship";
+  }
+  if (priorPhase === "proving_ground" || lastPayload?.app_surface === "proving_ground") {
+    return "proving_ground";
   }
   return "wizard";
 }

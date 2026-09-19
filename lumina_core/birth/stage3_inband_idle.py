@@ -19,7 +19,7 @@ from lumina_core.birth.birth_trade_geometry import (
     geometry_action,
 )
 from lumina_core.birth.foundation_metrics import POLICY_EDGE_MIN_TRADES
-from lumina_core.birth.stage2_participation_envelope import MODE_PASSTHROUGH
+from lumina_core.birth.stage2_participation_envelope import MODE_FORCE_EXIT, MODE_PASSTHROUGH
 
 S3_INBAND_REGIMES = frozenset({"mixed", "stage3_mixed", "stage3"})
 S4_IDLE_REGIMES = frozenset({"stage4_viable_plant", "stage4", "viable_plant"})
@@ -48,10 +48,7 @@ def s3_inband_idle_armed(
     policy_trades: int,
     policy_edge_min_trades: int = POLICY_EDGE_MIN_TRADES,
 ) -> bool:
-    """True iff S3/S4/S5 PASSTHROUGH, flat, exam-in-band, thin policy sample.
-
-    S4 no longer skips the band check. Over-flat is the envelope's job.
-    """
+    """True iff S3/S4/S5 PASSTHROUGH, empty, in-band above settle, thin policy."""
     regime = str(curriculum_regime or "").strip().lower()
     if regime not in FOUNDATION_INBAND_IDLE_REGIMES:
         return False
@@ -64,7 +61,10 @@ def s3_inband_idle_armed(
     if lo > hi:
         lo, hi = hi, lo
     flat = float(cumulative_flat)
-    if flat + 1e-12 < lo or flat - 1e-12 > hi:
+    from lumina_core.birth.foundation_occupancy_envelope import EXAM_RECOVERY_SETTLE
+
+    idle_lo = lo + float(EXAM_RECOVERY_SETTLE)
+    if flat + 1e-12 < idle_lo or flat - 1e-12 > hi:
         return False
     if int(policy_trades) >= int(policy_edge_min_trades):
         return False
@@ -226,6 +226,17 @@ def plant_tag_for_entry(*, force_open_this_step: bool) -> bool:
     return bool(force_open_this_step)
 
 
+def plant_tag_for_close(*, entry_is_plant: bool, participation_mode: str) -> bool:
+    """Occupancy FORCE_EXIT is airframe, even when the entry was policy.
+
+    Live S3: 2539 FORCE_EXIT closes counted as policy and poisoned skill WR.
+    Volume gate still uses total closes. Edge uses policy-only.
+    """
+    if bool(entry_is_plant):
+        return True
+    return str(participation_mode or "").strip().upper() == MODE_FORCE_EXIT
+
+
 @dataclass(slots=True)
 class S3InbandIdleState:
     idle_hold_bars: int = 0
@@ -379,6 +390,7 @@ __all__ = [
     "apply_passthrough_hold_mask",
     "maybe_s3_passthrough_mask",
     "plant_tag_for_entry",
+    "plant_tag_for_close",
     "s3_inband_explore_action",
     "s3_inband_hold_mask",
     "s3_inband_hold_tax",

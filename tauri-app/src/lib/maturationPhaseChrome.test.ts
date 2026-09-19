@@ -26,6 +26,12 @@ describe("maturationPhaseChrome", () => {
     ).toBe("genesis");
   });
 
+  it("maps proving_ground app phase to proving_ground rung", () => {
+    expect(
+      resolveChromeMaturationPhase({ appPhase: "proving_ground", apiPhase: "apprenticeship" }),
+    ).toBe("proving_ground");
+  });
+
   it("maps running birth to birth step and finale to awakening", () => {
     expect(
       resolveChromeMaturationPhase({
@@ -41,6 +47,24 @@ describe("maturationPhaseChrome", () => {
         birthUiPhase: "finale",
       }),
     ).toBe("awakening");
+  });
+
+  it("maps awakening app phase to awakening step", () => {
+    expect(
+      resolveChromeMaturationPhase({ appPhase: "awakening", apiPhase: "birth" }),
+    ).toBe("awakening");
+  });
+
+  it("maps playground app phase to playground step", () => {
+    expect(
+      resolveChromeMaturationPhase({ appPhase: "playground", apiPhase: "awakening" }),
+    ).toBe("playground");
+  });
+
+  it("maps apprenticeship app phase to apprenticeship step", () => {
+    expect(
+      resolveChromeMaturationPhase({ appPhase: "apprenticeship", apiPhase: "playground" }),
+    ).toBe("apprenticeship");
   });
 
   it("prefers API phase on cockpit", () => {

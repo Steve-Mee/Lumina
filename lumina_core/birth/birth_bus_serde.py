@@ -61,6 +61,9 @@ def serialize_learning_snapshot(snap: LearningSnapshot) -> dict[str, Any]:
         "rolling_winrate": snap.rolling_winrate,
         "edge_vs_random": snap.edge_vs_random,
         "median_loss_r": snap.median_loss_r,
+        "mean_r": snap.mean_r,
+        "e_mech": snap.e_mech,
+        "occupancy_exam_armed": snap.occupancy_exam_armed,
     }
 
 
@@ -109,6 +112,13 @@ def deserialize_learning_snapshot(data: dict[str, Any]) -> LearningSnapshot:
         median_loss_r=(
             float(data["median_loss_r"])
             if data.get("median_loss_r") is not None
+            else None
+        ),
+        mean_r=(float(data["mean_r"]) if data.get("mean_r") is not None else None),
+        e_mech=(float(data["e_mech"]) if data.get("e_mech") is not None else None),
+        occupancy_exam_armed=(
+            bool(data["occupancy_exam_armed"])
+            if data.get("occupancy_exam_armed") is not None
             else None
         ),
     )
