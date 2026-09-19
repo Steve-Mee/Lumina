@@ -28,7 +28,6 @@ telegram:
     - promotion
     - freeze
     - real_safety
-    - birth_milestones
 participant_id: LUMINA_Steve
 sim:
   aggressive_evolution: false
@@ -88,6 +87,7 @@ inference:
   primary_provider: ollama
   provider_order:
   - ollama
+  - vllm
   - grok_remote
   max_tokens: 1200
   temperature: 0.65
@@ -110,17 +110,17 @@ setup:
   allow_force_tier: false
 vllm:
   host: http://localhost:8000
-  model_name: qwen3.5-4b
+  model_name: qwen3.5-9b
   manage_lifecycle: false
 ollama:
   base_url: http://localhost:11434
   temperature: 0.65
-  context_length: 8192
+  context_length: 16384
   num_gpu: -1
-  num_ctx: 8192
+  num_ctx: 16384
 models:
   vision: qwen2.5-vl:7b
-  reasoning: qwen3.5:4b
+  reasoning: qwen3.5:9b
   reflector: qwen2.5:3b
   meta: qwen3.5:9b
   grok_trader_1b: qwen3.5-35b

@@ -1,0 +1,15 @@
+{
+  "schema": "birth_exit_pi_star_v1",
+  "path": "/workspace/reports/birth_cloud_run/artifacts/birth_exit_pi_star.zip",
+  "sha256": "8cc435c68a37b0a070e38bccc4bfd402d4a802396bd7cd2fcce02f50acf69a03",
+  "bytes": 202268,
+  "exported_at": "2026-09-03T08:43:00.845324+00:00",
+  "source": "harvest_s5_pass_pre_polish",
+  "export_site": "lumina_core/birth/foundation_complete.py:export_birth_exit_pi_star",
+  "pre_polish": true,
+  "gitignored_ppo_fallback": false,
+  "harvest_workspace": "/workspace/reports/pi_star_harvest/workspace",
+  "harvest_exit_code": 0,
+  "pr14_s5_receipt_checksum": "707b5ab9d6b9af96",
+  "pr14_receipts_not_copied": true
+}
