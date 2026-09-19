@@ -159,6 +159,22 @@ export function shouldAutoResumeBirth(
   if (status.progress?.user_initiated_stop === true) {
     return false;
   }
+  const freeze = status.progress?.terminal_freeze;
+  const freezeUnresolved =
+    freeze != null &&
+    typeof freeze === "object" &&
+    freeze.resolved !== true &&
+    String(freeze.reason ?? "").trim() !== "";
+  const swarmFrozen =
+    (status.progress?.swarm_rejected_no_lift === true ||
+      status.progress?.policy_swarm_rejected_no_lift === true) &&
+    status.progress?.swarm_champion_accepted !== true;
+  if (freezeUnresolved || swarmFrozen) {
+    return false;
+  }
+  if (status.progress?.needs_attention === true) {
+    return false;
+  }
   const topStatus = norm(status.status);
   if (topStatus === "running" || topStatus === "started" || topStatus === "active") {
     return false;
@@ -176,19 +192,20 @@ export function shouldAutoResumeBirth(
   if (recovery === "session_interrupted" || recovery === "checkpoint_available") {
     return false;
   }
-  if (recovery === "stage_stalled" && status.progress?.retryable !== false) {
+  // Fail-closed: missing retryable is not a resume ticket.
+  if (recovery === "stage_stalled" && status.progress?.retryable === true) {
     return true;
   }
   if (status.progress?.autonomous_recovery_pending === true) {
     return true;
   }
   const terminal = norm(status.progress?.terminal_stall_reason);
-  if (terminal === "phoenix_cycle" && status.progress?.retryable !== false) {
+  if (terminal === "phoenix_cycle" && status.progress?.retryable === true) {
     return true;
   }
   if (
     (terminal === "plateau_evolution_exhausted" || terminal === "stall_remediation_exhausted") &&
-    status.progress?.retryable !== false &&
+    status.progress?.retryable === true &&
     status.progress?.needs_attention !== true
   ) {
     return true;
@@ -263,7 +280,8 @@ export function verifyBirthWipeSucceeded(input: BirthWipeVerifyInput): BirthWipe
     (topStatus === "running" ||
       topStatus === "interrupted" ||
       topStatus === "stopping" ||
-      topStatus === "started")
+      topStatus === "started" ||
+      topStatus === "stage_stalled")
   ) {
     return { ok: true };
   }

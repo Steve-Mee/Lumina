@@ -486,6 +486,7 @@ namespace Lumina.Execution.Fabric.Grpc
 
             authenticated = true;
             _metrics.IncAuthOk();
+            // Arms heartbeat flatten/cancel — until this call the watchdog must not touch the book.
             _watchdog.NoteAuthenticatedSession();
             FabricRuntimeStatus.Instance.NoteAuthOk(sessionId);
             if (_safeMode.State == SafeModeState.Safe)
@@ -718,6 +719,14 @@ namespace Lumina.Execution.Fabric.Grpc
 
         private void ApplyDisconnectPolicy(string reason)
         {
+            // Auth-only probes (Repair / Test connection) must not cancel the book.
+            if (!_watchdog.IsArmed)
+            {
+                _audit?.Record("disconnect_policy_skipped_unarmed", reason, new { cancelled = 0 });
+                Log($"disconnect policy skipped (watchdog not armed): {reason}");
+                return;
+            }
+
             _safeMode.EnterSafe(reason);
             _metrics.IncSafeMode();
             _metrics.IncDisconnectPolicy();

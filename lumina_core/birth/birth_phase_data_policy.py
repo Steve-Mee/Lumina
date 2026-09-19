@@ -111,11 +111,18 @@ def prepare_birth_data_and_policy(
         regime_map_ready_event,
     )
 
+    manifest = host._data_manifest or {}
+    actual_days = int(
+        manifest.get("actual_calendar_days")
+        or manifest.get("days_loaded")
+        or 0
+    )
     host._notify_milestone(
         history_loaded_event(
             tick_count=len(ticks),
             real_data_pct=host._real_data_pct,
             max_real_days=max_days,
+            actual_calendar_days=actual_days or None,
         )
     )
     host._notify_milestone(

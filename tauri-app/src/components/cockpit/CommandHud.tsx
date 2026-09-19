@@ -3,7 +3,6 @@ import { Settings } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 
 import { useAdaptiveIntelligenceContext } from "@/context/AdaptiveIntelligenceContext";
-import { useOrganismEnvelope } from "@/context/OrganismEnvelopeContext";
 import { BotConfigurationDialog } from "@/components/cockpit/BotConfigurationDialog";
 import { HudOrganismCenter } from "@/components/cockpit/HudOrganismCenter";
 import { HudNerveTap } from "@/components/cockpit/HudNerveTap";
@@ -122,7 +121,6 @@ export function CommandHud({ className }: CommandHudProps) {
   const fallbackMode = useCoreStore(selectFallbackMode);
   const apiKeyConfigured = useApiKeyStore(selectApiKeyConfigured);
   const botConfigDirty = useBotConfigStore((s) => s.isDirty);
-  const organismEnvelope = useOrganismEnvelope();
   const hudPrefs = useHudLayoutPrefsStore((s) => s.prefs);
   const hydrateHudPrefs = useHudLayoutPrefsStore((s) => s.hydrate);
   const openSettings = useSettingsDialogStore((s) => s.openSettings);
@@ -145,7 +143,7 @@ export function CommandHud({ className }: CommandHudProps) {
   );
   const fortressIntegrity = useMemo(() => aggregateIntegrity(walls), [walls]);
 
-  const equityIntensity = connectionVitality(connectionStatus, fallbackMode) * (0.88 + organismEnvelope * 0.12);
+  const equityIntensity = connectionVitality(connectionStatus, fallbackMode) * 0.94;
   const heroLayout = resolveHudHeroLayout(
     currentMode,
     {

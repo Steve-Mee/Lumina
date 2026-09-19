@@ -106,10 +106,9 @@ export function BirthGenesisDeck({
   const sessionLocked = sessionProbePending || !sessionHydrated || sessionProbeState === "error";
   const disabled = activating || busy || sequencing || sessionLocked;
   const wipeBlocked = busy || activating || wipeConfirmWiping || sessionProbePending;
-  const gatePct = Math.round((training.stage1_winrate_pass_threshold ?? 0.45) * 100);
   const estimatedDays = estimateFirstBootRealDays(training.training_trades);
   const barCapDays = historicalBarCapDays();
-  const historyLabel = `Foundation ${FOUNDATION_HISTORY_START_DAYS}d · expand 180/${FOUNDATION_HISTORY_MAX_DAYS}`;
+  const historyLabel = `Start ${FOUNDATION_HISTORY_START_DAYS}d · stall-expand 180/${FOUNDATION_HISTORY_MAX_DAYS}`;
   const checkpointSummary = checkpointAvailable
     ? formatGenesisCheckpointSummary(birthStatus)
     : null;
@@ -129,8 +128,8 @@ export function BirthGenesisDeck({
   }
 
   const summaryLine = [
-    `${training.training_trades.toLocaleString()} trades`,
-    `Gate ${gatePct}%`,
+    `${training.training_trades.toLocaleString()} trade cap`,
+    "process-R exam",
     historyLabel,
     training.prefer_real_data_only ? "Real data" : "Mixed data",
   ].join(" · ");
@@ -213,7 +212,7 @@ export function BirthGenesisDeck({
               label="Neural Genesis info"
               text={
                 helpFor("genesis_maturity_charter") ??
-                "Sign the pre-birth contract. Training size is auto-sized. Birth pass is process-R, not a WR exam."
+                "Sign the pre-birth contract. Trade count is a budget ceiling. Birth pass is process-R, not a WR exam."
               }
             />
           </div>
@@ -233,7 +232,7 @@ export function BirthGenesisDeck({
         <StatusChip
           label="CHARTER"
           state="ok"
-          tip="Auto charter ready — training trades are system-derived. Pass is process-R, not WR."
+          tip="Auto charter ready — trade budget is a ceiling, not hardware IQ. Pass is process-R, not WR."
         />
         <StatusChip
           label="DATA"
@@ -247,7 +246,7 @@ export function BirthGenesisDeck({
         <StatusChip
           label="HISTORY"
           state={isHighLoadEstimate(estimatedDays) ? "warn" : "ok"}
-          tip={`Foundation ${FOUNDATION_HISTORY_START_DAYS}d start · expand 180/${FOUNDATION_HISTORY_MAX_DAYS}. Not linked to training trades.`}
+          tip={`First load ${FOUNDATION_HISTORY_START_DAYS}d. Expand 180/${FOUNDATION_HISTORY_MAX_DAYS} only on stall/death-spiral. Not linked to training trades.`}
         />
         <StatusChip
           label="BIRTH"
@@ -349,12 +348,15 @@ export function BirthGenesisDeck({
           </TabsList>
 
           <div className="risk-envelope-tab-body">
-            <TabsContent value="charter" className="risk-envelope-tab-content">
+            <TabsContent
+              value="charter"
+              className="risk-envelope-tab-content birth-genesis-charter-tab"
+            >
               <motion.div
                 initial={reducedMotion ? false : { opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.35 }}
-                className="space-y-3"
+                className="flex min-h-0 flex-1 flex-col gap-2"
               >
                 {/* Evolution ladder lives in OnboardingShell chrome (red thread). */}
 
@@ -364,9 +366,9 @@ export function BirthGenesisDeck({
                     value={training.training_trades.toLocaleString()}
                     tip={
                       helpFor("training_trades") ??
-                      "Curriculum trade budget auto-sized for this machine (hardware / first-boot)."
+                      "Global Birth trade budget (ceiling). Not hardware-auto-sized above this cap."
                     }
-                    footnote="System-derived · not operator-editable"
+                    footnote="Budget cap · not a hardware IQ score"
                   />
                   <CharterTile
                     label="Foundation exam"
@@ -382,9 +384,9 @@ export function BirthGenesisDeck({
                     value={historyLabel}
                     tip={
                       helpFor("max_real_days") ??
-                      "Foundation start 90 calendar days; expand 180 then 365. Trade budget is a cap, not a history sizer."
+                      "Foundation start 90 calendar days; expand 180 then 365 on stall. Trade budget is a cap, not a history sizer."
                     }
-                    footnote="Start 90d · not auto-linked to trades"
+                    footnote="Start 90d · expand on stall, not at boot"
                   />
                 </div>
 
@@ -475,17 +477,21 @@ export function BirthGenesisDeck({
                             : "text-cyan-200/90"
                         }
                       >
-                        {checkpointAvailable
-                          ? "Checkpoint ready — choose one path:"
-                          : presentation.hasAttention
-                            ? "Recovery required:"
-                            : "Recovery tools:"}
+                        {presentation.physicsMissing
+                          ? "Training engine missing:"
+                          : checkpointAvailable
+                            ? "Checkpoint ready — choose one path:"
+                            : presentation.hasAttention
+                              ? "Recovery required:"
+                              : "Recovery tools:"}
                       </strong>{" "}
-                      {checkpointAvailable
-                        ? "Continue resumes training. Start clean clears curriculum (tick cache kept). Full wipe also drops tick cache."
-                        : presentation.hasAttention
-                          ? "Start clean or Full wipe below. Retry activation from the footer when the issue is clear."
-                          : "Start clean clears curriculum. Full wipe includes tick cache. Stop engine if the host is still live."}
+                      {presentation.physicsMissing
+                        ? "Run python scripts/install_birth_physics_stack.py, then retry. Do not wipe — tick cache stays valid."
+                        : checkpointAvailable
+                          ? "Continue resumes training. Start clean clears curriculum (tick cache kept). Full wipe also drops tick cache."
+                          : presentation.hasAttention
+                            ? "Start clean or Full wipe below. Retry activation from the footer when the issue is clear."
+                            : "Start clean clears curriculum. Full wipe includes tick cache. Stop engine if the host is still live."}
                     </p>
                   </div>
 
@@ -528,7 +534,7 @@ export function BirthGenesisDeck({
                       !checkpointAvailable && !engineLive && "genesis-recovery-action-grid--2",
                     )}
                   >
-                    {checkpointAvailable ? (
+                    {checkpointAvailable && !presentation.physicsMissing ? (
                       <RecoveryActionCard
                         label="Continue"
                         tip="Resume training from the last resumable checkpoint. Curriculum and stage progress are preserved."
@@ -560,6 +566,8 @@ export function BirthGenesisDeck({
                       </RecoveryActionCard>
                     ) : null}
 
+                    {presentation.physicsMissing ? null : (
+                      <>
                     <RecoveryActionCard
                       label="Start clean"
                       tip="Clear birth curriculum and start a new run. Tick cache is kept by default for faster reload."
@@ -630,6 +638,8 @@ export function BirthGenesisDeck({
                         <span>Full wipe</span>
                       </button>
                     </RecoveryActionCard>
+                      </>
+                    )}
 
                     {engineLive ? (
                       <RecoveryActionCard

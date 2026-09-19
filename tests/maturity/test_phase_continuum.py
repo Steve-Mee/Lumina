@@ -11,7 +11,9 @@ from lumina_core.maturity.advance_policy import confirm_telegram_advance, on_pha
 from lumina_core.maturity.continuum import (
     load_continuum,
     mark_phase_completed,
+    mark_phase_failed,
     next_phase_id,
+    save_continuum,
     set_advance_mode,
     set_pending_advance,
 )
@@ -20,7 +22,50 @@ from lumina_core.maturity.wipe import wipe_all_maturation, wipe_phase
 
 
 @pytest.mark.unit
-def test_next_phase_after_birth(tmp_path: Path) -> None:
+def test_failed_phase_does_not_keep_loading_message(tmp_path: Path) -> None:
+    from lumina_core.maturity.continuum import mark_phase_running
+    from lumina_core.maturity.phase_runners.common import write_phase_progress
+
+    mark_phase_completed(tmp_path, "genesis", learned={}, exit_proofs=["setup"])
+    mark_phase_completed(tmp_path, "birth", learned={}, exit_proofs=["foundation"])
+    mark_phase_running(tmp_path, "awakening", learned={"status": "starting"})
+    write_phase_progress(
+        tmp_path, "awakening", progress_pct=18.0, message="Loading frozen π* + Birth split"
+    )
+    mark_phase_failed(
+        tmp_path,
+        "awakening",
+        error="[WinError 5] Toegang geweigerd: continuum.json.tmp -> continuum.json",
+    )
+    rec = load_continuum(tmp_path)["phase_records"]["awakening"]
+    assert rec["status"] == "failed"
+    assert str(rec.get("message") or "").startswith("Failed:")
+    assert "WinError 5" in str(rec.get("message"))
+    assert "Loading frozen" not in str(rec.get("message"))
+
+
+@pytest.mark.unit
+def test_save_continuum_retries_winerror_5(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+
+    dest = tmp_path / "state" / "lumina_phase_continuum.json"
+    mark_phase_completed(tmp_path, "genesis", learned={}, exit_proofs=["setup"])
+    calls = {"n": 0}
+    real_replace = os.replace
+
+    def _flaky(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> None:
+        calls["n"] += 1
+        if Path(dst) == dest and calls["n"] < 3:
+            err = PermissionError(13, "Access is denied")
+            setattr(err, "winerror", 5)
+            raise err
+        real_replace(src, dst)
+
+    monkeypatch.setattr("lumina_core.io.atomic_fs.os.replace", _flaky)
+    save_continuum(tmp_path, load_continuum(tmp_path))
+    assert dest.is_file()
+    assert calls["n"] >= 3
+
     mark_phase_completed(tmp_path, "genesis", learned={}, exit_proofs=["setup"])
     mark_phase_completed(tmp_path, "birth", learned={"trades": 1}, exit_proofs=["birth_complete"])
     data = load_continuum(tmp_path)
@@ -79,13 +124,7 @@ def test_wipe_phase_removes_from_completed(tmp_path: Path) -> None:
     mark_phase_completed(tmp_path, "birth", learned={}, exit_proofs=[])
     mark_phase_completed(tmp_path, "awakening", learned={}, exit_proofs=[])
 
-    with patch(
-        "lumina_launcher.services.birth_service.BirthService.wipe_all_birth_data",
-        return_value={"status": "ok"},
-    ), patch(
-        "lumina_launcher.services.birth_service.BirthService.configure_workspace",
-    ):
-        result = wipe_phase(tmp_path, "awakening", confirm=True)
+    result = wipe_phase(tmp_path, "awakening", confirm=True)
     assert result["ok"] is True
     data = load_continuum(tmp_path)
     assert "awakening" not in data["completed_phases"]
@@ -100,16 +139,11 @@ def test_wipe_all_resets_to_genesis(tmp_path: Path) -> None:
     mark_phase_completed(tmp_path, "birth", learned={}, exit_proofs=[])
     mark_phase_completed(tmp_path, "awakening", learned={}, exit_proofs=[])
 
-    with patch(
-        "lumina_launcher.services.birth_service.BirthService.wipe_all_birth_data",
-        return_value={"status": "ok"},
-    ), patch(
-        "lumina_launcher.services.birth_service.BirthService.configure_workspace",
-    ):
-        result = wipe_all_maturation(tmp_path, confirm=True)
+    result = wipe_all_maturation(tmp_path, confirm=True)
     assert result["ok"] is True
     data = load_continuum(tmp_path)
     assert data["completed_phases"] == ["genesis"]
+    assert (tmp_path / "state" / "lumina_setup_complete.json").is_file()
 
 
 @pytest.mark.unit
@@ -160,44 +194,14 @@ def test_awakening_fails_without_evolution_or_twin(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_awakening_completes_with_evolution_and_twin(tmp_path: Path) -> None:
+    from tests.maturity.test_awakening_law import _write_pass_workspace
+
     mark_phase_completed(tmp_path, "genesis", learned={}, exit_proofs=[])
     mark_phase_completed(tmp_path, "birth", learned={}, exit_proofs=[])
-    state = tmp_path / "state"
-    state.mkdir(parents=True, exist_ok=True)
-    (state / "twin_mode_metrics_summary.json").write_text(
-        '{"samples": 25}', encoding="utf-8"
-    )
+    _write_pass_workspace(tmp_path)
 
     with patch(
         "lumina_core.maturity.maturation_progress.sync_maturation_from_birth_state",
-    ), patch(
-        "lumina_core.birth.evolution_proof_gate.evolution_proof_passed",
-        return_value=True,
-    ), patch(
-        "lumina_core.birth.evolution_proof_gate.load_evolution_proof_record",
-        return_value={"oos_winrate": 0.5},
-    ), patch(
-        "lumina_core.maturity.phase_runners.common.load_maturity_config",
-        return_value=MagicMock(
-            strict_exit_proofs=True,
-            experimental_soft_complete=False,
-            awakening_min_twin_samples=10,
-            playground_require_first_order=True,
-            apprenticeship_min_green_days=5,
-            proving_require_promotion_or_shadow=True,
-            apprenticeship_sim_days_probe=0,
-        ),
-    ), patch(
-        "lumina_core.maturity.phase_specs.load_maturity_config",
-        return_value=MagicMock(
-            strict_exit_proofs=True,
-            experimental_soft_complete=False,
-            awakening_min_twin_samples=10,
-            playground_require_first_order=True,
-            apprenticeship_min_green_days=5,
-            proving_require_promotion_or_shadow=True,
-            apprenticeship_sim_days_probe=0,
-        ),
     ):
         result = run_awakening(tmp_path)
     assert result["ok"] is True
@@ -211,34 +215,9 @@ def test_playground_fails_without_envelope(tmp_path: Path) -> None:
     mark_phase_completed(tmp_path, "birth", learned={}, exit_proofs=[])
     mark_phase_completed(tmp_path, "awakening", learned={}, exit_proofs=[])
 
-    with patch(
-        "lumina_core.maturity.maturation_progress.sync_maturation_from_birth_state",
-    ), patch(
-        "lumina_core.maturity.phase_specs._sim_envelope_sealed",
-        return_value=False,
-    ), patch(
-        "lumina_core.maturity.phase_runners.playground._sim_envelope_sealed",
-        return_value=False,
-    ), patch(
-        "lumina_core.maturity.phase_specs.load_maturity_config",
-        return_value=MagicMock(
-            strict_exit_proofs=True,
-            experimental_soft_complete=False,
-            awakening_min_twin_samples=10,
-            playground_require_first_order=True,
-            apprenticeship_min_green_days=5,
-            proving_require_promotion_or_shadow=True,
-            apprenticeship_sim_days_probe=0,
-        ),
-    ), patch(
-        "lumina_core.maturity.phase_runners.common.load_maturity_config",
-        return_value=MagicMock(
-            strict_exit_proofs=True,
-            experimental_soft_complete=False,
-            playground_require_first_order=True,
-        ),
-    ):
-        result = run_playground(tmp_path)
+    result = run_playground(
+        tmp_path, should_stop=lambda: True, poll_sec=0.0, sleep_fn=lambda _s: None
+    )
     assert result["ok"] is False
     assert "sim_envelope_sealed" in (result.get("missing") or [])
 
@@ -250,32 +229,7 @@ def test_apprenticeship_incomplete_without_green_streak(tmp_path: Path) -> None:
     mark_phase_completed(tmp_path, "awakening", learned={}, exit_proofs=[])
     mark_phase_completed(tmp_path, "playground", learned={}, exit_proofs=[])
 
-    cfg = MagicMock(
-        strict_exit_proofs=True,
-        experimental_soft_complete=False,
-        apprenticeship_min_green_days=5,
-        apprenticeship_sim_days=0,
-        apprenticeship_sim_days_probe=0,
-        playground_require_first_order=True,
-        proving_require_promotion_or_shadow=True,
-        awakening_min_twin_samples=10,
-    )
-    with patch(
-        "lumina_core.maturity.maturation_progress.sync_stability_milestone",
-    ), patch(
-        "lumina_core.engine.sim_stability_checker.generate_stability_report",
-        return_value={"READY_FOR_REAL": False, "consecutive_green_days": 1},
-    ), patch(
-        "lumina_core.maturity.phase_runners.common.load_maturity_config",
-        return_value=cfg,
-    ), patch(
-        "lumina_core.maturity.phase_runners.apprenticeship.cfg",
-        return_value=cfg,
-    ), patch(
-        "lumina_core.maturity.phase_specs.load_maturity_config",
-        return_value=cfg,
-    ):
-        result = run_apprenticeship(tmp_path)
+    result = run_apprenticeship(tmp_path, should_stop=lambda: True)
     assert result["ok"] is False
     assert result.get("status") == "incomplete"
     data = load_continuum(tmp_path)
@@ -283,75 +237,38 @@ def test_apprenticeship_incomplete_without_green_streak(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_apprenticeship_completes_when_ready_for_real(tmp_path: Path) -> None:
+def test_apprenticeship_ready_report_cannot_complete(tmp_path: Path) -> None:
     mark_phase_completed(tmp_path, "genesis", learned={}, exit_proofs=[])
     mark_phase_completed(tmp_path, "birth", learned={}, exit_proofs=[])
     mark_phase_completed(tmp_path, "awakening", learned={}, exit_proofs=[])
     mark_phase_completed(tmp_path, "playground", learned={}, exit_proofs=[])
-
-    cfg = MagicMock(
-        strict_exit_proofs=True,
-        experimental_soft_complete=False,
-        apprenticeship_min_green_days=5,
-        apprenticeship_sim_days=0,
-        apprenticeship_sim_days_probe=0,
-        playground_require_first_order=True,
-        proving_require_promotion_or_shadow=True,
-        awakening_min_twin_samples=10,
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "state" / "sim_stability_report.json").write_text(
+        '{"READY_FOR_REAL": true, "consecutive_green_days": 5}',
+        encoding="utf-8",
     )
-    with patch(
-        "lumina_core.maturity.maturation_progress.sync_stability_milestone",
-    ), patch(
-        "lumina_core.engine.sim_stability_checker.generate_stability_report",
-        return_value={"READY_FOR_REAL": True, "consecutive_green_days": 5},
-    ), patch(
-        "lumina_core.maturity.phase_runners.common.load_maturity_config",
-        return_value=cfg,
-    ), patch(
-        "lumina_core.maturity.phase_runners.apprenticeship.cfg",
-        return_value=cfg,
-    ), patch(
-        "lumina_core.maturity.phase_specs.load_maturity_config",
-        return_value=cfg,
-    ):
-        result = run_apprenticeship(tmp_path)
-    assert result["ok"] is True
+
+    result = run_apprenticeship(tmp_path, should_stop=lambda: True)
+    assert result["ok"] is False
     data = load_continuum(tmp_path)
-    assert "apprenticeship" in data["completed_phases"]
+    assert "apprenticeship" not in data["completed_phases"]
 
 
 @pytest.mark.unit
-def test_proving_requires_audit_pass(tmp_path: Path) -> None:
+def test_proving_without_law_cannot_complete(tmp_path: Path) -> None:
     mark_phase_completed(tmp_path, "genesis", learned={}, exit_proofs=[])
     mark_phase_completed(tmp_path, "birth", learned={}, exit_proofs=[])
     mark_phase_completed(tmp_path, "awakening", learned={}, exit_proofs=[])
     mark_phase_completed(tmp_path, "playground", learned={}, exit_proofs=[])
     mark_phase_completed(tmp_path, "apprenticeship", learned={}, exit_proofs=[])
     (tmp_path / "state").mkdir(parents=True, exist_ok=True)
-
-    cfg = MagicMock(
-        strict_exit_proofs=True,
-        experimental_soft_complete=False,
-        proving_require_promotion_or_shadow=True,
-        apprenticeship_min_green_days=5,
-        playground_require_first_order=True,
-        awakening_min_twin_samples=10,
-        apprenticeship_sim_days_probe=0,
-    )
-    with patch(
-        "lumina_core.maturity.phase_specs.load_maturity_config",
-        return_value=cfg,
-    ), patch(
-        "lumina_core.maturity.phase_runners.common.load_maturity_config",
-        return_value=cfg,
-    ):
-        result = run_proving_ground(tmp_path)
+    result = run_proving_ground(tmp_path, should_stop=lambda: True)
     assert result["ok"] is False
+    assert result.get("status") == "incomplete"
     data = load_continuum(tmp_path)
     assert "proving_ground" not in data["completed_phases"]
-    audit = tmp_path / "state" / "promotion_gate_audit.jsonl"
-    assert audit.is_file()
-    assert "insufficient_shadow_evidence" in audit.read_text(encoding="utf-8")
+    rec = (data.get("phase_records") or {}).get("proving_ground") or {}
+    assert rec.get("status") != "failed"
 
 
 @pytest.mark.unit

@@ -11,8 +11,9 @@ import {
   type SystemsProgress,
 } from "@/lib/startupSystemsOrchestrator";
 import {
-  applySystemsGoWindowSize,
+  releaseStartupCoverWindow,
   restoreDeckWindowSize,
+  retainStartupCoverWindow,
 } from "@/lib/systemsGoWindow";
 import type { OnboardingPayload } from "@/lib/onboardingSteps";
 import { useBirthStore } from "@/store/birthStore";
@@ -48,13 +49,11 @@ export function ColdStartReadiness() {
 
   useEffect(() => {
     mountedRef.current = true;
-    // Option A: hug the Systems Go card with the native window.
-    void applySystemsGoWindowSize();
+    retainStartupCoverWindow();
     return () => {
       mountedRef.current = false;
       genRef.current += 1;
-      // Safety: if cover unmounts without completeSystems, still restore deck size.
-      void restoreDeckWindowSize();
+      releaseStartupCoverWindow();
     };
   }, []);
 
@@ -273,6 +272,11 @@ export function ColdStartReadiness() {
     void runPipeline();
   };
 
+  const handleRetry = useCallback(() => {
+    ranForPayloadRef.current = null;
+    void refresh().then(() => runPipeline());
+  }, [refresh, runPipeline]);
+
   const showNtDialog = Boolean(progress?.needNtDialog);
   const showFabricChoice = Boolean(progress?.needFabricChoice);
   const showBirthRetry = Boolean(progress?.needBirthRetry);
@@ -291,10 +295,7 @@ export function ColdStartReadiness() {
       onContinueWithoutNt={handleContinueWithout}
       onRetryFabric={handleRetryFabric}
       onRetryBirth={handleRetryBirth}
-      onRetry={() => {
-        ranForPayloadRef.current = null;
-        void refresh().then(() => runPipeline());
-      }}
+      onRetry={handleRetry}
     />
   );
 }

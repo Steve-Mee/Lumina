@@ -7,10 +7,7 @@ from typing import Any
 from lumina_core.birth.config import BirthCurriculumConfig
 from lumina_core.birth.death_spiral_guard import (
     DeathSpiralState,
-    consume_novelty_budget,
     record_stall_signature,
-    reset_after_novelty,
-    should_widen_data_horizon,
 )
 from lumina_core.birth.organism_autonomy_types import (
     AutonomyDecision,
@@ -20,7 +17,6 @@ from lumina_core.birth.organism_autonomy_types import (
 from lumina_core.birth.phoenix_loop import (
     PHOENIX_CYCLE_REASON,
     PhoenixLoopState,
-    select_phoenix_novelty,
 )
 from lumina_core.logging_utils import get_logger
 
@@ -44,6 +40,8 @@ def map_recommended_to_service_action(recommended: str) -> str:
         "widen_horizon": "expand_and_retry",
         "accept_champion": "accept_champion",
         "accept_champion_or_wipe": "accept_champion",
+        "retry_stage": "retry_stage",
+        "retry_stage_or_wipe": "retry_stage",
     }.get(action, "resume_stalled_stage")
 
 
@@ -210,6 +208,8 @@ def evaluate_terminal_stall(
                 cfg=cfg,
                 autonomy_state=autonomy_state,
                 stall_reason=stall_reason,
+                pending=pending,
+                starship_context=starship_context,
             )
             if decision is not None:
                 return decision
@@ -531,65 +531,50 @@ def evaluate_terminal_stall(
                     ),
                 )
         except Exception:
-            # Never break autonomy on twin error; fall through to cfg logic
             pass
-    # ================================================================================
+    from lumina_core.birth.organism_autonomy_phoenix import (
+        expansion_horizon_exhausted,
+        try_ladder_phoenix_decision,
+    )
 
+    horizon_closed = expansion_horizon_exhausted(pending, starship_context)
+    _phoenix_reasons = {
+        "plateau_evolution_exhausted",
+        "stall_remediation_exhausted",
+        PHOENIX_CYCLE_REASON,
+    }
     if _phoenix_eligible(cfg, autonomy_state) and (
-        remediation_cycles_exhausted
-        or plateau_exhausted
-        or stall_reason
-        in {
-            "plateau_evolution_exhausted",
-            "stall_remediation_exhausted",
-            PHOENIX_CYCLE_REASON,
-        }
+        remediation_cycles_exhausted or plateau_exhausted or stall_reason in _phoenix_reasons
     ):
-        widen = should_widen_data_horizon(
-            autonomy_state.death_spiral,
-            phoenix_count=autonomy_state.phoenix.phoenix_count,
+        ladder_phoenix = try_ladder_phoenix_decision(
             cfg=cfg,
+            autonomy_state=autonomy_state,
+            stall_reason=stall_reason,
+            recommended=recommended,
+            curriculum_stage=curriculum_stage,
+            circuit_breaker=circuit_breaker,
+            pending=pending,
+            starship_context=starship_context,
         )
-        novelty = select_phoenix_novelty(
-            autonomy_state.phoenix,
-            cfg=cfg,
-            circuit_breaker=widen or circuit_breaker,
-        ).value
-        if consume_novelty_budget(autonomy_state.death_spiral) or widen:
-            reset_after_novelty(autonomy_state.death_spiral, cfg=cfg)
-            autonomy_state.autonomous_recovery_count += 1
-            service_action = map_recommended_to_service_action(
-                "widen_horizon" if novelty == "widen_horizon" else recommended
-            )
-            if novelty in {"expand_data", "widen_horizon"}:
-                service_action = "expand_and_retry"
-            metrics = autonomy_state.to_metrics()
-            metrics["phoenix_novelty"] = novelty
-            metrics["curriculum_stage"] = curriculum_stage
-            return AutonomyDecision(
-                dispatch=RecoveryDispatch.PHOENIX_RESUME,
-                needs_attention=False,
-                retryable=True,
-                stall_reason=PHOENIX_CYCLE_REASON,
-                recommended_action=service_action,
-                checkpoint_patch=None,
-                autonomy_metrics=metrics,
-                message=f"Phoenix cycle requested: {novelty}",
-            )
+        if ladder_phoenix is not None:
+            return ladder_phoenix
 
     # Explicit recovery recommendation (meta/recovery engines) — honor before hard terminal.
     if recommended:
-        autonomy_state.autonomous_recovery_count += 1
         mapped = map_recommended_to_service_action(recommended)
-        return AutonomyDecision(
-            dispatch=RecoveryDispatch.CONTINUE_LOOP,
-            needs_attention=False,
-            retryable=True,
-            stall_reason=stall_reason,
-            recommended_action=mapped,
-            autonomy_metrics=autonomy_state.to_metrics(),
-            message=f"Autonomous recovery: {recommended}",
-        )
+        if horizon_closed and mapped == "expand_and_retry":
+            mapped = ""
+        if mapped:
+            autonomy_state.autonomous_recovery_count += 1
+            return AutonomyDecision(
+                dispatch=RecoveryDispatch.CONTINUE_LOOP,
+                needs_attention=False,
+                retryable=True,
+                stall_reason=stall_reason,
+                recommended_action=mapped,
+                autonomy_metrics=autonomy_state.to_metrics(),
+                message=f"Autonomous recovery: {recommended}",
+            )
 
     ladder_exhausted = bool(plateau_exhausted) or stall_reason in {
         "plateau_evolution_exhausted",
@@ -598,7 +583,8 @@ def evaluate_terminal_stall(
     phoenix_gone = not _phoenix_eligible(cfg, autonomy_state)
 
     # Twin owns expand_data only after phoenix budget is truly gone (never wipe).
-    if ladder_exhausted and phoenix_gone:
+    # Horizon closed: expand is illegal — fall through to operator notify.
+    if ladder_exhausted and phoenix_gone and not horizon_closed:
         if approval_twin is not None:
             try:
                 from lumina_core.birth.birth_control_plane import twin_expand_data_eligible
@@ -662,7 +648,7 @@ def evaluate_terminal_stall(
                     stall_reason=stall_reason,
                     curriculum_stage=curriculum_stage,
                     fitness_signal=fitness_signal,
-                    fork="expand_data_or_wipe_genesis",
+                    fork="expand_data_or_wipe_birth",
                     twin_res=twin_res if isinstance(twin_res, dict) else {},
                     t_conf=t_conf,
                     t_risks=list(twin_res.get("risk_flags") or [])
@@ -685,7 +671,7 @@ def evaluate_terminal_stall(
         )
 
     # Soft mid-ladder stall: keep organism breathing (not terminal freeze).
-    if _phoenix_eligible(cfg, autonomy_state):
+    if _phoenix_eligible(cfg, autonomy_state) and not horizon_closed:
         autonomy_state.autonomous_recovery_count += 1
         return AutonomyDecision(
             dispatch=RecoveryDispatch.PHOENIX_RESUME,
@@ -697,6 +683,21 @@ def evaluate_terminal_stall(
             message="Autonomous resume after stall.",
         )
 
+    swarm_reject = bool(dict(starship_context or {}).get("swarm_rejected_no_lift"))
+    if horizon_closed:
+        return AutonomyDecision(
+            dispatch=RecoveryDispatch.TERMINAL_NOTIFY_ONLY,
+            needs_attention=True,
+            retryable=False,
+            stall_reason=stall_reason or PHOENIX_CYCLE_REASON,
+            recommended_action="accept_champion" if swarm_reject else "wipe_and_retry",
+            autonomy_metrics=autonomy_state.to_metrics(),
+            message=(
+                "Horizon exhausted — Twin/operator accept_champion | wipe. Geen expand."
+                if swarm_reject
+                else "Horizon exhausted — operator exception (wipe). Geen expand."
+            ),
+        )
     return AutonomyDecision(
         dispatch=RecoveryDispatch.TERMINAL_NOTIFY_ONLY,
         needs_attention=True,

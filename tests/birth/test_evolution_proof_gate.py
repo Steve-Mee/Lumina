@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -48,13 +49,24 @@ def test_evaluate_fails_insufficient_trades_and_lift() -> None:
 
 
 @pytest.mark.unit
+def test_evaluate_fails_n_133_despite_five_pp_lift() -> None:
+    result = evaluate_evolution_proof(
+        birth_exit_winrate=0.333,
+        polish_oos_winrate=0.436,
+        holdout_trades=133,
+    )
+    assert result.passed is False
+    assert any("133" in r and "500" in r for r in result.reasons)
+
+
+@pytest.mark.unit
 def test_evolution_proof_passed_fail_closed_on_missing_record(tmp_path: Path) -> None:
     assert evolution_proof_passed(tmp_path) is False
 
 
 @pytest.mark.unit
 def test_evolution_proof_passed_legacy_grandfather_opt_in(tmp_path: Path) -> None:
-    assert evolution_proof_passed(tmp_path, allow_legacy_grandfather=True) is True
+    assert evolution_proof_passed(tmp_path, allow_legacy_grandfather=True) is False
 
 
 @pytest.mark.unit
@@ -66,3 +78,5 @@ def test_record_and_evaluate_persists_state(tmp_path: Path) -> None:
     )
     assert result.passed is True
     assert evolution_proof_passed(tmp_path) is True
+    rec = json.loads((tmp_path / "state" / "lumina_evolution_proof.json").read_text(encoding="utf-8"))
+    assert rec["oos_winrate"] == rec["polish_oos_winrate"] == 0.50

@@ -20,82 +20,11 @@ class MetaDecidePeriodicMixin:
     """decide_periodic_review."""
 
     def _stage2_expectancy_quality_plan(self, snap: LearningSnapshot) -> MetaActionPlan | None:
-        """Return quality ladder plan when stall owns Stage-2; never silent-fail to thrash."""
-        from lumina_core.birth.expectancy_stall import (
-            build_expectancy_quality_meta_fields,
-            snapshot_expectancy_stall,
+        from lumina_core.birth.meta_decide_stage_quality import (
+            build_stage2_expectancy_quality_plan,
         )
 
-        from lumina_core.birth.runtime_diagnostics import log_meta_decision_trace
-
-        if not snapshot_expectancy_stall(snap, cfg=self.cfg):
-            logger.warning(
-                "birth.meta.expectancy_quality path=skip trigger=periodic reason=no_stall "
-                "trades=%s wins=%s wr_hist=%s flat=%.3f signals=%s",
-                int(getattr(snap, "stage_trades", 0) or 0),
-                int(getattr(snap, "stage_wins", 0) or 0),
-                float((getattr(snap, "winrate_history", ()) or (0.0,))[-1])
-                if getattr(snap, "winrate_history", None)
-                else 0.0,
-                float(getattr(snap, "range_flat_ratio", 0.0) or 0.0),
-                int(getattr(snap, "range_total_signals", 0) or 0),
-            )
-            return None
-        quality_step = int(getattr(snap, "expectancy_quality_step", 0) or 0)
-        if quality_step <= 0:
-            quality_step = max(0, int(getattr(snap, "escalation_level", 0) or 0))
-        edge_vr = getattr(snap, "edge_vs_random", None)
-        try:
-            edge_vr_f = float(edge_vr) if edge_vr is not None else None
-        except (TypeError, ValueError):
-            edge_vr_f = None
-        fields = build_expectancy_quality_meta_fields(
-            range_flat_ratio=float(getattr(snap, "range_flat_ratio", 0.5) or 0.5),
-            remediation_step=quality_step,
-            base_explore_steps=int(self.cfg.exploration_steps),
-            exploration_steps=int(self.cfg.exploration_steps),
-            strong_recovery_explore_fraction=float(self.cfg.strong_recovery_explore_fraction),
-            edge_vs_random=edge_vr_f,
-        )
-        secondary: list[RecoveryStrategy] = []
-        for sec in fields.get("secondary") or ():
-            try:
-                s = RecoveryStrategy(str(sec))
-            except ValueError:
-                continue
-            if s == RecoveryStrategy.EXPLORE_BOOST:
-                continue
-            secondary.append(s)
-        reward_tweak = self._apply_reward_tweak(snap)
-        if reward_tweak is not None and RecoveryStrategy.REWARD_SHAPING_TWEAK not in secondary:
-            secondary.append(RecoveryStrategy.REWARD_SHAPING_TWEAK)
-        plan = MetaActionPlan(
-            primary=RecoveryStrategy(str(fields["primary"])),
-            secondary=tuple(dict.fromkeys(secondary)),
-            explore_steps=int(fields["explore_steps"]),
-            mine=bool(fields.get("mine")),
-            reward_tweak=reward_tweak,
-            escalation_delta=int(fields.get("escalation_delta") or 1),
-            explore_steps_multiplier=max(
-                0.4, min(1.0, float(self.cfg.meta_explore_decay_stall))
-            ),
-            rationale=str(fields.get("rationale") or "stage2_expectancy_periodic"),
-            snapshot=snap,
-        )
-        log_meta_decision_trace(
-            trigger="periodic",
-            primary=plan.primary.value,
-            rationale=plan.rationale,
-            secondary=[s.value for s in plan.secondary],
-            stage=str(getattr(snap.stage, "value", snap.stage)),
-            stage_trades=int(snap.stage_trades),
-            stage_wins=int(getattr(snap, "stage_wins", 0) or 0),
-            flat=float(getattr(snap, "range_flat_ratio", 0.0) or 0.0),
-            stall=True,
-            coerced=False,
-            source="decide_periodic_quality",
-        )
-        return plan
+        return build_stage2_expectancy_quality_plan(self, snap)
 
     def decide_periodic_review(self, snap: LearningSnapshot) -> MetaActionPlan:
         if not self.enabled:
@@ -104,6 +33,12 @@ class MetaDecidePeriodicMixin:
         constitution_plan = self._constitution_remediation_plan(snap)
         if constitution_plan is not None:
             return constitution_plan
+
+        from lumina_core.birth.meta_decide_stage_quality import maybe_stage3_occupancy_plan
+
+        occ_plan = maybe_stage3_occupancy_plan(self, snap)
+        if occ_plan is not None:
+            return occ_plan
 
         # Stage-1 foundation pressure (learning target, not survival pass floor).
         try:
@@ -358,6 +293,54 @@ class MetaDecidePeriodicMixin:
                 return plan
             mine = True
             mine_aggressive = snap.pattern_quality < float(self.cfg.meta_pattern_yield_floor)
+            if (
+                snap.stage == CurriculumStage.STAGE4_VIABLE_PLANT
+                and snap.volume_gate_passed
+            ):
+                from lumina_core.birth.stage4_mean_r_meta import (
+                    stage4_mean_r_failing,
+                    stage4_mean_r_meta_fields,
+                    stage4_mean_r_reward_tweak,
+                )
+
+                if stage4_mean_r_failing(
+                    getattr(snap, "mean_r", None), getattr(snap, "e_mech", None)
+                ):
+                    fields = stage4_mean_r_meta_fields(
+                        exploration_steps=int(self.cfg.exploration_steps),
+                        strong_recovery_explore_fraction=float(
+                            self.cfg.strong_recovery_explore_fraction
+                        ),
+                    )
+                    try:
+                        reward_tweak_s4 = stage4_mean_r_reward_tweak(
+                            self.active_reward,
+                            step=float(self.cfg.meta_reward_tweak_step),
+                            cap=float(self.cfg.meta_max_expectancy_coeff),
+                        )
+                    except Exception:
+                        reward_tweak_s4 = None
+                    secondary_s4: list[RecoveryStrategy] = []
+                    for sec in fields.get("secondary") or ():
+                        try:
+                            secondary_s4.append(RecoveryStrategy(str(sec)))
+                        except ValueError:
+                            continue
+                    if reward_tweak_s4 is not None and RecoveryStrategy.REWARD_SHAPING_TWEAK not in secondary_s4:
+                        secondary_s4.append(RecoveryStrategy.REWARD_SHAPING_TWEAK)
+                    plan = MetaActionPlan(
+                        primary=RecoveryStrategy(
+                            str(fields.get("primary") or "reward_shaping_tweak")
+                        ),
+                        secondary=tuple(secondary_s4),
+                        mine=bool(fields.get("mine")),
+                        reward_tweak=reward_tweak_s4,
+                        explore_steps=int(fields.get("explore_steps") or 0) or None,
+                        rationale=str(fields.get("rationale") or "stage4_mean_r_capture"),
+                        snapshot=snap,
+                    )
+                    self._record_plan(plan)
+                    return plan
             if (
                 (
                     snap.stage == CurriculumStage.STAGE2_RANGE

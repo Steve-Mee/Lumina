@@ -269,6 +269,7 @@ describe("onboarding surface contracts", () => {
     expect(birthPhaseSource).toContain("birth-genesis-panel");
     expect(birthPhaseSource).toContain("LuminaPhaseHeader");
     expect(birthPhaseSource).toContain("resolveBirthScreenPhaseHeader");
+    expect(birthPhaseSource).toContain("resolveBirthPaintSurface");
     expect(birthPhaseSource).not.toMatch(/genesisMode[\s\S]*BirthCinematicLayout/);
     expect(birthCommandBarSource).not.toMatch(/mode === "genesis"[\s\S]*BirthControlDock/);
     expect(birthCommandBarSource).not.toContain("headline");
@@ -310,7 +311,10 @@ describe("onboarding surface contracts", () => {
     expect(birthGenesisDeckSource).toContain('value="data"');
     expect(birthGenesisDeckSource).not.toContain("genesisOpen");
     expect(birthGenesisDeckSource).not.toContain("birth-activation-title");
-    expect(birthGenesisDeckSource).toContain("stage1_winrate_pass_threshold");
+    expect(birthGenesisDeckSource).toContain("stage1_winrate_gate");
+    expect(birthGenesisDeckSource).toContain("process-R exam");
+    expect(birthGenesisDeckSource).toContain("trade cap");
+    expect(birthGenesisDeckSource).not.toContain("Gate ${");
     expect(birthGenesisDeckSource).toContain("require_real_simulator_data");
     expect(birthGenesisDeckSource).toContain("firstBootSizing");
     expect(birthGenesisDeckSource).toContain("FOUNDATION_HISTORY_START_DAYS");
@@ -324,7 +328,17 @@ describe("onboarding surface contracts", () => {
     expect(birthGenesisDeckSource).not.toContain("handleTrainingTradesChange");
     expect(birthGenesisDeckSource).toContain("GenesisMaturityGoalsPreview");
     expect(genesisMaturityLadderSource).toContain("genesis-maturity-goals");
+    expect(genesisMaturityLadderSource).toContain("Birth: Foundation 5/5");
+    expect(genesisMaturityLadderSource).toContain("Playground: skill WR");
+    expect(genesisMaturityLadderSource.indexOf("Birth: Foundation 5/5")).toBeLessThan(
+      genesisMaturityLadderSource.indexOf("Certificate OOS ≥ 48%"),
+    );
+    expect(genesisMaturityLadderSource).toContain("REAL walls");
+    expect(genesisMaturityLadderSource).toContain('aria-label="REAL maturity walls"');
+    expect(birthGenesisDeckSource).toContain("birth-genesis-charter-tab");
     expect(birthPhaseCssSource).toContain(".genesis-maturity-goals");
+    expect(birthPhaseCssSource).toContain("grid-template-columns: repeat(5, minmax(0, 1fr))");
+    expect(birthPhaseCssSource).toContain(".birth-genesis-charter-tab.risk-envelope-tab-content");
   });
 
   it("BirthGenesisDeck Recovery tab owns decision actions (not footer thrash)", () => {

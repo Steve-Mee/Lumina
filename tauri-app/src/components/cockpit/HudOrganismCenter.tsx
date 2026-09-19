@@ -1,7 +1,6 @@
 import type { CSSProperties } from "react";
 import { useState } from "react";
 
-import { useOrganismEnvelope } from "@/context/OrganismEnvelopeContext";
 import type { HudHeroPrimary } from "@/lib/hudSignalLayout";
 import type { TradingMode } from "@/store/coreStore";
 import { cn } from "@/lib/utils";
@@ -25,9 +24,9 @@ export function HudOrganismCenter({
   onActivate,
   className,
 }: HudOrganismCenterProps) {
-  const envelope = useOrganismEnvelope();
   const [focused, setFocused] = useState(false);
-  const fill = Math.min(1, Math.max(0.2, vitality * (0.75 + envelope * 0.25)));
+  const fillBase = Math.min(1, Math.max(0.2, vitality * 0.75));
+  const fillGain = Math.min(1, Math.max(0, vitality * 0.25));
 
   return (
     <button
@@ -55,7 +54,11 @@ export function HudOrganismCenter({
       <span
         className="hud-organism-center__pulse"
         aria-hidden
-        style={{ "--hud-pulse-fill": fill } as CSSProperties}
+        style={
+          {
+            "--hud-pulse-fill": `calc(${fillBase} + ${fillGain} * var(--organism-envelope, 0.5))`,
+          } as CSSProperties
+        }
       >
         <span className="hud-organism-center__ring" />
         <span className="hud-organism-center__core" />

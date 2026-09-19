@@ -19,9 +19,13 @@ logger = get_logger("lumina.rl.ppo")
 
 def _sb3_ppo_load(path: str | Path) -> Any | None:
     try:
-        from stable_baselines3 import PPO
+        from lumina_core.birth.physics_preflight import import_sb3_ppo
 
-        return PPO.load(str(path))
+        return import_sb3_ppo().load(str(path))
+    except ModuleNotFoundError:
+        raise
+    except RuntimeError:
+        raise
     except Exception:
         logging.exception("Unhandled broad exception fallback in lumina_core/ppo_trainer.py:19")
         return None
@@ -116,12 +120,16 @@ class PPOTrainerEvalMixin:
 
 
     def _resolve_intelligence_tier(self) -> str:
+        """Lungs knobs from CUDA/VRAM profile — never Voice RAM-tier."""
         try:
-            from lumina_core.adaptive_intelligence import AdaptiveIntelligenceManager
+            from lumina_core.hardware_intelligence import get_or_create_hardware_profile
 
-            tier = str(AdaptiveIntelligenceManager().get_status().tier or "standard").strip().lower()
-            if tier in {"high", "standard", "light"}:
-                return tier
+            payload = get_or_create_hardware_profile()
+            profile = str(payload.get("profile") or "").strip().lower()
+            if profile == "gpu_accelerated":
+                return "standard"
+            if profile == "cpu_efficient":
+                return "light"
         except Exception:
             self.logger.debug("ppo.intelligence_tier_fallback", exc_info=True)
         return "standard"
@@ -195,8 +203,9 @@ class PPOTrainerEvalMixin:
             if active is not None:
                 return active
 
-        from stable_baselines3 import PPO
+        from lumina_core.birth.physics_preflight import import_sb3_ppo
 
+        PPO = import_sb3_ppo()
         hyperparams = self._get_training_hyperparams(birth_phase=True)
         env = self._bootstrap_birth_env()
         model = PPO(

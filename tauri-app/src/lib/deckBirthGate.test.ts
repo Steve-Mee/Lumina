@@ -48,6 +48,16 @@ describe("deckBirthGate", () => {
     ).toBe("incomplete");
   });
 
+  it("does not treat theater progress_pct as a live run", () => {
+    expect(
+      resolveDeckBirthGate({
+        status: "completed",
+        artifacts_ok: true,
+        progress: { progress_pct: 79.5, stage: "training_running" },
+      }),
+    ).toBe("incomplete");
+  });
+
   it("returns incomplete for completed status without artifacts", () => {
     expect(
       resolveDeckBirthGate({

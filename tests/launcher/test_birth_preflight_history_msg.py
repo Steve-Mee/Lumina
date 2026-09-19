@@ -149,6 +149,10 @@ def test_start_rejects_when_history_preflight_fails(tmp_path: Path, monkeypatch:
         return False, "Fabric connect failed for historical data"
 
     monkeypatch.setattr(start_mod, "preflight_historical_data", _fail_preflight)
+    monkeypatch.setattr(
+        "lumina_core.birth.physics_preflight.enforce_birth_physics",
+        lambda *_a, **_k: None,
+    )
     monkeypatch.setattr(start_mod, "launcher_setup_status", lambda _svc: {"ok": True})
     monkeypatch.setattr(start_mod, "adaptive_intelligence_status", lambda _svc: {"tier": "light"})
 

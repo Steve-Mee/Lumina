@@ -79,7 +79,9 @@ class StageLoopDataCacheMixin(StageLoopMixinBase):
         return f"oracle distill (removed {removed} low-reward trajectories)"
 
     def _mine_and_inject(self, *, aggressive: bool = False) -> int:
-        """Mine oracle patterns into buffer. Returns number of patterns found this call."""
+        if getattr(self, "_foundation_eval_only", False):
+            return 0
+        self._oracle_scan_heartbeat()
         if self.current_intra_sample_pool:
             pool = list(self.current_intra_sample_pool)
         elif len(self.active_train) > len(self.active_stage_ticks):
@@ -288,7 +290,7 @@ class StageLoopDataCacheMixin(StageLoopMixinBase):
         )
 
     def _maybe_expand_data(self) -> bool:
-        if self.data_exhausted:
+        if self.data_exhausted or getattr(self, "_foundation_eval_only", False):
             return False
         max_days = int(self.host.birth_config.max_real_days)
         steps = clamp_expansion_steps(

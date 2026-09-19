@@ -26,6 +26,14 @@ namespace Lumina.Execution.Fabric.Safety
                 return false;
             }
 
+            var clientId = cmd.ClientOrderId ?? "";
+            if (clientId.StartsWith("diag-", StringComparison.OrdinalIgnoreCase) ||
+                clientId.StartsWith("diag_", StringComparison.OrdinalIgnoreCase))
+            {
+                reason = "diagnostic_probe_forbidden";
+                return false;
+            }
+
             if (_config.MaxPositionSize > 0 && cmd.Quantity > _config.MaxPositionSize)
             {
                 reason = $"max_position_size:{_config.MaxPositionSize}";

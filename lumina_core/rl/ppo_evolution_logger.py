@@ -5,21 +5,42 @@ from __future__ import annotations
 import asyncio
 import json
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
 from lumina_core.logging_utils import _append_jsonl, resolve_monitoring_state_dir
 
-try:
-    from stable_baselines3.common.callbacks import BaseCallback
-except ImportError:  # pragma: no cover
-    BaseCallback = object  # type: ignore[misc, assignment]
-
 ROLLING_WINDOW = 5000
+
+_LIVE_LOGGER_TYPE: type[Any] | None = None
+_LIVE_LOGGER_BASE: type[Any] | None = None
+
+
+def _require_sb3_base_callback() -> type[Any]:
+    from lumina_core.birth.physics_preflight import require_sb3_base_callback
+
+    return require_sb3_base_callback()
+
+
+def _live_logger_type(origin: type[Any]) -> type[Any]:
+    """Bind SB3 BaseCallback at construction time, not at import.
+
+    Import-time ``BaseCallback = object`` is process-lifetime poison: a backend
+    that loaded this module before the physics stack was installed keeps failing
+    even after ``pip install`` in the same interpreter.
+    """
+    global _LIVE_LOGGER_TYPE, _LIVE_LOGGER_BASE
+    base = _require_sb3_base_callback()
+    if _LIVE_LOGGER_TYPE is not None and _LIVE_LOGGER_BASE is base:
+        return _LIVE_LOGGER_TYPE
+    _LIVE_LOGGER_BASE = base
+    _LIVE_LOGGER_TYPE = type(origin.__name__, (origin, base), {})
+    return _LIVE_LOGGER_TYPE
 
 
 @dataclass
@@ -129,8 +150,19 @@ def _broadcast_entry_async(payload_json: str) -> None:
         return
 
 
-class PPOEvolutionLogger(BaseCallback):
+class PPOEvolutionLogger:
     """Logs rich PPO training metrics to JSONL and optionally broadcasts live."""
+
+    num_timesteps: int
+    model: Any
+    locals: dict[str, Any]
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> PPOEvolutionLogger:
+        del args, kwargs
+        if cls is not PPOEvolutionLogger:
+            return super().__new__(cls)
+        live = _live_logger_type(cls)
+        return object.__new__(live)
 
     def __init__(
         self,
@@ -138,12 +170,9 @@ class PPOEvolutionLogger(BaseCallback):
         log_interval: int = 5000,
         verbose: int = 0,
     ) -> None:
-        if BaseCallback is object:
-            raise RuntimeError(
-                "stable-baselines3 is required for PPOEvolutionLogger. "
-                "Install with: pip install stable-baselines3"
-            )
-        super().__init__(verbose)
+        base = _LIVE_LOGGER_BASE or _require_sb3_base_callback()
+        initializer = cast(Callable[..., None], getattr(base, "__init__"))
+        initializer(self, verbose)
         default_path = resolve_monitoring_state_dir() / "ppo_training_log.jsonl"
         self.log_path = Path(log_path) if log_path is not None else default_path
         self.log_path.parent.mkdir(parents=True, exist_ok=True)

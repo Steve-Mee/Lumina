@@ -3,6 +3,7 @@
 export * from "@/lib/birth/birthMilestones";
 export * from "@/lib/birth/birthStatusPredicates";
 export * from "@/lib/birth/birthProgressExtract";
+export * from "@/lib/birth/birthProgressTruth";
 export * from "@/lib/birth/birthSessionHud";
 export * from "@/lib/birth/birthStageScorecard";
 export * from "@/lib/birth/birthActiveProgress";

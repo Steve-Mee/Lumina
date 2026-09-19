@@ -66,11 +66,27 @@ def resolve_terminal_birth_status(progress: Dict[str, Any] | None) -> tuple[str,
         return ("paused", message)
 
     if phase == "stage_stalled" or stage_name == "stage_stalled":
-        message = str(
-            progress.get("pass_reason")
-            or progress.get("message")
-            or "Curriculum stage stalled — metrics did not converge."
+        freeze = progress.get("terminal_freeze")
+        freeze_active = (
+            isinstance(freeze, dict)
+            and str(freeze.get("schema") or "") == "terminal_freeze_v1"
+            and freeze.get("resolved") is not True
+            and str(freeze.get("reason") or "").strip()
         )
+        pass_reason = str(progress.get("pass_reason") or "").strip()
+        hollow_pass = "None" in pass_reason or "days=0" in pass_reason
+        if freeze_active:
+            message = str(
+                progress.get("message")
+                or progress.get("attention_summary")
+                or f"Terminal freeze: {freeze.get('reason')}"
+            )
+        else:
+            message = str(
+                (None if hollow_pass else pass_reason)
+                or progress.get("message")
+                or "Curriculum stage stalled — metrics did not converge."
+            )
         return ("stage_stalled", message)
 
     if phase == "error" or stage_name == "error":

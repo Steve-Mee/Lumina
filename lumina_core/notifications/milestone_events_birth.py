@@ -43,8 +43,14 @@ def history_loaded_event(
     tick_count: int,
     real_data_pct: float,
     max_real_days: int = 0,
+    actual_calendar_days: int | None = None,
 ) -> MilestoneEvent:
-    days_part = f"{int(max_real_days)} dagen, " if max_real_days > 0 else ""
+    """Operator copy uses actual calendar days from the tick manifest, not the ceiling."""
+    if actual_calendar_days is not None:
+        days = max(0, int(actual_calendar_days))
+    else:
+        days = max(0, int(max_real_days or 0))
+    days_part = f"{days} dagen, " if days > 0 else ""
     return MilestoneEvent(
         milestone_id="history_loaded",
         category=MilestoneCategory.BIRTH,
@@ -56,6 +62,8 @@ def history_loaded_event(
         context={
             "tick_count": int(tick_count),
             "real_data_pct": f"{float(real_data_pct):.1f}%",
+            "actual_calendar_days": days,
+            "max_real_days": int(max_real_days or 0),
         },
     )
 

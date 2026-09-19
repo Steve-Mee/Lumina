@@ -23,7 +23,7 @@
    - deploys `Lumina.Fabric.NtBridge` + source AddOn to the real My Documents Custom folder
    - closes NinjaTrader if files are locked, rebuilds integration when possible
    - restarts NT, waits for the bridge, runs dual-plane diagnostic
-4. Connection must be **GREEN** (orders **and** historical bars) before Genesis.
+4. Connection must be **GREEN** (auth **and** historical bars) before Genesis. Diagnostics **never** place or flatten NT orders.
 5. If RED/AMBER: click **Repair NinjaTrader connection** (same pipeline — no manual file renames).
 6. CrossTrade is **optional emergency fallback only**.
 
@@ -39,13 +39,15 @@ On NinjaTrader update/reinstall: open Setup and click **Repair NinjaTrader conne
 ## Dual-plane health (Execution + Market Data) — mandatory
 
 GREEN means **both** planes are proven. Execution-only green lights are **invalid**.
+Startup / Test connection / Repair **must not** submit, flatten, or cancel NT orders.
 
 | Plane | What is checked | Host required |
 |-------|-----------------|---------------|
-| **Execution** | token, port, auth, place, flatten, SAFE_MODE | SimHost **or** NT8 AddOn |
+| **Execution** | token, port, auth, auth_reject (wrong token) | SimHost **or** NT8 AddOn |
 | **Market data** | `historical_bars` via Fabric `RequestHistoricalData` (≥10 real bars) | **NT8 AddOn only** (native BarsRequest) |
 
-Critical check IDs include `historical_bars`. Failures:
+Critical check IDs: `token_present`, `port_listen`, `auth_ok`, `auth_reject`, `historical_bars`.
+`place_order` / `flatten` / `SAFE_MODE` probes are **disabled** (skip). Failures:
 
 | Code | Meaning | Fix |
 |------|---------|-----|
@@ -54,7 +56,7 @@ Critical check IDs include `historical_bars`. Failures:
 | `INSTRUMENT_NOT_FOUND` | Symbol not in NT | Use NT format e.g. `MES 09-26` or config `MES SEP26` |
 | `HISTORICAL_TIMEOUT` | BarsRequest hung | Data provider disconnected / NT busy |
 
-**SimHost is execution-only.** It will keep place/flatten GREEN but must leave **historical_bars RED**. That is correct fail-closed behaviour — never treat SimHost as “native coupling OK”.
+**SimHost is execution-only.** Auth may pass on SimHost but `historical_bars` stays **RED**. That is correct fail-closed behaviour — never treat SimHost as “native coupling OK”.
 
 NinjaScript Output must show:
 
@@ -214,7 +216,8 @@ On **Sim101**, capital preservation is **not** the learning bottleneck: the orga
 - localhost bind + shared token
 - `MaxPositionSize` / rate limits (config)
 - SAFE_MODE + cancel-on-disconnect
-- **empty-book flatten skip** for diagnostic thrash (no wipe when no positions/orders)
+- **empty-book flatten skip** on heartbeat timeout (no wipe when no positions/orders)
+- Diagnostic / Systems Go / Test connection **never** place or flatten
 - REAL / non-Sim account place remains fail-closed pending promotion ADR
 
 `DailyLossLimit` default `0` = disabled on SIM (optional operator set in `fabric.json`).
@@ -232,9 +235,10 @@ On **Sim101**, capital preservation is **not** the learning bottleneck: the orga
 
 ## Disconnect matrix (operator view)
 
-1. **Heartbeat timeout** → cancel non-protected → SAFE_MODE → after `FlattenGraceMs` emergency flatten (if enabled)
-2. **Stream disconnect** → same cancel policy when no sessions remain
-3. **Reconnect** → Auth + **StateSync** snapshot; Brain reconciles `state_hash`
+1. **NT start / Repair / Test connection** → watchdog stays **disarmed** until AuthHello **and** a live heartbeat. No cancel, no flatten, no `Name='Close'` orders. Audit: `watchdog_idle_unarmed`.
+2. **Heartbeat timeout after live heartbeats** → cancel non-protected (never NT `Close` / flatten orders) → SAFE_MODE → after `FlattenGraceMs` flatten **only instruments this process placed**. Leftover positions from earlier days are untouched. Never `Account.FlattenEverything()`.
+3. **Stream disconnect** → cancel policy only if the watchdog is armed (a probe AuthHello that disconnects does nothing to the book).
+4. **Reconnect** → Auth + **StateSync** snapshot; Brain reconciles `state_hash`. Heartbeats re-arm.
 
 ## Protected orders
 

@@ -25,6 +25,12 @@ reports/*
 !reports/birth_cloud_run/**
 reports/birth_cloud_run/workspace/state/lumina_birth_ticks_cache.jsonl
 reports/birth_cloud_run/workspace/state/lumina_birth_split_cache.json
+# Live operator exam dumps (named experiment ledgers stay tracked)
+reports/birth_cloud_run/artifacts/s5_close_ledger.jsonl
+reports/birth_cloud_run/artifacts/s5_close_ledger.sha256
+# Live Awakening incumbent / holdout (local operator exam — never publish)
+reports/birth_cloud_run/artifacts/awakening_live_*
+reports/birth_cloud_run/artifacts/awakening_incumbent_pi_star.zip
 !reports/genesis_cloud_run/
 !reports/genesis_cloud_run/**
 reports/genesis_cloud_run/workspace/
@@ -150,8 +156,10 @@ secrets.json
 credentials.json
 # Fabric / NT8 local install artifacts (compiled AddOn deploy output)
 integrations/ninjatrader8/deploy/
-# Local operator overrides (machine-specific broker/models/hardware)
+# Local operator overrides (machine-specific broker/models/hardware).
+# Tracked config.yaml is product SSOT — never commit hardware_profile / model / ctx drift.
 config.yaml.local
+config.yaml.pre_*.bak
 state/launcher_admin_password.json
 scripts/state/launcher_admin_password.json
 state/hardware_snapshot.json
@@ -211,6 +219,9 @@ lumina_analyse._*
 # Birth-engine integration scratch (canonical code lives in ppo_trainer.py + lumina_birth_engine.py)
 lumina_core/ppo_trainer_birth_extensions.py
 LUMINA_BIRTH_ENGINE_INTEGRATION_GUIDE.md
+
+# Machine-only Cursor/Grok agent briefs — not product, never commit
+LUMINA_CURSOR_*_PROMPT.md
 
 # Local reset snapshots (blank-state script); never commit
 backups/

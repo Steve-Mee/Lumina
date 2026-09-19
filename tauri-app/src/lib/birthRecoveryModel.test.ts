@@ -10,6 +10,25 @@ import {
 } from "@/lib/birthRecoveryModel";
 
 describe("verifyBirthWipeSucceeded", () => {
+  it("accepts leftover stage_stalled poll when API already confirmed wipe", () => {
+    const result = verifyBirthWipeSucceeded({
+      apiStatus: "wiped",
+      apiCheckpointResumable: false,
+      polledStatus: {
+        status: "stage_stalled",
+        checkpoint_resumable: false,
+        progress: {
+          terminal_freeze: {
+            schema: "terminal_freeze_v1",
+            reason: "phoenix_cycle",
+            resolved: false,
+          },
+        },
+      } as BirthStatusPayload,
+    });
+    expect(result.ok).toBe(true);
+  });
+
   it("accepts stale running poll when API already confirmed wipe", () => {
     const result = verifyBirthWipeSucceeded({
       apiStatus: "wiped",
@@ -33,6 +52,37 @@ describe("verifyBirthWipeSucceeded", () => {
       },
     } as BirthStatusPayload);
     expect(ok).toBe(true);
+  });
+
+  it("does not auto-resume champion freeze / unresolved phoenix freeze", () => {
+    expect(
+      shouldAutoResumeBirth({
+        status: "stage_stalled",
+        progress: {
+          phase: "stage_stalled",
+          terminal_stall_reason: "phoenix_cycle",
+          retryable: true,
+          needs_attention: true,
+          swarm_rejected_no_lift: true,
+          terminal_freeze: {
+            schema: "terminal_freeze_v1",
+            reason: "phoenix_cycle",
+            resolved: false,
+            next_action: "accept_champion_or_wipe",
+          },
+        },
+      } as BirthStatusPayload),
+    ).toBe(false);
+    expect(
+      shouldAutoResumeBirth({
+        status: "stage_stalled",
+        progress: {
+          phase: "stage_stalled",
+          terminal_stall_reason: "phoenix_cycle",
+          retryable: false,
+        },
+      } as BirthStatusPayload),
+    ).toBe(false);
   });
 
   it("does not auto-resume interrupted sessions — operator chooses Resume/Wipe", () => {

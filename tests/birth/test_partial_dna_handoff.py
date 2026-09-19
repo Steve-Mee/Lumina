@@ -32,3 +32,6 @@ def test_register_partial_birth_dna_seeds_gen0(tmp_path: Path) -> None:
     content = dna.content if isinstance(dna.content, dict) else json.loads(dna.content)
     assert content.get("graduation_tier") == "provisional"
     assert float(dna.fitness_score) >= 0.38
+    assert content.get("oos_sharpe") is None
+    assert content.get("fitness_kind") == "winrate_proxy"
+    assert float(content.get("oos_winrate") or 0) == pytest.approx(0.38)

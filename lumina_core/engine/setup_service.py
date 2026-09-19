@@ -109,8 +109,21 @@ class SetupService:
         self._setup_complete_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def install_runtime_dependencies(self) -> SetupStepResult:
-        command = [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"]
-        return self._run_step("runtime_dependencies", command, "Python runtime packages installed")
+        command = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-r",
+            "requirements-core.txt",
+            "-r",
+            "requirements-trading.txt",
+        ]
+        return self._run_step(
+            "runtime_dependencies",
+            command,
+            "Python runtime packages installed (core+trading; physics and vLLM are separate)",
+        )
 
     def install_launcher_dependencies(self) -> SetupStepResult:
         packages = ["pandas", "requests", "pyyaml", "psutil", "ollama"]
@@ -155,7 +168,11 @@ class SetupService:
             inference = {}
             payload["inference"] = inference
         inference["primary_provider"] = model.recommended_provider
-        inference["provider_order"] = self._build_provider_order(model.recommended_provider)
+        inference["provider_order"] = self._build_provider_order(
+            model.recommended_provider,
+            os_name=hardware.os_name,
+            vllm_supported=hardware.vllm_supported,
+        )
         ollama = payload.setdefault("ollama", {})
         if not isinstance(ollama, dict):
             ollama = {}
@@ -194,11 +211,33 @@ class SetupService:
         return ModelCatalog()
 
     @staticmethod
-    def _build_provider_order(primary: str) -> list[str]:
-        order = [primary]
-        for provider in ["vllm", "ollama", "grok_remote"]:
-            if provider not in order:
-                order.append(provider)
+    def _build_provider_order(
+        primary: str,
+        *,
+        os_name: str = "",
+        vllm_supported: bool = False,
+        vllm_health_ok: bool = False,
+    ) -> list[str]:
+        from lumina_core.intelligence.organs import default_provider_order, is_windows
+
+        if is_windows(os_name or platform.system()) or not vllm_supported:
+            order = default_provider_order(
+                os_name=os_name or platform.system(),
+                vllm_supported=False,
+                vllm_health_ok=False,
+            )
+        else:
+            order = default_provider_order(
+                os_name=os_name or platform.system(),
+                vllm_supported=True,
+                vllm_health_ok=vllm_health_ok,
+            )
+        if primary in order:
+            return [primary, *[item for item in order if item != primary]]
+        if primary == "vllm" and is_windows(os_name or platform.system()):
+            return order
+        if primary and primary not in order:
+            return [primary, *order]
         return order
 
     def _run_step(self, name: str, command: list[str], success_message: str) -> SetupStepResult:

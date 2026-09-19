@@ -29,9 +29,9 @@ async def start_birth(
     skip_live_fabric = False
     if reuse_data is True:
         try:
-            from lumina_core.birth.tick_cache_persist import certified_tick_cache_present
+            from lumina_core.birth.tick_cache_persist import ensure_certified_tick_cache
 
-            skip_live_fabric = certified_tick_cache_present(birth_service.workspace_root)
+            skip_live_fabric = ensure_certified_tick_cache(birth_service.workspace_root)
         except Exception:
             skip_live_fabric = False
     if not skip_live_fabric:
@@ -178,6 +178,13 @@ async def resume_stalled_stage(
 ) -> dict[str, Any]:
     """Resume curriculum from stage_stalled without wiping checkpoint."""
     result = birth_service.resume_stalled_stage(target_trades=target_trades)
+    return _enrich_status(_merge_start_result(result))
+
+async def retry_current_stage(
+    target_trades: int | None = Query(None, ge=1000, le=5_000_000),
+) -> dict[str, Any]:
+    """Reset the current-stage sample (keep S1/S2 + tape) and resume. No expand."""
+    result = birth_service.retry_current_stage(target_trades=target_trades)
     return _enrich_status(_merge_start_result(result))
 
 async def expand_and_retry_stalled_stage(

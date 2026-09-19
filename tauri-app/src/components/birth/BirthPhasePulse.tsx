@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import type { BirthMilestone } from "@/lib/birthPhaseModel";
 import type { BirthProgressPayload } from "@/lib/birthClient";
 import { BIRTH_MILESTONE_ORDER } from "@/lib/birthPhaseModel";
+import { curriculumStagesPassedFill } from "@/lib/birth/birthProgressTruth";
 import { cn } from "@/lib/utils";
 
 interface BirthPhasePulseProps {
@@ -16,8 +17,8 @@ function resolvePulseFill(
   milestones: BirthMilestone[],
   progress?: BirthProgressPayload,
 ): number {
-  if (progress?.progress_pct != null) {
-    return Math.min(1, Math.max(0, progress.progress_pct / 100));
+  if (progress?.stages_passed != null || progress?.curriculum_stage) {
+    return curriculumStagesPassedFill(progress) / 100;
   }
   const activeIndex = milestones.findIndex((m) => m.state === "active");
   const completed = milestones.filter((m) => m.state === "complete").length;
@@ -47,7 +48,9 @@ export function BirthPhasePulse({
     >
       <span className="birth-phase-pulse__ring" />
       <span className="birth-phase-pulse__core" />
-      <span className="sr-only">Birth phase {Math.round(fill * 100)} percent</span>
+      <span className="sr-only">
+        {`${Math.round(fill * 5)} of 5 stages passed`}
+      </span>
     </div>
   );
 }

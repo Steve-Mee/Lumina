@@ -22,8 +22,8 @@ logger = get_logger("lumina.maturity.service")
 class MaturityService:
     _instance: MaturityService | None = None
 
-    def __init__(self) -> None:
-        self.workspace_root = Path.cwd()
+    def __init__(self, workspace_root: Path | str | None = None) -> None:
+        self.workspace_root = Path(workspace_root) if workspace_root is not None else Path.cwd()
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
         self._last_result: dict[str, Any] | None = None
@@ -43,9 +43,47 @@ class MaturityService:
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
+    def heal_continuum_from_birth_exit(self) -> dict[str, Any]:
+        """Checkpoint Birth onto continuum from Foundation exit SSOT — not certificate."""
+        try:
+            from lumina_core.maturity.birth_exit import is_birth_exit_sufficient
+
+            if not is_birth_exit_sufficient(self.workspace_root):
+                return {"ok": False, "reason": "birth_exit_insufficient"}
+            data = load_continuum(self.workspace_root)
+            if "birth" in set(data.get("completed_phases") or []):
+                return {"ok": True, "already_complete": True}
+            return self.mark_birth_complete_from_artifacts()
+        except Exception as exc:
+            logger.warning("maturity.heal_continuum_from_birth_exit_failed: %s", exc)
+            return {"ok": False, "error": str(exc)}
+
     def get_hub(self) -> dict[str, Any]:
-        # Ensure continuum exists / migrated
-        load_continuum(self.workspace_root)
+        self.heal_continuum_from_birth_exit()
+        try:
+            from lumina_core.maturity.awakening.heal import heal_awakening_from_law
+
+            heal_awakening_from_law(self.workspace_root)
+        except Exception as exc:
+            logger.warning("maturity.heal_awakening_failed: %s", exc)
+        try:
+            from lumina_core.maturity.playground.heal import heal_playground_from_law
+
+            heal_playground_from_law(self.workspace_root)
+        except Exception as exc:
+            logger.warning("maturity.heal_playground_failed: %s", exc)
+        try:
+            from lumina_core.maturity.apprenticeship.heal import heal_apprenticeship_from_law
+
+            heal_apprenticeship_from_law(self.workspace_root)
+        except Exception as exc:
+            logger.warning("maturity.heal_apprenticeship_failed: %s", exc)
+        try:
+            from lumina_core.maturity.proving_ground.heal import heal_proving_ground_from_law
+
+            heal_proving_ground_from_law(self.workspace_root)
+        except Exception as exc:
+            logger.warning("maturity.heal_proving_ground_failed: %s", exc)
         hub = hub_payload(self.workspace_root)
         hub["runner_active"] = self.is_running()
         hub["last_result"] = self._last_result
@@ -81,6 +119,14 @@ class MaturityService:
             self._error = None
             self._last_result = None
             self._stop_requested.clear()
+            if phase in {"awakening", "playground", "apprenticeship", "proving_ground"}:
+                from lumina_core.maturity.continuum import mark_phase_running
+
+                mark_phase_running(
+                    self.workspace_root,
+                    phase,
+                    learned={"status": "starting"},
+                )
 
             def _run() -> None:
                 try:
@@ -127,6 +173,73 @@ class MaturityService:
             self._thread.start()
         return {"ok": True, "status": "started", "phase": phase}
 
+    def awakening_progress(self) -> dict[str, Any]:
+        """Operator snapshot: HUD pass_now ≡ engine AND (ADR-0049)."""
+        from lumina_core.maturity.awakening.law import evaluate_awakening_exit
+        from lumina_core.maturity.awakening.progress import load_awakening_progress
+
+        ok, missing, learned = evaluate_awakening_exit(self.workspace_root)
+        return {
+            "ok": True,
+            "pass_now": ok,
+            "missing": missing,
+            "learned": learned,
+            "progress": load_awakening_progress(self.workspace_root),
+            "runner_active": self.is_running(),
+        }
+
+    def playground_progress(self) -> dict[str, Any]:
+        """Operator snapshot: HUD pass_now ≡ engine AND (ADR-0050)."""
+        from lumina_core.maturity.playground.law import evaluate_playground_exit
+        from lumina_core.maturity.playground.progress import load_playground_progress
+
+        ok, missing, learned = evaluate_playground_exit(self.workspace_root)
+        return {
+            "ok": True,
+            "pass_now": ok,
+            "missing": missing,
+            "learned": learned,
+            "progress": load_playground_progress(self.workspace_root),
+            "runner_active": self.is_running(),
+        }
+
+    def mark_playground_deck_live(self) -> dict[str, Any]:
+        """Operator opened Command Deck — the only honest deck_live source."""
+        from lumina_core.maturity.playground.progress import merge_playground_progress
+
+        merge_playground_progress(self.workspace_root, {"deck_live": True})
+        return self.playground_progress()
+
+    def apprenticeship_progress(self) -> dict[str, Any]:
+        """Operator snapshot: HUD pass_now ≡ engine AND (ADR-0051)."""
+        from lumina_core.maturity.apprenticeship.law import evaluate_apprenticeship_exit
+        from lumina_core.maturity.apprenticeship.progress import load_apprenticeship_progress
+
+        ok, missing, learned = evaluate_apprenticeship_exit(self.workspace_root)
+        return {
+            "ok": True,
+            "pass_now": ok,
+            "missing": missing,
+            "learned": learned,
+            "progress": load_apprenticeship_progress(self.workspace_root),
+            "runner_active": self.is_running(),
+        }
+
+    def proving_ground_progress(self) -> dict[str, Any]:
+        """Operator snapshot: HUD pass_now ≡ engine AND (ADR-0052)."""
+        from lumina_core.maturity.proving_ground.law import evaluate_proving_ground_exit
+        from lumina_core.maturity.proving_ground.progress import load_proving_ground_progress
+
+        ok, missing, learned = evaluate_proving_ground_exit(self.workspace_root)
+        return {
+            "ok": True,
+            "pass_now": ok,
+            "missing": missing,
+            "learned": learned,
+            "progress": load_proving_ground_progress(self.workspace_root),
+            "runner_active": self.is_running(),
+        }
+
     def stop_phase(self) -> dict[str, Any]:
         self._stop_requested.set()
         return {
@@ -136,10 +249,19 @@ class MaturityService:
             "message": "Stop requested; active runner finishes current step then halts chaining",
         }
 
+    def _halt_runner_for_wipe(self) -> None:
+        self._stop_requested.set()
+        self._last_result = None
+        self._error = None
+
     def wipe_phase(self, phase: str, *, confirm: bool) -> dict[str, Any]:
+        if confirm:
+            self._halt_runner_for_wipe()
         return wipe_phase(self.workspace_root, phase, confirm=confirm)
 
     def wipe_all(self, *, confirm: bool) -> dict[str, Any]:
+        if confirm:
+            self._halt_runner_for_wipe()
         return wipe_all_maturation(self.workspace_root, confirm=confirm)
 
     def advance(self, *, confirm: bool = True, telegram_token: str | None = None) -> dict[str, Any]:

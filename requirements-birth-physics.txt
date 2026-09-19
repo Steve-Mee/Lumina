@@ -1,0 +1,15 @@
+# Birth PPO physics stack — Windows-safe subset.
+# NEVER install this via `pip install -r requirements-ml.txt` on Windows:
+# that file pulls vLLM (Linux-only) and can abort before torch/SB3 land.
+#
+# Use: python scripts/install_birth_physics_stack.py
+# That script selects a CUDA wheel when nvidia-smi is present (cu128+).
+#
+# Do not add vllm, ray[serve], or compressed-tensors here.
+
+# torch is installed by scripts/install_birth_physics_stack.py (CUDA index on NVIDIA).
+# torch==2.11.0
+stable_baselines3==2.8.0
+gymnasium==1.2.3
+Farama-Notifications==0.0.4
+numpy==2.3.5

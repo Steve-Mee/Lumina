@@ -94,3 +94,46 @@ def test_certificate_file_alone_is_not_exit(tmp_path: Path) -> None:
     d = evaluate_birth_exit(tmp_path)
     assert d.exited is False
     assert "foundation_five_receipts_v2" in d.missing
+
+
+def test_genesis_exit_proofs_from_setup_or_signed(tmp_path: Path) -> None:
+    from lumina_core.maturity.maturation_progress import record_maturation_milestone
+    from lumina_core.maturity.phase_specs import evaluate_exit_proofs, hub_payload
+
+    ok, missing, learned = evaluate_exit_proofs(tmp_path, "genesis")
+    assert ok is False
+    assert missing == ["genesis_contract_signed"]
+    assert "unknown_phase" not in missing
+
+    state = tmp_path / "state"
+    state.mkdir(parents=True, exist_ok=True)
+    (state / "lumina_setup_complete.json").write_text('{"completed": true}', encoding="utf-8")
+    ok, missing, learned = evaluate_exit_proofs(tmp_path, "genesis")
+    assert ok is True
+    assert missing == []
+    assert "setup_complete" in learned.get("exit_proofs", [])
+
+    ok_unknown, missing_unknown, _ = evaluate_exit_proofs(tmp_path, "not_a_phase")
+    assert ok_unknown is False
+    assert missing_unknown == ["unknown_phase"]
+
+    record_maturation_milestone(tmp_path, "genesis_contract_signed")
+    import json
+
+    (tmp_path / "state" / "lumina_phase_continuum.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "active_phase": None,
+                "completed_phases": [],
+                "phase_records": {},
+                "advance_mode": "manual",
+                "pending_advance": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+    hub = hub_payload(tmp_path)
+    assert hub["last_completed"] is None
+    assert hub["next_phase"] == "genesis"
+    assert "unknown_phase" not in ((hub.get("exit_eval") or {}).get("missing") or [])

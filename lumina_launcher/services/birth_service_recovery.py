@@ -93,6 +93,11 @@ class BirthServiceRecoveryMixin:
         if not self._autonomous_recovery_enabled():
             return {"status": "rejected", "message": "Autonomous recovery disabled in config."}
         progress = self._load_progress()
+        if progress.get("user_initiated_stop") is True:
+            return {
+                "status": "rejected",
+                "message": "Autonomous recovery blocked: operator stop is in effect.",
+            }
         from lumina_launcher.services.birth_runner_recovery import reject_if_champion_freeze
 
         blocked = reject_if_champion_freeze(self, progress=progress)
@@ -108,12 +113,43 @@ class BirthServiceRecoveryMixin:
             return self.expand_and_retry_stalled_stage(target_trades=target_trades)
         if action == "phoenix_recovery":
             return self.phoenix_recovery_stalled_stage(target_trades=target_trades)
+        if action == "retry_stage":
+            retries = max(0, int(progress.get("retries_this_stage") or 0))
+            max_retries = 3
+            try:
+                from lumina_core.birth.config import load_birth_v2_config
+
+                max_retries = max(
+                    1,
+                    int(
+                        getattr(
+                            load_birth_v2_config(self.workspace_root).curriculum,
+                            "max_stage_retries",
+                            3,
+                        )
+                        or 3
+                    ),
+                )
+            except Exception:
+                max_retries = 3
+            if retries >= max_retries:
+                return {
+                    "status": "rejected",
+                    "message": (
+                        "retry_stage retries exhausted — operator confirm or wipe."
+                    ),
+                }
+            from lumina_launcher.services.birth_runner_retry_stage import retry_current_stage
+
+            return retry_current_stage(self, target_trades=target_trades)
         return self.resume_stalled_stage(target_trades=target_trades)
     def _maybe_execute_autonomous_recovery(self) -> None:
         """Dispatch pending autonomous recovery before generic auto-resume."""
         if self.is_running():
             return
         progress = self._load_progress()
+        if progress.get("user_initiated_stop") is True:
+            return
         if not self._autonomous_recovery_enabled():
             return
         if progress.get("retryable") is False:

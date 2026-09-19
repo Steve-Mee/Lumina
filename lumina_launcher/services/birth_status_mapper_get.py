@@ -7,12 +7,74 @@ from typing import Any, Dict
 
 from lumina_core.first_boot_progress import birth_training_is_live, resolve_first_boot_stage
 
-
 logger = logging.getLogger(__name__)
 
 def _m():
     from lumina_launcher.services import birth_status_mapper as m
     return m
+
+_LIVE_TRAINING_SUB_PHASES = frozenset(
+    {
+        "ppo_training",
+        "curriculum_learning",
+        "curriculum_stage",
+        "curriculum_research",
+        "parallel_simulation",
+        "policy_init",
+        "ppo_polish",
+        "loading_history",
+        "loading_data",
+        "ticks_ready",
+        "enriching_regimes",
+        "enriching_news",
+    }
+)
+
+
+def sanitize_frozen_progress(progress: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep unresolved terminal freeze honest on the status surface.
+
+    Disk may still carry a leftover training_running sub-phase / hollow
+    pass_reason from the start-then-freeze flash. Do not let that drive the UI.
+    """
+    from lumina_core.birth.terminal_freeze import (
+        extract_terminal_freeze,
+        freeze_attention_fields,
+        freeze_is_active,
+    )
+
+    freeze = extract_terminal_freeze(progress)
+    if not freeze_is_active(freeze) or freeze is None:
+        return progress
+    out = dict(progress)
+    attn = freeze_attention_fields(freeze)
+    out.update(attn)
+    out["stage"] = "stage_stalled"
+    out["phase"] = "stage_stalled"
+    out["is_advancing"] = False
+    out["retryable"] = False
+    out["auto_recovery_active"] = False
+    sub = str(out.get("sub_phase") or "").strip().lower()
+    if sub in _LIVE_TRAINING_SUB_PHASES or not sub:
+        out["sub_phase"] = "stage_stalled"
+        out["sub_phase_label"] = "Curriculum stalled"
+    pass_reason = str(out.get("pass_reason") or "")
+    if "None" in pass_reason or "days=0" in pass_reason:
+        out["pass_reason"] = None
+    truth = dict(out.get("progress_truth") or {}) if isinstance(out.get("progress_truth"), dict) else {}
+    truth["kind"] = str(truth.get("kind") or "stage_index")
+    truth["stage_pass_now"] = False
+    truth["blocker"] = str(freeze.get("reason") or "terminal_freeze")
+    truth["pct_is_not_complete"] = True
+    out["progress_truth"] = truth
+    if not str(out.get("message") or "").strip():
+        out["message"] = str(attn.get("attention_summary") or "Terminal freeze")
+    if int(out.get("ppo_steps") or 0) == 0:
+        ckpt_steps = int(out.get("ppo_steps_cumulative") or 0)
+        if ckpt_steps > 0:
+            out["ppo_steps"] = ckpt_steps
+    return out
+
 
 def sanitize_running_progress(progress: Dict[str, Any]) -> Dict[str, Any]:
     """Drop stale failure phases while a birth run is actively executing."""
@@ -109,8 +171,18 @@ def get_birth_status(svc: Any) -> Dict[str, Any]:
             demote_stale_history_failure_progress(svc)
         except Exception as exc:
             logger.debug("birth.status.demote_residual_history_failed: %s", exc)
+        try:
+            from lumina_launcher.services.birth_residual_cleanup import (
+                demote_fixed_birth_residuals,
+            )
+
+            cleared = demote_fixed_birth_residuals(svc.workspace_root)
+            if cleared.get("changed"):
+                svc._error = None
+        except Exception as exc:
+            logger.debug("birth.status.demote_fixed_residual_failed: %s", exc)
     svc._maybe_auto_resume_stalled_birth()
-    progress = svc._load_progress()
+    progress = sanitize_frozen_progress(svc._load_progress())
     lightweight = _m().should_use_lightweight_status_enrichment(svc, progress)
 
     def _ai() -> dict[str, Any]:
@@ -153,9 +225,15 @@ def get_birth_status(svc: Any) -> Dict[str, Any]:
         return _enricher.enrich_birth_status(svc, payload)
 
     if svc.is_running() or _m().progress_indicates_running(svc, progress):
-        # Never sanitize away an explicit operator stop.
-        if progress.get("user_initiated_stop") is not True:
+        # Never sanitize away an explicit operator stop or an unresolved freeze.
+        from lumina_core.birth.terminal_freeze import extract_terminal_freeze, freeze_is_active
+
+        if progress.get("user_initiated_stop") is not True and not freeze_is_active(
+            extract_terminal_freeze(progress)
+        ):
             progress = sanitize_running_progress(progress)
+        else:
+            progress = sanitize_frozen_progress(progress)
     live = birth_training_is_live(svc.workspace_root, thread_running=svc.is_running())
     stage = resolve_first_boot_stage(progress)
     base_meta = {"progress": progress, "live": live}
@@ -223,39 +301,15 @@ def get_birth_status(svc: Any) -> Dict[str, Any]:
         )
 
     if svc.completed_flag.exists():
-        cert_ok = svc.certificate_ok()
-        if not cert_ok:
-            phase = str(progress.get("phase", "") or "").lower()
-            stage_name = str(progress.get("stage", "") or "").lower()
-            if phase == "certificate_failed" or stage_name == "failed":
-                status = "certificate_failed"
-                message = str(
-                    progress.get("message") or "Birth Certificate v2 thresholds not met."
-                )
-            else:
-                status = "certificate_failed"
-                message = (
-                    "Birth completion flag present but Birth Certificate v2 is missing or invalid."
-                )
-            return _enricher.enrich_birth_status(
-                svc,
-                {
-                    **base_meta,
-                    "status": status,
-                    "progress_pct": float(progress.get("progress_pct", 100) or 100),
-                    "message": message,
-                    "result": svc._result,
-                    "orphaned": False,
-                    "adaptive_intelligence": _ai(),
-                },
-            )
+        # Foundation complete ≠ certificate. Certificate is Proving Ground.
+        # Mapping missing cert → certificate_failed made HUD /retry restart S1.
         return _enricher.enrich_birth_status(
             svc,
             {
                 **base_meta,
                 "status": "completed",
                 "progress_pct": 100,
-                "message": "Birth Phase complete",
+                "message": "Birth Foundation complete — next is Awakening.",
                 "result": svc._result,
                 "orphaned": False,
                 "adaptive_intelligence": _ai(),

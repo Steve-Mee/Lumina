@@ -55,7 +55,16 @@ def test_birth_service_artifacts_ok_with_valid_certificate(tmp_path, monkeypatch
     assert svc.artifacts_ok() is False  # evolution proof missing is fail-closed
     from lumina_core.birth.evolution_proof_gate import save_evolution_proof_record
 
-    save_evolution_proof_record(tmp_path, {"passed": True})
+    save_evolution_proof_record(
+        tmp_path,
+        {
+            "passed": True,
+            "holdout_trades": 500,
+            "birth_exit_winrate": 0.32,
+            "polish_oos_winrate": 0.46,
+            "oos_winrate": 0.46,
+        },
+    )
     assert svc.artifacts_ok() is True
 
 

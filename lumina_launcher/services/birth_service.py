@@ -29,6 +29,7 @@ from .birth_runner_recovery import (
     retry_birth,
     reuse_data_birth,
 )
+from .birth_runner_retry_stage import retry_current_stage
 from .birth_runner_lock import (
     clear_orphan_runner_lock_for_wipe,
     clear_runner_lock,
@@ -235,15 +236,27 @@ class BirthService(BirthServiceRecoveryMixin):
         return wipe_birth_training_artifacts(self, join_timeout=join_timeout)
 
     def is_completed(self) -> bool:
+        """Birth training done = completion flag + Foundation exit SSOT.
+
+        Certificate v2 is Proving Ground — never required here.
+        """
         if not self.completed_flag.exists():
             return False
-        return self.certificate_ok()
+        try:
+            from lumina_core.maturity.birth_exit import is_birth_exit_sufficient
+
+            return bool(is_birth_exit_sufficient(self.workspace_root))
+        except Exception:
+            return False
 
     def retry_birth(self, target_trades: int | None = None, *, wipe: bool = False) -> Dict[str, Any]:
         return retry_birth(self, target_trades=target_trades, wipe=wipe)
 
     def resume_stalled_stage(self, target_trades: int | None = None) -> Dict[str, Any]:
         return resume_stalled_stage(self, target_trades=target_trades)
+
+    def retry_current_stage(self, target_trades: int | None = None) -> Dict[str, Any]:
+        return retry_current_stage(self, target_trades=target_trades)
 
     def expand_and_retry_stalled_stage(self, target_trades: int | None = None) -> Dict[str, Any]:
         return expand_and_retry_stalled_stage(self, target_trades=target_trades)

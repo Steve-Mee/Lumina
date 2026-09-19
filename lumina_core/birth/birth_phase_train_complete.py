@@ -32,20 +32,9 @@ def run_curriculum_and_complete(
     stage_index = 0
     curriculum_timesteps = max(1000, int(cfg.curriculum.curriculum_ppo_timesteps))
 
-    write_birth_progress(
-        host.workspace_root,
-        stage="training_running",
-        phase="curriculum_stage",
-        message="Curriculum training starten…",
-        progress_pct=27.0,
-        cumulative_trades=0,
-        target_trades=cfg.trade_budget_cap,
-        birth_start_time=host.birth_start_time,
-        training_mode=training_mode,
-    )
-
-    # Terminal freeze: do not re-enter hollow curriculum grind. Twin/operator must
-    # resolve expand_data | accept_champion | wipe first (ADR-0024 / Twin-first Birth).
+    # Terminal freeze: do not re-enter hollow curriculum grind AND do not flash
+    # training_running first (that loops the operator UI genesis↔mission↔stall).
+    # Twin/operator must resolve expand_data | accept_champion | wipe first.
     try:
         from lumina_core.birth.terminal_freeze import (
             extract_terminal_freeze,
@@ -59,11 +48,14 @@ def run_curriculum_and_complete(
             checkpoint_state if isinstance(checkpoint_state, dict) else None,
         )
         metrics_pending = dict(getattr(host, "_active_stage_metrics", None) or {})
-        if freeze_blocks_curriculum_grind(freeze) and not bool(
-            metrics_pending.get("pending_data_expand")
-        ):
+        # pending_data_expand is ADR-0046 history-rung lift, not PPO grind on the
+        # same 90d tape. Champion freeze still blocks train-through when expand
+        # is not pending.
+        expand_pending = bool(metrics_pending.get("pending_data_expand"))
+        if freeze_blocks_curriculum_grind(freeze) and not expand_pending:
             frozen_stage = str((freeze or {}).get("curriculum_stage") or "stage_stalled")
             attn = freeze_attention_fields(freeze or {})
+            freeze_reason = str((freeze or {}).get("reason") or "terminal_freeze")
             write_birth_progress(
                 host.workspace_root,
                 stage="stage_stalled",
@@ -73,19 +65,33 @@ def run_curriculum_and_complete(
                     or "Terminal freeze — Twin/operator fork required"
                 ),
                 progress_pct=27.0 + (stage_index / max(1, total_stages)) * 53.0,
-                cumulative_trades=host.cumulative_trades,
+                cumulative_trades=int(getattr(host, "cumulative_trades", 0) or 0),
                 target_trades=cfg.trade_budget_cap,
+                ppo_steps=int(getattr(host, "ppo_steps", 0) or 0),
                 birth_start_time=host.birth_start_time,
                 training_mode=training_mode,
                 **merge_birth_progress_extra(
                     host._budget_progress_fields(
-                        terminal_stall_reason=str((freeze or {}).get("reason") or "")
+                        terminal_stall_reason=freeze_reason
                     ),
                     host._constitution_progress_fields(),
                     attn,
                     {
                         "curriculum_stage": frozen_stage,
                         "stages_passed": list(host._stages_passed),
+                        "is_advancing": False,
+                        "sub_phase": "stage_stalled",
+                        "sub_phase_label": "Curriculum stalled",
+                        "auto_recovery_active": False,
+                        "pass_reason": None,
+                        "progress_truth": {
+                            "kind": "stage_index",
+                            "stage_index": int(stage_index or 0),
+                            "stage_count": int(total_stages or 5),
+                            "stage_pass_now": False,
+                            "blocker": freeze_reason,
+                            "pct_is_not_complete": True,
+                        },
                     },
                 ),
             )
@@ -110,7 +116,33 @@ def run_curriculum_and_complete(
                 "training_mode": training_mode,
             }
     except Exception as exc:
-        logger.debug("birth.terminal_freeze.curriculum_gate_failed: %s", exc)
+        logger.warning("birth.terminal_freeze.curriculum_gate_failed: %s", exc)
+        leftover = getattr(host, "_terminal_freeze", None)
+        if (
+            isinstance(leftover, dict)
+            and str(leftover.get("reason") or "").strip()
+            and leftover.get("resolved") is not True
+        ):
+            return {
+                "status": "stage_stalled",
+                "failure_reason": str(leftover.get("reason") or "terminal_freeze"),
+                "total_trades": int(getattr(host, "cumulative_trades", 0) or 0),
+                "ppo_steps": int(getattr(host, "ppo_steps", 0) or 0),
+                "training_mode": training_mode,
+            }
+
+    write_birth_progress(
+        host.workspace_root,
+        stage="training_running",
+        phase="curriculum_stage",
+        message="Curriculum training starten…",
+        progress_pct=27.0,
+        cumulative_trades=int(getattr(host, "cumulative_trades", 0) or 0),
+        target_trades=cfg.trade_budget_cap,
+        ppo_steps=int(getattr(host, "ppo_steps", 0) or 0),
+        birth_start_time=host.birth_start_time,
+        training_mode=training_mode,
+    )
 
     val_split = purged_validation_split(
         list(split.train),

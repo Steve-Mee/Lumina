@@ -1,4 +1,5 @@
 """Stage-pass evaluation + receipt for stage-loop iteration."""
+
 from __future__ import annotations
 
 import time
@@ -62,9 +63,7 @@ class StageLoopIterationPassMixin:
                         wr_need = float(stage2_expectancy_floor(self.cur_cfg)) + 0.50
                     except Exception:
                         wr_need = 0.35
-                    streak = int(
-                        getattr(self, "_stage2_rolling_pass_streak", 0) or 0
-                    )
+                    streak = int(getattr(self, "_stage2_rolling_pass_streak", 0) or 0)
                     if rolling_wr is not None and float(rolling_wr) + 1e-12 >= wr_need:
                         streak += 1
                     else:
@@ -80,9 +79,7 @@ class StageLoopIterationPassMixin:
                         covered=rolling_cov,
                         window=window,
                     )
-                    wr_need = float(
-                        getattr(self.cur_cfg, "stage3_winrate_floor", 0.35) or 0.35
-                    )
+                    wr_need = float(getattr(self.cur_cfg, "stage3_winrate_floor", 0.35) or 0.35)
                     streak = int(getattr(self, "_stage2_rolling_pass_streak", 0) or 0)
                     if rolling_wr is not None and float(rolling_wr) + 1e-12 >= wr_need:
                         streak += 1
@@ -101,9 +98,7 @@ class StageLoopIterationPassMixin:
                     )
             except Exception:
                 rolling_wr = None
-        stage_pnl = (
-            float(sum(self.stage_val_pnl)) if getattr(self, "stage_val_pnl", None) else None
-        )
+        stage_pnl = float(sum(self.stage_val_pnl)) if getattr(self, "stage_val_pnl", None) else None
         geo = getattr(self, "_birth_trade_geometry", None)
         from lumina_core.birth.history_loader import session_unique_calendar_days
 
@@ -114,6 +109,36 @@ class StageLoopIterationPassMixin:
         )
         if unique_days > 0:
             self._unique_calendar_days = unique_days
+        try:
+            from lumina_core.birth.history_loader import actual_calendar_days_from_ticks
+
+            self._stage_window_calendar_days = actual_calendar_days_from_ticks(self.stage_ticks)
+        except Exception:
+            self._stage_window_calendar_days = int(getattr(self, "_stage_window_calendar_days", 0) or 0)
+        from lumina_core.birth.foundation_occupancy_envelope import (
+            OccupancyExamWindow,
+            exam_window_override_fraction,
+            occupancy_for_foundation_pass,
+        )
+
+        win_raw = getattr(self, "occupancy_exam_window", None)
+        win = win_raw if isinstance(win_raw, OccupancyExamWindow) else OccupancyExamWindow()
+        envelope_frac = exam_window_override_fraction(win)
+        pt_tot = int(getattr(self, "passthrough_range_total_signals", 0) or 0)
+        exam_n = int(win.passthrough_signals)
+        occupancy_for_pass = occupancy_for_foundation_pass(
+            stage=self.stage,
+            range_flat_bars=int(getattr(self, "stage_range_flat_bars", 0) or 0),
+            range_total_signals=int(getattr(self, "stage_range_total_signals", 0) or 0),
+            passthrough_flat_bars=int(getattr(self, "passthrough_range_flat_bars", 0) or 0),
+            passthrough_total_signals=pt_tot,
+            exam_armed=bool(win.armed),
+            exam_passthrough_flat_bars=int(win.passthrough_flat),
+            exam_passthrough_total_signals=exam_n,
+            exam_flat_bars=int(win.exam_flat),
+            exam_total_signals=int(win.exam_signals),
+        )
+        pass_sample_n = exam_n if win.armed else pt_tot
         p_ft = None
         net_rr = None
         stop_pct = None
@@ -160,9 +185,7 @@ class StageLoopIterationPassMixin:
             policy_wins=int(getattr(self, "stage_policy_wins", 0) or 0),
             plant_trades=int(getattr(self, "stage_plant_trades", 0) or 0),
             plant_wins=int(getattr(self, "stage_plant_wins", 0) or 0),
-            consecutive_rolling_pass_windows=int(
-                getattr(self, "_stage2_rolling_pass_streak", 0) or 0
-            ),
+            consecutive_rolling_pass_windows=int(getattr(self, "_stage2_rolling_pass_streak", 0) or 0),
             closes_stop=int(getattr(self, "stage_closes_stop_cum", 0) or 0),
             closes_target=int(getattr(self, "stage_closes_target_cum", 0) or 0),
             closes_time_stop=int(getattr(self, "stage_closes_time_stop_cum", 0) or 0),
@@ -175,21 +198,20 @@ class StageLoopIterationPassMixin:
             geometry_net_rr=net_rr,
             first_touch_hit_rate=p_ft,
             unique_calendar_days=unique_days,
+            occupancy=occupancy_for_pass,
             oos_sharpe=(
                 stage_val_sharpe
-                if self.stage == CurriculumStage.STAGE5_PROBE_HANDOFF
-                and bool(self.stage_val_pnl)
+                if self.stage == CurriculumStage.STAGE5_PROBE_HANDOFF and bool(self.stage_val_pnl)
                 else None
             ),
             oos_dd_pct=(
                 stage_val_max_dd
-                if self.stage == CurriculumStage.STAGE5_PROBE_HANDOFF
-                and bool(self.stage_val_pnl)
+                if self.stage == CurriculumStage.STAGE5_PROBE_HANDOFF and bool(self.stage_val_pnl)
                 else None
             ),
-            settlement_ssot_pending=bool(
-                getattr(self, "_settlement_ssot_pending", False)
-            ),
+            settlement_ssot_pending=bool(getattr(self, "_settlement_ssot_pending", False)),
+            envelope_override_fraction=envelope_frac,
+            passthrough_occupancy_signals=pass_sample_n if envelope_frac is not None else None,
         )
         if not stage_result.passed:
             now = time.time()
@@ -197,8 +219,7 @@ class StageLoopIterationPassMixin:
             if now - last >= 30.0:
                 self._last_not_passed_log_at = now
                 logger.warning(
-                    "birth.stage.not_passed stage=%s trades=%s blockers=%s "
-                    "median_loss_r=%s net_rr=%s",
+                    "birth.stage.not_passed stage=%s trades=%s blockers=%s median_loss_r=%s net_rr=%s",
                     self.stage.value,
                     self.stage_trades,
                     stage_result.message,
@@ -210,8 +231,7 @@ class StageLoopIterationPassMixin:
         self.required = stage_pass_trades(self.stage, self.cur_cfg)
         pass_winrate = stage_winrate(self.stage_wins, self.stage_trades)
         logger.info(
-            "birth.stage.passed stage=%s trades=%s wins=%s required=%s "
-            "winrate=%.2f%% provisional=%s reason=%s",
+            "birth.stage.passed stage=%s trades=%s wins=%s required=%s winrate=%.2f%% provisional=%s reason=%s",
             self.stage.value,
             self.stage_trades,
             self.stage_wins,

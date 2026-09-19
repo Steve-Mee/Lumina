@@ -22,10 +22,14 @@ def run_live_checks(
     checks: list[DiagnosticCheck],
     remediation: list[str],
     audit_path: Any,
+    allow_live_order_probe: bool = False,
 ) -> None:
-    """Append live gRPC + SAFE_MODE + audit checks. Mutates checks/remediation in place."""
+    """Append live gRPC + audit checks. Never submits NT orders.
+
+    ``include_safe_mode`` / ``allow_live_order_probe`` are accepted for API
+    compatibility and are always refused (constitution: no diagnostic place).
+    """
     try:
-        from lumina_core.broker.broker_bridge.schemas import Order
         from lumina_core.broker.ninjatrader.fabric_client import FabricConfig, FabricGrpcClient
     except ImportError as exc:
         checks.append(
@@ -337,250 +341,43 @@ def run_live_checks(
             "and NT AddOn historical provider are deployed."
         )
 
-    def _is_safe_mode_block(resp: dict[str, Any] | None) -> bool:
-        if not isinstance(resp, dict):
-            return False
-        blob = json.dumps(resp, default=str).upper()
-        code = str(resp.get("code") or resp.get("rejection_reason") or "").upper()
-        if code in {"SAFE_MODE", "SAFE", "FULL_SAFE"}:
-            return True
-        if "SAFE_MODE" in blob or "SAFE MODE" in blob:
-            return True
-        # protobuf enum often surfaces as safe_mode=2 (SAFE)
-        sm = resp.get("safe_mode")
-        if sm is None and isinstance(resp.get("detail"), dict):
-            sm = resp["detail"].get("safe_mode")
-        try:
-            if int(sm) in (2, 3):  # SAFE / FULL_SAFE
-                return True
-        except (TypeError, ValueError):
-            pass
-        return "FABRIC PLACE BLOCKED" in blob and "SAFE" in blob
-
-    def _place_with_safe_recovery() -> tuple[dict[str, Any], Any]:
-        """Place once; if leftover SAFE_MODE, re-auth once and retry (diagnostic honesty)."""
-        nonlocal client
-        assert client is not None
-        cid = f"diag-place-{uuid.uuid4().hex[:8]}"
-        place = client.place_order_sync(
-            Order(symbol=instrument, side="BUY", quantity=1, order_type="MARKET"),
-            client_order_id=cid,
-            correlation_id=f"corr-{cid}",
-        )
-        if place.get("type") != "error" or not _is_safe_mode_block(place):
-            return place, client
-        # Host left in SAFE from prior heartbeat gap / previous diagnostic — clear via re-auth.
-        try:
+    try:
+        if client is not None:
             client.disconnect()
-        except Exception:
-            pass
-        client = make_client(token, hb_ms=500)
-        if not client.connect():
-            place = dict(place)
-            place["message"] = (
-                str(place.get("message") or place)
-                + " | re-auth reconnect failed after SAFE_MODE"
-            )
-            return place, client
-        time.sleep(0.35)
-        cid2 = f"diag-place-retry-{uuid.uuid4().hex[:8]}"
-        place2 = client.place_order_sync(
-            Order(symbol=instrument, side="BUY", quantity=1, order_type="MARKET"),
-            client_order_id=cid2,
-            correlation_id=f"corr-{cid2}",
-        )
-        if place2.get("type") != "error":
-            place2 = dict(place2)
-            place2["message"] = (
-                str(place2.get("message") or place2.get("type") or "ok")
-                + " (cleared SAFE_MODE via re-auth)"
-            )
-        return place2, client
-
-    # 8 place
-    t = time.perf_counter()
-    try:
-        assert client is not None
-        place, client = _place_with_safe_recovery()
-        place_ok = place.get("type") != "error"
-        checks.append(
-            DiagnosticCheck(
-                id="place_order",
-                title=f"Place SIM order ({instrument})",
-                status="pass" if place_ok else "fail",
-                message=str(place.get("message") or place.get("type") or place),
-                detail=json.dumps(place, default=str)[:500],
-                duration_ms=int((time.perf_counter() - t) * 1000),
-            )
-        )
-        if not place_ok:
-            remediation.append(
-                f"Place failed: {place}. If SAFE_MODE persists, Repair connection / restart NT host."
-            )
-    except Exception as exc:
-        checks.append(
-            DiagnosticCheck(
-                id="place_order",
-                title=f"Place SIM order ({instrument})",
-                status="fail",
-                message=f"{type(exc).__name__}: {exc}",
-                duration_ms=int((time.perf_counter() - t) * 1000),
-            )
-        )
-
-    # 9 flatten
-    t = time.perf_counter()
-    try:
-        assert client is not None
-        flat = client.flatten_sync(instrument=instrument)
-        flat_ok = flat.get("type") != "error"
-        checks.append(
-            DiagnosticCheck(
-                id="flatten",
-                title="Flatten position",
-                status="pass" if flat_ok else "fail",
-                message=str(flat.get("type") or flat),
-                detail=json.dumps(flat, default=str)[:500],
-                duration_ms=int((time.perf_counter() - t) * 1000),
-            )
-        )
-        if not flat_ok:
-            remediation.append(f"Flatten failed: {flat}")
-    except Exception as exc:
-        checks.append(
-            DiagnosticCheck(
-                id="flatten",
-                title="Flatten position",
-                status="fail",
-                message=f"{type(exc).__name__}: {exc}",
-                duration_ms=int((time.perf_counter() - t) * 1000),
-            )
-        )
-
-    try:
-        assert client is not None
-        client.disconnect()
     except Exception:
         pass
     client = None
 
-    # 10–12 SAFE_MODE path
-    if include_safe_mode:
-        t = time.perf_counter()
-        c2 = make_client(token, hb_ms=0)
-        try:
-            if not c2.connect():
-                checks.append(
-                    DiagnosticCheck(
-                        id="safe_mode_enter",
-                        title="SAFE_MODE blocks new orders",
-                        status="skip",
-                        message="Could not reconnect for SAFE_MODE probe",
-                        duration_ms=int((time.perf_counter() - t) * 1000),
-                    )
-                )
-            else:
-                # Wait past default 5s heartbeat timeout
-                time.sleep(6.2)
-                rej = c2.place_order_sync(
-                    Order(symbol=instrument, side="BUY", quantity=1, order_type="MARKET"),
-                    client_order_id=f"diag-safe-{uuid.uuid4().hex[:6]}",
-                )
-                safe_hit = (
-                    str(rej.get("code", "")).upper() == "SAFE_MODE"
-                    or "SAFE" in str(rej).upper()
-                )
-                checks.append(
-                    DiagnosticCheck(
-                        id="safe_mode_enter",
-                        title="SAFE_MODE blocks new orders",
-                        status="pass" if safe_hit else "fail",
-                        message=(
-                            "Place rejected with SAFE_MODE after heartbeat timeout"
-                            if safe_hit
-                            else f"Expected SAFE_MODE reject, got {rej}"
-                        ),
-                        detail=json.dumps(rej, default=str)[:500],
-                        duration_ms=int((time.perf_counter() - t) * 1000),
-                    )
-                )
-                if not safe_hit:
-                    remediation.append(
-                        "Heartbeat watchdog did not enter SAFE_MODE — check Fabric host HeartbeatTimeoutMs."
-                    )
-
-                t2 = time.perf_counter()
-                flat_safe = c2.flatten_sync(instrument=instrument)
-                flat_safe_ok = flat_safe.get("type") != "error"
-                checks.append(
-                    DiagnosticCheck(
-                        id="safe_mode_flatten_allowed",
-                        title="Flatten allowed in SAFE_MODE",
-                        status="pass" if flat_safe_ok else "fail",
-                        message=str(flat_safe.get("type") or flat_safe),
-                        duration_ms=int((time.perf_counter() - t2) * 1000),
-                    )
-                )
-        finally:
-            try:
-                c2.disconnect()
-            except Exception:
-                pass
-
-        # 12 reauth clears + leave host NORMAL for operators (Link window honesty)
-        t = time.perf_counter()
-        c3 = make_client(token, hb_ms=500)
-        try:
-            if c3.connect():
-                time.sleep(0.6)
-                place2 = c3.place_order_sync(
-                    Order(symbol=instrument, side="BUY", quantity=1, order_type="MARKET"),
-                    client_order_id=f"diag-reauth-{uuid.uuid4().hex[:6]}",
-                )
-                reauth_ok = place2.get("type") != "error"
-                checks.append(
-                    DiagnosticCheck(
-                        id="reauth_clears_safe",
-                        title="Re-auth recovers trading",
-                        status="pass" if reauth_ok else "warn",
-                        message=(
-                            "Place accepted after re-auth"
-                            if reauth_ok
-                            else f"Still blocked after re-auth: {place2}"
-                        ),
-                        duration_ms=int((time.perf_counter() - t) * 1000),
-                    )
-                )
-                try:
-                    c3.flatten_sync(instrument=instrument)
-                except Exception:
-                    pass
-                # Brief HB so watchdog does not immediately re-enter SAFE after we disconnect.
-                time.sleep(0.4)
-            else:
-                checks.append(
-                    DiagnosticCheck(
-                        id="reauth_clears_safe",
-                        title="Re-auth recovers trading",
-                        status="warn",
-                        message="Reconnect after SAFE_MODE failed",
-                        duration_ms=int((time.perf_counter() - t) * 1000),
-                    )
-                )
-        finally:
-            try:
-                c3.disconnect()
-            except Exception:
-                pass
-    else:
-        checks.append(
-            DiagnosticCheck(
-                id="safe_mode_enter",
-                title="SAFE_MODE blocks new orders",
-                status="skip",
-                message="Skipped (include_safe_mode=false)",
-            )
+    # Constitution: diagnostics must never submit, flatten, or cancel NT orders.
+    skip_msg = (
+        "Skipped: diagnostic NT place/flatten is forbidden "
+        f"(include_safe_mode={include_safe_mode}, allow_live_order_probe={allow_live_order_probe}). "
+        "GREEN is auth + historical bars, not a live order."
+    )
+    checks.append(
+        DiagnosticCheck(
+            id="place_order",
+            title="Place order (disabled)",
+            status="skip",
+            message=skip_msg,
         )
+    )
+    checks.append(
+        DiagnosticCheck(
+            id="flatten",
+            title="Flatten (disabled)",
+            status="skip",
+            message=skip_msg,
+        )
+    )
+    checks.append(
+        DiagnosticCheck(
+            id="safe_mode_enter",
+            title="SAFE_MODE probe (disabled)",
+            status="skip",
+            message=skip_msg,
+        )
+    )
 
     # 13 audit trail
     t = time.perf_counter()
@@ -592,7 +389,7 @@ def run_live_checks(
             has_auth = "auth_ok" in joined or "authenticated" in joined
             has_place = "place_order" in joined
             has_safe = "SafeMode" in joined or "HeartbeatTimeout" in joined or "safety_alert" in joined
-            ok_audit = has_auth or has_place
+            ok_audit = has_auth
             checks.append(
                 DiagnosticCheck(
                     id="audit_trail",

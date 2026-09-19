@@ -15,6 +15,12 @@ from lumina_core.broker.ninjatrader.generated import fabric_pb2_grpc
 logger = logging.getLogger(__name__)
 
 
+def is_forbidden_diagnostic_client_order_id(client_order_id: str) -> bool:
+    """True for Fabric diagnostic probe ids (diag-place / diag-reauth / diag-safe)."""
+    cid = str(client_order_id or "").strip().lower()
+    return cid.startswith("diag-") or cid.startswith("diag_")
+
+
 class FabricClientOpsMixin:
     def connect(self) -> bool:
         """Open channel, start TradingStream, authenticate.
@@ -182,6 +188,15 @@ class FabricClientOpsMixin:
         (NinjaTrader broker) run ``run_final_arbitration`` first. Strict modes
         reject here if lineage is still missing (defense in depth).
         """
+        if is_forbidden_diagnostic_client_order_id(client_order_id):
+            return {
+                "type": "error",
+                "code": "DIAGNOSTIC_PROBE_FORBIDDEN",
+                "message": (
+                    "Fabric place blocked: diagnostic probe ids (diag-*) are forbidden. "
+                    "Startup/Test connection must not submit NT orders."
+                ),
+            }
         if not self.is_connected:
             return {"type": "error", "code": "DISCONNECTED", "message": "Fabric not connected"}
         # Fail-closed: host SAFE / FULL_SAFE rejects new places (cancel/flatten separate APIs).

@@ -11,8 +11,9 @@
 
 [![Lumina Quality Gate](https://github.com/Steve-Mee/Lumina/actions/workflows/lumina-quality-gate.yml/badge.svg?branch=main)](https://github.com/Steve-Mee/Lumina/actions/workflows/lumina-quality-gate.yml)
 [![Safety Gate](https://github.com/Steve-Mee/Lumina/actions/workflows/safety-gate.yml/badge.svg?branch=main)](https://github.com/Steve-Mee/Lumina/actions/workflows/safety-gate.yml)
+[![Nightly Security Audit](https://github.com/Steve-Mee/Lumina/actions/workflows/nightly-security-audit.yml/badge.svg?branch=main)](https://github.com/Steve-Mee/Lumina/actions/workflows/nightly-security-audit.yml)
 
-[Quick Start](#-quick-start) · [Neural Command Deck](#-lumina-neural-command-deck-tauri) · [Architectuur](#-architectuur-overzicht) · [Safety](#️-risk-management--safety) · [ADR’s](docs/adr/README.md)
+[Quick Start](#-quick-start) · [Neural Command Deck](#-lumina-neural-command-deck-tauri) · [Maturatie](#-maturatie-ladder) · [Architectuur](#-architectuur-overzicht) · [Safety](#️-risk-management--safety) · [ADR’s](docs/adr/README.md)
 
 </div>
 
@@ -58,6 +59,26 @@ Living direction: [`docs/roadmap.md`](docs/roadmap.md) (v5.2.x wave). Historical
 
 ---
 
+## 🧬 Maturatie-ladder
+
+Lumina groeit als organisme. Elke trede heeft een **fail-closed AND-examen**. Geen JSON-stempels, geen floor-cuts, geen Birth-tape als later bewijs. REAL-kapitaal blijft dicht tot de operator `approve-real` geeft.
+
+| Trede | Wat het organisme leert | Exit (kort) | ADR |
+|-------|-------------------------|-------------|-----|
+| **Genesis** | Wiring: vault, envelope, fabric, charter | Setup complete, fabric GREEN | [0011](docs/adr/0011-tauri-lifecycle-gate-ssot.md) |
+| **Birth** | Evolvable plant op historische SIM | Vijf Foundation-receipts + fitness (geen WR 20/35/40%) | [0046](docs/adr/0046-birth-foundation-evolvable-plant.md) |
+| **Awakening** | Prefer-better kind vs frozen π* op holdout B | n_B ≥ 500 AND (lift ≥ 5pp **of** OOS ≥ 45%) + occupancy/process-R/STABLE | [0049](docs/adr/0049-awakening-eyes-open.md), [0026](docs/adr/0026-evolution-proof-gate.md) |
+| **Playground** | Eerste contact in NT SIM, Command Deck | n_P ≥ 150, orderpath-fill, WR ≥ BE, mean R ≥ 0, envelope sealed | [0050](docs/adr/0050-playground-first-contact.md) |
+| **Apprenticeship** | Lopen onder REAL-regels op SIM | 5 groene `sim_real_guard`-dagen, Sharpe ≥ 0.20, DD ≤ 12% | [0051](docs/adr/0051-apprenticeship-walk.md) |
+| **Proving Ground** | Examen vóór kapitaal | Cert-OOS 48%/0.35/8% **en** this-run shadow **en** PromotionGate | [0052](docs/adr/0052-proving-ground-exam.md), [0007](docs/adr/0007-promotion-gate-real-mode.md) |
+| **REAL** | Live kapitaal | Human `approve-real` + fail-closed live | [0007](docs/adr/0007-promotion-gate-real-mode.md) |
+
+Operator-home na elke trede: **Phase Hub** in de Neural Command Deck. Named wipes: Wipe Awakening / Wipe Birth / Full wipe. SSOT: [`docs/adr/organism-maturation-phases.md`](docs/adr/organism-maturation-phases.md).
+
+**Organen:** Lungs (training-engine, torch/SB3) ≠ Voice (Ollama/grok; Windows nooit vLLM). News praat, plaatst nooit orders. [ADR-0048](docs/adr/0048-lungs-voice-organs-ssot.md).
+
+---
+
 ## 🚀 Quick Start
 
 ### Eerste install (aanbevolen)
@@ -82,7 +103,7 @@ python scripts/bootstrap_lumina.py
 | Stap | Actie |
 |------|--------|
 | 1 | Repository clonen en `python scripts/bootstrap_lumina.py` draaien |
-| 2 | Lokale config: `config.yaml`, secrets in `.env` (**niet committen**) |
+| 2 | Product-SSOT: `config.yaml`. Machine-overrides (hardware, model, context) in **`config.yaml.local`** (gitignored). Secrets in `.env` (**niet committen**) |
 | 3 | Optioneel: **Docker** — `docker-compose.yml` (lokaal), `docker-compose.prod.yml` (productieachtig) |
 
 ### Fine-tuning & GGUF (Linux / WSL2 + CUDA)
@@ -93,7 +114,7 @@ Unsloth fine-tuning zit voorbereid in de app; echte training vraagt **Linux of W
 
 ## 🖥️ LUMINA Neural Command Deck (Tauri)
 
-De **LUMINA Neural Command Deck** (intern: *The Core*) is de native desktop operator-UI. De stack is **Tauri v2 + React 19 + TypeScript + Three.js**: spaceship-cockpit interface met live telemetry, evolution-visualisatie en fail-closed REAL-mode gates.
+De **LUMINA Neural Command Deck** (intern: *The Core*) is de native desktop operator-UI. Streamlit is retired ([ADR-0016](docs/adr/0016-streamlit-ui-retirement.md)). De stack is **Tauri v2 + React 19 + TypeScript + Three.js**: spaceship-cockpit, Phase Hub, Birth/Awakening/Playground HUD, live telemetry en fail-closed REAL-mode gates.
 
 ### Operator UI
 
@@ -106,7 +127,7 @@ De **LUMINA Neural Command Deck** (intern: *The Core*) is de native desktop oper
 
 ### Architectuur & documentatie
 
-- Frontend (greenfield): **`tauri-app/`** — Phase 0 scaffold
+- Frontend: **`tauri-app/`** — Neural Command Deck (cockpit + Phase Hub + maturation surfaces)
 - Backend API: **`lumina_os/backend/`** op poort **8000**
 - [docs/lumina-core-architecture.md](docs/lumina-core-architecture.md) — systeemdesign, dataflow, security
 - [docs/lumina-core-api-contracts.md](docs/lumina-core-api-contracts.md) — JSON Schema contracten (REST + WebSocket)
@@ -215,7 +236,9 @@ flowchart TB
 | 📊 Risk | Hard limits, Monte Carlo / VaR-stijl allocatie, dynamic Kelly, execution cost model. |
 | 🤖 Agents & bus | Blackboard-topics, centrale event bus, producer allowlists waar van toepassing. |
 | 📈 Backtest-realism | Purged CV, order book replay, reality-gap penalty (zie [ADR 0004](docs/adr/0004-backtest-realism-purged-cv-orderbook-replay-reality-gap.md)). |
-| 🖥️ Operator UX | Neural Command Deck (Tauri, nieuw) + Streamlit launcher (legacy, tot cleanup); journals onder `journal/`. |
+| 🖥️ Operator UX | Neural Command Deck (Tauri) — cockpit, Phase Hub, named wipes; journals onder `journal/`. |
+| 🫁 Organen | Lungs = training physics; Voice = talking assistant. News never orders ([ADR-0048](docs/adr/0048-lungs-voice-organs-ssot.md)). |
+| 🧬 Maturatie | Genesis → Birth → Awakening → Playground → Apprenticeship → Proving Ground → REAL. Fail-closed AND per trede. |
 
 ---
 
@@ -240,7 +263,7 @@ Meer detail: [docs/AGI_SAFETY.md](docs/AGI_SAFETY.md) · [ADR 0003](docs/adr/000
 |-----------|----------|
 | **Python** | 3.13+, type hints (Pydantic + mypy), **ruff** |
 | **Tests** | `tests/`, markers (`unit`, `integration`, `slow`, `nightly`) — zie [ADR 0005](docs/adr/0005-test-suite-overhaul-markers-timeouts-isolated-fixtures.md) |
-| **CI** | Quality gate + safety workflows op GitHub Actions (badges bovenaan) |
+| **CI** | Quality gate + safety gate + nightly security audit op GitHub Actions (badges bovenaan) |
 | **ADR’s** | Belangrijke architectuurkeuzes → [docs/adr/](docs/adr/README.md) · nieuw: `python scripts/new_adr.py "Titel"` ([CONTRIBUTING.md](CONTRIBUTING.md)) |
 | **Gedrag** | Leidend: [`.cursorrules`](.cursorrules) |
 
@@ -255,14 +278,13 @@ Meer detail: [docs/AGI_SAFETY.md](docs/AGI_SAFETY.md) · [ADR 0003](docs/adr/000
 
 | # | Prioriteit | Status |
 |---|------------|--------|
-| 1 | Volledige migratie van overgebleven `engine/`-modules naar bounded contexts | 🔄 |
-| 2 | REAL: broker connectivity, reconciliatie en operationele runbooks afgestemd op production | 📋 |
-| 3 | Test suite: markers, timeouts en isolated fixtures overal consequent ([ADR 0005](docs/adr/0005-test-suite-overhaul-markers-timeouts-isolated-fixtures.md)) | 📋 |
+| 1 | Maturatie-ladder: Awakening / Playground / Apprenticeship / Proving Ground AND-gates (ADR-0049–0052) | 🔄 |
+| 2 | REAL: broker connectivity, reconciliatie en production-runbooks — deur blijft dicht tot `approve-real` | 📋 |
+| 3 | Resterende `engine/`-modules → bounded contexts | 🔄 |
 | 4 | Event bus: strikte payload-validatie (Pydantic) op alle kritieke topics | 🔄 |
-| 5 | Nightly / CI: backtest-realism stack (purged CV, replay, reality gap) als gate waar haalbaar | 🔄 |
+| 5 | Nightly / CI: dependency-audit groen houden; backtest-realism stack als extra gate | 🔄 |
 | 6 | Observability: dashboards en audit-first operator workflows (`journal/`, logging) | 🔄 |
 | 7 | Model pipeline: Unsloth / GGUF / inference pad productie-hardening (Linux/WSL2) | 📋 |
-| 8 | Neural Command Deck (Tauri): Phase 0 scaffold → live cockpit ([architectuur](docs/lumina-core-architecture.md)) | 🔄 |
 
 Legenda: ✅ volbracht in kern · 🔄 actief · 📋 gepland / kritiek pad
 
@@ -272,15 +294,16 @@ Legenda: ✅ volbracht in kern · 🔄 actief · 📋 gepland / kritiek pad
 
 | Pad | Rol |
 |-----|-----|
-| `tauri-app/` | Neural Command Deck — Tauri v2 + React 19 native UI (greenfield) |
-| `lumina_core/` | Engine, workers, trainer, simulator, risk, evolution, safety |
+| `tauri-app/` | Neural Command Deck — Tauri v2 + React 19 native operator-UI |
+| `lumina_core/` | Engine, birth, maturity, risk, evolution, safety, intelligence (organs) |
 | `lumina_bible/` | Bible-engine integratie |
-| `lumina_agents/` | Agent-specifieke code |
-| `deploy/` | Install / update / smoke scripts |
+| `lumina_os/backend/` | FastAPI operator-API (`:8000`) |
+| `lumina_launcher/` | Bootstrap, birth runner, onboarding |
+| `integrations/ninjatrader8/` | Execution Fabric (gRPC) + NT8 AddOn |
 | `docs/` | Release-workflow, production setup, **ADR’s**, AGI Safety |
 | `scripts/` | Bootstrap, utilities, `validation/` |
 | `tests/` | Actieve test suite |
-| `state/`, `logs/` | Runtime state en logs (gegenereerd / lokaal) |
+| `state/`, `logs/` | Runtime state en logs (gegenereerd / lokaal, gitignored) |
 
 **Belangrijke entrypoints:** `lumina_runtime.py` · `watchdog.py` · `nightly_infinite_sim.py` · `lumina_launcher.py`
 

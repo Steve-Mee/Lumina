@@ -20,12 +20,57 @@ _RESOLVED_ACTIONS = frozenset(
         "accept_champion",
         "wipe_and_retry",
         "wipe_genesis",
+        "retry_stage",
+        "retry_stage_or_wipe",
+        "expand_data_or_wipe_birth",
+        "expand_data_or_wipe_genesis",
     }
 )
 
 
 def utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def occupancy_from_loop(loop: Any) -> float | None:
+    tot = int(getattr(loop, "stage_range_total_signals", 0) or 0)
+    if tot <= 0:
+        return None
+    flat = int(getattr(loop, "stage_range_flat_bars", 0) or 0)
+    return float(max(0, flat)) / float(tot)
+
+
+def build_loop_terminal_freeze(loop: Any, stall_reason: str) -> dict[str, Any]:
+    """Freeze payload from a live stage-loop host. Never invent ticks."""
+    swarm = getattr(loop, "swarm_state", None)
+    return build_terminal_freeze(
+        reason=stall_reason,
+        curriculum_stage=str(getattr(getattr(loop, "stage", None), "value", "") or ""),
+        stages_passed=list(getattr(getattr(loop, "host", None), "_stages_passed", []) or []),
+        evolution_step=int(getattr(getattr(loop, "plateau_state", None), "evolution_step", 0) or 0),
+        stage_trades=int(getattr(loop, "stage_trades", 0) or 0),
+        stage_wins=int(getattr(loop, "stage_wins", 0) or 0),
+        swarm_rejected_no_lift=bool(
+            getattr(loop, "swarm_rejected_no_lift", False)
+            or getattr(swarm, "rejected_no_lift", False)
+        ),
+        swarm_champion_accepted=bool(
+            getattr(loop, "swarm_champion_accepted", False)
+            or getattr(swarm, "champion_accepted", False)
+        ),
+        best_edgescore_policy_path=str(getattr(loop, "best_edgescore_policy_path", "") or ""),
+        best_policy_path=str(
+            getattr(getattr(loop, "plateau_state", None), "best_policy_path", "") or ""
+        ),
+        expansion_step=int(getattr(loop, "expansion_step", 0) or 0),
+        expansion_exhausted=bool(getattr(loop, "data_exhausted", False)),
+        occupancy=occupancy_from_loop(loop),
+        occupancy_exam_armed=bool(
+            getattr(getattr(loop, "occupancy_exam_window", None), "armed", False)
+        ),
+        retries_this_stage=int(getattr(loop, "retries_this_stage", 0) or 0),
+        max_stage_retries=int(getattr(getattr(loop, "cur_cfg", None), "max_stage_retries", 3) or 3),
+    )
 
 
 def build_terminal_freeze(
@@ -41,11 +86,35 @@ def build_terminal_freeze(
     next_action: str | None = None,
     best_edgescore_policy_path: str = "",
     best_policy_path: str = "",
+    expansion_step: int = 0,
+    expansion_exhausted: bool = False,
+    occupancy: float | None = None,
+    occupancy_exam_armed: bool | None = None,
+    retries_this_stage: int = 0,
+    max_stage_retries: int = 3,
 ) -> dict[str, Any]:
     reject = bool(swarm_rejected_no_lift) and not bool(swarm_champion_accepted)
     action = str(next_action or "").strip()
     if not action:
-        action = "accept_champion_or_wipe" if reject else "expand_data_or_wipe_genesis"
+        from lumina_core.birth.foundation_occupancy_envelope import (
+            occupancy_fencepost_blocks_expand,
+        )
+
+        fencepost = occupancy_fencepost_blocks_expand(
+            occupancy=occupancy,
+            occupancy_exam_armed=occupancy_exam_armed,
+        )
+        ladder_open = (not bool(expansion_exhausted)) and int(expansion_step or 0) < 2
+        if fencepost:
+            retries = max(0, int(retries_this_stage or 0))
+            cap = max(1, int(max_stage_retries or 3))
+            action = "retry_stage_or_wipe" if retries >= cap else "retry_stage"
+        elif reject and ladder_open:
+            action = "expand_data_or_accept_or_wipe"
+        elif reject:
+            action = "accept_champion_or_wipe"
+        else:
+            action = "expand_data_or_wipe_birth"
     return {
         "schema": TERMINAL_FREEZE_SCHEMA,
         "reason": str(reason or "stage_stalled"),
@@ -59,6 +128,8 @@ def build_terminal_freeze(
         "next_action": action,
         "best_edgescore_policy_path": str(best_edgescore_policy_path or ""),
         "best_policy_path": str(best_policy_path or ""),
+        "expansion_step": max(0, int(expansion_step or 0)),
+        "expansion_exhausted": bool(expansion_exhausted),
         "frozen_at": utcnow_iso(),
         "resolved": False,
         "resolved_action": "",
@@ -143,11 +214,14 @@ def freeze_attention_fields(freeze: Mapping[str, Any]) -> dict[str, Any]:
     """Progress fields that keep freeze honest across resume."""
     if not freeze_is_active(freeze):
         return {}
-    next_action = str(freeze.get("next_action") or "expand_data_or_wipe_genesis")
+    next_action = str(freeze.get("next_action") or "expand_data_or_wipe_birth")
     reason = str(freeze.get("reason") or "stage_stalled")
+    auto_retry = next_action == "retry_stage"
     return {
-        "needs_attention": True,
-        "retryable": False,
+        "needs_attention": not auto_retry,
+        "retryable": bool(auto_retry),
+        "autonomous_recovery_pending": bool(auto_retry),
+        "recommended_recovery_action": "retry_stage" if auto_retry else "",
         "terminal_stall_reason": reason,
         "terminal_freeze": dict(freeze),
         "curriculum_stage": str(freeze.get("curriculum_stage") or ""),
@@ -155,10 +229,16 @@ def freeze_attention_fields(freeze: Mapping[str, Any]) -> dict[str, Any]:
         "evolution_step": int(freeze.get("evolution_step") or 0),
         "attention_reason_code": reason,
         "attention_summary": (
-            f"Terminal freeze: {reason} — Twin/operator next_action={next_action}"
+            "Occupancy fencepost — autonomous retry_stage (sample reset)."
+            if auto_retry
+            else f"Terminal freeze: {reason} — Twin/operator next_action={next_action}"
         ),
         "attention_recommended_actions": (
-            ["accept_champion", "wipe_and_retry"]
+            ["retry_stage", "wipe_and_retry"]
+            if "retry_stage" in next_action
+            else ["expand_data", "accept_champion", "wipe_and_retry"]
+            if "expand" in next_action and "accept" in next_action
+            else ["accept_champion", "wipe_and_retry"]
             if "accept" in next_action
             else ["expand_data", "wipe_and_retry", "human_review"]
         ),
@@ -167,12 +247,14 @@ def freeze_attention_fields(freeze: Mapping[str, Any]) -> dict[str, Any]:
 
 __all__ = [
     "TERMINAL_FREEZE_SCHEMA",
+    "build_loop_terminal_freeze",
     "build_terminal_freeze",
     "extract_terminal_freeze",
     "freeze_attention_fields",
     "freeze_blocks_curriculum_grind",
     "freeze_is_active",
     "mark_freeze_resolved",
+    "occupancy_from_loop",
     "restore_identity_from_freeze",
     "utcnow_iso",
 ]

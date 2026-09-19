@@ -267,6 +267,82 @@ def test_champion_freeze_active_for_svc_checkpoint_fallback(
 
 
 @pytest.mark.unit
+def test_sanitize_frozen_progress_strips_live_training_lies() -> None:
+    from lumina_core.birth.terminal_freeze import build_terminal_freeze
+    from lumina_launcher.services.birth_status_mapper_get import sanitize_frozen_progress
+
+    freeze = build_terminal_freeze(
+        reason="phoenix_cycle",
+        curriculum_stage="stage3_mixed",
+        stages_passed=["stage1_trend", "stage2_range"],
+        swarm_rejected_no_lift=True,
+        next_action="accept_champion_or_wipe",
+    )
+    out = sanitize_frozen_progress(
+        {
+            "stage": "stage_stalled",
+            "phase": "stage_stalled",
+            "sub_phase": "ppo_training",
+            "is_advancing": True,
+            "auto_recovery_active": True,
+            "retryable": False,
+            "pass_reason": "foundation_fail:median_loss_r=None missing_or_gt_1.5;replay_cap trades=2331 days=0",
+            "progress_truth": {"stage_pass_now": True, "blocker": None},
+            "terminal_freeze": freeze,
+            "swarm_rejected_no_lift": True,
+        }
+    )
+    assert out["is_advancing"] is False
+    assert out["sub_phase"] == "stage_stalled"
+    assert out["auto_recovery_active"] is False
+    assert out.get("pass_reason") in (None, "")
+    assert out["progress_truth"]["stage_pass_now"] is False
+    assert out["progress_truth"]["blocker"] == "phoenix_cycle"
+
+
+def test_start_birth_rejects_unresolved_terminal_freeze(tmp_path: Path) -> None:
+    from lumina_core.birth.progress import write_birth_progress
+    from lumina_core.birth.terminal_freeze import build_terminal_freeze
+    from lumina_launcher.services.birth_runner_start import start_birth
+
+    freeze = build_terminal_freeze(
+        reason="phoenix_cycle",
+        curriculum_stage="stage3_mixed",
+        stages_passed=["stage1_trend", "stage2_range"],
+        swarm_rejected_no_lift=True,
+        next_action="accept_champion_or_wipe",
+        stage_trades=2331,
+        stage_wins=761,
+    )
+    write_birth_progress(
+        tmp_path,
+        stage="stage_stalled",
+        phase="stage_stalled",
+        message="Terminal freeze",
+        progress_pct=27.0,
+        cumulative_trades=2731,
+        ppo_steps=86000,
+        retryable=False,
+        swarm_rejected_no_lift=True,
+        terminal_freeze=freeze,
+        terminal_stall_reason="phoenix_cycle",
+    )
+    svc = MagicMock()
+    svc.workspace_root = tmp_path
+    svc.is_running.return_value = False
+    svc.is_completed.return_value = False
+    result = start_birth(
+        svc,
+        target_trades=25000,
+        explicit_user_start=True,
+        continue_training=True,
+        reuse_data=True,
+    )
+    assert result["status"] == "rejected"
+    assert result["reason_code"] == "champion_freeze_blocks_recovery"
+    assert svc._stop_requested.clear.call_count == 0
+
+
 def test_accept_champion_resolves_terminal_freeze(tmp_path: Path) -> None:
     from lumina_core.birth.checkpoint import read_checkpoint_payload, write_checkpoint_payload
     from lumina_core.birth.terminal_freeze import (

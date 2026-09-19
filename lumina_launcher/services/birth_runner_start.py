@@ -20,10 +20,13 @@ from lumina_core.first_boot_ui import (
 from lumina_core.logging_utils import get_logger
 from lumina_core.birth.engine import BirthPhaseEngineV2 as LuminaBirthEngine  # direct (thin facade deleted for simplicity)
 from lumina_core.birth.progress import read_birth_progress, write_birth_progress
+from lumina_launcher.services.birth_history_skip import skip_launcher_history_preflight
 from lumina_launcher.services.birth_runner_lock import (
     clear_runner_lock,
+    clear_start_inflight,
     clear_stale_runner_lock,
     write_runner_lock,
+    write_start_inflight,
 )
 from lumina_launcher.services.birth_status_enricher import (
     adaptive_intelligence_status,
@@ -45,31 +48,6 @@ def _demote_fixed_residuals(svc: Any) -> None:
             logger.info("birth.residual.demoted %s", result)
     except Exception as exc:
         logger.debug("birth.residual.demote_failed: %s", exc)
-
-
-def skip_launcher_history_preflight(
-    *,
-    force: bool,
-    practice_mode: bool,
-    continue_training: bool,
-    reuse_data: bool,
-    checkpoint_exists: bool,
-    certified_cache_exists: bool = False,
-) -> bool:
-    """Whether launcher may skip live Fabric/NT history probe before engine start.
-
-    Fresh certified starts still probe. Resume/reuse with an on-disk checkpoint
-    trusts engine cache + fail-closed cold load — no second parallel data gate.
-    Certified tick-cache + ``reuse_data`` (no checkpoint) is the Stage-1 physics
-    restart path: history is already on disk, so AMBER Fabric must not block.
-    """
-    if practice_mode:
-        return True
-    if force:
-        return False
-    if checkpoint_exists and (continue_training or reuse_data):
-        return True
-    return bool(reuse_data and certified_cache_exists and not continue_training)
 
 
 def _checkpoint_resume_ack_metrics(svc: Any) -> tuple[int, int, str]:
@@ -143,6 +121,23 @@ def start_birth(
     if svc.is_running():
         return {"status": "already_running", "message": "Birth Phase is already in progress"}
 
+    prev_progress = read_birth_progress(svc.workspace_root)
+    from lumina_core.birth.starship_swarm_gates import (
+        champion_freeze_blocks_recovery_payload,
+        is_champion_freeze_active,
+    )
+    from lumina_core.birth.terminal_freeze import extract_terminal_freeze, freeze_is_active
+
+    freeze = extract_terminal_freeze(prev_progress)
+    if freeze_is_active(freeze) or is_champion_freeze_active(progress=prev_progress):
+        logger.warning(
+            "birth.start.blocked_unresolved_freeze continue=%s expand=%s force=%s",
+            continue_training,
+            expand_data,
+            force,
+        )
+        return champion_freeze_blocks_recovery_payload()
+
     if svc.is_completed() and not force and not practice_mode and not continue_training:
         return {"status": "already_completed", "message": "Birth Phase already completed"}
 
@@ -163,7 +158,12 @@ def start_birth(
 
     svc._result = None
     svc._error = None
-    svc._start_time = time.time()
+    prev_progress = read_birth_progress(svc.workspace_root)
+    prev_start = float((prev_progress or {}).get("birth_start_time") or 0)
+    if continue_training and prev_start > 0:
+        svc._start_time = prev_start
+    else:
+        svc._start_time = time.time()
     saved_settings = load_saved_birth_settings(svc)
     requested_target = (
         normalize_first_boot_training_trades(target_trades)
@@ -191,11 +191,25 @@ def start_birth(
     ).exists()
     reuse_existing_policy = bool(continue_training or (checkpoint_exists and not force))
     try:
-        from lumina_core.birth.tick_cache_persist import certified_tick_cache_present
+        from lumina_core.birth.tick_cache_persist import ensure_certified_tick_cache
 
-        certified_cache_exists = certified_tick_cache_present(svc.workspace_root)
+        certified_cache_exists = ensure_certified_tick_cache(svc.workspace_root)
     except Exception:
         certified_cache_exists = False
+
+    from lumina_core.birth.physics_preflight import enforce_birth_physics
+
+    write_start_inflight(svc)
+    physics_block = enforce_birth_physics(
+        svc,
+        target_trades=int(resolved_target),
+        start_time=float(svc._start_time or time.time()),
+        training_mode="practice" if practice_mode else "certified",
+    )
+    if physics_block is not None:
+        clear_start_inflight(svc)
+        return physics_block
+
     skip_history_preflight = skip_launcher_history_preflight(
         force=bool(force),
         practice_mode=bool(practice_mode),
@@ -266,6 +280,7 @@ def start_birth(
             except Exception as progress_exc:
                 logger.warning("birth.preflight_progress_write_failed: %s", progress_exc)
             logger.warning("Birth preflight rejected (sync, no started): %s", detail)
+            clear_start_inflight(svc)
             return {
                 "status": "history_unavailable",
                 "message": detail,
@@ -491,7 +506,16 @@ def start_birth(
                     os.environ.pop("LUMINA_CONFIG", None)
             logger.info("Birth Phase completed successfully")
         except Exception as e:
-            detail = f"{type(e).__name__}: {e}"
+            from lumina_core.birth.physics_preflight import (
+                birth_exception_attention,
+                operator_physics_detail,
+            )
+
+            attn = birth_exception_attention(e)
+            if attn.reason_code != "birth_error":
+                detail = operator_physics_detail(e)
+            else:
+                detail = f"{type(e).__name__}: {e}"
             svc._error = detail
             logger.exception("Birth Phase failed: %s", detail)
             # Persist durable error progress so UI matches Telegram after in-memory
@@ -501,7 +525,7 @@ def start_birth(
                 write_birth_progress(
                     svc.workspace_root,
                     stage="error",
-                    phase="error",
+                    phase="error" if attn.reason_code == "birth_error" else attn.reason_code,
                     message=detail,
                     progress_pct=float(prev.get("progress_pct", 0) or 0),
                     cumulative_trades=int(
@@ -511,15 +535,10 @@ def start_birth(
                     ppo_steps=int(prev.get("ppo_steps", 0) or 0),
                     birth_start_time=float(prev.get("birth_start_time", 0) or 0),
                     needs_attention=True,
-                    retryable=True,
+                    retryable=attn.retryable,
                     last_error=detail,
-                    attention_reason_code="birth_error",
-                    attention_recommended_actions=[
-                        "check_fabric_nt8",
-                        "check_mds_connection",
-                        "resume_from_checkpoint",
-                        "wipe_and_retry",
-                    ],
+                    attention_reason_code=attn.reason_code,
+                    attention_recommended_actions=list(attn.actions),
                 )
             except Exception as progress_exc:
                 logger.warning("birth.error_progress_write_failed: %s", progress_exc)
@@ -539,6 +558,7 @@ def start_birth(
     svc._thread = threading.Thread(target=_run_birth, daemon=True, name="LuminaBirthThread")
     svc._thread.start()
     svc._stalled_auto_resume_attempted = False
+    clear_start_inflight(svc)
 
     return {
         "status": "started",
@@ -554,4 +574,8 @@ def start_birth(
         ),
     }
 
-from lumina_launcher.services.birth_runner_preflight import load_saved_birth_settings, preflight_historical_data, stop_birth  # noqa: F401, E402
+from lumina_launcher.services.birth_runner_preflight import (  # noqa: E402, F401
+    load_saved_birth_settings,
+    preflight_historical_data,
+    stop_birth,
+)

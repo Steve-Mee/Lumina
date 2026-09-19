@@ -14,6 +14,7 @@ vi.mock("@/lib/birthClient", () => ({
   isBirthStartSuccessful: (status: unknown) =>
     String(status ?? "").toLowerCase() === "started",
   resumeStalledStageSession: vi.fn(),
+  retryCurrentStageSession: vi.fn(),
   expandAndRetryStalledStageSession: vi.fn(),
   retryBirthSession: vi.fn(),
   resumeBirthSession: vi.fn(),
@@ -201,6 +202,49 @@ describe("birthStore stage_stalled recovery", () => {
     expect(useBirthStore.getState().uiPhase).toBe("running");
     expect(useBirthStore.getState().birthSurface).toBe("running");
     expect(useBirthStore.getState().runPinned).toBe(true);
+  });
+
+  it("unresolved freeze wins over live leftover and runPinned", () => {
+    useBirthStore.getState().beginBirthRun();
+    useBirthStore.getState().applyStatus({
+      status: "running",
+      live: true,
+      progress: {
+        stage: "training_running",
+        phase: "ppo_training",
+        terminal_freeze: {
+          schema: "terminal_freeze_v1",
+          reason: "phoenix_cycle",
+          resolved: false,
+          next_action: "accept_champion_or_wipe",
+        },
+      },
+    } as BirthStatusPayload);
+    expect(useBirthStore.getState().uiPhase).toBe("stage_stalled");
+    expect(useBirthStore.getState().birthSurface).toBe("recovery");
+    expect(useBirthStore.getState().runPinned).toBe(false);
+  });
+
+  it("executeRecommendedRecovery is blocked while freeze is unresolved", async () => {
+    useBirthStore.getState().applyStatus({
+      status: "stage_stalled",
+      live: false,
+      progress: {
+        stage: "stage_stalled",
+        phase: "stage_stalled",
+        terminal_freeze: {
+          schema: "terminal_freeze_v1",
+          reason: "phoenix_cycle",
+          resolved: false,
+          next_action: "accept_champion_or_wipe",
+        },
+      },
+    } as BirthStatusPayload);
+    const ok = await useBirthStore.getState().executeRecommendedRecovery();
+    expect(ok).toBe(false);
+    expect(useBirthStore.getState().uiPhase).toBe("stage_stalled");
+    expect(useBirthStore.getState().birthSurface).toBe("recovery");
+    expect(useBirthStore.getState().runPinned).toBe(false);
   });
 
   it("runPinned clears when engine becomes live", () => {

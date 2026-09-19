@@ -26,6 +26,9 @@ const FACADE_CEILINGS: Record<string, number> = {
   "components/birth/BirthAdvancedPanel.tsx": 400,
   "components/onboarding/steps/CredentialsStep.tsx": 580,
   "components/maturity/PhaseHubScreen.tsx": 405,
+  "components/maturity/AwakeningPhaseScreen.tsx": 400,
+  "components/maturity/ApprenticeshipPhaseScreen.tsx": 400,
+  "components/maturity/ProvingGroundPhaseScreen.tsx": 400,
   "components/operations/ApprovalTwinTrainPanel.tsx": 400,
   "components/config/BotConfigForm.tsx": 400,
   "components/cockpit/CommandHud.tsx": 552,
@@ -64,8 +67,36 @@ const REQUIRED_COMPANIONS: Record<string, number> = {
   "components/onboarding/steps/credentialsVaultState.ts": 485,
   "components/onboarding/steps/credentialsFabricActions.ts": 400,
   "components/maturity/phaseHubFormat.ts": 400,
+  "components/maturity/phaseHubAwakening.ts": 400,
+  "components/maturity/phaseHubPlayground.ts": 400,
+  "components/maturity/phaseHubApprenticeship.ts": 400,
+  "components/maturity/phaseHubTiles.ts": 400,
+  "components/maturity/phaseHubStart.ts": 400,
   "components/maturity/PhaseHubHonestyBoard.tsx": 400,
   "components/maturity/PhaseHubAdvanceSection.tsx": 400,
+  "components/maturity/PhaseHubDeck.tsx": 400,
+  "components/maturity/PhaseHubWipeConfirm.tsx": 400,
+  "components/maturity/AwakeningMission.tsx": 400,
+  "components/maturity/AwakeningLifePulse.tsx": 400,
+  "components/maturity/ApprenticeshipMission.tsx": 400,
+  "components/maturity/ApprenticeshipLifePulse.tsx": 400,
+  "components/maturity/ProvingGroundMission.tsx": 400,
+  "components/maturity/ProvingGroundLifePulse.tsx": 400,
+  "components/maturity/phaseHubProvingGround.ts": 400,
+  "lib/awakening/awakeningChecklist.ts": 400,
+  "lib/awakening/awakeningLife.ts": 400,
+  "lib/awakening/awakeningSurfacePref.ts": 400,
+  "lib/playground/playgroundChecklist.ts": 400,
+  "lib/playground/playgroundSurfacePref.ts": 400,
+  "components/maturity/PlaygroundDeckOverlay.tsx": 400,
+  "lib/apprenticeship/apprenticeshipChecklist.ts": 400,
+  "lib/apprenticeship/apprenticeshipLife.ts": 400,
+  "lib/apprenticeship/apprenticeshipSurfacePref.ts": 400,
+  "lib/apprenticeship/apprenticeshipFailCopy.ts": 400,
+  "lib/provingGround/provingGroundChecklist.ts": 400,
+  "lib/provingGround/provingGroundLife.ts": 400,
+  "lib/provingGround/provingGroundSurfacePref.ts": 400,
+  "lib/provingGround/provingGroundFailCopy.ts": 400,
   "lib/twinClientTypes.ts": 400,
   "lib/twinClientCore.ts": 400,
   "lib/twinClientGym.ts": 400,
@@ -115,5 +146,9 @@ describe("Tauri UI god-surface guards", () => {
     );
     expect(text).toContain("PhaseHubHonestyBoard");
     expect(text).toContain("PhaseHubAdvanceSection");
+    expect(text).toContain("PhaseHubDeck");
+    expect(text).toContain("PhaseHubWipeConfirm");
+    expect(text).toContain("followPhaseStart");
+    expect(text).not.toContain("window.confirm");
   });
 });

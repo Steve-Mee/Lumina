@@ -208,7 +208,7 @@ History is append-only. Do not delete prior rows.
 
 **Prompt:** Where does stop×NEUTRAL start — regime at OPEN or only at CLOSE?
 **Train:** none. optimizer_steps=0. Parent zip 8cc435c6 only.
-**Hygiene:** training_reward token removed from birth/; GitPython==3.1.59.
+**Hygiene:** training_reward token removed from birth/; GitPython==3.1.62.
 **Leg A** seed 20260902 n_all=217 n_policy=150 wr_policy=0.37333333333333335 mean_r=-0.16280700616093724 ticks=7e86c2bb1c71d514 price=aff3cb1e3a6f5014 hole={'n': 76, 'wr': 0.0, 'mean_r': -1.0520731660642308, 'mean_usd': -118.70721003287197, 'n_entry_neutral': 70, 'n_entry_trend': 6, 'n_entry_unknown': 0, 'frac_entry_neutral': 0.9210526315789473, 'frac_entry_trend': 0.07894736842105263, 'frac_regime_flip': 0.07894736842105263, 'median_bars_held': 13.5, 'p25_bars_held': 5.0, 'p75_bars_held': 30.5, 'median_mae_r': -8.901336301037603, 'median_mfe_r': 7.699734803615165, 'bars_held_missing': False, 'mae_r_missing': False} flags={'n_H': 76, 'frac_neu': 0.9210526315789473, 'frac_tr': 0.07894736842105263, 'frac_ft': 0.18421052631578946, 'missing_entry': 0.0, 'missing_mae': 0.0, 'H_MISSING_ENTRY': False, 'H_ENTRY_NEUTRAL': True, 'H_ENTRY_FLIP': False, 'H_FIRST_TOUCH': False, 'licensed_family': 'OPEN_DECISION', 'missing_fields': [], 'gate1': 'NONE'}.
 **Leg B** seed 20260903 n_all=187 n_policy=150 wr_policy=0.34 mean_r=-0.24524752185084342 ticks=7e86c2bb1c71d514 price=e51ce9b724515e2e hole={'n': 82, 'wr': 0.0, 'mean_r': -1.0770073952838481, 'mean_usd': -89.01498215982033, 'n_entry_neutral': 73, 'n_entry_trend': 9, 'n_entry_unknown': 0, 'frac_entry_neutral': 0.8902439024390244, 'frac_entry_trend': 0.10975609756097561, 'frac_regime_flip': 0.10975609756097561, 'median_bars_held': 9.5, 'p25_bars_held': 5.0, 'p75_bars_held': 20.25, 'median_mae_r': -7.597623779527693, 'median_mfe_r': 6.17551471387498, 'bars_held_missing': False, 'mae_r_missing': False} flags={'n_H': 82, 'frac_neu': 0.8902439024390244, 'frac_tr': 0.10975609756097561, 'frac_ft': 0.17073170731707318, 'missing_entry': 0.0, 'missing_mae': 0.0, 'H_MISSING_ENTRY': False, 'H_ENTRY_NEUTRAL': True, 'H_ENTRY_FLIP': False, 'H_FIRST_TOUCH': False, 'licensed_family': 'OPEN_DECISION', 'missing_fields': [], 'gate1': 'NONE'}.
 **Flags:** A missing=False neu=True flip=False ft=False; B missing=False neu=True flip=False ft=False. Licensed=`OPEN_DECISION`.
@@ -429,3 +429,11 @@ Isolated PHYSICS_SLOPE_ABS=0.004 on a NEW 8e-6 tape + scratch 46-dim V1 10k live
 ## Pointer — AWAKENING_GEOMETRY_REWARD
 
 First-touch gate 0.10 then train-only +1.21/−1.04 close reward on a NEW SCALE-physics tape lives under `reports/awakening_geom_run`. Floor 150 stays. GENESIS_EYES_OK is false. REAL=no. world_engineering_closed stays true. Policy goal 0.46 is not the gate.
+---
+
+## This ticket — Lungs vs Voice organs SSOT (Genesis wiring)
+
+**Prompt:** Honest stack. Two organs. No vLLM-vs-CUDA radio. News is Voice, never orders.
+**Floors:** unchanged (S1–S5 pins above). No MES $5 move. No REAL door. No Evolution Proof stamp.
+**Shipped:** `organs_truth_v1`; Windows blocks vLLM; physics installer refuses `--with-vllm`; provider default `ollama,grok_remote` on Windows; three-card Setup; NewsAgent fail-closed when Voice=off (neutral, multiplier 1.0, `order_path_coupled=false`).
+**Verdict:** `ORGANS_CLOSED` pending test green on this branch. Fitness `707b5ab9d6b9af96` untouched. π* zips untouched.

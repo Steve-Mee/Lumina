@@ -275,6 +275,7 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
         variant="deck"
         readiness={readiness}
         onCompleted={() => void refresh()}
+        onWiped={() => void refresh()}
       />
 
       <TwinMicroSessionCard onDone={() => void refresh()} />

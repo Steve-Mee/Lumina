@@ -4,6 +4,7 @@ import {
   activationStepIndex,
   needsOperatorDecision,
   resolveBirthOperatorMode,
+  resolveBirthPaintSurface,
   shouldHideActivateForDecision,
   shouldShowDecisionBanner,
 } from "@/lib/birthOperatorMode";
@@ -104,6 +105,67 @@ describe("resolveBirthOperatorMode", () => {
         uiPhase: "stage_stalled",
       }),
     ).toBe("stall_overlay");
+  });
+
+  it("keeps stall overlay when freeze is unresolved even if uiPhase is still running", () => {
+    expect(
+      resolveBirthOperatorMode({
+        status: status({
+          status: "stage_stalled",
+          live: false,
+          progress: {
+            stage: "stage_stalled",
+            phase: "stage_stalled",
+            swarm_rejected_no_lift: true,
+            terminal_freeze: {
+              schema: "terminal_freeze_v1",
+              reason: "phoenix_cycle",
+              resolved: false,
+              next_action: "accept_champion_or_wipe",
+            },
+          },
+        }),
+        activating: false,
+        runPinned: false,
+        genesisPinned: false,
+        uiPhase: "running",
+      }),
+    ).toBe("stall_overlay");
+  });
+
+  it("keeps stall overlay when freeze is unresolved even if runPinned training leftover", () => {
+    expect(
+      resolveBirthOperatorMode({
+        status: status({
+          status: "running",
+          live: true,
+          progress: {
+            stage: "training_running",
+            phase: "ppo_training",
+            terminal_freeze: {
+              schema: "terminal_freeze_v1",
+              reason: "phoenix_cycle",
+              resolved: false,
+              next_action: "accept_champion_or_wipe",
+            },
+          },
+        }),
+        activating: false,
+        runPinned: true,
+        genesisPinned: false,
+        uiPhase: "running",
+      }),
+    ).toBe("stall_overlay");
+  });
+
+  it("maps operator modes to a single paint surface (no genesis under stall)", () => {
+    expect(resolveBirthPaintSurface("launching")).toBe("launching");
+    expect(resolveBirthPaintSurface("idle")).toBe("genesis");
+    expect(resolveBirthPaintSurface("decision")).toBe("genesis");
+    expect(resolveBirthPaintSurface("training")).toBe("mission");
+    expect(resolveBirthPaintSurface("finale")).toBe("mission");
+    expect(resolveBirthPaintSurface("stall_overlay")).toBe("stall_overlay");
+    expect(resolveBirthPaintSurface("certificate_overlay")).toBe("certificate_overlay");
   });
 
   it("maps error uiPhase without live engine to decision (no orphan)", () => {

@@ -101,6 +101,8 @@ def evaluate_foundation_pass(
     *,
     round_trips: int = 0,
     required_round_trips: int = 0,
+    envelope_override_fraction: float | None = None,
+    passthrough_occupancy_signals: int | None = None,
 ) -> FoundationPassDecision:
     """AND-gates for sequential Birth Foundation stages 1–5."""
     blockers: list[str] = []
@@ -181,6 +183,21 @@ def evaluate_foundation_pass(
                 blockers.append(f"oos_dd={snap.oos_dd_pct} > {S5_DD_MAX_PCT}")
     else:
         blockers.append(f"not_foundation_stage:{stage.value}")
+
+    occupancy_graded = stage in (
+        CurriculumStage.STAGE2_RANGE,
+        CurriculumStage.STAGE3_MIXED,
+        CurriculumStage.STAGE4_VIABLE_PLANT,
+        CurriculumStage.STAGE5_PROBE_HANDOFF,
+    )
+    if occupancy_graded and envelope_override_fraction is not None:
+        frac = float(envelope_override_fraction)
+        if frac > 0.5 + 1e-12:
+            blockers.append(f"occupancy_envelope_dominated={frac:.2f}")
+        if passthrough_occupancy_signals is not None and int(passthrough_occupancy_signals) < 50 and frac > 1e-12:
+            blockers.append(
+                f"occupancy_passthrough_sample={int(passthrough_occupancy_signals)}"
+            )
 
     passed = len(blockers) == 0
     message = "foundation_pass" if passed else "foundation_fail:" + ";".join(blockers)

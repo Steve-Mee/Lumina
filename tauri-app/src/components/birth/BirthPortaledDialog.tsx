@@ -113,19 +113,21 @@ export function BirthPortaledDialog({
         >
           <XIcon className="size-4" />
         </button>
-        <div className={cn("birth-portaled-dialog__body grid gap-4 p-6", className)}>
-          <div className="birth-portaled-dialog__header flex flex-col gap-1.5 pr-8 text-left">
-            <h2
-              id={titleId}
-              className="font-mono text-base leading-snug font-medium tracking-wide text-foreground"
-            >
-              {title}
-            </h2>
-            {description ? (
-              <div id={descId} className="text-sm leading-relaxed text-muted-foreground">
-                {description}
-              </div>
-            ) : null}
+        <div className={cn("birth-portaled-dialog__layout", className)}>
+          <div className="birth-portaled-dialog__body">
+            <div className="birth-portaled-dialog__header flex flex-col gap-1.5 pr-8 text-left">
+              <h2
+                id={titleId}
+                className="font-mono text-base leading-snug font-medium tracking-wide text-foreground"
+              >
+                {title}
+              </h2>
+              {description ? (
+                <div id={descId} className="text-sm leading-relaxed text-muted-foreground">
+                  {description}
+                </div>
+              ) : null}
+            </div>
           </div>
           <div className="birth-portaled-dialog__footer">{footer}</div>
         </div>

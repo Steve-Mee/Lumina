@@ -326,15 +326,16 @@ def _next_action(
         return "none"
     if active == "certificate":
         return "continue_learning_or_wipe"
-    if active == "terminal_stall" or (
-        trade_budget_remaining is not None and trade_budget_remaining <= 0
-    ):
-        return "expand_data_or_wipe_genesis"
-    # Champion freeze is sacred: accept/wipe only (Track A / T11)
+    # Champion freeze is sacred: accept/wipe only (Track A / T11).
+    # Must beat terminal_stall — freeze often surfaces as phase=stage_stalled.
     if champion_freeze or (
         (swarm_rejected_no_lift or active == "swarm_block") and needs_attention
     ):
         return "accept_champion_or_wipe"
+    if active == "terminal_stall" or (
+        trade_budget_remaining is not None and trade_budget_remaining <= 0
+    ):
+        return "expand_data_or_wipe_birth"
     if needs_attention or active == "needs_attention":
         return "human_review_telegram"
     if swarm_rejected_no_lift or active == "swarm_block":

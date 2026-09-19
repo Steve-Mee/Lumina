@@ -214,7 +214,7 @@ async def test_start_birth_reuse_data_skips_fabric_when_cache_present(
     _reset_birth_service: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "lumina_core.birth.tick_cache_persist.certified_tick_cache_present",
+        "lumina_core.birth.tick_cache_persist.ensure_certified_tick_cache",
         lambda *_a, **_k: True,
     )
     monkeypatch.setattr(

@@ -61,9 +61,11 @@ class ConfigureRequest(BaseModel):
     selected_model_key: str | None = None
 
 class FabricConnectionTestRequest(BaseModel):
-    include_safe_mode: bool = True
+    include_safe_mode: bool = False
     # Empty → diagnostics resolve trading.instrument from config.yaml (e.g. MES SEP26).
     instrument: str = Field(default="", max_length=64)
+    # Always refused: diagnostics must not submit NT orders.
+    allow_live_order_probe: bool = False
 
 async def fabric_connection_test(body: FabricConnectionTestRequest | None = None) -> dict[str, Any]:
     """Run SIM-only Execution Fabric diagnostics (Brain ↔ NT8 Fabric, not CrossTrade)."""
@@ -96,6 +98,7 @@ async def fabric_connection_test(body: FabricConnectionTestRequest | None = None
         report = run_fabric_connection_diagnostics(
             include_safe_mode=bool(req.include_safe_mode),
             instrument=instrument,
+            allow_live_order_probe=False,
         )
     except Exception as exc:
         logger.exception("fabric-connection-test failed")

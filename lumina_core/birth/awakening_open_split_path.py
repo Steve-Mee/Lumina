@@ -81,7 +81,7 @@ def inspect_open_split_protocol() -> dict[str, Any]:
         "update_open_telem_gather": f"{TELEM_REL}:{_line_of(TELEM_REL, 'gather_open_features(')}",
         "stamp_open_host": f"{SIM_REL}:{_line_of(SIM_REL, 'stamp_open_host(')}",
         "run_evaluate_only_call": (f"{SPLIT_RUN_REL}:{_line_of(SPLIT_RUN_REL, 'run_evaluate_only(')}"),
-        "gitpython_pin": f"{REQ_REL}:{_line_of(REQ_REL, 'GitPython==3.1.59')}",
+        "gitpython_pin": f"{REQ_REL}:{_line_of(REQ_REL, 'GitPython==3.1.62')}",
         "codecov_patch_50": f"{CODECOV_REL}:{_line_of(CODECOV_REL, 'target: 50%')}",
         "live_stash_attr_paths": dict(STASH_ATTR_PATHS),
         "live_stash_gather_site": (f"{TELEM_REL}:{_line_of(TELEM_REL, 'def gather_open_features')}"),

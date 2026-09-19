@@ -2,7 +2,6 @@ import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
 import { motion, useSpring, useTransform } from "framer-motion";
 
-import { useOrganismEnvelope } from "@/context/OrganismEnvelopeContext";
 import { AnimatedMetric } from "@/components/cockpit/AnimatedMetric";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import type { IntegrityTier } from "@/lib/riskCitadelMetrics";
@@ -38,11 +37,10 @@ export function HudSignal({
   intensity = 0.85,
   className,
 }: HudSignalProps) {
-  const envelope = useOrganismEnvelope();
   const mode = useCoreStore(selectCurrentMode);
   const prevValue = useRef(value);
   const [flash, setFlash] = useState(false);
-  const breatheIntensity = intensity * (0.85 + envelope * 0.15);
+  const breatheIntensity = `calc(${intensity} * (0.85 + var(--organism-envelope, 0.5) * 0.15))`;
 
   useEffect(() => {
     if (prevValue.current !== value) {
@@ -84,13 +82,15 @@ interface HudSignalArcProps {
 export function HudSignalArc({ label, integrity, tier, className }: HudSignalArcProps) {
   const reducedMotion = usePrefersReducedMotion();
   const mode = useCoreStore(selectCurrentMode);
-  const envelope = useOrganismEnvelope();
   const clamped = Math.max(0, Math.min(100, integrity));
   const radius = 18;
   const circumference = Math.PI * radius;
   const arcSpring = modeTransition(mode, reducedMotion) ?? springSnappy;
   const spring = useSpring(clamped, arcSpring);
-  const arcOpacity = mode === "REAL" ? 0.72 + envelope * 0.28 : 0.85 + envelope * 0.15;
+  const arcOpacity =
+    mode === "REAL"
+      ? "calc(0.72 + var(--organism-envelope, 0.5) * 0.28)"
+      : "calc(0.85 + var(--organism-envelope, 0.5) * 0.15)";
 
   useEffect(() => {
     spring.set(clamped);

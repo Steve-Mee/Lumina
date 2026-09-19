@@ -63,8 +63,9 @@ Or use unit tests with an in-process mock server (`tests/broker/test_fabric_clie
 
 ## Safety (server-side) — PR-D MVP
 
-- Heartbeat timeout (default 5s) → cancel non-protected working orders → **SAFE_MODE**
-- After flatten grace (default 15s) → emergency flatten (SIM gateway)
+- Heartbeat watchdog is **disarmed until AuthHello + at least one heartbeat**. NT open, Repair, or Test connection without a live Brain issues **no orders**.
+- After live heartbeats: timeout (default 5s) → cancel non-protected working orders → **SAFE_MODE**
+- After flatten grace (default 15s) → flatten **only instruments this process placed** (never leftover MES; never `FlattenEverything`; never NT `Name='Close'`)
 - Brain stream close (last session) → same disconnect policy
 - Auth success → **StateSync** snapshot (`state_hash`) for reconciliation
 - Limit/stop orders stay WORKING; market fills immediately (SIM)

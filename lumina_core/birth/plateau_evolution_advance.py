@@ -186,6 +186,8 @@ class PlateauEvolutionAdvanceMixin(StageLoopMixinBase):
         return applied or forced
 
     def _try_plateau_evolution(self, *, failure_key: str) -> bool:
+        if getattr(self, "_foundation_eval_only", False):
+            return False
         if not self.plateau_state.active or self.allow_provisional:
             return False
         from lumina_core.birth.birth_control_plane import should_skip_plateau_ladder_theater

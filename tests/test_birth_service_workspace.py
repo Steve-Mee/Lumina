@@ -33,6 +33,15 @@ def _fake_ppo_trainer() -> SimpleNamespace:
     return SimpleNamespace(create_fresh_birth_policy=lambda **_kwargs: object())
 
 
+@pytest.fixture(autouse=True)
+def _birth_physics_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unit tests of start wiring are not live physics installs."""
+    monkeypatch.setattr(
+        "lumina_core.birth.physics_preflight.enforce_birth_physics",
+        lambda *_a, **_k: None,
+    )
+
+
 class _BirthRunnerFakeContainerMixin:
     def register_birth_reload_host(self, host: object) -> None:
         self.birth_reload_host = host
@@ -111,13 +120,22 @@ def test_artifacts_ok_requires_v2_certificate_and_policy(tmp_path: Path, monkeyp
     write_certificate(tmp_path, cert)
     from lumina_core.birth.evolution_proof_gate import save_evolution_proof_record
 
-    save_evolution_proof_record(tmp_path, {"passed": True})
+    save_evolution_proof_record(
+        tmp_path,
+        {
+            "passed": True,
+            "holdout_trades": 500,
+            "birth_exit_winrate": 0.32,
+            "polish_oos_winrate": 0.46,
+            "oos_winrate": 0.46,
+        },
+    )
     assert svc.artifacts_ok() is True
     BirthService._instance = None  # type: ignore[attr-defined]
 
 
 @pytest.mark.unit
-def test_is_completed_requires_valid_certificate(tmp_path: Path) -> None:
+def test_is_completed_requires_birth_exit_not_certificate(tmp_path: Path) -> None:
     BirthService._instance = None  # type: ignore[attr-defined]
     svc = BirthService()
     svc.configure_workspace(tmp_path)
@@ -125,6 +143,25 @@ def test_is_completed_requires_valid_certificate(tmp_path: Path) -> None:
     assert svc.is_completed() is False
     svc.completed_flag.write_text("done", encoding="utf-8")
     assert svc.is_completed() is False
+    from tests.maturity.test_hub_birth_exit_heal import _seed_foundation_exit
+
+    _seed_foundation_exit(tmp_path)
+    assert svc.is_completed() is True
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_start_and_retry_refuse_when_foundation_exited(tmp_path: Path) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    from tests.maturity.test_hub_birth_exit_heal import _seed_foundation_exit
+
+    _seed_foundation_exit(tmp_path)
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    started = svc.start_birth(explicit_user_start=True)
+    assert started.get("status") == "already_completed"
+    retried = svc.retry_birth()
+    assert retried.get("status") == "completed"
     BirthService._instance = None  # type: ignore[attr-defined]
 
 
@@ -194,7 +231,27 @@ def test_retry_birth_preserves_checkpoint_on_certificate_failed(
 
 
 @pytest.mark.unit
-def test_get_status_flag_without_certificate_reports_certificate_failed(
+def test_retry_birth_rejects_when_foundation_already_complete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    svc.completed_flag.write_text("done", encoding="utf-8")
+
+    def _fake_start(_svc: BirthService, **kwargs: object) -> dict[str, str]:
+        raise AssertionError("must not restart Birth after Foundation complete")
+
+    monkeypatch.setattr(birth_runner_start_module, "start_birth", _fake_start)
+    result = svc.retry_birth(target_trades=25000, wipe=False)
+    assert result["status"] == "completed"
+    assert "Awakening" in str(result.get("message"))
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_get_status_flag_without_certificate_reports_completed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     BirthService._instance = None  # type: ignore[attr-defined]
@@ -203,7 +260,7 @@ def test_get_status_flag_without_certificate_reports_certificate_failed(
     (tmp_path / "state").mkdir(parents=True, exist_ok=True)
     svc.completed_flag.write_text("done", encoding="utf-8")
     status = svc.get_status()
-    assert status["status"] == "certificate_failed"
+    assert status["status"] == "completed"
     assert svc.certificate_ok() is False
     BirthService._instance = None  # type: ignore[attr-defined]
 
@@ -767,7 +824,10 @@ def test_start_birth_reuse_cache_skips_preflight_without_checkpoint(
         "first_boot:\n  training_trades: 10000\n  prefer_real_data_only: true\n  max_real_days: 90\n",
         encoding="utf-8",
     )
-    (state / "lumina_birth_ticks_cache.jsonl").write_text("{}\n", encoding="utf-8")
+    (state / "lumina_birth_ticks_cache.jsonl").write_text(
+        "\n".join("{}" for _ in range(1000)) + "\n",
+        encoding="utf-8",
+    )
     (state / "lumina_birth_split_cache.json").write_text("{}", encoding="utf-8")
     (state / "lumina_birth_cache_manifest.json").write_text(
         json.dumps(
@@ -775,7 +835,7 @@ def test_start_birth_reuse_cache_skips_preflight_without_checkpoint(
                 "train_hash": "abc123",
                 "requested_days": 90,
                 "actual_calendar_days": 89,
-                "tick_count": 345648,
+                "tick_count": 1000,
             }
         ),
         encoding="utf-8",
@@ -977,15 +1037,15 @@ def test_reconcile_orphaned_marks_interrupted(tmp_path: Path) -> None:
     svc = BirthService()
     svc.configure_workspace(tmp_path)
     reconciled = json.loads((tmp_path / "state" / "lumina_birth_progress.json").read_text(encoding="utf-8"))
-    # Starship pause SSOT: orphan reconcile uses paused + user_initiated_stop on both files.
+    # Orphan reconcile is not a user stop — operator-stop is a separate SSOT.
     assert reconciled.get("stage") == "paused"
     assert reconciled.get("phase") == "paused"
-    assert reconciled.get("user_initiated_stop") is True
+    assert reconciled.get("user_initiated_stop") is False
     assert reconciled.get("prior_stage") == "loading_data"
-    assert "Hervat checkpoint" in str(reconciled.get("message", ""))
+    assert "gebruikersstop" in str(reconciled.get("message", "")).lower()
     legacy = json.loads((tmp_path / "state" / "first_boot_progress.json").read_text(encoding="utf-8"))
     assert legacy.get("stage") == "paused"
-    assert legacy.get("user_initiated_stop") is True
+    assert legacy.get("user_initiated_stop") is False
     BirthService._instance = None  # type: ignore[attr-defined]
 
 
@@ -1023,7 +1083,7 @@ def test_reconcile_orphaned_skips_attention_when_checkpoint_exists(tmp_path: Pat
     svc.configure_workspace(tmp_path)
     reconciled = json.loads((tmp_path / "state" / "lumina_birth_progress.json").read_text(encoding="utf-8"))
     assert reconciled.get("stage") == "paused"
-    assert reconciled.get("user_initiated_stop") is True
+    assert reconciled.get("user_initiated_stop") is False
     assert not reconciled.get("needs_attention")
     BirthService._instance = None  # type: ignore[attr-defined]
 
@@ -1083,10 +1143,10 @@ def test_get_status_reconciles_orphaned_progress_after_dead_runner(tmp_path: Pat
         encoding="utf-8",
     )
     status = svc.get_status()
-    assert status["status"] == "interrupted"
+    assert status["status"] == "paused"
     assert status.get("live") is False
     progress = status.get("progress") or {}
-    assert progress.get("user_initiated_stop") is True
+    assert progress.get("user_initiated_stop") is not True
     assert progress.get("stage") == "paused"
     BirthService._instance = None  # type: ignore[attr-defined]
 
@@ -1115,7 +1175,7 @@ def test_reconcile_orphaned_plateau_evolution_phase(tmp_path: Path) -> None:
     )
     assert reconciled.get("stage") == "paused"
     assert reconciled.get("phase") == "paused"
-    assert reconciled.get("user_initiated_stop") is True
+    assert reconciled.get("user_initiated_stop") is False
     BirthService._instance = None  # type: ignore[attr-defined]
 
 

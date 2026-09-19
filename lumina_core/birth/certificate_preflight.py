@@ -291,13 +291,41 @@ def ensure_holdout_preflight(
     if isinstance(sla_result, dict):
         return sla_result
     active_ticks, active_split, manifest, actual_days = sla_result
-    manifest = finalize_preflight_manifest(
-        pipeline,
-        active_ticks=active_ticks,
-        active_split=active_split,
-        manifest=manifest,
-        requested_days=requested_days,
-        actual_days=actual_days,
-        preflight=preflight,
-    )
+    try:
+        manifest = finalize_preflight_manifest(
+            pipeline,
+            active_ticks=active_ticks,
+            active_split=active_split,
+            manifest=manifest,
+            requested_days=requested_days,
+            actual_days=actual_days,
+            preflight=preflight,
+        )
+    except OSError as exc:
+        # Persist is reuse-SSOT, not the live tape. In-memory ticks/split already
+        # passed preflight — aborting here made the runner look like an orphan.
+        from lumina_core.birth.tick_cache_guard import TickCacheDepthRegressionError
+        from lumina_core.birth.tick_cache_persist import (
+            load_cache_manifest,
+            load_split_cache,
+            load_ticks_cache,
+        )
+
+        logger.error("birth.cache.persist_deferred err=%s", exc)
+        if isinstance(exc, TickCacheDepthRegressionError):
+            disk_ticks = load_ticks_cache(pipeline._host.workspace_root)
+            disk_split = load_split_cache(
+                pipeline._host.workspace_root,
+                holdout_pct=float(pipeline._host.birth_config.holdout_pct),
+            )
+            disk_manifest = load_cache_manifest(pipeline._host.workspace_root)
+            if disk_ticks and disk_split is not None and isinstance(disk_manifest, dict):
+                logger.warning(
+                    "birth.cache.using_certified_tape incoming_ticks=%s disk_ticks=%s",
+                    len(active_ticks),
+                    len(disk_ticks),
+                )
+                return disk_ticks, disk_split, disk_manifest
+        manifest["cache_persist_deferred"] = True
+        manifest["cache_persist_error"] = str(exc)
     return active_ticks, active_split, manifest

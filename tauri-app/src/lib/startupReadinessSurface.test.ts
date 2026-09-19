@@ -34,6 +34,7 @@ describe("startupReadinessSurface", () => {
     expect(gate).toContain("ColdStartReadiness");
     expect(gate).toContain("ntStartupResolved");
     expect(gate).toContain("holdForNtGate");
+    expect(gate).toContain("shouldHoldStartupCover");
   });
 
   it("Birth monitor skips cold probe when session already hydrated", () => {

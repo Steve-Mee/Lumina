@@ -25,6 +25,12 @@ class StageLoopProgressWriteMixin(
 ):
     """Writes birth progress scorecard fields."""
 
+    def _oracle_scan_heartbeat(self) -> None:
+        try:
+            self._write_progress(phase="oracle_mining", message="Oracle pattern scan…")
+        except Exception:
+            logger.debug("birth.oracle.heartbeat_failed", exc_info=True)
+
     def _write_progress(
         self,
         *,
@@ -93,6 +99,8 @@ class StageLoopProgressWriteMixin(
         )
         if unique_days > 0:
             self._unique_calendar_days = unique_days
+        from lumina_core.birth.foundation_occupancy_envelope import loop_envelope_scorecard_kwargs
+
         scorecard = build_scorecard_payload(
             stage=self.stage,
             curriculum_index=self.stage_index + 1,
@@ -138,6 +146,7 @@ class StageLoopProgressWriteMixin(
             geometry_net_rr=net_rr,
             first_touch_hit_rate=p_ft,
             unique_calendar_days=unique_days,
+            **loop_envelope_scorecard_kwargs(self),
         )
         self._enrich_progress_scorecard(
             scorecard,
@@ -252,7 +261,7 @@ class StageLoopProgressWriteMixin(
                     if _swarm_attn
                     else (
                         f"Terminal stall: {scorecard.get('attention_reason_code')} — "
-                        f"next_action={_rec.get('next_action', 'expand_data_or_wipe_genesis')}"
+                        f"next_action={_rec.get('next_action', 'expand_data_or_wipe_birth')}"
                     )
                 )
             if not scorecard.get("attention_recommended_actions"):
@@ -276,6 +285,28 @@ class StageLoopProgressWriteMixin(
         )
         within = min(1.0, float(current_stage_trades) / float(pass_gate))
         honest_pct = round(min(79.5, base_pct + stage_span * within), 2)
+        if not bool(scorecard.get("stage_pass_now")):
+            blocker = str(scorecard.get("stage_blocker_metric") or "").strip()
+            if blocker:
+                message = f"{message} · pass=false · {blocker}"
+        scorecard["progress_truth"] = {
+            "kind": "stage_index",
+            "stage_index": int(scorecard.get("curriculum_index") or 0),
+            "stage_count": int(FOUNDATION_STAGE_COUNT),
+            "stage_pass_now": bool(scorecard.get("stage_pass_now")),
+            "blocker": scorecard.get("stage_blocker_metric"),
+            "pct_is_not_complete": True,
+        }
+        manifest = getattr(self.host, "_data_manifest", None) or {}
+        try:
+            scorecard["data_manifest_calendar_days"] = int(
+                manifest.get("actual_calendar_days") or 0
+            )
+        except (TypeError, ValueError):
+            scorecard["data_manifest_calendar_days"] = 0
+        scorecard["stage_window_calendar_days"] = int(
+            getattr(self, "_stage_window_calendar_days", 0) or 0
+        )
         progress_extra = merge_birth_progress_extra(constitution_fields, scorecard)
         self.host._emit_birth_progress(
             stage="training_running",

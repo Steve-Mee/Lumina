@@ -4,7 +4,9 @@ import {
   formatBirthMetricValuePrecise,
 } from "@/lib/birth/birthMetricFormat";
 import {
+  extractBirthProgressTruth,
   extractBirthSessionHud,
+  extractPpoLungs,
   extractPpoProgress,
   extractSimProgress,
   extractStageScorecard,
@@ -195,10 +197,12 @@ export function BirthMetricsStrip({
 }: BirthMetricsStripProps) {
   const sim = extractSimProgress(progress);
   const ppo = extractPpoProgress(progress);
+  const lungs = extractPpoLungs(progress);
   const scorecard = extractStageScorecard(progress);
   const sessionHud = extractBirthSessionHud(progress);
   const liveElapsedSec = useLiveBirthElapsedSec(progress, elapsedSeconds);
   const overallPct = Number(progress?.progress_pct ?? sim.pct);
+  const truth = extractBirthProgressTruth(progress);
   const subPhase = String(progress?.sub_phase ?? progress?.phase ?? "").toLowerCase();
   const loadingHistory = subPhase === "loading_history";
   const enrichingRegimes = subPhase === "enriching_regimes";
@@ -251,9 +255,11 @@ export function BirthMetricsStrip({
           />
           {!embedded ? (
             <MetricField
-              label="Overall progress"
-              value={`${overallPct.toFixed(1)}%`}
-              barPct={overallPct}
+              label="Curriculum"
+              value={truth.curriculumLabel}
+              detail="Index only — not completion"
+              barPct={truth.stagePassNow ? 100 : 0}
+              tone={truth.stagePassNow ? "ok" : "warn"}
             />
           ) : null}
         </>
@@ -271,9 +277,11 @@ export function BirthMetricsStrip({
           />
           {!embedded ? (
             <MetricField
-              label="Overall progress"
-              value={`${overallPct.toFixed(1)}%`}
-              barPct={overallPct}
+              label="Curriculum"
+              value={truth.curriculumLabel}
+              detail="Index only — not completion"
+              barPct={truth.stagePassNow ? 100 : 0}
+              tone={truth.stagePassNow ? "ok" : "warn"}
             />
           ) : null}
         </>
@@ -281,7 +289,15 @@ export function BirthMetricsStrip({
         showPpoBatch &&
         ppo.steps > 0 &&
         scorecard?.passCriteriaId !== "mixed_foundation" ? (
-        <MetricField label="PPO batch" value={ppo.label} barPct={overallPct} />
+        <MetricField
+          label="PPO batch"
+          value={
+            lungs.nEnvs > 1 || lungs.device
+              ? `${ppo.label} · ${lungs.nEnvs}×${lungs.device ?? "cpu"}`
+              : ppo.label
+          }
+          barPct={lungs.batchPct ?? 0}
+        />
       ) : (
         <MetricField
           label={scorecard ? "Stage trades" : "Simulation trades"}
@@ -289,6 +305,15 @@ export function BirthMetricsStrip({
           barPct={sim.pct}
         />
       )}
+      {scorecard ? (
+        <MetricField
+          label="Curriculum"
+          value={truth.curriculumLabel}
+          detail="Index only — not completion"
+          barPct={truth.stagePassNow ? 100 : 0}
+          tone={truth.stagePassNow ? "ok" : truth.blocker ? "danger" : "warn"}
+        />
+      ) : null}
       {/* Raptor v11: stage3 foundation metrics also in Mission Control (embedded). */}
       {scorecard && scorecard.passCriteriaId !== "polish_complete" ? (
         <MetricField
@@ -364,14 +389,28 @@ export function BirthMetricsStrip({
         />
       ) : null}
       {!embedded && showPpoBatch && ppo.steps > 0 ? (
-        <MetricField label="PPO batch" value={ppo.label} barPct={overallPct} />
+        <MetricField
+          label="PPO batch"
+          value={
+            lungs.nEnvs > 1 || lungs.device
+              ? `${ppo.label} · ${lungs.nEnvs}×${lungs.device ?? "cpu"}`
+              : ppo.label
+          }
+          barPct={lungs.batchPct ?? 0}
+        />
       ) : !embedded && !scorecard && ppo.steps > 0 ? (
-        <MetricField label="PPO refinement" value={ppo.label} barPct={overallPct} />
+        <MetricField
+          label="PPO refinement"
+          value={ppo.label}
+          barPct={lungs.batchPct ?? 0}
+        />
       ) : !embedded && !loadingHistory && !enrichingRegimes && !scorecard ? (
         <MetricField
-          label="Overall progress"
-          value={`${overallPct.toFixed(1)}%`}
-          barPct={overallPct}
+          label="Curriculum"
+          value={truth.curriculumLabel}
+          detail="Index only — not completion"
+          barPct={truth.stagePassNow ? 100 : 0}
+          tone={truth.stagePassNow ? "ok" : "warn"}
         />
       ) : null}
       {sessionHud ? (

@@ -47,7 +47,7 @@ def test_stage1_blocker_clears_when_foundation_physics_present() -> None:
 
 
 @pytest.mark.unit
-def test_stage1_no_blocker_below_trade_target() -> None:
+def test_stage1_volume_shortfall_is_honest_trades_blocker() -> None:
     metric, value, reason = compute_stage_blocker(
         CurriculumStage.STAGE1_TREND,
         stage_trades=50,
@@ -59,9 +59,9 @@ def test_stage1_no_blocker_below_trade_target() -> None:
         range_round_trips=0,
         range_total_signals=0,
     )
-    assert metric is None
-    assert value is None
-    assert reason is None
+    assert metric == "trades"
+    assert value == pytest.approx(50.0)
+    assert reason is not None
 
 
 @pytest.mark.unit

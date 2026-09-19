@@ -43,10 +43,16 @@ export function formatTierLabel(tier: IntelligenceTier): string {
 export function formatProviderLabel(provider: string): string {
   const normalized = provider.trim().toLowerCase().replaceAll("-", "_");
   if (normalized === "ollama") {
-    return "Ollama";
+    return "Local assistant (Ollama)";
   }
   if (normalized === "vllm") {
-    return "vLLM";
+    return "Extra-fast local assistant (vLLM)";
+  }
+  if (normalized === "grok_remote" || normalized === "xai") {
+    return "Cloud assistant (xAI)";
+  }
+  if (normalized === "off") {
+    return "Off";
   }
   if (normalized === "llama_cpp" || normalized === "llamacpp") {
     return "llama.cpp";
@@ -103,7 +109,7 @@ export function buildIntelligenceTooltip(
   const lines = [
     `Tier: ${formatTierLabel(status.tier)} (${status.tier})`,
     `Model: ${status.recommended_model}`,
-    `Backend: ${formatProviderLabel(status.recommended_provider)}`,
+    `Thinking assistant: ${formatProviderLabel(status.recommended_provider)}`,
     `Mode: ${formatModeLabel(status.mode)}`,
     `Reasoning: ${formatReasoningLabel(status.reasoning_mode)}`,
     `Context: ${status.context_length.toLocaleString()}`,

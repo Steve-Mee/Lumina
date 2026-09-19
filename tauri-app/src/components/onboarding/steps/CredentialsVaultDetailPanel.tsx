@@ -297,6 +297,10 @@ export function CredentialsVaultDetailPanel({
                 toast.success("Twin Birth-ready — seal vault to continue");
                 onTwinCompleted?.();
               }}
+              onWiped={() => {
+                toast.message("Twin wiped — retrain before seal");
+                onTwinCompleted?.();
+              }}
             />
           </div>
         ) : null}

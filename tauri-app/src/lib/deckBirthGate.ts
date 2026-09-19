@@ -39,8 +39,8 @@ export function resolveDeckBirthGate(snapshot: DeckBirthSnapshot | null): DeckBi
   }
 
   if (status === "completed") {
-    const pct = snapshot.progress?.progress_pct ?? 100;
-    return pct < 100 ? "running" : "incomplete";
+    // Never treat theater progress_pct as Foundation exit.
+    return "incomplete";
   }
 
   if (

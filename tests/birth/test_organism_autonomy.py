@@ -48,6 +48,7 @@ def _cfg(**overrides: object) -> BirthCurriculumConfig:
 def test_map_recommended_actions() -> None:
     assert map_recommended_to_service_action("expand_data") == "expand_and_retry"
     assert map_recommended_to_service_action("phoenix_reset") == "phoenix_recovery"
+    assert map_recommended_to_service_action("retry_stage") == "retry_stage"
     assert map_recommended_to_service_action("unknown") == "resume_stalled_stage"
 
 
@@ -222,6 +223,160 @@ def test_evaluate_terminal_stall_no_lift_brake_skipped_when_swarm_resolved() -> 
 
 
 @pytest.mark.unit
+def test_evaluate_terminal_stall_horizon_closed_no_phoenix_expand() -> None:
+    """Live 2026-09-14: expansion_step=3 + swarm no-lift must not request expand_data."""
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(allow_provisional_pass=False),
+        autonomy_state=autonomy,
+        pending={
+            "terminal_stall_reason": "phoenix_cycle",
+            "blocker_metric": "occupancy",
+            "blocker_value": 0.24957,
+            "expansion_exhausted": True,
+            "expansion_step": 3,
+        },
+        curriculum_stage="stage4_viable_plant",
+        stage_trades=628,
+        required=100,
+        constitution_violations=0,
+        fitness_signal=0.3535,
+        remediation_cycles_exhausted=True,
+        plateau_exhausted=True,
+        recovery_no_lift_brake=True,
+        swarm_tournament_resolved=False,
+        recommended_recovery_action="expand_and_retry",
+        starship_context={
+            "swarm_rejected_no_lift": True,
+            "expansion_exhausted": True,
+            "expansion_step": 3,
+        },
+    )
+    assert decision.dispatch == RecoveryDispatch.TERMINAL_NOTIFY_ONLY
+    assert decision.needs_attention is True
+    assert decision.retryable is False
+    assert decision.recommended_action != "expand_and_retry"
+    assert "expand" not in (decision.message or "").lower() or "geen expand" in (
+        decision.message or ""
+    ).lower()
+    assert autonomy.phoenix.phoenix_count == 0
+
+
+@pytest.mark.unit
+def test_evaluate_terminal_stall_occupancy_fencepost_no_phoenix_expand() -> None:
+    """Live S3 0.24996: open horizon must not request expand_data."""
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(allow_provisional_pass=False),
+        autonomy_state=autonomy,
+        pending={
+            "terminal_stall_reason": "phoenix_cycle",
+            "blocker_metric": "occupancy",
+            "occupancy": 0.2499578,
+            "occupancy_exam_armed": False,
+        },
+        curriculum_stage="stage3_mixed",
+        stage_trades=3075,
+        required=400,
+        constitution_violations=0,
+        fitness_signal=0.2315,
+        remediation_cycles_exhausted=True,
+        plateau_exhausted=True,
+        recovery_no_lift_brake=True,
+        swarm_tournament_resolved=False,
+        recommended_recovery_action="expand_and_retry",
+        starship_context={
+            "swarm_rejected_no_lift": True,
+            "expansion_exhausted": False,
+            "expansion_step": 0,
+            "occupancy": 0.2499578,
+            "occupancy_exam_armed": False,
+        },
+    )
+    assert decision.dispatch == RecoveryDispatch.PHOENIX_RESUME
+    assert decision.needs_attention is False
+    assert decision.retryable is True
+    assert decision.recommended_action == "retry_stage"
+    assert "expand" not in (decision.recommended_action or "")
+    assert autonomy.phoenix.phoenix_count == 0
+    assert autonomy.autonomous_recovery_count == 1
+
+
+@pytest.mark.unit
+def test_evaluate_terminal_stall_occupancy_fencepost_retries_exhausted_notifies() -> None:
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(allow_provisional_pass=False),
+        autonomy_state=autonomy,
+        pending={
+            "terminal_stall_reason": "phoenix_cycle",
+            "blocker_metric": "occupancy",
+            "occupancy": 0.2499578,
+            "occupancy_exam_armed": False,
+            "retries_this_stage": 3,
+        },
+        curriculum_stage="stage3_mixed",
+        stage_trades=3075,
+        required=400,
+        constitution_violations=0,
+        fitness_signal=0.2315,
+        remediation_cycles_exhausted=True,
+        plateau_exhausted=True,
+        recovery_no_lift_brake=True,
+        swarm_tournament_resolved=False,
+        recommended_recovery_action="expand_and_retry",
+        starship_context={
+            "swarm_rejected_no_lift": True,
+            "expansion_exhausted": False,
+            "expansion_step": 0,
+            "occupancy": 0.2499578,
+            "occupancy_exam_armed": False,
+            "retries_this_stage": 3,
+        },
+    )
+    assert decision.dispatch == RecoveryDispatch.TERMINAL_NOTIFY_ONLY
+    assert decision.retryable is False
+    assert decision.recommended_action == "retry_stage_or_wipe"
+    assert autonomy.phoenix.phoenix_count == 0
+
+
+@pytest.mark.unit
+def test_evaluate_terminal_stall_horizon_closed_skips_ladder_phoenix() -> None:
+    """Without no-lift brake, closed horizon still must not request expand_data."""
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(allow_provisional_pass=False),
+        autonomy_state=autonomy,
+        pending={
+            "terminal_stall_reason": "stall_remediation_exhausted",
+            "blocker_metric": "occupancy",
+            "blocker_value": 0.24957,
+            "expansion_exhausted": True,
+            "expansion_step": 3,
+        },
+        curriculum_stage="stage4_viable_plant",
+        stage_trades=628,
+        required=100,
+        constitution_violations=0,
+        fitness_signal=0.3535,
+        remediation_cycles_exhausted=True,
+        plateau_exhausted=True,
+        recovery_no_lift_brake=False,
+        swarm_tournament_resolved=False,
+        recommended_recovery_action="expand_and_retry",
+        starship_context={
+            "swarm_rejected_no_lift": True,
+            "expansion_exhausted": True,
+            "expansion_step": 3,
+        },
+    )
+    assert decision.dispatch == RecoveryDispatch.TERMINAL_NOTIFY_ONLY
+    assert decision.needs_attention is True
+    assert decision.retryable is False
+    assert decision.recommended_action != "expand_and_retry"
+    assert autonomy.phoenix.phoenix_count == 0
+
+
 def test_evaluate_terminal_stall_disabled_needs_attention() -> None:
     autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
     decision = evaluate_terminal_stall(
@@ -599,7 +754,7 @@ def test_twin_escalate_or_notify_falls_back_when_service_raises(
         stall_reason="stall",
         curriculum_stage="stage2_range",
         fitness_signal=0.2,
-        fork="expand_data_or_wipe_genesis",
+        fork="expand_data_or_wipe_birth",
         t_conf=0.3,
     )
     assert decision.dispatch == RecoveryDispatch.TERMINAL_NOTIFY_ONLY
@@ -727,7 +882,7 @@ def test_expand_data_twin_not_eligible_escalates(
         recovery_no_lift_brake=False,
     )
     assert decision.dispatch == RecoveryDispatch.TERMINAL_NOTIFY_ONLY
-    assert decision.recommended_action == "expand_data_or_wipe_genesis"
+    assert decision.recommended_action == "expand_data_or_wipe_birth"
     assert twin.calls >= 1
 
 

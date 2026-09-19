@@ -27,14 +27,15 @@ def _resolve_s5_holdout_oos(
     sharpe = oos_sharpe
     dd = oos_dd_pct
     series = list(pnl_series) if pnl_series else []
-    if (sharpe is None or dd is None) and series:
-        from lumina_core.birth.runway import risk_metrics_from_pnl
+    if series:
+        from lumina_core.birth.certificate_evaluator import max_drawdown_pct
+        from lumina_core.birth.foundation_metrics import s5_holdout_sharpe
 
-        computed_s, computed_d = risk_metrics_from_pnl(series)
-        if sharpe is None:
+        computed_s = s5_holdout_sharpe(series)
+        if computed_s is not None:
             sharpe = float(computed_s)
         if dd is None:
-            dd = float(computed_d)
+            dd = float(max_drawdown_pct(series))
     return sharpe, dd
 
 
@@ -125,6 +126,8 @@ def evaluate_stage_pass(
     oos_dd_pct: float | None = None,
     r_series: list[float] | None = None,
     settlement_ssot_pending: bool = False,
+    envelope_override_fraction: float | None = None,
+    passthrough_occupancy_signals: int | None = None,
 ) -> StageResult:
     """Foundation pass law. Rolling WR / EdgeScore / WR floors are HUD-only."""
     hold_ratio = float(hold_signals) / float(max(1, total_signals))
@@ -230,6 +233,8 @@ def evaluate_stage_pass(
             snap,
             round_trips=int(range_round_trips),
             required_round_trips=need_rt,
+            envelope_override_fraction=envelope_override_fraction,
+            passthrough_occupancy_signals=passthrough_occupancy_signals,
         )
         passed = decision.passed
         message = f"{decision.message} settle={settle_reason}"

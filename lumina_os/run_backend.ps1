@@ -44,6 +44,28 @@ $BindHost = "127.0.0.1"
 if (-not [string]::IsNullOrWhiteSpace($env:LUMINA_API_BIND)) {
     $BindHost = $env:LUMINA_API_BIND.Trim()
 }
+function Resolve-LuminaPython([string]$Root) {
+    $explicit = [string]$env:LUMINA_PYTHON
+    if (-not [string]::IsNullOrWhiteSpace($explicit)) {
+        if (-not (Test-Path -LiteralPath $explicit)) {
+            throw "LUMINA_PYTHON is set but not found: $explicit"
+        }
+        return (Resolve-Path -LiteralPath $explicit).Path
+    }
+    $venvPy = Join-Path $Root ".venv\Scripts\python.exe"
+    if (Test-Path -LiteralPath $venvPy) {
+        return (Resolve-Path -LiteralPath $venvPy).Path
+    }
+    throw @"
+LUMINA Python not found.
+Expected: $venvPy
+Or set LUMINA_PYTHON to the interpreter that has the training engine (torch + stable-baselines3).
+System Python is forbidden for Birth.
+"@
+}
+
+$PythonExe = Resolve-LuminaPython $RepoRoot
+Write-Host "LUMINA backend Python: $PythonExe"
 Set-Location $PSScriptRoot
 # TLS: set LUMINA_API_TLS_CERT + LUMINA_API_TLS_KEY and prefer `python -m backend.app` entrypoint.
-python -m uvicorn backend.app:app --host $BindHost --port $Port @args
+& $PythonExe -m uvicorn backend.app:app --host $BindHost --port $Port @args

@@ -27,9 +27,13 @@ function rowToneAttr(tone: ConditionTone): "ok" | "warn" | "danger" | "accent" |
 export function BirthStagePassChecklistCard({
   checklist,
   className,
+  goalLabel = "Stage goal",
+  showMode = true,
 }: {
   checklist: StagePassChecklist;
   className?: string;
+  goalLabel?: string;
+  showMode?: boolean;
 }) {
   const {
     metCount,
@@ -56,10 +60,10 @@ export function BirthStagePassChecklistCard({
       <div className="birth-stage-pass-checklist__head">
         <div className="min-w-0">
           <p className="risk-envelope-field-label mb-0">
-            Stage goal
-            {passMode === "process" ? (
+            {goalLabel}
+            {showMode && passMode === "process" ? (
               <span className="birth-stage-pass-checklist__mode"> · plant</span>
-            ) : passMode === "skill" ? (
+            ) : showMode && passMode === "skill" ? (
               <span className="birth-stage-pass-checklist__mode"> · skill</span>
             ) : null}
           </p>

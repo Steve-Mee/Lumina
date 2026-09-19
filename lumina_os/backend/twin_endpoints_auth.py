@@ -106,6 +106,13 @@ _SERVICE: TwinTrainingService | None = None
 _SERVICE_LOCK = __import__("threading").Lock()
 
 
+def reset_twin_service() -> None:
+    """Drop the process singleton so wipe/retrain cannot reuse a stale registry."""
+    global _SERVICE
+    with _SERVICE_LOCK:
+        _SERVICE = None
+
+
 def _service() -> TwinTrainingService:
     """Process-local singleton — avoid rebuilding Twin + registry on every HTTP hit."""
     global _SERVICE

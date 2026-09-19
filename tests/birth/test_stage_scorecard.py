@@ -332,7 +332,7 @@ def test_learning_metric_target_stage3_uses_recommended_winrate() -> None:
 
 
 @pytest.mark.unit
-def test_build_scorecard_payload_clears_blockers_below_volume_gate() -> None:
+def test_build_scorecard_payload_below_volume_gate_keeps_honest_blockers() -> None:
     from lumina_core.birth.config import BirthCurriculumConfig
 
     cfg = BirthCurriculumConfig()
@@ -351,9 +351,10 @@ def test_build_scorecard_payload_clears_blockers_below_volume_gate() -> None:
         learning_attempt=10,
         cfg=cfg,
     )
-    assert payload["stage_blocker_metric"] is None
-    assert payload["stage_blocker_value"] is None
-    assert payload["pass_reason"] is None
+    assert payload["stage_pass_now"] is False
+    reason = str(payload["pass_reason"] or "")
+    assert "trades" in reason
+    assert payload["stage_blocker_metric"] is not None
 
 
 @pytest.mark.unit

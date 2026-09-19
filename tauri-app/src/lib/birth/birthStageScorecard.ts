@@ -15,6 +15,7 @@ import {
 import type { StageScorecardModel } from "@/lib/birth/birthStageScorecardTypes";
 import { normalizeToken, parseProgressTimestamp } from "@/lib/birth/birthModelUtils";
 import { extractSimProgress } from "@/lib/birth/birthProgressExtract";
+import { resolveManifestCalendarDays } from "@/lib/birth/birthProgressTruth";
 
 export type { StageScorecardHealth, StageScorecardModel } from "@/lib/birth/birthStageScorecardTypes";
 export {
@@ -234,11 +235,7 @@ export function extractStageScorecard(
   const heartbeatSec = ts != null ? Math.max(0, Math.round((nowMs - ts) / 1000)) : null;
   const { health, healthHint } = resolveScorecardHealth(progress, heartbeatSec);
   const adaptationCycling = resolveAdaptationCycling(progress, heartbeatSec);
-  const manifestDaysRaw = progress?.data_manifest?.days_loaded;
-  const dataManifestDaysLoaded =
-    manifestDaysRaw != null && Number.isFinite(Number(manifestDaysRaw))
-      ? Math.max(0, Number(manifestDaysRaw))
-      : null;
+  const dataManifestDaysLoaded = resolveManifestCalendarDays(progress);
 
   const tradesTargetMet = sim.target > 0 && sim.done >= sim.target;
   let blockerLabel: string | null = null;

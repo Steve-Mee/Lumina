@@ -4,6 +4,7 @@ import type { OnboardingPayload } from "@/lib/onboardingSteps";
 import {
   buildStartupReadinessView,
   resolveFabricStep,
+  shouldHoldStartupCover,
 } from "@/lib/startupReadinessModel";
 
 function basePayload(over: Partial<OnboardingPayload> = {}): OnboardingPayload {
@@ -170,6 +171,11 @@ describe("buildStartupReadinessView", () => {
       reason: "not green",
     });
     expect(redBirth.state).toBe("blocked");
+  });
+
+  it("holds Systems Go cover until the session is resolved", () => {
+    expect(shouldHoldStartupCover(false)).toBe(true);
+    expect(shouldHoldStartupCover(true)).toBe(false);
   });
 });
 

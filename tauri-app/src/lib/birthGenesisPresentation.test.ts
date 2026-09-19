@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   isBenignBirthStatusMessage,
+  isPhysicsStackMessage,
   resolveGenesisDeckPresentation,
   sanitizeBirthOperatorMessage,
 } from "@/lib/birthGenesisPresentation";
@@ -14,6 +15,11 @@ describe("isBenignBirthStatusMessage", () => {
     expect(isBenignBirthStatusMessage("All birth data wiped — ready for a clean start.")).toBe(
       true,
     );
+    expect(
+      isBenignBirthStatusMessage(
+        "Leermotor is klaar. Tick-cache blijft geldig — activate Birth (Reuse data). Niet WIPE_FULL.",
+      ),
+    ).toBe(true);
     expect(isBenignBirthStatusMessage("")).toBe(true);
   });
 
@@ -47,6 +53,25 @@ describe("sanitizeBirthOperatorMessage", () => {
     expect(sanitizeBirthOperatorMessage("").operator).toBe("");
     expect(sanitizeBirthOperatorMessage(null).operator).toBe("");
     expect(sanitizeBirthOperatorMessage("Birth Phase nog niet gestart").operator).toBe("");
+  });
+
+  it("maps PPOEvolutionLogger RuntimeError to physics install copy, not wipe", () => {
+    const r = sanitizeBirthOperatorMessage(
+      "RuntimeError: stable-baselines3 is required for PPOEvolutionLogger. Install with: pip install stable-baselines3",
+    );
+    expect(r.operator).toMatch(/training engine is not installed/i);
+    expect(r.operator).toMatch(/install_birth_physics_stack/);
+    expect(r.operator).not.toMatch(/start clean/i);
+    expect(r.operator).not.toMatch(/internal error/i);
+    expect(r.technical).toMatch(/PPOEvolutionLogger/);
+  });
+
+  it("passes through Leermotor operator copy", () => {
+    const msg =
+      "Leermotor ontbreekt (stable_baselines3). Birth start niet tot de physics-installer klaar is. Run: python scripts/install_birth_physics_stack.py — daarna Reuse data. Niet WIPE_FULL (tick-cache blijft geldig).";
+    const r = sanitizeBirthOperatorMessage(msg);
+    expect(r.operator).toContain("Leermotor ontbreekt");
+    expect(r.technical).toBeNull();
   });
 });
 
@@ -158,6 +183,28 @@ describe("resolveGenesisDeckPresentation", () => {
     expect(p.detail?.operatorLine).toMatch(/internal error/i);
     expect(p.detail?.technicalLine).toMatch(/UnboundLocalError/);
     expect(p.showRecoveryTab).toBe(true);
+  });
+
+  it("physics missing is retry, not wipe / Recovery", () => {
+    const p = resolveGenesisDeckPresentation({
+      activating: false,
+      sessionInterrupted: false,
+      checkpointAvailable: false,
+      decisionMode: false,
+      error:
+        "RuntimeError: stable-baselines3 is required for PPOEvolutionLogger. Install with: pip install stable-baselines3",
+    });
+    expect(isPhysicsStackMessage(p.detail?.technicalLine ?? p.banner.body)).toBe(true);
+    expect(p.physicsMissing).toBe(true);
+    expect(p.ctaMode).toBe("retry");
+    expect(p.hasAttention).toBe(true);
+    expect(p.showRecoveryTab).toBe(false);
+    expect(p.preferRecoveryTab).toBe(false);
+    expect(p.showStartCleanSecondary).toBe(false);
+    expect(p.banner.title).toMatch(/training engine missing/i);
+    expect(p.banner.body).toMatch(/install_birth_physics_stack/);
+    expect(p.ctaHint).toMatch(/do not wipe/i);
+    expect(p.detail?.operatorLine).toMatch(/training engine is not installed/i);
   });
 
   it("activating wins over error copy", () => {

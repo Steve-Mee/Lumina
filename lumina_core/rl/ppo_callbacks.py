@@ -4,10 +4,47 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from pathlib import Path
+
 from lumina_core.logging_utils import get_logger
 from lumina_core.rl.ppo_evolution_logger import PPOEvolutionLogger
 
 logger = get_logger("lumina.rl.ppo")
+
+
+def _heartbeat_birth_ppo_progress(
+    *,
+    message: str,
+    current: int,
+    total: int,
+    ppo_pct: float,
+    elapsed_sec: float,
+) -> None:
+    """Keep lumina_birth_progress.json moving during PPO; never clobber stage pct."""
+    try:
+        from lumina_core.birth.progress import read_birth_progress, write_birth_progress
+
+        root = Path.cwd()
+        prev = read_birth_progress(root)
+        if not prev:
+            return
+        write_birth_progress(
+            root,
+            stage=str(prev.get("stage") or "training_running"),
+            phase="ppo_training",
+            message=str(message),
+            progress_pct=float(prev.get("progress_pct") or 0.0),
+            cumulative_trades=int(prev.get("cumulative_trades") or prev.get("trades_done") or 0),
+            target_trades=int(prev.get("target_trades") or 0),
+            ppo_steps=int(prev.get("ppo_steps") or 0),
+            birth_start_time=float(prev.get("birth_start_time") or 0.0),
+            ppo_batch_steps=int(current),
+            ppo_batch_total=int(total),
+            ppo_batch_progress_pct=round(float(ppo_pct), 2),
+            ppo_elapsed_sec=round(float(elapsed_sec), 1),
+        )
+    except Exception:
+        logger.debug("ppo.birth_progress_heartbeat_failed", exc_info=True)
 
 def _extract_policy_entropy(model: Any, evolution_logger: PPOEvolutionLogger) -> float | None:
     """Best-effort entropy after learn() — logger flush first, else SB3 train logs."""
@@ -55,9 +92,12 @@ def _notify_first_boot_ppo_progress(
         remaining_steps = max(0, total - current)
         if steps_per_sec > 0:
             eta_minutes = round((float(remaining_steps) / steps_per_sec) / 60.0, 1)
+    message = (
+        f"PPO training: {current:,}/{total:,} timesteps in huidige batch ({ppo_pct:.1f}%)"
+    )
     _write_first_boot_progress(
         "training_running",
-        f"PPO training: {current:,}/{total:,} timesteps in huidige batch ({ppo_pct:.1f}%)",
+        message,
         phase="ppo_training",
         ppo_batch_steps=current,
         ppo_batch_total=total,
@@ -67,6 +107,13 @@ def _notify_first_boot_ppo_progress(
         ppo_eta_minutes=eta_minutes,
         progress_pct=round(overall_pct, 2),
         timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+    _heartbeat_birth_ppo_progress(
+        message=message,
+        current=current,
+        total=total,
+        ppo_pct=ppo_pct,
+        elapsed_sec=float(elapsed_sec),
     )
 
 

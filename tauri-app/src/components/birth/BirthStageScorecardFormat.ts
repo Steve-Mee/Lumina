@@ -37,15 +37,16 @@ export function showAdaptationHud(scorecard: StageScorecardModel): boolean {
 }
 
 export function formatDataWindow(scorecard: StageScorecardModel): string {
-  if (scorecard.dataDaysLoaded == null || scorecard.dataDaysLoaded <= 0) return "—";
-  if (
-    scorecard.dataManifestDaysLoaded != null &&
-    scorecard.dataManifestDaysLoaded > 0 &&
-    scorecard.dataManifestDaysLoaded !== scorecard.dataDaysLoaded
-  ) {
-    return `${scorecard.dataManifestDaysLoaded}d cache -> ${scorecard.dataDaysLoaded}d target`;
+  const manifest = scorecard.dataManifestDaysLoaded;
+  const loaded = scorecard.dataDaysLoaded;
+  if (manifest != null && manifest > 0) {
+    if (loaded != null && loaded > 0 && loaded !== manifest) {
+      return `${manifest}d loaded (manifest) · HUD ${loaded}d`;
+    }
+    return `${manifest}d loaded`;
   }
-  return `${scorecard.dataDaysLoaded}d loaded`;
+  if (loaded != null && loaded > 0) return `${loaded}d loaded`;
+  return "—";
 }
 
 export function formatEvolutionAction(scorecard: StageScorecardModel): string {

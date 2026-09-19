@@ -17,7 +17,12 @@ from lumina_core.config_loader import ConfigLoader
 from lumina_core.notifications.telegram_journal import resolve_state_relative
 from lumina_core.state.state_manager import safe_with_file_lock
 
-DEFAULT_BYPASS_KINDS: tuple[str, ...] = ("promotion", "freeze", "real_safety")
+DEFAULT_BYPASS_KINDS: tuple[str, ...] = (
+    "promotion",
+    "freeze",
+    "real_safety",
+    "birth_milestones",
+)
 DEFAULT_MIN_INTERVAL_SEC = 20.0
 DEFAULT_MAX_PER_HOUR = 12
 GATE_RELATIVE = "state/telegram_outbound_gate.json"
@@ -53,6 +58,8 @@ def kind_for_attention_event(event: Any) -> tuple[str, bool]:
         return "real_safety", False
     if "freeze" in reason:
         return "freeze", True
+    if category == "birth":
+        return "birth_milestones", False
     return "attention", False
 
 

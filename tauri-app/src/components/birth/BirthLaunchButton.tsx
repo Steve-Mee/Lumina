@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -147,27 +147,50 @@ export function BirthLaunchButton({
     holdRafRef.current = requestAnimationFrame(tickHold);
   }, [beginSequence]);
 
-  const handlePointerDown = useCallback(() => {
-    if (isDisabled || reducedMotion || sequenceStartedRef.current) {
+  const handlePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (event.button !== 0) {
+        return;
+      }
+      if (isDisabled || sequenceStartedRef.current) {
+        return;
+      }
+      setPressed(true);
+      holdingRef.current = true;
+      if (reducedMotion) {
+        return;
+      }
+      holdStartRef.current = Date.now();
+      holdRafRef.current = requestAnimationFrame(tickHold);
+      holdTimer.current = setTimeout(() => {
+        if (holdingRef.current) {
+          beginSequence();
+        }
+      }, HOLD_MS);
+    },
+    [beginSequence, isDisabled, reducedMotion, tickHold],
+  );
+
+  const commitPointerPress = useCallback(() => {
+    setPressed(false);
+    if (isDisabled || sequenceStartedRef.current) {
+      cancelHold();
       return;
     }
-    setPressed(true);
-    holdingRef.current = true;
-    holdStartRef.current = Date.now();
-    holdRafRef.current = requestAnimationFrame(tickHold);
-    holdTimer.current = setTimeout(() => {
-      if (holdingRef.current) {
-        beginSequence();
-      }
-    }, HOLD_MS);
-  }, [beginSequence, isDisabled, reducedMotion, tickHold]);
+    if (holdingRef.current) {
+      beginSequence();
+      return;
+    }
+    cancelHold();
+  }, [beginSequence, cancelHold, isDisabled]);
 
-  const handlePointerRelease = useCallback(() => {
+  const handlePointerLeave = useCallback(() => {
+    setHovered(false);
     setPressed(false);
-    if (!sequencing && !sequenceStartedRef.current) {
+    if (!sequenceStartedRef.current) {
       cancelHold();
     }
-  }, [cancelHold, sequencing]);
+  }, [cancelHold]);
 
   const handleClick = useCallback(() => {
     if (isDisabled || sequenceStartedRef.current) {
@@ -204,16 +227,13 @@ export function BirthLaunchButton({
       disabled={isDisabled}
       aria-busy={activating || sequencing}
       aria-description={
-        disabled ? "Complete setup before arming birth sequence" : undefined
+        disabled ? "Complete setup before arming birth sequence" : "Click to start"
       }
       onClick={handleClick}
       onPointerDown={handlePointerDown}
-      onPointerUp={handlePointerRelease}
-      onPointerCancel={handlePointerRelease}
-      onPointerLeave={() => {
-        setHovered(false);
-        handlePointerRelease();
-      }}
+      onPointerUp={commitPointerPress}
+      onPointerCancel={commitPointerPress}
+      onPointerLeave={handlePointerLeave}
       onMouseEnter={() => setHovered(true)}
       animate={{
         scale: pressed && !isDisabled ? 0.97 : 1,
@@ -223,7 +243,7 @@ export function BirthLaunchButton({
       <span className="birth-launch-btn__charge" aria-hidden />
       <span className="birth-launch-btn__glow" aria-hidden />
       <span className="birth-launch-btn__label">
-        <span className="birth-launch-btn__sublabel">Hold until the ring completes</span>
+        <span className="birth-launch-btn__sublabel">Click to start</span>
         {label}
       </span>
 

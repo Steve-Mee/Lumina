@@ -7,6 +7,7 @@ Rolling WR is HUD-only. WR−0.50 expectancy is diagnostic, never ``passed``.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import sqrt
 from statistics import median
 from typing import Any
 
@@ -25,6 +26,7 @@ S5_EDGE_MIN = -0.03
 S5_SHARPE_FLOOR = -2.0
 S5_DD_MAX_PCT = 25.0
 S5_DD_EQUITY_USD = 50_000.0
+S5_SHARPE_MIN_TRADES = 5
 S1_MIN_TRADES = 150
 S2_MIN_TRADES = 250
 S3_MIN_TRADES = 400
@@ -93,6 +95,20 @@ def mean_r(rs: list[float]) -> float | None:
     return float(sum(rs) / float(len(rs)))
 
 
+def mean_win_r(rs: list[float]) -> float | None:
+    wins = [float(r) for r in rs if float(r) > 0.0]
+    if not wins:
+        return None
+    return float(sum(wins) / float(len(wins)))
+
+
+def mean_loss_r(rs: list[float]) -> float | None:
+    losses = [float(r) for r in rs if float(r) < 0.0]
+    if not losses:
+        return None
+    return float(sum(losses) / float(len(losses)))
+
+
 def median_loss_r(rs: list[float]) -> float | None:
     """Process health: typical losing trade in R. None if no closed trades."""
     if not rs:
@@ -109,6 +125,22 @@ def occupancy_ratio(*, flat_bars: int, total_signals: int) -> float | None:
     if total <= 0:
         return None
     return float(max(0, int(flat_bars))) / float(total)
+
+
+def s5_holdout_sharpe(pnl_series: list[float]) -> float | None:
+    """S5 holdout trade information ratio. Trades are not days.
+
+    Do not multiply by sqrt(252). That treated each MES close as a session and
+    made every first-touch 1-lot plant fail (~−5) after gap marks were clipped.
+    Floor ``S5_SHARPE_FLOOR`` stays −2 on this ratio. ``None`` when n < 5.
+    """
+    xs = [float(x) for x in pnl_series]
+    if len(xs) < int(S5_SHARPE_MIN_TRADES):
+        return None
+    mean = sum(xs) / float(len(xs))
+    var = sum((x - mean) ** 2 for x in xs) / float(max(1, len(xs) - 1))
+    std = sqrt(max(var, 1e-12))
+    return float(mean / std)
 
 
 def mechanical_ev_r(*, p_ft: float, net_rr: float) -> float:
@@ -168,6 +200,8 @@ class FoundationSnapshot:
     replay_ok: bool
     skill_trades: int = 0
     skill_wins: int = 0
+    mean_win_r: float | None = None
+    mean_loss_r: float | None = None
     oos_sharpe: float | None = None
     oos_dd_pct: float | None = None
     schema: str = FOUNDATION_SCHEMA
@@ -177,6 +211,8 @@ class FoundationSnapshot:
             "foundation_schema": self.schema,
             "median_loss_r": self.median_loss_r,
             "mean_r": self.mean_r,
+            "mean_win_r": self.mean_win_r,
+            "mean_loss_r": self.mean_loss_r,
             "occupancy": self.occupancy,
             "first_touch_p_ft": self.p_ft,
             "geometry_net_rr": self.net_rr,
@@ -232,6 +268,8 @@ def build_foundation_snapshot(
     )
     med = median_loss_r_value
     mean = mean_r_value
+    win_mean: float | None = None
+    loss_mean: float | None = None
     rs: list[float] | None = None
     if r_series is not None:
         rs = [float(x) for x in r_series]
@@ -247,6 +285,8 @@ def build_foundation_snapshot(
             med = median_loss_r(rs)
         if mean is None:
             mean = mean_r(rs)
+        win_mean = mean_win_r(rs)
+        loss_mean = mean_loss_r(rs)
     rr = float(net_rr) if net_rr is not None else None
     p = float(p_ft) if p_ft is not None else None
     e_mech = mechanical_ev_r(p_ft=p, net_rr=rr) if p is not None and rr is not None else None
@@ -263,6 +303,8 @@ def build_foundation_snapshot(
         occupancy=occ,
         median_loss_r=med,
         mean_r=mean,
+        mean_win_r=win_mean,
+        mean_loss_r=loss_mean,
         p_ft=p,
         net_rr=rr,
         e_mech=e_mech,
@@ -296,6 +338,8 @@ __all__ = [
     "S5_DD_MAX_PCT",
     "S5_MIN_TRADES",
     "S5_SHARPE_FLOOR",
+    "S5_SHARPE_MIN_TRADES",
+    "s5_holdout_sharpe",
     "FoundationSnapshot",
     "build_foundation_snapshot",
     "intended_risk_usd",

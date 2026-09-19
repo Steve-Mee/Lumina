@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { motion } from "framer-motion";
 
 import { BirthLaunchSequence } from "@/components/birth/BirthLaunchSequence";
@@ -11,6 +12,8 @@ import { ModeTransitionVeil } from "@/components/cockpit/ModeTransitionVeil";
 import { useBirthPhaseActions } from "@/hooks/useBirthPhaseActions";
 import { useOnboardingModeMotion } from "@/hooks/useOnboardingModeMotion";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
+import { resolveBirthPaintSurface } from "@/lib/birthOperatorMode";
+import { restoreDeckWindowSize } from "@/lib/systemsGoWindow";
 import { transitionOrNone, springBirthLuxury } from "@/lib/motionPresets";
 import { warnOverlayPanelClass } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
@@ -55,10 +58,19 @@ export function BirthPhaseScreen() {
     missionMode,
     recoveryOverlayActive,
     certificateFailedPinned,
-    genesisMode,
-    launchingMode,
+    operatorMode,
     activationStep,
   } = derived;
+  const paintSurface = resolveBirthPaintSurface(operatorMode);
+  const launchingMode = paintSurface === "launching";
+  const genesisMode = paintSurface === "genesis";
+
+  useEffect(() => {
+    if (launchingMode) {
+      return;
+    }
+    void restoreDeckWindowSize();
+  }, [launchingMode, paintSurface]);
 
   return (
     <OnboardingShell className="birth-phase-screen birth-phase-screen--cinematic onboarding-shell--form">
@@ -73,12 +85,16 @@ export function BirthPhaseScreen() {
         <LuminaPhaseHeader
           {...phaseHeader}
           variant={missionMode && !launchingMode ? "compact" : "strip"}
-          className="relative z-20"
+          className={cn(
+            "lumina-phase-header relative z-20",
+            recoveryOverlayActive && "invisible pointer-events-none",
+          )}
         />
         <EvolutionLadderStrip
           className={cn(
             "relative z-20",
             missionMode && !launchingMode && "evolution-ladder-strip--dense !py-1",
+            recoveryOverlayActive && "invisible pointer-events-none",
           )}
         />
         {certificateFailedPinned ? (
@@ -105,7 +121,9 @@ export function BirthPhaseScreen() {
             onOpenSetup={() => enterSetupReview("credentials")}
             onChangeTraining={onChangeTraining}
           />
-        ) : missionMode ? (
+        ) : (
+          // Mission + stall/cert overlays share this tree so the helix never
+          // remounts under a freeze flash. Never fall through to Genesis here.
           <BirthPhaseMissionBranch
             derived={derived}
             controlBusy={controlBusy}
@@ -114,18 +132,6 @@ export function BirthPhaseScreen() {
             onStop={handleStopBirth}
             onEnterDeck={enterCommandDeck}
             onExtraTraining={handleExtraTraining}
-          />
-        ) : (
-          // Fail-closed: never orphan empty hero — land on Genesis branch.
-          <BirthPhaseGenesisBranch
-            derived={derived}
-            controlBusy={controlBusy}
-            onActivate={() => void handleStartBirth()}
-            onWipe={handleWipeBirthData}
-            onStop={handleStopBirth}
-            onResumeCheckpoint={handleResumeCheckpoint}
-            onOpenSetup={() => enterSetupReview("credentials")}
-            onChangeTraining={onChangeTraining}
           />
         )}
 

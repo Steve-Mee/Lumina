@@ -62,6 +62,10 @@ def test_historical_bars_is_critical() -> None:
     from lumina_launcher.services.fabric_diag_preflight import CRITICAL_CHECK_IDS
 
     assert "historical_bars" in CRITICAL_CHECK_IDS
+    assert "auth_ok" in CRITICAL_CHECK_IDS
+    assert "place_order" not in CRITICAL_CHECK_IDS
+    assert "flatten" not in CRITICAL_CHECK_IDS
+    assert "safe_mode_enter" not in CRITICAL_CHECK_IDS
 
 
 def test_report_to_dict_shape(monkeypatch: pytest.MonkeyPatch) -> None:

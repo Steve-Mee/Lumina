@@ -22,10 +22,8 @@ CRITICAL_CHECK_IDS = frozenset(
         "auth_ok",
         # Host must reject wrong tokens (fail-closed security plane).
         "auth_reject",
-        "place_order",
-        "flatten",
-        "safe_mode_enter",
         # Dual-plane: GREEN requires market/historical data readiness (not CrossTrade).
+        # Never require place/flatten — startup diagnostics must not submit NT orders.
         "historical_bars",
     }
 )

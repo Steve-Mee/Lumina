@@ -105,8 +105,7 @@ export async function runFabricSoftSetup(opts: {
     opts.setVaultTabFabric();
     return null;
   }
-  // Light auto path: port/auth/hist only — skip multi-second SAFE_MODE probe (faster reconnect UX).
-  // Full SAFE_MODE coverage stays on explicit "Test connection".
+  // Light auto path: port/auth/hist only. Diagnostics never submit NT orders.
   opts.setRepairing(true);
   opts.setHealResult(null);
   try {
@@ -192,7 +191,7 @@ export async function runFabricDiagnostic(opts: {
   opts.setFabricReport(null);
   try {
     const report = await postFabricConnectionTest({
-      include_safe_mode: true,
+      include_safe_mode: false,
       // Empty → server uses config trading.instrument (MES SEP26), not bare MES.
       instrument: "",
     });

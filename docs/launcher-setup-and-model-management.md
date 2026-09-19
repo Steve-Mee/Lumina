@@ -11,7 +11,9 @@
 - An Unsloth fine-tuning scaffold was added for future Linux/WSL2 CUDA environments.
 - The fine-tuning scaffold now includes concrete training, GGUF export, and Ollama registration commands.
 - The launcher now disables export and registration actions automatically when the runtime is not Linux or WSL2, or when prerequisites are missing.
-- The hardware and model tabs now show explicit readiness badges for tier fit, recommended model state, Ollama, and vLLM.
+- Smart Setup is three cards: how LUMINA learns trades (Lungs / training engine), how it reads and explains (Voice / thinking assistant), and what happens next. Voice can stay off for Genesis/Birth.
+- vLLM is not a training engine. On Windows it is blocked. Linux/WSL2 may offer it as an extra-fast local assistant in a separate venv.
+- Birth physics is `python scripts/install_birth_physics_stack.py`. Do not `pip install -r requirements-ml.txt` on the NinjaTrader machine.
 - Blocked fine-tuning/export/register attempts are now written to a support log so admin users can see what a user tried to run and why it was blocked.
 - Launcher setup preferences are configurable via `config.yaml` (`setup:` block).
 

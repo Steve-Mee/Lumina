@@ -14,10 +14,12 @@ from lumina_core.birth.progress import merge_birth_progress_extra, write_birth_p
 from lumina_core.birth.stall_remediation import HUMAN_GATE_REASON
 from lumina_core.birth.phoenix_loop import PHOENIX_CYCLE_REASON
 from lumina_core.birth.foundation_skill_clock import skill_clock_open_from_loop
+from lumina_core.birth.terminal_freeze import occupancy_from_loop
 from lumina_core.birth.stage_loop_mixin_base import StageLoopMixinBase
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.stage_loop_recovery_terminal")
+
 
 class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
     """Wall evaluation and fail-closed terminal stall finalization."""
@@ -96,70 +98,13 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
     ) -> dict[str, Any]:
         # Raptor v9: never KeyError on incomplete wall/plateau pendings.
         # Raptor v10: adaptation_stuck is an engineering signal — prefer skill blockers.
-        pending = dict(pending or {})
+        from lumina_core.birth.stage_loop_recovery_blocker import fill_pending_stage_blocker
+
+        pending = fill_pending_stage_blocker(self, pending)
         failure_key = str(pending.get("failure_key") or "stage_stalled")
         blocker_metric = pending.get("blocker_metric")
         blocker_value = pending.get("blocker_value")
         blocker_reason = pending.get("blocker_reason")
-        engineering_stuck = (
-            failure_key == "adaptation_stuck"
-            or str(blocker_metric or "") == "adaptation_stuck"
-            or str(blocker_reason or "") == "adaptation_loop_blocked"
-        )
-        need_skill_fill = (
-            blocker_metric is None
-            or blocker_value is None
-            or engineering_stuck
-        )
-        if need_skill_fill:
-            try:
-                from lumina_core.birth.stage_scorecard import compute_stage_blocker
-
-                hold_ratio = float(self.stage_hold_signals) / float(
-                    max(1, self.stage_total_signals)
-                )
-                range_flat_ratio = float(self.stage_range_flat_bars) / float(
-                    max(1, self.stage_range_total_signals)
-                )
-                bm, bv, br = compute_stage_blocker(
-                    self.stage,
-                    stage_trades=self.stage_trades,
-                    stage_wins=self.stage_wins,
-                    hold_ratio=hold_ratio,
-                    required=self.required,
-                    constitution_violations=self.host._constitution_guard.violations,
-                    range_flat_ratio=range_flat_ratio,
-                    range_round_trips=self.stage_range_round_trips,
-                    range_total_signals=self.stage_range_total_signals,
-                    cfg=self.cur_cfg,
-                    policy_entropy=self._resolve_policy_entropy(),
-                    ppo_steps=int(getattr(self.host, "ppo_steps", 0) or 0),
-                    policy_trades=int(getattr(self, "stage_policy_trades", 0) or 0),
-                    policy_wins=int(getattr(self, "stage_policy_wins", 0) or 0),
-                    plant_trades=int(getattr(self, "stage_plant_trades", 0) or 0),
-                    plant_wins=int(getattr(self, "stage_plant_wins", 0) or 0),
-                )
-                if engineering_stuck and bm is not None:
-                    pending["engineering_blocker"] = "adaptation_stuck"
-                    blocker_metric = bm
-                    blocker_value = bv if bv is not None else 0.0
-                    blocker_reason = br or blocker_reason
-                else:
-                    if blocker_metric is None:
-                        blocker_metric = bm or failure_key or "stage_stalled"
-                    if blocker_value is None:
-                        blocker_value = bv if bv is not None else 0.0
-                    if not blocker_reason:
-                        blocker_reason = br or failure_key
-            except Exception:
-                blocker_metric = blocker_metric or failure_key or "stage_stalled"
-                blocker_value = 0.0 if blocker_value is None else blocker_value
-                blocker_reason = blocker_reason or failure_key
-        pending["failure_key"] = failure_key
-        pending["blocker_metric"] = blocker_metric
-        pending["blocker_value"] = blocker_value
-        if blocker_reason:
-            pending["blocker_reason"] = blocker_reason
         logger.info(
             "birth.terminal_stall reason=%s cumulative_trades=%s cap=%s "
             "adaptation_tier=%s retries=%s data_exhausted=%s buffer=%s human_gate=%s",
@@ -222,6 +167,12 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
             "swarm_champion_accepted": bool(
                 getattr(self, "swarm_champion_accepted", False)
                 or getattr(self.swarm_state, "champion_accepted", False)
+            ),
+            "expansion_step": int(getattr(self, "expansion_step", 0) or 0),
+            "expansion_exhausted": bool(getattr(self, "data_exhausted", False)),
+            "occupancy": occupancy_from_loop(self),
+            "occupancy_exam_armed": bool(
+                getattr(getattr(self, "occupancy_exam_window", None), "armed", False)
             ),
         }
         autonomy_decision = self.bus.autonomy_evaluate_terminal_stall(self.stage, 
@@ -385,30 +336,21 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
                 logger.warning("birth.twin_accept_champion_apply_failed: %s", exc)
         # Atomic terminal freeze SSOT: one frozen narrative so restart cannot
         # rewrite hollow stage1/trades=0 while advertising ladder step=4.
-        from lumina_core.birth.terminal_freeze import build_terminal_freeze
-
-        terminal_freeze = build_terminal_freeze(
-            reason=stall_reason,
-            curriculum_stage=self.stage.value,
-            stages_passed=list(self.host._stages_passed),
-            evolution_step=int(getattr(self.plateau_state, "evolution_step", 0) or 0),
-            stage_trades=int(self.stage_trades),
-            stage_wins=int(self.stage_wins),
-            swarm_rejected_no_lift=bool(
-                getattr(self, "swarm_rejected_no_lift", False)
-                or getattr(self.swarm_state, "rejected_no_lift", False)
-            ),
-            swarm_champion_accepted=bool(
-                getattr(self, "swarm_champion_accepted", False)
-                or getattr(self.swarm_state, "champion_accepted", False)
-            ),
-            best_edgescore_policy_path=str(
-                getattr(self, "best_edgescore_policy_path", "") or ""
-            ),
-            best_policy_path=str(
-                getattr(self.plateau_state, "best_policy_path", "") or ""
-            ),
+        from lumina_core.birth.terminal_freeze import (
+            build_loop_terminal_freeze,
+            freeze_attention_fields,
+            freeze_is_active,
         )
+
+        terminal_freeze = build_loop_terminal_freeze(self, stall_reason)
+        freeze_attn = freeze_attention_fields(terminal_freeze) if freeze_is_active(
+            terminal_freeze
+        ) else {}
+        next_action = str(terminal_freeze.get("next_action") or "")
+        if freeze_attn and ("accept" in next_action or "wipe" in next_action):
+            freeze_attn["autonomous_recovery_pending"] = False
+            freeze_attn["retryable"] = False
+            freeze_attn["needs_attention"] = True
         # Merge extras first — phoenix autonomy_metrics may include curriculum_stage
         # (PEP 448 dual-kwargs TypeError if unpacked alongside explicit kwargs).
         stall_extra = merge_birth_progress_extra(
@@ -438,6 +380,7 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
                     else {}
                 ),
             },
+            freeze_attn,
         )
         write_birth_progress(
             self.host.workspace_root,

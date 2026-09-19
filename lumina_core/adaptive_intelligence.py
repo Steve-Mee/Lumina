@@ -6,6 +6,14 @@ from typing import Any
 
 from lumina_core.config_loader import ConfigLoader
 from lumina_core.hardware_intelligence import HardwareIntelligenceManager, HardwareIntelligenceSnapshot
+from lumina_core.intelligence.organs import (
+    OrgansProbe,
+    OrgansTruth,
+    build_organs_truth,
+    is_windows,
+    probe_lungs_runtime,
+    vllm_importable_here,
+)
 
 _FORCED_MODE_TO_TIER = {
     "force_high": "high",
@@ -101,6 +109,13 @@ class AdaptiveIntelligenceManager:
                 tier = forced_tier
                 status_reason = f"forced_mode:{mode}"
 
+        recommended_provider = hardware.recommended_provider
+        os_name = str(getattr(hardware, "os_name", "") or "")
+        if is_windows(os_name) and recommended_provider == "vllm":
+            recommended_provider = "ollama"
+            if mode == "force_high":
+                status_reason = "force_high_windows_ollama_not_vllm"
+
         self._status = AdaptiveIntelligenceStatus(
             tier=tier,
             mode=mode,
@@ -108,11 +123,49 @@ class AdaptiveIntelligenceManager:
             degraded_state=degraded_state,
             status_reason=status_reason,
             recommended_model=hardware.recommended_model_key,
-            recommended_provider=hardware.recommended_provider,
+            recommended_provider=recommended_provider,
             context_length=int(hardware.recommended_context_length),
             last_probe_error=None,
         )
         return self._status
+
+    def organs_truth(self) -> OrgansTruth:
+        import os as os_mod
+        import platform
+        import shutil
+
+        hardware = self.hardware_manager.latest()
+        os_name = str(getattr(hardware, "os_name", "") or "") or platform.system()
+        torch_ok, sb3_ok, cuda, device = probe_lungs_runtime()
+        cfg = ConfigLoader.get()
+        section = cfg.get("intelligence", {}) if isinstance(cfg, dict) else {}
+        voice_raw = section.get("voice_provider", "ollama") if isinstance(section, dict) else "ollama"
+        voice = str(voice_raw or "ollama").strip().lower()
+        if voice not in {"ollama", "grok_remote", "vllm", "off"}:
+            voice = "ollama"
+        grok = str((cfg.get("xai_key") if isinstance(cfg, dict) else "") or "").strip()
+        grok = grok or str(os_mod.getenv("XAI_API_KEY", "") or "").strip()
+        vllm_health = False
+        if bool(hardware.vllm_supported) and not is_windows(os_name):
+            vllm_health = _probe_vllm_health(cfg if isinstance(cfg, dict) else {})
+        return build_organs_truth(
+            OrgansProbe(
+                os_name=os_name,
+                vllm_supported=bool(hardware.vllm_supported) and not is_windows(os_name),
+                vllm_health_ok=vllm_health,
+                vllm_importable=vllm_importable_here(),
+                cuda_available=cuda,
+                gpu_name=device,
+                torch_ok=torch_ok,
+                sb3_ok=sb3_ok,
+                ollama_installed=shutil.which("ollama") is not None,
+                grok_key_present=bool(grok),
+                requested_provider=voice,  # type: ignore[arg-type]
+                intelligence_mode=self._read_intelligence_mode(),
+                profile_tier=str(hardware.profile_tier),
+                ladder_phase="genesis",
+            )
+        )
 
     def report_probe_failure(self, error: Exception | str) -> AdaptiveIntelligenceStatus:
         status = self.get_status()
@@ -135,3 +188,17 @@ class AdaptiveIntelligenceManager:
 
     def to_dict(self) -> dict[str, Any]:
         return self.get_status().to_dict()
+
+
+def _probe_vllm_health(cfg: dict[str, Any]) -> bool:
+    """HTTP-only. Never start_vllm_server from Setup/Birth."""
+    vllm = cfg.get("vllm") if isinstance(cfg.get("vllm"), dict) else {}
+    host = str(vllm.get("host") or "http://127.0.0.1:8000").rstrip("/")
+    url = f"{host}/health"
+    try:
+        import urllib.request
+
+        with urllib.request.urlopen(url, timeout=1.5) as response:
+            return int(getattr(response, "status", 0) or 0) < 500
+    except Exception:
+        return False

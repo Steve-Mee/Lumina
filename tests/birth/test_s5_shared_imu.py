@@ -432,6 +432,40 @@ def test_d_s5_pnl_series_wires_holdout_oos_not_none() -> None:
     assert result.oos_dd_pct is not None
 
 
+def test_d_s5_first_touch_mes_lot_holdout_can_pass() -> None:
+    """S4-viable first-touch 1-lot must be able to clear S5 without 252-day cheat or fail."""
+    series = [-25.5] * 105 + [32.0] * 45
+    result = evaluate_stage_pass(
+        CurriculumStage.STAGE5_PROBE_HANDOFF,
+        trades=150,
+        wins=45,
+        hold_signals=40,
+        total_signals=400,
+        range_total_signals=400,
+        range_flat_bars=200,
+        range_round_trips=150,
+        constitution_violations=0,
+        target_trades=50,
+        occupancy=0.50,
+        unique_calendar_days=16,
+        median_loss_r=1.20,
+        mean_r=-0.41,
+        first_touch_hit_rate=0.30,
+        geometry_net_rr=1.20,
+        policy_trades=150,
+        policy_wins=45,
+        plant_trades=0,
+        plant_wins=0,
+        pnl_series=series,
+        **honest_closes(150),
+    )
+    assert result.oos_sharpe is not None
+    assert float(result.oos_sharpe) > S5_SHARPE_FLOOR
+    assert result.oos_dd_pct is not None
+    assert float(result.oos_dd_pct) <= S5_DD_MAX_PCT
+    assert result.passed is True
+
+
 def test_d_s5_empty_pnl_without_explicit_oos_stays_none() -> None:
     result = evaluate_stage_pass(
         CurriculumStage.STAGE5_PROBE_HANDOFF,

@@ -85,7 +85,10 @@ def register_partial_birth_dna(
         "candidate_name": "birth_v2_partial",
         "birth_certificate_version": "provisional",
         "oos_winrate": proxy,
-        "oos_sharpe": fitness,
+        "stage_winrate": float(stage_winrate),
+        # Never stuff winrate into Sharpe — Twin/operator copy must stay honest.
+        "oos_sharpe": None,
+        "fitness_kind": "winrate_proxy",
         "regime_focus": [],
         "curriculum_stage": curriculum_stage,
         "stall_reason": stall_reason,

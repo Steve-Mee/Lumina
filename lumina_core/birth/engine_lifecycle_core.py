@@ -232,6 +232,11 @@ class EngineLifecycleCoreMixin:
                 allow_load_existing=bool(allow_load_existing),
                 force_reinit=bool(force_reinit),
             )
+        except ModuleNotFoundError as exc:
+            from lumina_core.birth.physics_preflight import physics_missing_message
+
+            missing = (str(getattr(exc, "name", None) or "stable_baselines3"),)
+            raise RuntimeError(physics_missing_message(missing=missing)) from exc
         except TypeError:
             return create(allow_load_existing=bool(allow_load_existing))
 

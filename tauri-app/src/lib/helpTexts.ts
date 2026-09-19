@@ -5,9 +5,9 @@ export const HELP_TEXTS: Record<string, string> = {
   runtime_trace_interval: "Throttle for repetitive runtime trace lines (seconds).",
   latency_sla: "SLA threshold (ms) for fast-path decisions under high latency.",
   training_trades:
-    "Curriculum trade budget auto-sized for this machine (hardware / first-boot). Display only on Genesis — not operator-editable. Birth Foundation exit is five process-R receipts + fitness vector, not a WR exam.",
+    "Global Birth trade budget (ceiling), not a hardware IQ score. Sweet/beast stay at the YAML cap; a faster PC trains the same budget quicker. Stages pass on process-R floors (150/250/400/100/50), not by consuming this cap. Birth exit is five process-R receipts + fitness vector, not a WR exam.",
   max_real_days:
-    "Expand ceiling for Birth history (default 365). First load is Foundation 90 calendar days, then 180 → 365. Not linked to the trade budget.",
+    "Expand ceiling for Birth history (default 365). First load is Foundation 90 calendar days. 180 then 365 only on stall / death-spiral / certificate — not at start. Not linked to the trade budget.",
   prefer_real_data_only: "Certified birth requires real market data (≥95% in certificate).",
   birth_certificate:
     "Proving Ground / certificate pipeline: OOS winrate, Sharpe, drawdown. Not Birth Foundation exit — deck unlocks after Foundation five-of-five + later Playground gates.",
@@ -15,15 +15,15 @@ export const HELP_TEXTS: Record<string, string> = {
   allow_minimal_synthetic_fallback:
     "When real data is unavailable, allow a minimal synthetic top-up for practice mode only.",
   genesis_maturity_charter:
-    "Genesis is the pre-birth contract: set birth training goals and see what REAL maturity requires later.",
+    "Genesis is the pre-birth contract: the trade budget is a ceiling, Birth grades process-R, and REAL needs the later ladder (Awakening → Playground first-contact in NT SIM → Apprenticeship → Proving Ground).",
   stage1_winrate_gate:
-    "Birth Foundation grades the plant (median loss R, occupancy, first-touch), not a 35–45% WR exam. Profit and certificate OOS 48% live in Playground / Proving Ground.",
+    "Birth Foundation grades the plant (median loss R, occupancy, first-touch), not a 35–45% WR exam. Profit (WR ≥ geometry BE, mean R ≥ 0) is Playground on NT SIM tape. Certificate OOS 48% is Proving Ground.",
   maturity_ladder:
-    "Six growth phases from genesis contract to REAL capital: Birth → Awakening → Playground → Apprenticeship → Proving Ground → REAL.",
+    "Growth phases from wiring to live capital: Setup → Genesis → Birth → Awakening → Playground → Apprenticeship → Proving Ground → REAL.",
   evolution_proof:
     "Post-birth gate: winrate lift ≥5% vs birth exit or polish OOS ≥45% on ≥500 trades.",
   certificate_oos:
-    "Birth Certificate v2 holdout winrate ≥48% is a Proving Ground wall, not a Birth Foundation pass gate.",
+    "Proving Ground wall: OOS WR ≥48%, Sharpe ≥0.35, DD ≤8% on the proving exam tape. Birth certificate JSON is not pass. Human approve-real is REAL.",
   pause_live_trading:
     "Stops trading immediately and attempts to flatten/cancel open orders. May realize loss in fast markets.",
 
@@ -57,7 +57,17 @@ export const HELP_TEXTS: Record<string, string> = {
   approval_required:
     "When on, mutations wait for human approve/reject in Decision Theater and Evolution deck. Off = faster auto path (weaker human-in-the-loop). REAL preset forces approval on.",
   config_instrument:
-    "CME futures root for runtime (MES/MNQ recommended). Micros are ~1/10 full-size notional. Traded primarily via NinjaTrader 8 + Lumina Fabric. Front-month contract is resolved on the platform — you pick the root, not MES SEP26.",
+    "CME futures root (MES/MNQ recommended). Birth history uses the liquid front-month (volume roll ~8 days before the 3rd Friday) and stitches prior quarterlies. A YAML listing like MES SEP26 is resolved — Lumina must not train a thin next-quarter book as if it were the liquid tape.",
+  cuda_gloss:
+    "CUDA is the way an NVIDIA graphics card does heavy math. LUMINA uses it to practise trades.",
+  vllm_gloss:
+    "vLLM is an optional extra-fast talking server. It is not the thing that learns to trade.",
+  ollama_gloss: "Ollama is a small local talking program. Safe to run next to learning.",
+  xai_gloss: "Cloud brain. Best for reading live news. Needs a key. Does not learn trades by itself.",
+  force_high_tier:
+    "Picks a larger local talking model if memory allows. Never unlocks REAL. Never installs vLLM on Windows. May be slow.",
+  organs_lungs: "How LUMINA learns trades. Detected, not chosen. No checkbox.",
+  organs_voice: "How LUMINA reads and explains. Optional. Not needed to start learning.",
   config_voice_enabled: "Enable TTS and voice input on the operator deck. No capital impact.",
   config_screen_share: "Live chart screen-share path for operator context. No capital impact.",
 };

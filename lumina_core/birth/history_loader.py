@@ -51,10 +51,14 @@ def resolve_unique_calendar_days(
     ticks: Sequence[dict[str, Any]] | None = None,
     progress: Mapping[str, Any] | None = None,
 ) -> int:
-    """SSOT unique days for Foundation replay-cap. Never treat 0 as a cached hit."""
+    """SSOT unique days for Foundation replay-cap.
+
+    Manifest ``actual_calendar_days`` wins over a stale cached HUD value.
+    Never treat 0 as a cached hit.
+    """
     candidates: list[Any] = [
-        cached,
         (manifest or {}).get("actual_calendar_days") if manifest is not None else None,
+        cached,
         (progress or {}).get("foundation_unique_calendar_days") if progress is not None else None,
         (progress or {}).get("actual_calendar_days") if progress is not None else None,
     ]

@@ -19,6 +19,12 @@ class TwinBaseStartRequest(BaseModel):
     force_restart: bool = False
 
 
+class TwinKnowledgeWipeRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    confirm: str = Field(min_length=1)
+
+
 class TwinBaseAnswerRequest(BaseModel):
     model_config = {"extra": "forbid"}
 
@@ -128,6 +134,36 @@ async def twin_base_complete(
     except Exception as exc:
         logger.exception("twin base complete failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+async def twin_knowledge_wipe(
+    body: TwinKnowledgeWipeRequest,
+    x_api_key: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    """Wipe Twin labels, model, and base training. Birth artefacts stay."""
+    _verify_api_key(x_api_key, require_admin=True)
+    from lumina_core.evolution.twin_knowledge_reset import wipe_twin_knowledge
+    from lumina_os.backend.twin_endpoints_auth import (
+        _MODEL_PATH,
+        _REGISTRY_JSONL,
+        _REGISTRY_SQLITE,
+        _STATE,
+        reset_twin_service,
+    )
+
+    reset_twin_service()
+    try:
+        result = wipe_twin_knowledge(
+            state_dir=_STATE,
+            confirm=body.confirm,
+            extra_paths=(_MODEL_PATH, _REGISTRY_SQLITE, _REGISTRY_JSONL),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    reset_twin_service()
+    return result
 
 
 async def twin_readiness(

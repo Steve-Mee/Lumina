@@ -33,6 +33,11 @@ import {
 } from "@/lib/deckBirthGate";
 import { resolveDeckStatus } from "@/lib/deckStatusOrchestrator";
 import { selectCurrentMode, selectFallbackMode, useCoreStore } from "@/store/coreStore";
+import type { BirthProgressPayload } from "@/lib/birthClient";
+import {
+  curriculumStagesPassedFill,
+  formatBirthProgressHeadline,
+} from "@/lib/birth/birthProgressTruth";
 import { cn } from "@/lib/utils";
 import { useOnboardingStore } from "@/store/onboardingStore";
 
@@ -47,6 +52,12 @@ interface BirthProgress {
     trades_done?: number;
     target_trades?: number;
     stage?: string;
+    curriculum_stage?: string;
+    curriculum_index?: number;
+    curriculum_total?: number;
+    stage_pass_now?: boolean;
+    stage_blocker_metric?: string;
+    progress_truth?: Record<string, unknown>;
   };
 }
 
@@ -115,7 +126,8 @@ function BirthProgressPanel({
   birth: BirthProgress;
   onViewProgress: () => void;
 }) {
-  const pct = birth.progress?.progress_pct ?? 0;
+  const payload = birth.progress as BirthProgressPayload | undefined;
+  const fill = curriculumStagesPassedFill(payload);
   const stage = birth.progress?.stage ?? birth.status;
 
   return (
@@ -127,11 +139,13 @@ function BirthProgressPanel({
         <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/10">
           <div
             className={birthOverlayProgressClass()}
-            style={{ width: `${Math.min(100, pct)}%` }}
+            style={{ width: `${fill}%` }}
           />
         </div>
         <div className="mt-2 flex items-center justify-between gap-2 text-xs">
-          <span className="text-muted-foreground">{pct.toFixed(0)}% complete</span>
+          <span className="text-muted-foreground">
+            {formatBirthProgressHeadline(payload)}
+          </span>
           {birth.message ? (
             <span className="truncate text-[10px] text-muted-foreground">{birth.message}</span>
           ) : null}

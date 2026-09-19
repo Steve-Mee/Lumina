@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from lumina_core.birth.plateau_escalator import (
@@ -154,7 +155,7 @@ class StageLoopProgressWriteEnrichMixin(StageLoopMixinBase):
                 if not str(scorecard.get("attention_summary") or "").strip():
                     scorecard["attention_summary"] = (
                         f"Terminal recovery: {scorecard.get('attention_reason_code')} — "
-                        f"next_action={rec.get('next_action', 'expand_data_or_wipe_genesis')}"
+                        f"next_action={rec.get('next_action', 'expand_data_or_wipe_birth')}"
                     )
                 if not scorecard.get("attention_recommended_actions"):
                     scorecard["attention_recommended_actions"] = [
@@ -248,6 +249,21 @@ class StageLoopProgressWriteEnrichMixin(StageLoopMixinBase):
                 float(self.stage_trades) / max(0.01, self.rollout_wall_clock_total_sec)
             ) * 60.0
             scorecard["wall_clock_trades_per_min"] = round(trades_per_min, 1)
+        start = float(getattr(self.host, "birth_start_time", 0.0) or 0.0)
+        if start > 0.0:
+            elapsed_outer = max(0.01, time.time() - start)
+            scorecard["wall_clock_trades_per_min_outer"] = round(
+                float(self.host.cumulative_trades) / elapsed_outer * 60.0, 1
+            )
+        try:
+            from lumina_core.rl.ppo_device import _resolve_ppo_device
+            from lumina_core.rl.ppo_vec_env import _resolve_ppo_n_envs
+
+            scorecard["ppo_n_envs"] = int(_resolve_ppo_n_envs())
+            scorecard["ppo_device"] = str(_resolve_ppo_device())
+        except Exception:
+            scorecard["ppo_n_envs"] = 1
+            scorecard["ppo_device"] = "cpu"
         soft_blocks = int(constitution_fields.get("constitution_soft_blocks_session", 0) or 0)
         signals = max(1, int(self.stage_total_signals) + int(rollout_steps or 0))
         scorecard["soft_block_rate_per_1k_signals"] = round(

@@ -394,6 +394,12 @@ export function buildStartupReadinessView(opts: {
     subtitle = artifactsOk
       ? "Birth session ready — entering mission control."
       : "Birth incomplete — recovery and training live here.";
+  } else if (surface === "awakening") {
+    headline = "Awakening";
+    subtitle = "Open eyes — prefer better than frozen π*.";
+  } else if (surface === "apprenticeship") {
+    headline = "Apprenticeship";
+    subtitle = "Walk — 5 green SIM days under REAL rules.";
   } else if (surface === "hub") {
     headline = "Phase Hub";
     subtitle = "Organism ready — opening maturation hub.";
@@ -415,6 +421,15 @@ export function buildStartupReadinessView(opts: {
     canRetry: !backendOk || Boolean(fetchError),
     activeStepId: active?.id ?? "route",
   };
+}
+
+/**
+ * Systems Go cover stays up until the orchestrator commits this session.
+ * Never drop the cover on a backend blip after payload exists — that remounts
+ * ColdStart over Birth/Wizard and resizes the native window in a loop.
+ */
+export function shouldHoldStartupCover(ntStartupResolved: boolean): boolean {
+  return ntStartupResolved !== true;
 }
 
 export function startupStepStateLabel(state: StartupStepState): string {

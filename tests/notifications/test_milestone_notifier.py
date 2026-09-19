@@ -98,6 +98,30 @@ def test_milestone_reset_allows_fresh_run(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_stage_passed_uses_birth_milestones_kind(tmp_path: Path) -> None:
+    telegram = MagicMock()
+    telegram.send_milestone_alert.return_value = True
+    notifier = MilestoneNotifier(workspace_root=tmp_path, telegram=telegram)
+    notifier._enabled = True
+    event = curriculum_stage_passed_event(
+        CurriculumStage.STAGE2_RANGE,
+        StagePassReceipt(
+            stage="stage2_range",
+            trades=250,
+            wins=74,
+            winrate=0.296,
+            required_trades=250,
+            pass_criteria_id="selectivity",
+            provisional=False,
+            passed_at="2026-01-01T00:00:00+00:00",
+            engine_version="test",
+        ),
+    )
+    assert notifier.notify(event) is True
+    assert telegram.send_milestone_alert.call_args.kwargs.get("kind") == "birth_milestones"
+
+
+@pytest.mark.unit
 def test_curriculum_stage_event_summary() -> None:
     event = curriculum_stage_passed_event(
         CurriculumStage.STAGE2_RANGE,

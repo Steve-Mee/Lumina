@@ -105,6 +105,20 @@ export async function completeBaseTraining(): Promise<Record<string, unknown>> {
   return twinFetch("/api/twin/base/complete", { method: "POST", body: "{}" });
 }
 
+export const TWIN_KNOWLEDGE_WIPE_CONFIRM = "WIPE_TWIN_KNOWLEDGE";
+
+export async function wipeTwinKnowledge(): Promise<{
+  ok: boolean;
+  wiped?: boolean;
+  message?: string;
+  removed?: string[];
+}> {
+  return twinFetch("/api/twin/knowledge/wipe", {
+    method: "POST",
+    body: JSON.stringify({ confirm: TWIN_KNOWLEDGE_WIPE_CONFIRM }),
+  });
+}
+
 export async function startMicroSession(input?: {
   count?: number;
   dual_channel?: boolean;

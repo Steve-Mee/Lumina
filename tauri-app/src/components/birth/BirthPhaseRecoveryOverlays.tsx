@@ -8,12 +8,14 @@ import { Button } from "@/components/ui/button";
 import type { BirthPhaseActions } from "@/hooks/useBirthPhaseActions";
 import type { BirthPhaseDerived } from "@/hooks/useBirthPhaseDerived";
 import { isTransientPollWarning } from "@/store/birthStore";
+import { useBirthUiStore } from "@/store/birthUiStore";
 import {
   distressPanelClass,
   warnOverlayBodyClass,
   warnOverlayPanelClass,
   warnOverlayTitleClass,
 } from "@/lib/modePresentation";
+import { stallFreezeNextActionLine } from "@/lib/birth/birthStallOverlay";
 import { recoveryOperatorHint } from "@/lib/birthRecoveryModel";
 import { isBirthResidualHistoryFailure } from "@/lib/birthPhaseModel";
 import { cn } from "@/lib/utils";
@@ -53,11 +55,10 @@ export function BirthPhaseRecoveryOverlays({
     stageStalledActive,
     phaseSubtitle,
     stalledBlocker,
+    freezeOperatorFork,
     terminalStallReason,
     needsAttention,
-    attentionSummary,
     provisionalGraduation,
-    stallDiagnostics,
     tradeBudgetRemaining,
     tradeBudgetCap,
     constitutionSession,
@@ -75,6 +76,10 @@ export function BirthPhaseRecoveryOverlays({
     uiPhase,
     failed,
   } = derived;
+
+  const wipeConfirmOpen = useBirthUiStore((s) => s.wipeConfirmStep > 0);
+  const stopConfirmOpen = useBirthUiStore((s) => s.stopConfirmOpen);
+  const confirmOpen = wipeConfirmOpen || stopConfirmOpen;
 
   // Genesis owns all attention/error/decision UI inside the glass deck.
   // Never paint a second error strip under the helix (breaks Lumina composition).
@@ -94,7 +99,10 @@ export function BirthPhaseRecoveryOverlays({
 
       {certificateFailed ? (
         <BirthFailureOverlayShell
-          className="birth-phase-certificate-overlay z-40"
+          className={cn(
+            "birth-phase-certificate-overlay z-40",
+            confirmOpen && "pointer-events-none",
+          )}
           title="Certificate not passed"
           subtitle={certificateFailureDetail}
           error={pollError}
@@ -138,8 +146,13 @@ export function BirthPhaseRecoveryOverlays({
 
       {stageStalledActive ? (
         <BirthFailureOverlayShell
+          className={confirmOpen ? "pointer-events-none" : undefined}
           title="Curriculum stage stalled"
-          subtitle={phaseSubtitle}
+          subtitle={
+            freezeOperatorFork
+              ? stallFreezeNextActionLine(status)
+              : phaseSubtitle
+          }
           meta={
             <>
               {stalledBlocker ? (
@@ -150,14 +163,9 @@ export function BirthPhaseRecoveryOverlays({
               {terminalStallReason === "plateau_evolution_exhausted" ||
               terminalStallReason === "stall_remediation_exhausted" ? (
                 <p className="mt-2 rounded border border-orange-500/30 bg-orange-950/20 px-3 py-2 font-mono text-xs text-orange-100">
-                  Learning plateau: evolution and auto-remediation exhausted. Use Wis
-                  birth-data (tick cache may be kept) for a clean restart via Genesis — checkpoint
-                  resume will re-trigger plateau without quarantine.
-                </p>
-              ) : null}
-              {needsAttention && attentionSummary ? (
-                <p className="mt-2 rounded border border-violet-500/30 bg-violet-950/20 px-3 py-2 font-mono text-xs text-violet-100">
-                  {attentionSummary}
+                  Learning plateau: evolution and auto-remediation exhausted. Wipe birth-data
+                  (tick cache may be kept) for a clean restart via Genesis — checkpoint resume
+                  will re-trigger plateau without quarantine.
                 </p>
               ) : null}
               {provisionalGraduation ? (
@@ -165,18 +173,6 @@ export function BirthPhaseRecoveryOverlays({
                   Provisional graduation recorded — partial DNA seeded for Evolution. Retry or
                   continue via Expand &amp; retry.
                 </p>
-              ) : null}
-              {terminalStallReason && terminalStallReason !== "plateau_evolution_exhausted" ? (
-                <p className="mt-2 font-mono text-[10px] text-muted-foreground">
-                  Stall reason: {terminalStallReason}
-                </p>
-              ) : null}
-              {stallDiagnostics != null ? (
-                <pre className="mt-2 max-h-32 overflow-auto rounded border border-border/40 bg-black/30 p-2 font-mono text-[10px] text-muted-foreground">
-                  {typeof stallDiagnostics === "string"
-                    ? stallDiagnostics
-                    : JSON.stringify(stallDiagnostics, null, 2)}
-                </pre>
               ) : null}
               {Number.isFinite(tradeBudgetRemaining) && tradeBudgetCap > 0 ? (
                 <p className="mt-2 font-mono text-[10px] text-muted-foreground">
@@ -191,29 +187,39 @@ export function BirthPhaseRecoveryOverlays({
                 </p>
               ) : null}
               <p className="mt-2 text-xs text-muted-foreground">
-                {autonomousMode
-                  ? "Organism autonomy active — recovery runs without operator input."
-                  : needsAttention
-                    ? "Telegram alert sent — manual review required before retry."
-                    : stalledAutoResume
-                      ? "Auto-resume is active — the engine will retry automatically when the app or service restarts."
-                      : stalledRetryable
-                        ? "Manual action required — use Expand & retry or Review genesis settings below."
-                        : "Recovery is not automatic for this stall state."}
+                {freezeOperatorFork
+                  ? "Champion freeze — Accept or Wipe. Autonomy cannot train through this gate."
+                  : autonomousMode
+                    ? "Organism autonomy active — recovery runs without operator input."
+                    : needsAttention
+                      ? "Telegram alert sent — manual review required before retry."
+                      : stalledAutoResume
+                        ? "Auto-resume is active — the engine will retry automatically when the app or service restarts."
+                        : stalledRetryable
+                          ? "Manual action required — use Expand & retry or Review genesis settings below."
+                          : "Recovery is not automatic for this stall state."}
               </p>
-              {(() => {
-                const hint = recoveryOperatorHint(status);
-                return hint ? (
-                  <p className={cn("mt-2 rounded border px-3 py-2 font-mono text-[10px]", distressPanelClass("warn"), warnOverlayBodyClass())}>
-                    H6 recovery: {hint}
-                  </p>
-                ) : null;
-              })()}
+              {freezeOperatorFork
+                ? null
+                : (() => {
+                    const hint = recoveryOperatorHint(status);
+                    return hint ? (
+                      <p
+                        className={cn(
+                          "mt-2 rounded border px-3 py-2 font-mono text-[10px]",
+                          distressPanelClass("warn"),
+                          warnOverlayBodyClass(),
+                        )}
+                      >
+                        H6 recovery: {hint}
+                      </p>
+                    ) : null;
+                  })()}
             </>
           }
           error={pollError}
           actions={
-            autonomousMode ? (
+            autonomousMode && !freezeOperatorFork ? (
               <p className="birth-info-callout__subtle text-center">
                 Telemetry only — autonomous recovery in progress
               </p>
@@ -228,8 +234,9 @@ export function BirthPhaseRecoveryOverlays({
             birthStatus={status?.status}
             resumePlateauRisk={resumePlateauRisk}
             resumePlateauRiskTrades={status?.resume_plateau_risk_trades ?? null}
+            variant="compact"
           />
-          <p className="text-center text-xs text-muted-foreground">
+          <p className="mt-1 text-center text-[10px] text-muted-foreground">
             Adaptive tier {adaptationTier + 1}/{maxAdaptationTiers} · retries {stalledRetries}/
             {maxStageRetries}
             {status?.engine_version ? ` · engine ${status.engine_version}` : ""}

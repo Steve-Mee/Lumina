@@ -149,7 +149,10 @@ def load_frozen_policy(path: Path | str) -> Any | None:
     try:
         from stable_baselines3 import PPO
 
-        return PPO.load(str(target))
+        from lumina_core.maturity.awakening.freeze_pin import copy_for_load
+
+        load_copy = copy_for_load(target)
+        return PPO.load(str(load_copy))
     except Exception as exc:
         logger.warning("birth.pi_star.load_failed path=%s err=%s", target, exc)
         return None

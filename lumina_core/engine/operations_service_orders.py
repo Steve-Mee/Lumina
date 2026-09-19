@@ -215,11 +215,83 @@ class OperationsOrdersMixin:
                 )
                 try:
                     from lumina_core.maturity.milestone_hooks import try_record_milestone
+                    from lumina_core.maturity.playground.fills import record_orderpath_fill
 
                     workspace = getattr(self.engine.config, "workspace_root", None) or getattr(
                         self.app, "workspace_root", None
                     )
                     if workspace and str(trade_mode).lower() in {"sim", "sim_real_guard"}:
+                        oid = str(
+                            getattr(result, "order_id", None) or getattr(result, "id", None) or ""
+                        ).strip()
+                        if oid and fill_px > 0.0:
+                            record_orderpath_fill(
+                                workspace,
+                                order_id=oid,
+                                fill_px=float(fill_px),
+                                qty=int(fill_qty or qty),
+                                instrument=str(getattr(self.engine.config, "instrument", "") or ""),
+                                mode=str(trade_mode).lower(),
+                                source="ops_place_order",
+                                kind="fill",
+                                policy=True,
+                            )
+                            try:
+                                from lumina_core.maturity.continuum import load_continuum
+                                from lumina_core.maturity.apprenticeship.tape import (
+                                    record_orderpath_fill as record_apprentice_fill,
+                                )
+
+                                active = str(load_continuum(workspace).get("active_phase") or "")
+                                mode_now = str(trade_mode).lower()
+                                if active == "apprenticeship" and mode_now == "sim_real_guard":
+                                    order_pnl = getattr(result, "realized_pnl", None)
+                                    if order_pnl is None:
+                                        order_pnl = getattr(result, "pnl", None)
+                                    pnl_f = None
+                                    if order_pnl is not None and order_pnl != "":
+                                        pnl_f = float(order_pnl)
+                                    record_apprentice_fill(
+                                        workspace,
+                                        order_id=oid,
+                                        fill_px=float(fill_px),
+                                        qty=int(fill_qty or qty),
+                                        instrument=str(
+                                            getattr(self.engine.config, "instrument", "") or ""
+                                        ),
+                                        mode=mode_now,
+                                        source="ops_place_order",
+                                        kind="close" if pnl_f is not None else "fill",
+                                        policy=True,
+                                        pnl=pnl_f,
+                                    )
+                                if active == "proving_ground" and mode_now in {"sim", "sim_real_guard"}:
+                                    from lumina_core.maturity.proving_ground.tape import (
+                                        record_orderpath_fill as record_pg_fill,
+                                    )
+
+                                    order_pnl = getattr(result, "realized_pnl", None)
+                                    if order_pnl is None:
+                                        order_pnl = getattr(result, "pnl", None)
+                                    pnl_pg = None
+                                    if order_pnl is not None and order_pnl != "":
+                                        pnl_pg = float(order_pnl)
+                                    record_pg_fill(
+                                        workspace,
+                                        order_id=oid,
+                                        fill_px=float(fill_px),
+                                        qty=int(fill_qty or qty),
+                                        instrument=str(
+                                            getattr(self.engine.config, "instrument", "") or ""
+                                        ),
+                                        mode=mode_now,
+                                        source="ops_place_order",
+                                        kind="close" if pnl_pg is not None else "fill",
+                                        policy=True,
+                                        pnl=pnl_pg,
+                                    )
+                            except Exception:
+                                pass
                         try_record_milestone(
                             workspace,
                             "first_sim_order_placed",

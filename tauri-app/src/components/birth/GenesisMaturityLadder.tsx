@@ -22,19 +22,19 @@ export const MATURATION_STEPS: MaturationStep[] = [
   { id: "setup", label: "Setup", short: "Vault · envelope · fabric" },
   { id: "genesis", label: "Genesis", short: "Maturity contract" },
   { id: "birth", label: "Birth", short: "Historical curriculum" },
-  { id: "awakening", label: "Awakening", short: "Certificate + proof" },
-  { id: "playground", label: "Playground", short: "NT sim — explore" },
+  { id: "awakening", label: "Awakening", short: "Prefer better policies" },
+  { id: "playground", label: "Playground", short: "NT SIM — crawl · WR≥BE" },
   {
     id: "apprenticeship",
     label: "Apprenticeship",
     compactLabel: "Apprentice",
-    short: "REAL rules, sim capital",
+    short: "Walk · Sharpe ≥ 0.20 · 5 green days",
   },
   {
     id: "proving_ground",
     label: "Proving Ground",
     compactLabel: "Proving",
-    short: "Shadow + promotion",
+    short: "Cert 48% · shadow · gate",
   },
   { id: "real", label: "REAL", short: "Live capital" },
 ];
@@ -113,14 +113,52 @@ interface GenesisMaturityGoalsPreviewProps {
   className?: string;
 }
 
-const MATURITY_GOALS: readonly string[] = [
-  "Certificate OOS winrate ≥ 48%",
-  "Evolution Proof: +5% lift or polish OOS ≥ 45% (≥500 trades)",
-  "Apprenticeship: sim_real_guard stability, constitution 0 violations",
-  "Proving Ground: shadow pass + PromotionGate + human approval",
+interface MaturityGoal {
+  id: MaturationPhaseId;
+  phase: string;
+  gate: string;
+  detail: string;
+  now?: boolean;
+}
+
+const MATURITY_GOALS: readonly MaturityGoal[] = [
+  {
+    id: "birth",
+    phase: "Birth",
+    gate: "5/5 plant",
+    now: true,
+    detail: "Birth: Foundation 5/5 + fitness (process-R + occupancy — not a WR exam)",
+  },
+  {
+    id: "awakening",
+    phase: "Awakening",
+    gate: "STABLE · n≥500",
+    detail:
+      "Awakening: prefer-better AND — STABLE, n_B≥500 policy-only, occupancy, process-R, Twin-watch of this run. Lift ≥5pp or OOS ≥45% is necessary, not sufficient.",
+  },
+  {
+    id: "playground",
+    phase: "Playground",
+    gate: "WR ≥ BE",
+    detail: "Playground: skill WR ≥ geometry BE and mean R ≥ 0 + first SIM order",
+  },
+  {
+    id: "apprenticeship",
+    phase: "Apprentice",
+    gate: "Sharpe · 0 viol",
+    detail:
+      "Apprenticeship: walk — 5 green sim_real_guard days, Sharpe ≥ 0.20, DD ≤ 12%, constitution 0",
+  },
+  {
+    id: "proving_ground",
+    phase: "Proving",
+    gate: "OOS 48%",
+    detail:
+      "Proving Ground: Certificate OOS ≥ 48% / Sharpe ≥ 0.35 / DD ≤ 8% + this-run shadow + PromotionGate. Human approval is REAL.",
+  },
 ];
 
-/** Always-visible REAL maturity goals (no accordion). */
+/** Always-visible REAL walls as a one-plane strip (no accordion, no scroll). */
 export function GenesisMaturityGoalsPreview({ className }: GenesisMaturityGoalsPreviewProps) {
   return (
     <div
@@ -129,21 +167,31 @@ export function GenesisMaturityGoalsPreview({ className }: GenesisMaturityGoalsP
         className,
       )}
     >
-      <p className="risk-envelope-field-label genesis-maturity-goals__title mb-2">
-        REAL maturity goals ({MATURITY_GOALS.length})
+      <p className="risk-envelope-field-label genesis-maturity-goals__title">
+        REAL walls
       </p>
-      <ul className="genesis-maturity-goals__list">
-        {MATURITY_GOALS.map((goal) => (
+      <ol className="genesis-maturity-goals__list" aria-label="REAL maturity walls">
+        {MATURITY_GOALS.map((goal, idx) => (
           <li
-            key={goal}
-            className="genesis-maturity-goals__item font-mono text-[10px] text-violet-100/85"
+            key={goal.id}
+            className={cn(
+              "genesis-maturity-goals__item",
+              goal.now && "genesis-maturity-goals__item--now",
+            )}
+            title={goal.detail}
           >
-            {goal}
+            {idx > 0 ? (
+              <span className="genesis-maturity-goals__arrow" aria-hidden>
+                →
+              </span>
+            ) : null}
+            <span className="genesis-maturity-goals__phase">{goal.phase}</span>
+            <span className="genesis-maturity-goals__gate">{goal.gate}</span>
           </li>
         ))}
-      </ul>
-      <p className="genesis-maturity-goals__footnote mt-2 font-mono text-[9px] text-violet-200/65">
-        Birth grades process-R and occupancy — not a WR exam, not a REAL guarantee.
+      </ol>
+      <p className="genesis-maturity-goals__footnote">
+        Birth is now · later walls block REAL · hover a node for the full gate
       </p>
     </div>
   );

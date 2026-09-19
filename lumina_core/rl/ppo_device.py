@@ -14,11 +14,20 @@ def _resolve_ppo_device() -> str:
     return "cpu"
 
 
+def _resolve_ppo_n_envs() -> int:
+    """Re-export: VecEnv width lives with the factory (lungs CUDA profile)."""
+    from lumina_core.rl.ppo_vec_env import _resolve_ppo_n_envs as _impl
+
+    return _impl()
+
+
 def _scale_timesteps_for_device(timesteps: int) -> int:
-    device = _resolve_ppo_device()
-    if device == "cuda":
-        return max(int(timesteps), int(timesteps) * 2)
-    return int(timesteps)
+    """Return requested timesteps unchanged.
+
+    CUDA must select the device, not double env steps. Birth PPO is
+    CPU-env bound; doubling made a faster GPU take longer wall-clock.
+    """
+    return max(1, int(timesteps))
 
 
-__all__ = ["_resolve_ppo_device", "_scale_timesteps_for_device"]
+__all__ = ["_resolve_ppo_device", "_scale_timesteps_for_device", "_resolve_ppo_n_envs"]

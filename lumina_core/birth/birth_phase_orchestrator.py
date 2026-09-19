@@ -45,6 +45,11 @@ def run_birth_phase(
     reuse_data_manifest: bool = False,
     expand_data: bool = False,
 ) -> dict[str, Any]:
+    from lumina_core.birth.physics_preflight import reject_birth_if_physics_missing
+
+    blocked = reject_birth_if_physics_missing(host, target_trades=target_trades)
+    if blocked is not None:
+        return blocked
     host._reuse_data_manifest = bool(reuse_data_manifest)
     boot = bootstrap_birth_phase(
         host,

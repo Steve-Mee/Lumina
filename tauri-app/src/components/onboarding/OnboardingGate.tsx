@@ -1,16 +1,21 @@
 import { useEffect, type ReactNode } from "react";
 
 import { BirthPhaseScreen } from "@/components/birth/BirthPhaseScreen";
+import { ApprenticeshipPhaseScreen } from "@/components/maturity/ApprenticeshipPhaseScreen";
+import { AwakeningPhaseScreen } from "@/components/maturity/AwakeningPhaseScreen";
+import { ProvingGroundPhaseScreen } from "@/components/maturity/ProvingGroundPhaseScreen";
 import { PhaseHubScreen } from "@/components/maturity/PhaseHubScreen";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
+import { PlaygroundDeckOverlay } from "@/components/maturity/PlaygroundDeckOverlay";
 import { PlaygroundEnvelopeSeal } from "@/components/onboarding/PlaygroundEnvelopeSeal";
 import { ColdStartReadiness } from "@/components/startup/ColdStartReadiness";
 import { NinjaTraderDegradedBanner } from "@/components/startup/NinjaTraderDegradedBanner";
+import { shouldHoldStartupCover } from "@/lib/startupReadinessModel";
 import { type AppPhase, useOnboardingStore } from "@/store/onboardingStore";
 import { useBirthStore } from "@/store/birthStore";
 
 interface OnboardingGateProps {
-  children: (phase: Exclude<AppPhase, "wizard" | "birth" | "hub">) => ReactNode;
+  children: (phase: Exclude<AppPhase, "wizard" | "birth" | "hub" | "awakening" | "playground" | "apprenticeship" | "proving_ground">) => ReactNode;
 }
 
 export function OnboardingGate({ children }: OnboardingGateProps) {
@@ -55,14 +60,10 @@ export function OnboardingGate({ children }: OnboardingGateProps) {
     setupReviewActive,
   ]);
 
-  // Cold-start cover until SSOT fetch completes.
-  // NT process gate also holds the cover after SSOT maps phase — unless operator deferred.
-  // Exception: when backend is unreachable, keep cover for backend retry (payload null or !reachable)
-  // without requiring NT first (NT gate runs once backend is reachable).
-  const backendReachable = payload?.backend.reachable === true;
-  const holdForNtGate =
-    !ntStartupResolved &&
-    (phase === "loading" || backendReachable || payload == null);
+  // Cold-start cover until Systems Go commits this session.
+  // Backend unreachable stays on the cover (retry lives there). Never unmount
+  // ColdStart over Birth/Wizard — that stacks screens and resizes the window.
+  const holdForNtGate = shouldHoldStartupCover(ntStartupResolved);
 
   if (holdForNtGate) {
     return <ColdStartReadiness />;
@@ -81,6 +82,48 @@ export function OnboardingGate({ children }: OnboardingGateProps) {
     return (
       <>
         <BirthPhaseScreen />
+        <NinjaTraderDegradedBanner />
+      </>
+    );
+  }
+
+  if (phase === "awakening") {
+    return (
+      <>
+        <AwakeningPhaseScreen />
+        <NinjaTraderDegradedBanner />
+      </>
+    );
+  }
+
+  if (phase === "playground") {
+    if (payload?.sim_envelope_sealed === false) {
+      return <PlaygroundEnvelopeSeal />;
+    }
+    return (
+      <>
+        <div className="relative min-h-dvh">
+          {children("cockpit")}
+          <PlaygroundDeckOverlay />
+        </div>
+        <NinjaTraderDegradedBanner />
+      </>
+    );
+  }
+
+  if (phase === "apprenticeship") {
+    return (
+      <>
+        <ApprenticeshipPhaseScreen />
+        <NinjaTraderDegradedBanner />
+      </>
+    );
+  }
+
+  if (phase === "proving_ground") {
+    return (
+      <>
+        <ProvingGroundPhaseScreen />
         <NinjaTraderDegradedBanner />
       </>
     );

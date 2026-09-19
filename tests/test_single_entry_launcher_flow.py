@@ -38,6 +38,14 @@ def test_process_manager_stops_birth_service() -> None:
     assert "birth_service.stop_birth" in source
 
 
+def test_run_backend_uses_venv_python_not_system_python() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "lumina_os" / "run_backend.ps1").read_text(encoding="utf-8")
+    assert ".venv\\Scripts\\python.exe" in script
+    assert "System Python is forbidden for Birth" in script
+    assert "Resolve-LuminaPython" in script
+
+
 def test_bootstrap_script_does_not_reference_streamlit() -> None:
     root = Path(__file__).resolve().parents[1]
     script = (root / "scripts" / "bootstrap_lumina.py").read_text(encoding="utf-8")

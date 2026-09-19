@@ -32,7 +32,7 @@ def test_honesty_completed_flag_alone_is_not_birth_exit(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_honesty_ready_not_real_eligible(tmp_path: Path) -> None:
+def test_honesty_ready_stamp_without_law_is_not_ready(tmp_path: Path) -> None:
     (tmp_path / "state").mkdir(parents=True, exist_ok=True)
     progress = MaturationProgress(
         current_phase=MaturationPhase.APPRENTICESHIP,
@@ -42,9 +42,8 @@ def test_honesty_ready_not_real_eligible(tmp_path: Path) -> None:
     for phase in ("genesis", "birth", "awakening", "playground"):
         mark_phase_completed(tmp_path, phase, learned={}, exit_proofs=["x"])
     snap = continuum_honesty_snapshot(tmp_path)
-    assert snap["ready_for_real"]["ready"] is True
+    assert snap["ready_for_real"]["ready"] is False
     assert snap["real_eligible"]["eligible"] is False
-    assert any("READY_FOR_REAL" in w for w in snap["conflation_warnings"])
 
 
 @pytest.mark.unit
@@ -80,5 +79,5 @@ def test_ready_from_stability_report_file(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     snap = continuum_honesty_snapshot(tmp_path)
-    assert snap["ready_for_real"]["ready"] is True
-    assert snap["ready_for_real"]["stability_report"].get("READY_FOR_REAL") is True
+    assert snap["ready_for_real"]["ready"] is False
+    assert snap["ready_for_real"].get("law_ok") is False

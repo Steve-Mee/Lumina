@@ -5,6 +5,7 @@ Usage:
   python scripts/validation/champion_freeze_ops.py --workspace . status
   python scripts/validation/champion_freeze_ops.py --workspace . accept --confirm
   python scripts/validation/champion_freeze_ops.py --workspace . accept --confirm --no-start
+  python scripts/validation/champion_freeze_ops.py --workspace . retry-stage --confirm
   python scripts/validation/champion_freeze_ops.py --workspace . wipe --confirm --keep-tick-cache
   python scripts/validation/champion_freeze_ops.py --workspace . wipe --confirm
 
@@ -219,6 +220,72 @@ def cmd_accept(
     return 0
 
 
+def cmd_retry_stage(
+    workspace: Path,
+    *,
+    confirm: bool,
+    target_trades: int | None,
+    as_json: bool,
+    force: bool,
+) -> int:
+    from lumina_core.birth.champion_freeze_ops import build_champion_freeze_decision_card
+
+    progress = _load_progress(workspace)
+    metrics = _load_checkpoint_metrics(workspace)
+    card = build_champion_freeze_decision_card(
+        progress=progress,
+        checkpoint_metrics=metrics,
+        workspace=str(workspace),
+    )
+    if not confirm:
+        print("REFUSED: retry-stage requires --confirm (resets current-stage sample).")
+        if not as_json:
+            _print_card(card)
+        return 1
+    freeze = (progress.get("terminal_freeze") or {}) if isinstance(progress, dict) else {}
+    next_action = str(freeze.get("next_action") or "").lower()
+    from lumina_core.birth.foundation_occupancy_envelope import (
+        occupancy_fencepost_blocks_expand,
+    )
+
+    fencepost = occupancy_fencepost_blocks_expand(
+        occupancy=progress.get("occupancy") if isinstance(progress, dict) else None,
+        occupancy_exam_armed=(
+            progress.get("occupancy_exam_armed") if isinstance(progress, dict) else None
+        ),
+    )
+    if "retry_stage" not in next_action and not fencepost and not force:
+        print(
+            "REFUSED: freeze next_action is not retry_stage. "
+            "Use --force only if you intentionally reset this stage sample."
+        )
+        return 1
+
+    svc = _birth_service(workspace)
+    result = svc.retry_current_stage(target_trades=target_trades)
+    after = build_champion_freeze_decision_card(
+        progress=_load_progress(workspace),
+        checkpoint_metrics=_load_checkpoint_metrics(workspace),
+        workspace=str(workspace),
+    )
+    payload = {
+        "schema": "champion_freeze_ops_result_v1",
+        "action": "retry_stage",
+        "result": result,
+        "card_after": after,
+    }
+    if as_json:
+        print(json.dumps(payload, indent=2, ensure_ascii=True, default=str))
+    else:
+        print(
+            f"champion_freeze_ops retry_stage status={result.get('status')}"
+        )
+        print(f"  message: {result.get('message') or result.get('status')}")
+        _print_card(after)
+    status = str(result.get("status") or "").lower()
+    return 0 if status in {"started", "already_running", "ok"} else 1
+
+
 def cmd_wipe(
     workspace: Path,
     *,
@@ -338,6 +405,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Clear freeze only; do not start Birth (checklist first)",
     )
 
+    p_retry = sub.add_parser(
+        "retry-stage",
+        help="Reset current-stage sample and resume (requires --confirm)",
+    )
+    p_retry.add_argument(
+        "--confirm",
+        action="store_true",
+        help="Required confirmation for stage-sample reset",
+    )
+
     p_wipe = sub.add_parser(
         "wipe",
         help="Wipe birth training artifacts (requires --confirm)",
@@ -363,6 +440,14 @@ def main(argv: list[str] | None = None) -> int:
             workspace,
             confirm=bool(args.confirm),
             no_start=bool(args.no_start),
+            target_trades=args.target_trades,
+            as_json=args.json,
+            force=bool(args.force),
+        )
+    if args.command == "retry-stage":
+        return cmd_retry_stage(
+            workspace,
+            confirm=bool(args.confirm),
             target_trades=args.target_trades,
             as_json=args.json,
             force=bool(args.force),

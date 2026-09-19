@@ -22,7 +22,8 @@ describe("systemsGoWindow", () => {
       join(root, "components/startup/ColdStartReadiness.tsx"),
       "utf8",
     );
-    expect(cold).toContain("applySystemsGoWindowSize");
+    expect(cold).toContain("retainStartupCoverWindow");
+    expect(cold).toContain("releaseStartupCoverWindow");
     expect(cold).toContain("restoreDeckWindowSize");
     // Restore before setNtStartupResolved so Genesis lands full-size
     expect(cold).toMatch(
@@ -36,6 +37,9 @@ describe("systemsGoWindow", () => {
     expect(src).toContain("setMinSize");
     expect(src).toContain("setSize");
     expect(src).toContain("center");
+    expect(src).toContain("retainStartupCoverWindow");
+    expect(src).toContain("releaseStartupCoverWindow");
+    expect(src).toContain("queueMicrotask");
     expect(src).not.toContain("closeNinjaTrader");
     expect(src).not.toContain("taskkill");
   });

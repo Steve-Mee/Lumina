@@ -90,6 +90,30 @@ def test_maturation_eligible_for_real_missing_blockers(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_sync_removes_false_evolution_proof_milestone(tmp_path: Path) -> None:
+    from lumina_core.birth.evolution_proof_gate import save_evolution_proof_record
+    from lumina_core.maturity.maturation_progress import sync_maturation_from_birth_state
+
+    record_maturation_milestone(tmp_path, "genesis_contract_signed")
+    record_maturation_milestone(tmp_path, "birth_started")
+    record_maturation_milestone(tmp_path, "evolution_proof_passed")
+    save_evolution_proof_record(
+        tmp_path,
+        {
+            "passed": False,
+            "holdout_trades": 150,
+            "superseded_by": "adr_0049",
+        },
+    )
+    with patch("lumina_launcher.services.birth_service.BirthService") as svc_cls:
+        svc = svc_cls.return_value
+        svc.certificate_ok.return_value = False
+        svc.artifacts_ok.return_value = False
+        progress = sync_maturation_from_birth_state(tmp_path)
+    assert "evolution_proof_passed" not in progress.milestones_reached
+
+
+@pytest.mark.unit
 def test_milestone_hooks_idempotent(tmp_path: Path) -> None:
     hook_birth_started(tmp_path, training_mode="certified", trade_budget=10_000)
     hook_birth_started(tmp_path, training_mode="certified", trade_budget=10_000)

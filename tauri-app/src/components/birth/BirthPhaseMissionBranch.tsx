@@ -90,7 +90,7 @@ export function BirthPhaseMissionBranch({
           headline={awakening ? "Birth complete" : headline}
           subtitle={
             awakening
-              ? "Your organism is trained and ready for the command deck."
+              ? "Birth training is complete. Later ladder gates still apply."
               : phaseSubtitle
           }
           milestones={milestones}

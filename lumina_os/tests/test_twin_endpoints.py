@@ -217,3 +217,28 @@ def test_twin_gym_complete(client: TestClient) -> None:
     assert body["recorded_count"] == 3
     assert body["rlhf"] is not None
     assert body["local_only"] is True
+
+
+def test_twin_knowledge_wipe_requires_confirm(client: TestClient) -> None:
+    r = client.post("/api/twin/knowledge/wipe", json={"confirm": "yes"})
+    assert r.status_code == 400
+
+
+def test_twin_knowledge_wipe_ok(client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import lumina_os.backend.twin_endpoints_auth as auth
+    from lumina_core.evolution.twin_knowledge_reset import WIPE_CONFIRM_TOKEN
+
+    monkeypatch.setattr(auth, "_STATE", tmp_path)
+    monkeypatch.setattr(auth, "_MODEL_PATH", tmp_path / "approval_twin_model.json")
+    monkeypatch.setattr(auth, "_REGISTRY_SQLITE", tmp_path / "steve_values_registry.sqlite3")
+    monkeypatch.setattr(auth, "_REGISTRY_JSONL", tmp_path / "steve_values_registry.jsonl")
+    auth.reset_twin_service()
+    (tmp_path / "twin_base_training.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "lumina_birth_ticks_cache.jsonl").write_text("ticks", encoding="utf-8")
+    r = client.post("/api/twin/knowledge/wipe", json={"confirm": WIPE_CONFIRM_TOKEN})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is True
+    assert body["birth_ready"] is False
+    assert (tmp_path / "twin_base_training.json").exists() is False
+    assert (tmp_path / "lumina_birth_ticks_cache.jsonl").read_text(encoding="utf-8") == "ticks"

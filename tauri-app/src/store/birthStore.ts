@@ -9,6 +9,7 @@ import {
   isBirthStartSuccessful,
   resumeStalledStageSession,
   retryBirthSession,
+  retryCurrentStageSession,
   resumeBirthSession,
   reuseDataBirthSession,
   startBirthSessionContinue,
@@ -20,6 +21,7 @@ import {
   isBirthComplete,
   isBirthEngineActive,
   isBirthInterrupted,
+  isUnresolvedTerminalFreeze,
   type BirthMilestone,
 } from "@/lib/birthPhaseModel";
 import { shouldAutoResumeBirth, verifyBirthWipeSucceeded } from "@/lib/birthRecoveryModel";
@@ -85,6 +87,7 @@ interface BirthState {
   resumeBirth: () => Promise<boolean>;
   acceptChampion: () => Promise<boolean>;
   resumeStalledStage: () => Promise<boolean>;
+  retryCurrentStage: () => Promise<boolean>;
   expandAndRetryStalledStage: () => Promise<boolean>;
   executeRecommendedRecovery: () => Promise<boolean>;
   reuseDataBirth: () => Promise<boolean>;
@@ -303,7 +306,45 @@ export const useBirthStore = create<BirthState>((set, get) => ({
     }
   },
 
+  retryCurrentStage: async () => {
+    set({
+      uiPhase: "running",
+      birthSurface: "running",
+      genesisPinned: false,
+      runPinned: true,
+      pollError: null,
+    });
+    try {
+      const response = await retryCurrentStageSession(get().targetTrades);
+      if (!isBirthStartSuccessful(response.status, response)) {
+        const message = response.message ?? `Stage retry failed (${response.status})`;
+        get().applyStatus(response);
+        set({ uiPhase: recoveryFailureUiPhase(response), pollError: message });
+        return false;
+      }
+      get().applyStatus(response);
+      await get().poll();
+      return true;
+    } catch (err) {
+      set({
+        uiPhase: recoveryFailureUiPhase(get().status),
+        pollError: err instanceof Error ? err.message : "Stage retry failed",
+      });
+      return false;
+    }
+  },
+
   resumeStalledStage: async () => {
+    if (isUnresolvedTerminalFreeze(get().status)) {
+      set({
+        uiPhase: "stage_stalled",
+        birthSurface: "recovery",
+        runPinned: false,
+        pollError:
+          "Terminal freeze is unresolved — retry stage or wipe. Silent resume is blocked.",
+      });
+      return false;
+    }
     set({
       uiPhase: "running",
       birthSurface: "running",
@@ -332,6 +373,16 @@ export const useBirthStore = create<BirthState>((set, get) => ({
   },
 
   executeRecommendedRecovery: async () => {
+    if (isUnresolvedTerminalFreeze(get().status)) {
+      set({
+        uiPhase: "stage_stalled",
+        birthSurface: "recovery",
+        runPinned: false,
+        pollError:
+          "Terminal freeze is unresolved — accept champion or wipe. Autonomous recovery is blocked.",
+      });
+      return false;
+    }
     set({
       uiPhase: "running",
       birthSurface: "running",
@@ -360,6 +411,16 @@ export const useBirthStore = create<BirthState>((set, get) => ({
   },
 
   expandAndRetryStalledStage: async () => {
+    if (isUnresolvedTerminalFreeze(get().status)) {
+      set({
+        uiPhase: "stage_stalled",
+        birthSurface: "recovery",
+        runPinned: false,
+        pollError:
+          "Terminal freeze is unresolved — accept champion or wipe. Expand & retry is blocked.",
+      });
+      return false;
+    }
     set({ uiPhase: "running", birthSurface: "running", pollError: null });
     try {
       const response = await expandAndRetryStalledStageSession(get().targetTrades);

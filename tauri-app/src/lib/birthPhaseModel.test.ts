@@ -20,6 +20,7 @@ import {
   isBirthProgressPayloadActive,
   isBirthRunning,
   isBirthStageStalled,
+  isUnresolvedTerminalFreeze,
   resolveActiveMilestone,
   resolveBirthHeadline,
   resolveBirthSessionStartedAtMs,
@@ -123,10 +124,10 @@ describe("birthPhaseModel", () => {
     );
   });
 
-  it("uses certificate headline when completed without certificate", () => {
+  it("uses awakening headline when completed without certificate", () => {
     const milestones = buildMilestones({ stage: "completed" }, "completed");
     expect(resolveBirthHeadline(milestones, "completed", { stage: "completed" }, false)).toBe(
-      "Birth Certificate v2 required",
+      "Birth Foundation complete — next is Awakening",
     );
   });
 
@@ -157,7 +158,7 @@ describe("birthPhaseModel", () => {
     ).toBe(false);
   });
 
-  it("treats completed without certificate as certificate failed", () => {
+  it("treats completed with certificate_failed phase as certificate failed", () => {
     expect(
       isBirthCertificateFailed({
         status: "completed",
@@ -165,6 +166,16 @@ describe("birthPhaseModel", () => {
         progress: { stage: "completed", phase: "certificate_failed" },
       }),
     ).toBe(true);
+  });
+
+  it("does not treat foundation complete as certificate failed", () => {
+    expect(
+      isBirthCertificateFailed({
+        status: "completed",
+        certificate_ok: false,
+        progress: { stage: "completed", phase: "completed" },
+      }),
+    ).toBe(false);
   });
 
   it("detects active progress during historical load only when live", () => {
@@ -274,6 +285,52 @@ describe("birthPhaseModel", () => {
         progress: { phase: "stage_stalled" },
       }),
     ).toBe(true);
+  });
+
+  it("treats unresolved terminal freeze as stalled even with live leftover", () => {
+    const frozen: BirthStatusPayload = {
+      status: "running",
+      live: true,
+      progress: {
+        stage: "training_running",
+        phase: "ppo_training",
+        terminal_freeze: {
+          schema: "terminal_freeze_v1",
+          reason: "phoenix_cycle",
+          resolved: false,
+          next_action: "accept_champion_or_wipe",
+        },
+      },
+    };
+    expect(isUnresolvedTerminalFreeze(frozen)).toBe(true);
+    expect(isBirthEngineActive(frozen)).toBe(false);
+    expect(isBirthStageStalled(frozen)).toBe(true);
+  });
+
+  it("keeps freeze sacred when reason is briefly empty but schema remains", () => {
+    expect(
+      isUnresolvedTerminalFreeze({
+        status: "stage_stalled",
+        progress: {
+          terminal_freeze: { schema: "terminal_freeze_v1", resolved: false },
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("does not treat resolved freeze as stalled", () => {
+    const resolved: BirthStatusPayload = {
+      status: "running",
+      live: true,
+      progress: {
+        stage: "training_running",
+        phase: "ppo_training",
+        terminal_freeze: { schema: "terminal_freeze_v1", reason: "phoenix_cycle", resolved: true },
+      },
+    };
+    expect(isUnresolvedTerminalFreeze(resolved)).toBe(false);
+    expect(isBirthEngineActive(resolved)).toBe(true);
+    expect(isBirthStageStalled(resolved)).toBe(false);
   });
 
   it("extracts simulation progress from trades", () => {
@@ -589,6 +646,21 @@ describe("birthPhaseModel", () => {
     });
     expect(scorecard?.dataDaysLoaded).toBe(730);
     expect(scorecard?.dataManifestDaysLoaded).toBe(71);
+  });
+
+  it("uses manifest actual_calendar_days as data-window SSOT", () => {
+    const scorecard = extractStageScorecard({
+      timestamp: new Date().toISOString(),
+      curriculum_stage: "stage5_probe_handoff",
+      phase: "curriculum_learning",
+      stage_trades: 50,
+      stage_target_trades: 50,
+      data_days_loaded: 91,
+      data_manifest: { days_loaded: 91, actual_calendar_days: 366 },
+      data_manifest_calendar_days: 366,
+      pass_criteria_id: "probe_handoff",
+    });
+    expect(scorecard?.dataManifestDaysLoaded).toBe(366);
   });
 
   it("surfaces Starship EdgeScore pass criteria and entropy blocker", () => {

@@ -40,28 +40,28 @@ PHASE_SPECS: dict[str, PhaseSpec] = {
     MaturationPhase.AWAKENING.value: PhaseSpec(
         id="awakening",
         label="Awakening",
-        human_goal="Open eyes: prefer better policies, regime awareness, recovery.",
+        human_goal="Open eyes: prefer better than frozen π*, see regimes, recover. STABLE + n_B≥500.",
         next_id="playground",
         entry_requires=("birth",),
     ),
     MaturationPhase.PLAYGROUND.value: PhaseSpec(
         id="playground",
         label="Playground",
-        human_goal="Crawl safely in SIM: deck, envelope, first sim order.",
+        human_goal="Crawl in NT SIM: first honest fill, n_P≥150, WR≥geometry BE, mean R≥0.",
         next_id="apprenticeship",
         entry_requires=("awakening",),
     ),
     MaturationPhase.APPRENTICESHIP.value: PhaseSpec(
         id="apprenticeship",
         label="Apprenticeship",
-        human_goal="Practice: multi-day SIM stability, never-stop recovery.",
+        human_goal="Walk: 5 green SIM days under sim_real_guard, Sharpe≥0.20, DD≤12%.",
         next_id="proving_ground",
         entry_requires=("playground",),
     ),
     MaturationPhase.PROVING_GROUND.value: PhaseSpec(
         id="proving_ground",
         label="Proving Ground",
-        human_goal="Driving test: shadow validation + promotion gate.",
+        human_goal="Driving test: cert OOS 48%/0.35/8% + shadow + PromotionGate. No REAL.",
         next_id="real",
         entry_requires=("apprenticeship",),
     ),
@@ -112,10 +112,20 @@ def evaluate_exit_proofs(workspace_root: Path | str, phase: str) -> tuple[bool, 
     progress = load_maturation_progress(root)
     reached = set(progress.milestones_reached)
     learned: dict[str, Any] = {"milestones": list(reached)}
-    cfg = load_maturity_config()
-    soft = bool(cfg.experimental_soft_complete) and not cfg.strict_exit_proofs
-    continuum = load_continuum(root)
-    rec = (continuum.get("phase_records") or {}).get(phase) or {}
+
+    if phase == MaturationPhase.GENESIS.value:
+        setup_ok = (root / "state" / "lumina_setup_complete.json").is_file()
+        signed = "genesis_contract_signed" in reached
+        genesis_proofs: list[str] = []
+        if signed:
+            genesis_proofs.append("genesis_contract_signed")
+        if setup_ok:
+            genesis_proofs.append("setup_complete")
+        genesis_ok = signed or setup_ok
+        genesis_missing: list[str] = [] if genesis_ok else ["genesis_contract_signed"]
+        learned["setup_complete"] = setup_ok
+        learned["exit_proofs"] = genesis_proofs
+        return genesis_ok, genesis_missing, learned
 
     if phase == MaturationPhase.BIRTH.value:
         # ADR-0036 / H7: survival exit only — never Perfect Birth or REAL gates
@@ -129,91 +139,27 @@ def evaluate_exit_proofs(workspace_root: Path | str, phase: str) -> tuple[bool, 
         return decision.exited, list(decision.missing), learned
 
     if phase == MaturationPhase.AWAKENING.value:
-        proofs: list[str] = []
-        evo = "evolution_proof_passed" in reached or _evolution_proof_file(root)
-        if evo:
-            proofs.append("evolution_proof_passed")
-        twin_samples = _twin_sample_count(root)
-        min_twin = cfg.awakening_min_twin_samples
-        twin_ok = twin_samples >= min_twin
-        learned["twin_samples"] = twin_samples
-        learned["twin_min_required"] = min_twin
-        learned["twin_ok"] = twin_ok
-        if twin_ok:
-            proofs.append("twin_observability")
+        from lumina_core.maturity.awakening.law import evaluate_awakening_exit
 
-        # Hard: evolution evidence AND twin samples (when min > 0)
-        ok = evo and (twin_ok if min_twin > 0 else True)
-        # Alternate: evo + birth cert when twin store absent and min samples would block forever
-        twin_file_missing = not (root / "state" / "twin_mode_metrics_summary.json").is_file()
-        if not ok and evo and twin_file_missing and "birth_certificate_issued" in reached:
-            # Still require twin when min_twin > 0 unless soft lab mode
-            if soft:
-                ok = True
-                proofs.append("soft_twin_absent")
-                learned["soft_complete"] = True
-
-        if soft and not ok:
-            if rec.get("awakening_eval_ok") or (
-                "birth_certificate_issued" in reached and _birth_ok(root)
-            ):
-                ok = True
-                learned["soft_complete"] = True
-                proofs.append("soft_complete")
-
-        missing: list[str] = []
-        if not evo:
-            missing.append("evolution_proof_passed")
-        if min_twin > 0 and not twin_ok and not (soft and twin_file_missing):
-            missing.append(f"twin_samples>={min_twin}")
-        if ok:
-            missing = []
-        return ok, missing, {**learned, "exit_proofs": proofs}
+        return evaluate_awakening_exit(root)
 
     if phase == MaturationPhase.PLAYGROUND.value:
-        missing = []
-        if "deck_unlocked" not in reached:
-            missing.append("deck_unlocked")
-        sealed = _sim_envelope_sealed(root)
-        learned["sim_envelope_sealed"] = sealed
-        if not sealed:
-            missing.append("sim_envelope_sealed")
+        from lumina_core.maturity.playground.law import evaluate_playground_exit
 
-        first_order = "first_sim_order_placed" in reached
-        probe_ok = bool((rec.get("probe") or {}).get("ok")) if isinstance(rec.get("probe"), dict) else False
-        learned["first_sim_order"] = first_order
-        learned["probe_ok"] = probe_ok
-        if cfg.playground_require_first_order and not first_order and not probe_ok:
-            missing.append("first_sim_order_placed")
-
-        ok = len(missing) == 0
-        if soft and not ok and rec.get("playground_eval_ok"):
-            ok = True
-            missing = []
-            learned["soft_complete"] = True
-        return ok, missing, learned
+        return evaluate_playground_exit(root)
 
     if phase == MaturationPhase.APPRENTICESHIP.value:
-        ok = "sim_real_guard_stable" in reached
-        missing = [] if ok else ["sim_real_guard_stable"]
-        learned["stable"] = ok
-        if soft and not ok and rec.get("apprenticeship_eval_ok"):
-            ok = True
-            missing = []
-            learned["soft_complete"] = True
-        return ok, missing, learned
+        from lumina_core.maturity.apprenticeship.law import evaluate_apprenticeship_exit
+
+        return evaluate_apprenticeship_exit(root)
 
     if phase == MaturationPhase.PROVING_GROUND.value:
-        ok = "promotion_gate_passed" in reached or "shadow_validation_passed" in reached
-        if cfg.proving_require_promotion_or_shadow:
-            # Prefer promotion; shadow alone OK if milestone present
-            pass
-        missing = [] if ok else ["promotion_gate_passed"]
-        if soft and not ok and rec.get("proving_eval_ok"):
-            ok = True
-            missing = []
-            learned["soft_complete"] = True
-        return ok, missing, learned
+        from lumina_core.maturity.proving_ground.law import evaluate_proving_ground_exit
+
+        return evaluate_proving_ground_exit(root)
+
+    if phase not in PHASE_SPECS:
+        return False, ["unknown_phase"], learned
 
     if phase == MaturationPhase.REAL.value:
         ok = "human_real_approval" in reached
@@ -232,51 +178,6 @@ def evaluate_exit_proofs(workspace_root: Path | str, phase: str) -> tuple[bool, 
         return ok, missing, learned
 
     return False, ["unknown_phase"], learned
-
-
-def _twin_sample_count(workspace_root: Path) -> int:
-    summary = workspace_root / "state" / "twin_mode_metrics_summary.json"
-    if not summary.is_file():
-        return 0
-    try:
-        import json
-
-        raw = json.loads(summary.read_text(encoding="utf-8"))
-        return int(raw.get("samples", 0) or 0)
-    except Exception:
-        return 0
-
-
-def _twin_samples_ok(workspace_root: Path, min_samples: int | None = None) -> bool:
-    n = min_samples if min_samples is not None else load_maturity_config().awakening_min_twin_samples
-    return _twin_sample_count(workspace_root) >= n
-
-
-def _evolution_proof_file(workspace_root: Path) -> bool:
-    try:
-        from lumina_core.birth.evolution_proof_gate import evolution_proof_passed
-
-        return bool(evolution_proof_passed(workspace_root))
-    except Exception:
-        return False
-
-
-def _sim_envelope_sealed(workspace_root: Path) -> bool:
-    try:
-        from lumina_core.risk.sim_envelope import is_sim_envelope_sealed
-
-        return bool(is_sim_envelope_sealed(workspace_root))
-    except Exception:
-        p = workspace_root / "state" / "sim_envelope_sealed.json"
-        if p.is_file():
-            try:
-                import json
-
-                raw = json.loads(p.read_text(encoding="utf-8"))
-                return bool(raw.get("sealed"))
-            except Exception:
-                return True
-        return False
 
 
 def hub_payload(workspace_root: Path | str) -> dict[str, Any]:
@@ -301,10 +202,22 @@ def hub_payload(workspace_root: Path | str) -> dict[str, Any]:
     nxt = _next(completed)
     focus = active or nxt or MaturationPhase.REAL.value
     rec = (data.get("phase_records") or {}).get(focus) or {}
-    last_completed = completed[-1] if completed else MaturationPhase.GENESIS.value
-    last_rec = (data.get("phase_records") or {}).get(last_completed) or {}
+    last_completed = completed[-1] if completed else None
+    last_rec = (
+        (data.get("phase_records") or {}).get(last_completed) or {}
+        if last_completed
+        else {}
+    )
 
     proofs_ok, missing, learned_eval = evaluate_exit_proofs(root, focus) if focus else (False, [], {})
+    focus_learned = rec.get("learned") or {}
+    if focus in {
+        MaturationPhase.AWAKENING.value,
+        MaturationPhase.PLAYGROUND.value,
+        MaturationPhase.APPRENTICESHIP.value,
+        MaturationPhase.PROVING_GROUND.value,
+    } and learned_eval:
+        focus_learned = {**focus_learned, **learned_eval}
     specs = {
         pid: {
             "id": s.id,
@@ -347,7 +260,7 @@ def hub_payload(workspace_root: Path | str) -> dict[str, Any]:
         "telegram_advance": telegram_advance,
         "last_completed": last_completed,
         "learned": last_rec.get("learned") or learned_eval,
-        "focus_learned": rec.get("learned") or {},
+        "focus_learned": focus_learned,
         "focus_status": rec.get("status") or "pending",
         "progress_pct": rec.get("progress_pct"),
         "progress_message": rec.get("message"),

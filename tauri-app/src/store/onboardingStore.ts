@@ -133,6 +133,7 @@ interface OnboardingState {
   runSmartSetup: (options?: {
     force_high_tier?: boolean;
     pull_extra_models?: boolean;
+    voice_provider?: string;
   }) => Promise<void>;
   saveCredentials: () => Promise<boolean>;
   saveConfiguration: (options?: { skipRefresh?: boolean }) => Promise<boolean>;
@@ -397,11 +398,12 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
     set({ smartSetupRunning: true, error: null });
     try {
       await startSmartSetup({
-        install_ollama: true,
-        download_recommended_model: true,
+        install_ollama: (options?.voice_provider ?? "ollama") === "ollama",
+        download_recommended_model: (options?.voice_provider ?? "ollama") === "ollama",
         selected_model_key: draft.selected_model_key || undefined,
         force_high_tier: options?.force_high_tier ?? draft.smart_setup.force_high_tier,
         pull_extra_models: options?.pull_extra_models ?? draft.smart_setup.pull_extra_models,
+        voice_provider: options?.voice_provider ?? "ollama",
       });
     } catch (err) {
       set({

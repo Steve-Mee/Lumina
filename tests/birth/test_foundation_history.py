@@ -104,6 +104,7 @@ def test_stitch_two_contracts_reaches_start_window() -> None:
         market_data_service=_MDS(),
         runtime=type("Rt", (), {"config": type("Cfg", (), {"instrument": "MES SEP26"})()})(),
         days_back=90,
+        now_utc=datetime(2026, 8, 15, tzinfo=timezone.utc),
     )
     assert loaded.requested_days == 90
     assert loaded.stitched is True
@@ -129,6 +130,7 @@ def test_single_contract_57_days_stays_thin_without_prior_bars() -> None:
         market_data_service=_MDS(),
         runtime=type("Rt", (), {"config": type("Cfg", (), {"instrument": "MES SEP26"})()})(),
         days_back=90,
+        now_utc=datetime(2026, 8, 15, tzinfo=timezone.utc),
     )
     assert loaded.actual_calendar_days == 57
     assert training_window_sla_ok(
@@ -151,6 +153,7 @@ def test_load_fn_requests_start_rung_not_ceiling() -> None:
         runtime=object(),
         days_back=FOUNDATION_HISTORY_START_DAYS,
         load_fn=_load,
+        now_utc=datetime(2026, 8, 15, tzinfo=timezone.utc),
     )
     assert seen
     assert seen[0] == 90
@@ -172,3 +175,39 @@ def test_history_depth_fail_message_includes_chain() -> None:
     assert "MES SEP26" in msg
     assert "MES JUN26" in msg
     assert "thin front-month" in msg
+
+
+@pytest.mark.unit
+def test_dec_backmonth_90d_does_not_fake_sla_without_sep_stitch() -> None:
+    """Live lie: MES DEC listed for 90d of thin back-month is not the liquid tape."""
+    from lumina_core.order_gatekeeper.contract_symbols import roll_to_liquid_front_month
+
+    now = datetime(2026, 9, 14, tzinfo=timezone.utc)
+    assert roll_to_liquid_front_month("MES SEP26", now_utc=now) == "MES DEC26"
+    dec_start = datetime(2026, 6, 16, tzinfo=timezone.utc)
+    sep_start = datetime(2026, 6, 12, tzinfo=timezone.utc)
+
+    class _MDS:
+        def _app(self) -> Any:
+            return type("App", (), {"INSTRUMENT": "MES SEP26"})()
+
+        def load_historical_ohlc_extended(self, **kwargs: Any) -> list[dict[str, Any]]:
+            inst = str(kwargs.get("instrument") or "").upper()
+            if "DEC26" in inst:
+                return _day_ticks(dec_start, 90)
+            if "SEP26" in inst:
+                return _day_ticks(sep_start, 90)
+            if "JUN26" in inst:
+                return _day_ticks(datetime(2026, 3, 13, tzinfo=timezone.utc), 90)
+            return []
+
+    loaded = load_foundation_history_ticks(
+        market_data_service=_MDS(),
+        runtime=type("Rt", (), {"config": type("Cfg", (), {"instrument": "MES SEP26"})()})(),
+        days_back=90,
+        now_utc=now,
+    )
+    assert loaded.instruments[0] == "MES DEC26"
+    assert loaded.stitched is True
+    assert "MES SEP26" in loaded.stitched_from
+    assert loaded.actual_calendar_days >= 86

@@ -1,12 +1,6 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, type ReactNode } from "react";
 
-import { subscribeOrganismClock } from "@/lib/organismClockStore";
+import { getOrganismClock } from "@/lib/organismClockStore";
 
 const OrganismEnvelopeContext = createContext(0.5);
 
@@ -14,17 +8,20 @@ interface OrganismEnvelopeProviderProps {
   children: ReactNode;
 }
 
-/** Envelope reader from shared organism clock (no CSS polling). */
+/**
+ * Envelope lives on CSS vars (`--organism-envelope` via useOrganismShellVars).
+ * Do not push rAF snapshots into React state — that re-renders the HUD/shell
+ * at 60fps and stacks screen trees during startup layout.
+ */
 export function OrganismEnvelopeProvider({ children }: OrganismEnvelopeProviderProps) {
-  const [envelope, setEnvelope] = useState(0.5);
-
-  useEffect(() => subscribeOrganismClock((snap) => setEnvelope(snap.envelope)), []);
-
   return (
-    <OrganismEnvelopeContext.Provider value={envelope}>{children}</OrganismEnvelopeContext.Provider>
+    <OrganismEnvelopeContext.Provider value={0.5}>{children}</OrganismEnvelopeContext.Provider>
   );
 }
 
+/** Static fallback. Prefer CSS `var(--organism-envelope)` for live breathe. */
 export function useOrganismEnvelope(): number {
-  return useContext(OrganismEnvelopeContext);
+  const fallback = useContext(OrganismEnvelopeContext);
+  const live = getOrganismClock().envelope;
+  return Number.isFinite(live) ? live : fallback;
 }

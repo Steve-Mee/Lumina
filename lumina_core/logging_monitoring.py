@@ -131,6 +131,8 @@ def write_ppo_policy_metadata(
     last_load_time_sec: float = 0.0,
     status: str = "ok",
     observation_dim: int | None = None,
+    n_envs: int | None = None,
+    device: str | None = None,
 ) -> None:
     if observation_dim is None:
         from lumina_core.rl.observation_builder import OBSERVATION_DIM
@@ -146,6 +148,10 @@ def write_ppo_policy_metadata(
         "status": str(status),
         "observation_dim": int(observation_dim),
     }
+    if n_envs is not None:
+        payload["n_envs"] = int(n_envs)
+    if device is not None:
+        payload["device"] = str(device)
     _write_json(_monitoring_state_path("ppo_policy_metadata.json"), payload)
 
 

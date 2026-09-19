@@ -309,6 +309,17 @@ class BirthBusClient(BirthBusMetaMixin):
                 if kwargs.get("median_loss_r") is not None
                 else None
             ),
+            mean_r=(
+                float(kwargs["mean_r"]) if kwargs.get("mean_r") is not None else None
+            ),
+            e_mech=(
+                float(kwargs["e_mech"]) if kwargs.get("e_mech") is not None else None
+            ),
+            occupancy_exam_armed=(
+                bool(kwargs["occupancy_exam_armed"])
+                if kwargs.get("occupancy_exam_armed") is not None
+                else None
+            ),
         )
 
 

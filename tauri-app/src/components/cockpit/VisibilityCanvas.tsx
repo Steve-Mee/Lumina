@@ -40,28 +40,28 @@ export function VisibilityCanvas({
       ref={ref}
       className={cn("relative h-full w-full", minHeight, className)}
     >
-      {isVisible ? (
-        <PanelErrorBoundary panelName={panelName}>
-          <Canvas
-            key={`${visualQuality}-visible`}
-            className={cn("h-full w-full touch-none", minHeight)}
-            frameloop="always"
-            dpr={renderConfig.dpr}
-            camera={camera}
-            gl={{
-              antialias: renderConfig.antialias,
-              alpha: true,
-              powerPreference: "high-performance",
-            }}
-            onCreated={onCreated}
-          >
-            {children}
-          </Canvas>
-        </PanelErrorBoundary>
-      ) : (
+      <PanelErrorBoundary panelName={panelName}>
+        <Canvas
+          key={visualQuality}
+          className={cn("h-full w-full touch-none", minHeight)}
+          style={{ visibility: isVisible ? "visible" : "hidden" }}
+          frameloop={isVisible ? "always" : "never"}
+          dpr={renderConfig.dpr}
+          camera={camera}
+          gl={{
+            antialias: renderConfig.antialias,
+            alpha: true,
+            powerPreference: "high-performance",
+          }}
+          onCreated={onCreated}
+        >
+          {children}
+        </Canvas>
+      </PanelErrorBoundary>
+      {isVisible ? null : (
         <div
           className={cn(
-            "flex h-full w-full flex-col items-center justify-center gap-3 opacity-40",
+            "pointer-events-none absolute inset-0 flex h-full w-full flex-col items-center justify-center gap-3 opacity-40",
             minHeight,
           )}
         >

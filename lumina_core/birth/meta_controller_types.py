@@ -83,6 +83,9 @@ class LearningSnapshot:
     # Policy WR − first-touch thr (negative = worse than random entry).
     edge_vs_random: float | None = None
     median_loss_r: float | None = None
+    mean_r: float | None = None
+    e_mech: float | None = None
+    occupancy_exam_armed: bool | None = None
 
     @property
     def thin_buffer(self) -> bool:

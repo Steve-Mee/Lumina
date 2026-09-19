@@ -52,6 +52,7 @@ class MilestoneEvent:
                 "resumed",
                 "tick_count",
                 "real_data_pct",
+                "actual_calendar_days",
                 "holdout_days",
                 "train_bars",
                 "holdout_bars",

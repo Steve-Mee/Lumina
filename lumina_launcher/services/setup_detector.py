@@ -39,7 +39,21 @@ def get_setup_status(service: SmartSetupService) -> dict[str, Any]:
     hardware = service._intelligence_manager.hardware_manager.latest().to_dict()
     descriptor = service._resolve_descriptor(intelligence_status, hardware)
     provider = str(intelligence.get("recommended_provider", "ollama") or "ollama")
-    ollama_required = provider == "ollama"
+    organs = None
+    organs_payload: dict[str, Any] | None = None
+    selected_voice = "ollama"
+    try:
+        organs = service._intelligence_manager.organs_truth()
+        selected_voice = str(getattr(getattr(organs, "voice", None), "selected_provider", "ollama") or "ollama")
+        if selected_voice not in {"ollama", "grok_remote", "vllm", "off"}:
+            selected_voice = "ollama"
+        dumped = getattr(organs, "model_dump", lambda: None)()
+        organs_payload = dumped if isinstance(dumped, dict) else None
+    except Exception:
+        selected_voice = "ollama"
+        organs = None
+        organs_payload = None
+    ollama_required = selected_voice == "ollama"
     ollama_installed = service._ollama_on_path()
     model_present = service._ollama_model_installed(descriptor.ollama_tag) if ollama_required else True
     setup_complete = service._setup_service.is_setup_complete()
@@ -67,6 +81,8 @@ def get_setup_status(service: SmartSetupService) -> dict[str, Any]:
             "adaptive_intelligence": intelligence,
             "hardware": hardware,
             "missing": missing,
+            "organs_truth_v1": organs_payload,
+            "voice_provider": selected_voice,
     }
 
 

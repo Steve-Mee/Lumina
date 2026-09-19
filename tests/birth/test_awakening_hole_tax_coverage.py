@@ -22,7 +22,10 @@ from lumina_core.birth.awakening_hole_tax import (
 )
 from lumina_core.birth.awakening_hole_tax_path import inspect_hole_tax_protocol
 from lumina_core.birth.awakening_hole_tax_run import run_hole_tax_train
-from lumina_core.birth.awakening_select_env import SelectPhysicsEnv
+from lumina_core.birth.awakening_select_env import (
+    POLICY_PARTICIPATION_BONUS_R,
+    SelectPhysicsEnv,
+)
 from lumina_core.birth import awakening_hole_tax_run as run_mod
 
 
@@ -125,7 +128,7 @@ def test_select_physics_env_tax_r_zero_unchanged() -> None:
     row = {"last": 21150.0, "close": 21150.0, "regime": "NEUTRAL", "high": 21151.0, "low": 21149.0}
     env = SelectPhysicsEnv(inner, geometry=geo, envelope=_envelope(), enriched=[row], tax_r=0.0)
     _obs, reward, _term, _trunc, info = env.step(np.array([1.0, 0.2, 0.002, 0.003], dtype=np.float32))
-    assert reward == pytest.approx(-1.038)
+    assert reward == pytest.approx(-1.038 + POLICY_PARTICIPATION_BONUS_R)
     assert info["regime"] == "NEUTRAL"
     assert info["close_reason"] == "stop"
 
@@ -138,8 +141,8 @@ def test_select_physics_env_tax_r_one_stop_neutral() -> None:
         inner, geometry=geo, envelope=_envelope(), enriched=[row], tax_r=AWAKENING_HOLE_TAX_R
     )
     _obs, reward, _term, _trunc, info = env.step(np.array([1.0, 0.2, 0.002, 0.003], dtype=np.float32))
-    assert reward == pytest.approx(-2.038)
-    assert info["select_step_r"] == pytest.approx(-2.038)
+    assert reward == pytest.approx(-2.038 + POLICY_PARTICIPATION_BONUS_R)
+    assert info["select_step_r"] == pytest.approx(-2.038 + POLICY_PARTICIPATION_BONUS_R)
     assert info["regime"] == "NEUTRAL"
 
 
@@ -151,14 +154,14 @@ def test_select_physics_env_tax_skips_target_and_trend() -> None:
         inner_t, geometry=geo, envelope=_envelope(), enriched=[row_n], tax_r=1.0
     )
     _o, reward_t, *_rest = env_t.step(np.array([0.0, 0.5, 0.002, 0.003], dtype=np.float32))
-    assert reward_t == pytest.approx(1.212)
+    assert reward_t == pytest.approx(1.212 + POLICY_PARTICIPATION_BONUS_R)
     row_d = {"last": 21150.0, "close": 21150.0, "regime": "TREND_DOWN", "high": 21151.0, "low": 21149.0}
     inner_d = _StubInner(reward=-1.038, reason="stop")
     env_d = SelectPhysicsEnv(
         inner_d, geometry=geo, envelope=_envelope(), enriched=[row_d], tax_r=1.0
     )
     _o, reward_d, *_r = env_d.step(np.array([1.0, 0.2, 0.002, 0.003], dtype=np.float32))
-    assert reward_d == pytest.approx(-1.038)
+    assert reward_d == pytest.approx(-1.038 + POLICY_PARTICIPATION_BONUS_R)
 
 
 def test_train_reward_fn_hook() -> None:
@@ -173,7 +176,7 @@ def test_train_reward_fn_hook() -> None:
         inner, geometry=geo, envelope=_envelope(), enriched=[row], tax_r=0.0, train_reward_fn=_fn
     )
     _obs, reward, *_rest = env.step(np.array([1.0, 0.2, 0.002, 0.003], dtype=np.float32))
-    assert reward == pytest.approx(-2.038)
+    assert reward == pytest.approx(-2.038 + POLICY_PARTICIPATION_BONUS_R)
 
 
 class _FakeModel:

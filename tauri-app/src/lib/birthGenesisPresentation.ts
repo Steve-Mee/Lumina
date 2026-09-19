@@ -65,13 +65,25 @@ export interface GenesisDeckPresentation {
    * Charter stays reviewable; actions live under Recovery.
    */
   preferRecoveryTab: boolean;
+  /** Missing torch/SB3 — never a wipe / start-clean problem. */
+  physicsMissing: boolean;
 }
 
 const INTERNAL_ERROR_OPERATOR =
   "Birth engine hit an internal error. Retry activation, or start clean if the run is corrupt.";
 
+const PHYSICS_OPERATOR =
+  "The training engine is not installed. Run python scripts/install_birth_physics_stack.py, then retry activation. Do not wipe — tick cache stays valid.";
+
 const TRACE_OR_EXCEPTION =
   /\b(UnboundLocalError|Traceback|Exception|Error:|TypeError|ValueError|RuntimeError|KeyError|AttributeError|NameError|ImportError|cannot access local variable|File \"|line \d+)\b/i;
+
+const PHYSICS_HINT =
+  /leermotor ontbreekt|install_birth_physics_stack|PPOEvolutionLogger|stable-baselines3|stable_baselines3|cuda-torch ontbreekt/i;
+
+export function isPhysicsStackMessage(raw: string | null | undefined): boolean {
+  return PHYSICS_HINT.test(String(raw ?? ""));
+}
 
 /**
  * Backend idle / post-wipe status.message is informational, not a failure.
@@ -92,7 +104,9 @@ export function isBenignBirthStatusMessage(raw: string | null | undefined): bool
     /geen birth-data gevonden/.test(t) ||
     /all birth data wiped/.test(t) ||
     /awaiting activation/.test(t) ||
-    /maturity charter/.test(t)
+    /maturity charter/.test(t) ||
+    /leermotor is klaar/.test(t) ||
+    /training engine is ready/.test(t)
   );
 }
 
@@ -104,6 +118,20 @@ export function sanitizeBirthOperatorMessage(raw: string | null | undefined): {
   const text = String(raw ?? "").trim();
   if (!text || isBenignBirthStatusMessage(text)) {
     return { operator: "", technical: null };
+  }
+
+  if (PHYSICS_HINT.test(text)) {
+    const firstLine = text.split(/\r?\n/)[0]?.trim() ?? text;
+    const technical = TRACE_OR_EXCEPTION.test(text)
+      ? firstLine.length > 160
+        ? `${firstLine.slice(0, 157)}…`
+        : firstLine
+      : null;
+    if (TRACE_OR_EXCEPTION.test(text) || /PPOEvolutionLogger|stable-baselines3/i.test(text)) {
+      return { operator: PHYSICS_OPERATOR, technical: technical ?? firstLine };
+    }
+    const operator = text.length > 280 ? `${text.slice(0, 277)}…` : text;
+    return { operator, technical };
   }
 
   if (TRACE_OR_EXCEPTION.test(text)) {
@@ -147,6 +175,7 @@ export function resolveGenesisDeckPresentation(
   const engineLive = Boolean(input.engineLive);
 
   const raw = pickRawAttention(input);
+  const physicsMissing = isPhysicsStackMessage(raw);
   const sanitized = sanitizeBirthOperatorMessage(raw);
   const hasAttention = Boolean(sanitized.operator) && !activating;
 
@@ -230,6 +259,12 @@ export function resolveGenesisDeckPresentation(
         ? "A checkpoint is waiting. Use the Recovery tab for Continue or Start clean — one primary path."
         : "No resumable checkpoint. Use the Recovery tab to Start clean (charter stays reviewable).",
     };
+  } else if (hasAttention && physicsMissing) {
+    banner = {
+      tone: "warn",
+      title: "Training engine missing:",
+      body: sanitized.operator,
+    };
   } else if (hasAttention) {
     banner = {
       tone: "warn",
@@ -268,12 +303,13 @@ export function resolveGenesisDeckPresentation(
       Boolean(input.decisionMode) ||
       ctaMode === "decision" ||
       decisionBanner ||
-      hasAttention ||
-      ctaMode === "retry");
+      (hasAttention && !physicsMissing) ||
+      (ctaMode === "retry" && !physicsMissing));
 
   const preferRecoveryTab =
     showRecoveryTab &&
     !activating &&
+    !physicsMissing &&
     (decisionSurface || ctaMode === "retry" || hasAttention || plateau || engineLive);
 
   // CTA hints — decision/retry actions live under Recovery (no footer button thrash).
@@ -282,6 +318,8 @@ export function resolveGenesisDeckPresentation(
     ctaHint = "Activate locked until session status loads · prevents accidental overwrite";
   } else if (preferRecoveryTab && (ctaMode === "decision" || decisionBanner)) {
     ctaHint = "Decision actions live under the Recovery tab";
+  } else if (physicsMissing) {
+    ctaHint = "Install the physics stack, then retry. Do not wipe.";
   } else if (ctaMode === "retry" && showRecoveryTab) {
     ctaHint = "Retry below · or clear prior run under Recovery";
   } else if (ctaMode === "retry") {
@@ -289,9 +327,11 @@ export function resolveGenesisDeckPresentation(
   }
 
   // Secondary Start clean under Activate only when Recovery tab is hidden.
+  // Physics missing is an install problem — never offer wipe / start-clean.
   const showStartCleanSecondary =
     !activating &&
     !probePending &&
+    !physicsMissing &&
     !showRecoveryTab &&
     (ctaMode === "retry" || hasAttention);
 
@@ -308,5 +348,6 @@ export function resolveGenesisDeckPresentation(
     hasAttention,
     showRecoveryTab,
     preferRecoveryTab,
+    physicsMissing,
   };
 }

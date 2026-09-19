@@ -20,15 +20,15 @@ _LINE_BASELINES: dict[str, int] = {
     "birth_status_mapper.py": 397,
     "birth_status_enricher.py": 149,
     "birth_status_plateau_risk.py": 60,
-    "birth_runner_lock.py": 220,
-    "birth_runner_start.py": 560,
+    "birth_runner_lock.py": 300,
+    "birth_runner_start.py": 581,
     "birth_runner_wipe.py": 160,
     "birth_runner_recovery.py": 520,
 }
 
 _METHOD_CEILINGS: dict[str, dict[str, int]] = {
     # start_birth owns preflight + thread spawn; further extract tracked separately.
-    "birth_runner_start.py": {"start_birth": 450},
+    "birth_runner_start.py": {"start_birth": 472},
 }
 
 

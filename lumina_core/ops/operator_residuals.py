@@ -396,6 +396,7 @@ def _or6_recovery_theater(workspace: Path, progress: dict[str, Any]) -> dict[str
         human = True
         blocks = False
     elif needs_attention and next_action in {
+        "expand_data_or_wipe_birth",
         "expand_data_or_wipe_genesis",
         "human_review_telegram",
         "accept_champion_or_wipe",

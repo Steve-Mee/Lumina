@@ -41,6 +41,8 @@ namespace NinjaTrader.NinjaScript.AddOns
             new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, string> _ntByClientOrderId =
             new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, byte> _sessionTouched =
+            new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
         private string _accountName;
 #if !FABRIC_STANDALONE
         private Account? _account;
@@ -268,6 +270,8 @@ namespace NinjaTrader.NinjaScript.AddOns
 #endif
         }
 
+        public IReadOnlyCollection<string> SessionTouchedInstruments => _sessionTouched.Keys.ToArray();
+
         public IReadOnlyList<WorkingOrder> GetWorkingOrders()
         {
 #if FABRIC_STANDALONE
@@ -317,6 +321,13 @@ namespace NinjaTrader.NinjaScript.AddOns
 #else
             if (command == null)
                 return new[] { Reject(null, "null_command") };
+
+            var probeId = command.ClientOrderId ?? "";
+            if (probeId.StartsWith("diag-", StringComparison.OrdinalIgnoreCase) ||
+                probeId.StartsWith("diag_", StringComparison.OrdinalIgnoreCase))
+            {
+                return new[] { Reject(command, "diagnostic_probe_forbidden") };
+            }
 
             Account? acct;
             lock (_gate) acct = _account;
@@ -389,6 +400,8 @@ namespace NinjaTrader.NinjaScript.AddOns
                 }
 
                 acct.Submit(new[] { order });
+                NoteSessionTouched(instrument.FullName ?? command.Instrument);
+                NoteSessionTouched(instrument.MasterInstrument?.Name);
 
                 var ntId = order.OrderId ?? order.Id.ToString(CultureInfo.InvariantCulture);
                 if (!string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(ntId))
@@ -555,23 +568,27 @@ namespace NinjaTrader.NinjaScript.AddOns
             try
             {
                 var filter = (command?.Instrument ?? "").Trim();
-                if (string.IsNullOrEmpty(filter))
+                var instruments = new List<Instrument>();
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (Position p in acct.Positions)
                 {
-                    Account.FlattenEverything();
-                    events.Add(new OrderEvent
-                    {
-                        ClientOrderId = "flatten",
-                        NtOrderId = "flatten-all",
-                        State = OrderState.Submitted,
-                        CorrelationId = command?.CorrelationId ?? "",
-                        TimestampUnixMs = now,
-                        RejectionReason = "flatten_everything",
-                    });
-                }
-                else
-                {
-                    var inst = ResolveInstrument(filter);
+                    if (p == null || p.MarketPosition == MarketPosition.Flat || p.Quantity == 0)
+                        continue;
+                    var inst = p.Instrument;
                     if (inst == null)
+                        continue;
+                    var name = inst.FullName ?? inst.MasterInstrument?.Name ?? "";
+                    if (!string.IsNullOrEmpty(filter) && !InstrumentMatchesFilter(name, filter, inst))
+                        continue;
+                    if (!seen.Add(name))
+                        continue;
+                    instruments.Add(inst);
+                }
+
+                if (!string.IsNullOrEmpty(filter) && instruments.Count == 0)
+                {
+                    var resolved = ResolveInstrument(filter);
+                    if (resolved == null)
                     {
                         return new[]
                         {
@@ -583,21 +600,45 @@ namespace NinjaTrader.NinjaScript.AddOns
                             }, "instrument_not_found"),
                         };
                     }
+                }
 
-                    acct.Flatten(new[] { inst });
+                // Cancel entries first. Never cancel NT Close / flatten orders.
+                events.AddRange(CancelNonProtected("flatten_pre_cancel"));
+
+                if (instruments.Count == 0)
+                {
                     events.Add(new OrderEvent
                     {
                         ClientOrderId = "flatten",
-                        NtOrderId = "flatten-" + (inst.FullName ?? filter),
+                        NtOrderId = "flat-noop",
                         State = OrderState.Submitted,
-                        Instrument = inst.FullName ?? filter,
                         CorrelationId = command?.CorrelationId ?? "",
                         TimestampUnixMs = now,
-                        RejectionReason = "flatten_instrument",
+                        RejectionReason = "flatten_no_open_positions",
                     });
+                    return events;
                 }
 
-                events.AddRange(CancelNonProtected("flatten"));
+                // Bound account, one named reduce-only market per instrument.
+                // Never Account.FlattenEverything() — that submits Name='Close' and retries.
+                foreach (Position p in acct.Positions)
+                {
+                    if (p == null || p.MarketPosition == MarketPosition.Flat || p.Quantity == 0)
+                        continue;
+                    var inst = p.Instrument;
+                    if (inst == null)
+                        continue;
+                    var name = inst.FullName ?? inst.MasterInstrument?.Name ?? "";
+                    if (!seen.Contains(name))
+                        continue;
+                    events.AddRange(SubmitProtectedFlattenClose(
+                        acct,
+                        inst,
+                        p.MarketPosition == MarketPosition.Short ? OrderAction.Buy : OrderAction.Sell,
+                        Math.Abs(p.Quantity),
+                        command?.CorrelationId ?? ""));
+                }
+                ProtectWorkingFlattenCloses(acct);
             }
             catch (Exception ex)
             {
@@ -631,6 +672,8 @@ namespace NinjaTrader.NinjaScript.AddOns
                 foreach (Order o in acct.Orders)
                 {
                     if (o == null || !IsWorkingState(o.OrderState))
+                        continue;
+                    if (IsFlattenCloseOrder(o))
                         continue;
                     var clientId = ResolveClientId(o);
                     if (_protectedByClient.TryGetValue(clientId, out var prot) && prot)
@@ -840,6 +883,136 @@ namespace NinjaTrader.NinjaScript.AddOns
 
             return name;
         }
+
+        private void NoteSessionTouched(string? instrument)
+        {
+            var raw = (instrument ?? "").Trim();
+            if (raw.Length == 0)
+                return;
+            _sessionTouched[raw] = 1;
+        }
+
+#if !FABRIC_STANDALONE
+        private IReadOnlyList<OrderEvent> SubmitProtectedFlattenClose(
+            Account acct,
+            Instrument inst,
+            OrderAction action,
+            int quantity,
+            string correlationId)
+        {
+            var clientId = "flatten-" + Guid.NewGuid().ToString("D");
+            var signal = "LUMINA|" + clientId;
+            _protectedByClient[clientId] = true;
+            try
+            {
+                var order = acct.CreateOrder(
+                    inst,
+                    MapActionIn(action),
+                    NtOrderType.Market,
+                    OrderEntry.Automated,
+                    NtTimeInForce.Day,
+                    quantity,
+                    0.0,
+                    0.0,
+                    string.Empty,
+                    signal,
+                    Globals.MaxDate,
+                    null);
+                try { order.Name = signal; } catch { /* ignore */ }
+                try { order.ClientId = StableClientId(clientId); } catch { /* ignore */ }
+                acct.Submit(new[] { order });
+                var ntId = order.OrderId ?? order.Id.ToString(CultureInfo.InvariantCulture);
+                if (!string.IsNullOrEmpty(ntId))
+                {
+                    _ntByClientOrderId[clientId] = ntId;
+                    _clientByNtOrderId[ntId] = clientId;
+                }
+                Log($"FlattenClose client={clientId} nt={ntId} {action} {quantity}x {inst.FullName}");
+                return new[]
+                {
+                    new OrderEvent
+                    {
+                        ClientOrderId = clientId,
+                        NtOrderId = ntId,
+                        State = IsWorkingState(order.OrderState) ? OrderState.Working : MapOrderStateOut(order.OrderState),
+                        Instrument = inst.FullName ?? "",
+                        Action = action,
+                        LeavesQty = Math.Max(0, quantity - order.Filled),
+                        CorrelationId = correlationId ?? "",
+                        TimestampUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                        RejectionReason = "flatten_bound_account",
+                    },
+                };
+            }
+            catch (Exception ex)
+            {
+                Log("FlattenClose error: " + ex.Message);
+                return new[]
+                {
+                    Reject(new PlaceOrderCommand
+                    {
+                        ClientOrderId = clientId,
+                        CorrelationId = correlationId,
+                        Instrument = inst.FullName ?? "",
+                        Action = action,
+                        Quantity = quantity,
+                    }, "nt_flatten_submit_error:" + ex.Message),
+                };
+            }
+        }
+
+        private void ProtectWorkingFlattenCloses(Account acct)
+        {
+            try
+            {
+                foreach (Order o in acct.Orders)
+                {
+                    if (o == null || !IsWorkingState(o.OrderState))
+                        continue;
+                    if (!IsFlattenCloseOrder(o))
+                        continue;
+                    var clientId = ResolveClientId(o);
+                    if (!string.IsNullOrEmpty(clientId))
+                        _protectedByClient[clientId] = true;
+                    var name = o.Name ?? "";
+                    if (!string.IsNullOrEmpty(name))
+                        _protectedByClient[name] = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("ProtectWorkingFlattenCloses: " + ex.Message);
+            }
+        }
+
+        private static bool IsFlattenCloseOrder(Order order)
+        {
+            var name = order.Name ?? "";
+            if (string.Equals(name, "Close", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (name.StartsWith("flatten", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (name.StartsWith("LUMINA|flatten", StringComparison.OrdinalIgnoreCase))
+                return true;
+            return false;
+        }
+
+        private static bool InstrumentMatchesFilter(string name, string filter, Instrument inst)
+        {
+            if (string.Equals(name, filter, StringComparison.OrdinalIgnoreCase))
+                return true;
+            var master = inst.MasterInstrument?.Name ?? "";
+            if (!string.IsNullOrEmpty(master) &&
+                (string.Equals(master, filter, StringComparison.OrdinalIgnoreCase)
+                 || name.StartsWith(master + " ", StringComparison.OrdinalIgnoreCase)
+                 || filter.StartsWith(master, StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+            return !string.IsNullOrEmpty(filter)
+                && name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+#endif
 
         private static Instrument? ResolveInstrument(string instrumentName)
         {

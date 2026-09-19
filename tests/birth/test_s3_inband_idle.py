@@ -126,6 +126,53 @@ def test_a_predicate_policy_150_disarmed() -> None:
     assert s3_inband_idle_armed(**_armed_kwargs(policy_trades=150)) is False  # type: ignore[arg-type]
 
 
+def test_awakening_idle_stays_armed_at_birth_150() -> None:
+    """ADR-0049 n_B≥500: Awakening must not inherit Birth's 150 cutoff."""
+    assert (
+        s3_inband_idle_armed(
+            **_armed_kwargs(
+                curriculum_regime="stage5_probe_handoff",
+                policy_trades=150,
+                policy_edge_min_trades=500,
+            )
+        )
+        is True
+    )
+    assert (
+        s3_inband_idle_armed(
+            **_armed_kwargs(
+                curriculum_regime="stage5_probe_handoff",
+                policy_trades=499,
+                policy_edge_min_trades=500,
+            )
+        )
+        is True
+    )
+    assert (
+        s3_inband_idle_armed(
+            **_armed_kwargs(
+                curriculum_regime="stage5_probe_handoff",
+                policy_trades=500,
+                policy_edge_min_trades=500,
+            )
+        )
+        is False
+    )
+
+
+def test_awakening_envelope_passes_n_b_min_not_birth_150() -> None:
+    from lumina_core.birth.awakening_grind import ADR0026_MIN_TRADES
+    from lumina_core.birth.awakening_grind_run import s5_envelope_kwargs
+    from lumina_core.birth.birth_trade_geometry import BirthTradeGeometry
+    from lumina_core.birth.config_curriculum import BirthCurriculumConfig
+    from lumina_core.birth.foundation_metrics import POLICY_EDGE_MIN_TRADES
+
+    geo = BirthTradeGeometry(stop_pct=0.001, target_pct=0.002, hold_bars=90)
+    kw = s5_envelope_kwargs(BirthCurriculumConfig(), geo)
+    assert int(kw["policy_edge_min_trades"]) == int(ADR0026_MIN_TRADES) == 500
+    assert int(kw["policy_edge_min_trades"]) != int(POLICY_EDGE_MIN_TRADES)
+
+
 def test_a_predicate_force_open_disarmed() -> None:
     assert (
         s3_inband_idle_armed(**_armed_kwargs(participation_mode=MODE_FORCE_OPEN)) is False  # type: ignore[arg-type]

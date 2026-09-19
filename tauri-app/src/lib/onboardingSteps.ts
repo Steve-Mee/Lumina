@@ -26,7 +26,7 @@ export interface ReadinessRow {
 }
 
 /** Phase 1+ backend SSOT lifecycle surface. */
-export type AppSurface = "setup" | "birth" | "hub" | "deck";
+export type AppSurface = "setup" | "birth" | "hub" | "deck" | "awakening" | "playground" | "apprenticeship" | "proving_ground";
 
 export interface OnboardingPayload {
   backend: { reachable: boolean; url: string; latency_ms?: number; error?: string };
@@ -52,7 +52,10 @@ export interface OnboardingPayload {
     hardware: Record<string, unknown>;
     adaptive_intelligence: Record<string, unknown>;
     missing: string[];
+    organs_truth_v1?: Record<string, unknown> | null;
+    voice_provider?: string;
   };
+  organs_truth_v1?: Record<string, unknown> | null;
   model_catalog: ModelCatalogEntry[];
   readiness: ReadinessRow[];
   credentials: {

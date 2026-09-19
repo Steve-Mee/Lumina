@@ -180,6 +180,19 @@ def test_roll_stale_contract_symbol_from_jun_to_sep() -> None:
     assert roll_stale_contract_symbol("MES JUN26", now_utc=now) == "MES SEP26"
 
 
+def test_volume_roll_advances_liquid_front_before_expiry() -> None:
+    from lumina_core.order_gatekeeper.contract_symbols import (
+        is_past_volume_roll,
+        roll_to_liquid_front_month,
+    )
+
+    now = datetime(2026, 9, 14, tzinfo=timezone.utc)
+    assert is_stale_contract_symbol("MES SEP26", now_utc=now) is False
+    assert is_past_volume_roll("MES SEP26", now_utc=now) is True
+    assert roll_to_liquid_front_month("MES SEP26", now_utc=now) == "MES DEC26"
+    assert roll_stale_contract_symbol("MES SEP26", now_utc=now) == "MES SEP26"
+
+
 def test_enforce_pre_trade_gate_blocks_stale_contract_in_sim_mode(monkeypatch) -> None:
     engine = _make_engine(trade_mode="sim", risk_controller=_RiskController())
 

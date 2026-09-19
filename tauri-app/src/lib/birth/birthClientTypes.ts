@@ -17,6 +17,9 @@ export interface BirthProgressPayload {
   patterns_mined?: number;
   oracle_wins?: number;
   data_days_loaded?: number;
+  data_manifest_calendar_days?: number;
+  stage_window_calendar_days?: number;
+  foundation_unique_calendar_days?: number;
   expansion_step?: number;
   learning_attempt?: number;
   birth_start_time?: number;
@@ -43,6 +46,11 @@ export interface BirthProgressPayload {
   ppo_steps?: number;
   ppo_steps_cumulative?: number;
   ppo_batch_count?: number;
+  ppo_batch_steps?: number;
+  ppo_batch_total?: number;
+  ppo_batch_progress_pct?: number;
+  ppo_n_envs?: number;
+  ppo_device?: string;
   message?: string;
   curriculum_stage?: string;
   prior_stage?: string;
@@ -75,7 +83,14 @@ export interface BirthProgressPayload {
   stage_pass_now?: boolean;
   median_loss_r?: number;
   mean_r?: number;
+  mean_win_r?: number;
+  mean_loss_r?: number;
   occupancy?: number;
+  envelope_override_fraction?: number;
+  airframe_override_fraction?: number;
+  occupancy_exam_armed?: boolean;
+  exam_passthrough_total_signals?: number;
+  passthrough_occupancy?: number;
   edge_vs_first_touch?: number;
   first_touch_p_ft?: number;
   geometry_net_rr?: number;
@@ -109,6 +124,14 @@ export interface BirthProgressPayload {
   trade_budget_remaining?: number;
   trade_budget_cap?: number;
   terminal_stall_reason?: string;
+  terminal_freeze?: {
+    schema?: string;
+    reason?: string;
+    next_action?: string;
+    resolved?: boolean;
+    curriculum_stage?: string;
+    stages_passed?: string[];
+  };
   evolution_phase?: string;
   evolution_step?: number;
   evolution_step_label?: string;
@@ -166,6 +189,8 @@ export interface BirthProgressPayload {
   sim_ticks_processed_cumulative?: number;
   wall_clock_rollout_sec_avg?: number;
   wall_clock_trades_per_min?: number;
+  wall_clock_trades_per_min_outer?: number;
+  progress_truth?: Record<string, unknown>;
   evolution_last_action_applied?: boolean;
   evolution_last_action_detail?: string;
   needs_attention?: boolean;

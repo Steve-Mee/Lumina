@@ -7,6 +7,7 @@ trade-budget / 450-trades-per-day. Replay cap lives in foundation_metrics.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from lumina_core.birth.history_loader import actual_calendar_days_from_ticks
@@ -14,7 +15,9 @@ from lumina_core.logging_utils import get_logger
 from lumina_core.order_gatekeeper.contract_symbols import (
     MONTH_CODE_BY_NUM,
     QUARTERLY_MONTH_CODES,
+    front_month_tenure,
     parse_contract_symbol,
+    roll_to_liquid_front_month,
 )
 
 logger = get_logger("lumina.birth.foundation_history")
@@ -86,6 +89,44 @@ def prior_quarterly_contracts(
     return tuple(out)
 
 
+def _tick_timestamp(row: dict[str, Any]) -> datetime | None:
+    raw = str(row.get("timestamp") or "").strip()
+    if not raw:
+        return None
+    try:
+        ts = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts.astimezone(timezone.utc)
+
+
+def filter_ticks_to_front_tenure(
+    ticks: list[dict[str, Any]],
+    symbol: str,
+    *,
+    now_utc: datetime | None = None,
+    current_front: bool = False,
+) -> list[dict[str, Any]]:
+    """Keep bars from the listing's liquid-front window. Unparseable symbols pass through."""
+    start, end = front_month_tenure(symbol)
+    if start is None or end is None:
+        return list(ticks)
+    now = now_utc or datetime.now(timezone.utc)
+    hi = now if current_front else end
+    kept: list[dict[str, Any]] = []
+    for row in ticks:
+        if not isinstance(row, dict):
+            continue
+        ts = _tick_timestamp(row)
+        if ts is None:
+            continue
+        if start <= ts < hi:
+            kept.append(row)
+    return kept
+
+
 def merge_ticks_by_timestamp(
     primary: list[dict[str, Any]],
     extra: list[dict[str, Any]],
@@ -146,6 +187,7 @@ def load_foundation_history_ticks(
     limit: int | None = None,
     on_chunk: Callable[..., None] | None = None,
     load_fn: LoadTicksFn | None = None,
+    now_utc: datetime | None = None,
 ) -> FoundationHistoryLoad:
     """Load ``days_back`` calendar days from now; stitch prior quarterlies if the front month is thin.
 
@@ -174,13 +216,27 @@ def load_foundation_history_ticks(
             kwargs["instrument"] = symbol
         return list(loader(**kwargs) or [])
 
-    ticks = _fetch(front or None)
-    used: list[str] = [front] if front else []
+    now = now_utc or datetime.now(timezone.utc)
+    liquid = roll_to_liquid_front_month(front, now_utc=now) if front else front
+    rolled = bool(front and liquid and liquid != front)
+    ticks = filter_ticks_to_front_tenure(
+        _fetch(liquid or None),
+        liquid,
+        now_utc=now,
+        current_front=True,
+    )
+    used: list[str] = [liquid] if liquid else []
     stitched_from: list[str] = []
     actual = actual_calendar_days_from_ticks(ticks)
-    if actual < need and front:
-        for prior in prior_quarterly_contracts(front):
-            extra = _fetch(prior)
+    stitch_root = liquid or front
+    if actual < need and stitch_root:
+        for prior in prior_quarterly_contracts(stitch_root):
+            extra = filter_ticks_to_front_tenure(
+                _fetch(prior),
+                prior,
+                now_utc=now,
+                current_front=False,
+            )
             if not extra:
                 logger.info("birth.history.stitch_empty instrument=%s", prior)
                 continue
@@ -189,10 +245,11 @@ def load_foundation_history_ticks(
             stitched_from.append(prior)
             actual = actual_calendar_days_from_ticks(ticks)
             logger.info(
-                "birth.history.stitched prior=%s actual_days=%s requested=%s",
+                "birth.history.stitched prior=%s actual_days=%s requested=%s rolled=%s",
                 prior,
                 actual,
                 requested,
+                rolled,
             )
             if actual >= need:
                 break
@@ -324,6 +381,7 @@ __all__ = [
     "apply_foundation_history_manifest",
     "history_depth_fail_message",
     "history_window_meets_sla",
+    "filter_ticks_to_front_tenure",
     "load_foundation_history_ticks",
     "merge_ticks_by_timestamp",
     "sla_requested_days",

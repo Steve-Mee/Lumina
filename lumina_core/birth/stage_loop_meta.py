@@ -26,6 +26,29 @@ def _observe_median_loss_r(loop: Any) -> float | None:
     return median_loss_r(series)
 
 
+def _observe_mean_r(loop: Any) -> float | None:
+    series = list(getattr(loop, "stage_val_r", None) or [])
+    if not series:
+        return None
+    from lumina_core.birth.foundation_metrics import mean_r
+
+    return mean_r(series)
+
+
+def _observe_e_mech(loop: Any) -> float | None:
+    p_ft = getattr(loop, "_first_touch_target_hit_rate", None)
+    geo = getattr(loop, "_birth_trade_geometry", None)
+    rr = getattr(geo, "net_rr_after_cost", None) if geo is not None else None
+    if p_ft is None or rr is None:
+        return None
+    from lumina_core.birth.foundation_metrics import mechanical_ev_r
+
+    try:
+        return mechanical_ev_r(p_ft=float(p_ft), net_rr=float(rr))
+    except (TypeError, ValueError):
+        return None
+
+
 class StageLoopMetaMixin(StageLoopMixinBase):
     """See StageLoopSession for attributes."""
 
@@ -67,6 +90,11 @@ class StageLoopMetaMixin(StageLoopMixinBase):
                 else None
             ),
             median_loss_r=_observe_median_loss_r(self),
+            mean_r=_observe_mean_r(self),
+            e_mech=_observe_e_mech(self),
+            occupancy_exam_armed=bool(
+                getattr(getattr(self, "occupancy_exam_window", None), "armed", False)
+            ),
         )
 
     def _maybe_run_oos_proxy(self) -> None:

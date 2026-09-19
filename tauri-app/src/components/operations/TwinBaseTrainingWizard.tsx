@@ -7,6 +7,7 @@ import {
   fetchBaseStatus,
   startBaseTraining,
   submitBaseAnswer,
+  wipeTwinKnowledge,
   type TwinBaseStatus,
   type TwinMcQuestion,
   type TwinReadiness,
@@ -18,6 +19,7 @@ import "@/styles/twinTraining.css";
 export interface TwinBaseTrainingWizardProps {
   readiness?: TwinReadiness | null;
   onCompleted?: () => void;
+  onWiped?: () => void;
   className?: string;
   /** vault = Operator Vault embed; deck = Intelligence annex */
   variant?: "vault" | "deck";
@@ -33,6 +35,7 @@ function isSessionActive(s: TwinBaseStatus | null | undefined): boolean {
 export function TwinBaseTrainingWizard({
   readiness,
   onCompleted,
+  onWiped,
   className,
   variant = "deck",
 }: TwinBaseTrainingWizardProps) {
@@ -41,7 +44,7 @@ export function TwinBaseTrainingWizard({
   const [starting, setStarting] = useState(false);
   const [clarify, setClarify] = useState("");
   const [lastError, setLastError] = useState<string | null>(null);
-  const alreadyReady = Boolean(readiness?.birth_ready || readiness?.base_trained);
+  const [wipeStep, setWipeStep] = useState<0 | 1>(0);
 
   const refresh = useCallback(async () => {
     try {
@@ -61,12 +64,49 @@ export function TwinBaseTrainingWizard({
   }, [refresh]);
 
   const sessionActive = useMemo(() => isSessionActive(status), [status]);
+  const alreadyReady = Boolean(
+    readiness?.birth_ready ||
+      readiness?.base_trained ||
+      status?.birth_ready ||
+      status?.base_trained,
+  );
   const question: TwinMcQuestion | null | undefined = status?.question;
 
   const normalizeStatus = (res: TwinBaseStatus & { started?: boolean }): TwinBaseStatus => ({
     ...res,
     active: res.active === true || res.status === "in_progress" || res.status === "ready_to_complete",
   });
+
+  const handleWipe = async () => {
+    if (!resolveMonitoringApiKey()) {
+      const msg =
+        "API-key ontbreekt. Zet Admin API key in Operator Vault (Security) en sync/genereer die eerst.";
+      setLastError(msg);
+      toast.error(msg);
+      return;
+    }
+    setBusy(true);
+    setLastError(null);
+    try {
+      const res = await wipeTwinKnowledge();
+      setWipeStep(0);
+      setStatus(null);
+      toast.success(
+        String(
+          res.message ||
+            "Twin knowledge wiped. Seal stays blocked until you retrain from zero.",
+        ),
+      );
+      await refresh();
+      onWiped?.();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Twin wipe failed";
+      setLastError(msg);
+      toast.error(msg);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleStart = async (force = false) => {
     if (!resolveMonitoringApiKey()) {
@@ -139,13 +179,19 @@ export function TwinBaseTrainingWizard({
         status;
       if (
         prog &&
-        (prog.status === "ready_to_complete" ||
+        (prog.birth_ready ||
+          prog.status === "ready_to_complete" ||
+          prog.status === "completed" ||
           (prog.answered != null &&
             prog.total != null &&
             prog.answered >= prog.total))
       ) {
-        const done = await completeBaseTraining();
-        toast.success(String(done.message || "Twin base training complete — Birth-ready"));
+        if (!prog.birth_ready) {
+          const done = await completeBaseTraining();
+          toast.success(String(done.message || "Twin base training complete — Birth-ready"));
+        } else {
+          toast.success("Twin base training complete — Birth-ready");
+        }
         await refresh();
         onCompleted?.();
       }
@@ -262,6 +308,44 @@ export function TwinBaseTrainingWizard({
           Retrain base (force)
         </button>
       ) : null}
+
+      {wipeStep === 0 ? (
+        <button
+          type="button"
+          className="onboarding-btn-secondary rounded-md px-3 py-2 font-mono text-[0.55rem] tracking-wider uppercase"
+          disabled={busy}
+          onClick={() => setWipeStep(1)}
+        >
+          Wipe Twin knowledge
+        </button>
+      ) : (
+        <div className="twin-training-banner" data-tone="warn" role="alert">
+          <p>
+            <strong>Extra waarschuwing.</strong> Dit wist Twin-kennis én base training:
+            labels, model en antwoorden. Seal + Birth blijven geblokkeerd tot je opnieuw
+            traint van 0. Birth tick-cache, certificates en trading history blijven staan.
+            Dit kan niet ongedaan.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="onboarding-cta rounded-md px-3 py-2 text-[0.65rem]"
+              disabled={busy}
+              onClick={() => void handleWipe()}
+            >
+              {busy ? "Wiping…" : "Yes, wipe Twin from zero"}
+            </button>
+            <button
+              type="button"
+              className="onboarding-btn-secondary rounded-md px-3 py-2 font-mono text-[0.55rem] tracking-wider uppercase"
+              disabled={busy}
+              onClick={() => setWipeStep(0)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {sessionActive && question ? (
         <article className="twin-training-question">

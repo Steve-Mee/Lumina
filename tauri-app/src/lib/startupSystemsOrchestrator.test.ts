@@ -41,6 +41,17 @@ describe("startupSystemsOrchestrator", () => {
     expect(src).not.toContain("close_ninjatrader");
   });
 
+  it("does not request a live order probe (source guard)", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync(
+      new URL("./startupSystemsOrchestrator.ts", import.meta.url),
+      "utf8",
+    );
+    const setup = fs.readFileSync(new URL("./setupClient.ts", import.meta.url), "utf8");
+    expect(src).not.toContain("allow_live_order_probe: true");
+    expect(setup).toContain("allow_live_order_probe: false");
+  });
+
   it("returns need_nt when process is down and not degraded", async () => {
     vi.mocked(isNinjaTraderRunning).mockResolvedValue(false);
     const result = await runSystemsGoAfterBackend({

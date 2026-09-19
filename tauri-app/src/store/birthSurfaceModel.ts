@@ -4,6 +4,7 @@ import {
   isBirthEngineActive,
   isBirthInterrupted,
   isBirthStageStalled,
+  isUnresolvedTerminalFreeze,
 } from "@/lib/birthPhaseModel";
 
 import type { BirthUiPhase } from "@/lib/birth/birthClientTypes";
@@ -21,6 +22,9 @@ export function resolveBirthSurface(
   // Operator stop pin always wins.
   if (genesisPinned && !runPinned) {
     return "genesis";
+  }
+  if (isUnresolvedTerminalFreeze(payload) && !genesisPinned) {
+    return "recovery";
   }
   // Raptor v14: sticky resume/start — do not flash Genesis while engine cold-starts
   // (polls often report interrupted/idle for 10–40s before live).
