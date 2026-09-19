@@ -62,10 +62,22 @@ def snapshot_birth_freeze(workspace_root: Path | str) -> dict[str, str]:
     for rel in FROZEN_RELATIVE:
         path = root / rel
         out[rel] = file_sha256(path) if path.is_file() else ""
+    from lumina_core.maturity.awakening.freeze_pin import (
+        freeze_rel_key,
+        pin_birth_pi_star,
+        remember_fingerprint_sha,
+    )
+    from lumina_core.maturity.awakening.progress import load_awakening_progress
+
+    remember_fingerprint_sha(root, load_awakening_progress(root).get("freeze_fingerprint"))
     pi_star = resolve_pi_star_path(root)
-    out[str(pi_star)] = file_sha256(pi_star) if pi_star.is_file() else ""
-    meta = pi_star.with_suffix(".json")
-    out[str(meta)] = file_sha256(meta) if meta.is_file() else ""
+    try:
+        pin_birth_pi_star(root)
+    except FileNotFoundError:
+        pass
+    out[freeze_rel_key(root, pi_star)] = file_sha256(pi_star) if pi_star.is_file() else ""
+    meta = pi_star.with_name("birth_exit_pi_star.json")
+    out[freeze_rel_key(root, meta)] = file_sha256(meta) if meta.is_file() else ""
     data = _continuum_birth_slice(root)
     out["continuum.birth_completed"] = "1" if data["birth_completed"] else "0"
     out["continuum.birth_record"] = _stable_json(data["birth_record"])
@@ -73,7 +85,14 @@ def snapshot_birth_freeze(workspace_root: Path | str) -> dict[str, str]:
 
 
 def assert_birth_freeze(workspace_root: Path | str, before: dict[str, str]) -> None:
-    after = snapshot_birth_freeze(workspace_root)
+    from lumina_core.maturity.awakening.freeze_pin import restore_birth_pi_star_from_pin
+
+    root = Path(workspace_root)
+    after = snapshot_birth_freeze(root)
+    if after == before:
+        return
+    restore_birth_pi_star_from_pin(root)
+    after = snapshot_birth_freeze(root)
     if after != before:
         delta = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
         raise AwakeningShotError(f"birth_freeze_violated: {delta}")
@@ -180,6 +199,29 @@ def _run_shot_body(
     if not frozen_path.is_file() or frozen_path.stat().st_size <= 0:
         raise AwakeningShotError(f"birth_exit_pi_star_missing path={frozen_path}")
     frozen_sha = file_sha256(frozen_path)
+    from lumina_core.maturity.awakening.freeze_pin import (
+        expected_zip_sha_from_fingerprint,
+        remember_fingerprint_sha,
+        restore_birth_pi_star_from_pin,
+    )
+    from lumina_core.maturity.awakening.progress import load_awakening_progress
+
+    fp = load_awakening_progress(root).get("freeze_fingerprint")
+    remember_fingerprint_sha(root, fp if isinstance(fp, dict) else None)
+    expected = expected_zip_sha_from_fingerprint(fp if isinstance(fp, dict) else None)
+    pin_sha_path = root / "state" / "lumina_birth_freeze" / "sha256.txt"
+    if expected is None and pin_sha_path.is_file():
+        text = pin_sha_path.read_text(encoding="utf-8").strip()
+        expected = text if len(text) == 64 else None
+    if expected and frozen_sha != expected:
+        restore_birth_pi_star_from_pin(root)
+        frozen_sha = file_sha256(frozen_path) if frozen_path.is_file() else ""
+        if frozen_sha != expected:
+            raise AwakeningShotError(
+                f"birth_pi_star_sha_mismatch expected={expected[:16]} got={frozen_sha[:16]} "
+                "canonical Birth zip was overwritten; restore birth_exit_pi_star.zip "
+                "matching the freeze fingerprint (not the Sep-3 harvest)"
+            )
     load_path = Path(init_path) if init_path is not None else frozen_path
     if is_gitignored_ppo_zip(load_path):
         raise AwakeningShotError("init_is_gitignored_ppo")
@@ -206,6 +248,9 @@ def _run_shot_body(
     train_info: dict[str, Any] = {"actual_timesteps": 0, "optimizer_steps": 0}
     if eval_only:
         _emit(progress, 40.0, f"Cycle {int(cycle)} eval frozen π* on holdout B — no learn()")
+        from lumina_core.maturity.awakening.freeze_pin import refuse_birth_pi_star_write
+
+        refuse_birth_pi_star_write(child)
         if load_path.resolve() != child.resolve():
             child.write_bytes(load_path.read_bytes())
     else:

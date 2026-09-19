@@ -44,7 +44,7 @@ def inspect_entry_autopsy_protocol() -> dict[str, Any]:
         "run_evaluate_only_call": (
             f"{AUTOPSY_RUN_REL}:{_line_of(AUTOPSY_RUN_REL, 'run_evaluate_only(')}"
         ),
-        "gitpython_pin": f"{REQ_REL}:{_line_of(REQ_REL, 'GitPython==3.1.59')}",
+        "gitpython_pin": f"{REQ_REL}:{_line_of(REQ_REL, 'GitPython==3.1.62')}",
     }
     required = (
         "evaluate_only_learn",

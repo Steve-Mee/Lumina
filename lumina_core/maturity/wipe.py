@@ -132,6 +132,7 @@ def wipe_awakening_generated(workspace_root: Path | str) -> list[str]:
             live_child_zip(root),
             artifacts_dir(root) / CHILD_META_NAME,
             live_ledger_path(root),
+            artifacts_dir(root) / "awakening_incumbent_pi_star.zip",
         ]
     except Exception:
         art = root / "reports" / "birth_cloud_run" / "artifacts"
@@ -139,8 +140,13 @@ def wipe_awakening_generated(workspace_root: Path | str) -> list[str]:
             art / "awakening_live_pi_star.zip",
             art / "awakening_live_pi_star.json",
             art / "awakening_live_holdout.jsonl",
+            art / "awakening_incumbent_pi_star.zip",
         ]
+    frozen = {"birth_exit_pi_star.zip", "birth_exit_pi_star.json"}
     for path in live_paths:
+        if path.name in frozen:
+            logger.error("maturity.wipe.awakening.refused_frozen path=%s", path)
+            continue
         rel = _unlink(path, root)
         if rel:
             removed.append(rel)

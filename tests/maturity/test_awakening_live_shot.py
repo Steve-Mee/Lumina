@@ -123,6 +123,36 @@ def test_shot_fail_closed_without_pi_star(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_refuse_write_to_birth_exit_pi_star(tmp_path: Path) -> None:
+    from lumina_core.maturity.awakening.freeze_pin import refuse_birth_pi_star_write
+    from lumina_core.maturity.awakening.keep_best import copy_zip
+
+    frozen = tmp_path / "reports" / "birth_cloud_run" / "artifacts" / "birth_exit_pi_star.zip"
+    frozen.parent.mkdir(parents=True)
+    src = tmp_path / "child.zip"
+    src.write_bytes(b"child")
+    with pytest.raises(RuntimeError, match="refused write"):
+        refuse_birth_pi_star_write(frozen)
+    with pytest.raises(RuntimeError, match="refused write"):
+        copy_zip(src, frozen)
+
+
+@pytest.mark.unit
+def test_freeze_pin_restores_mutated_pi_star(tmp_path: Path) -> None:
+    from lumina_core.birth.birth_exit_policy_export import file_sha256
+    from lumina_core.maturity.awakening.freeze_pin import pin_birth_pi_star, restore_birth_pi_star_from_pin
+
+    _write_birth_plant(tmp_path)
+    pi_star = tmp_path / "reports" / "birth_cloud_run" / "artifacts" / "birth_exit_pi_star.zip"
+    original = file_sha256(pi_star)
+    pin_birth_pi_star(tmp_path)
+    pi_star.write_bytes(b"harvest-overwrite")
+    assert file_sha256(pi_star) != original
+    assert restore_birth_pi_star_from_pin(tmp_path) is True
+    assert file_sha256(pi_star) == original
+
+
+@pytest.mark.unit
 def test_shot_does_not_mutate_birth_artifacts(tmp_path: Path) -> None:
     _write_birth_plant(tmp_path)
     freeze = snapshot_birth_freeze(tmp_path)

@@ -33,8 +33,12 @@ def default_train(
         from stable_baselines3 import PPO
     except Exception as exc:
         raise AwakeningShotError(f"ppo_import_failed: {exc}") from exc
+    from lumina_core.maturity.awakening.freeze_pin import copy_for_load, refuse_birth_pi_star_write
+
+    refuse_birth_pi_star_write(child_path)
     try:
-        model = PPO.load(str(init_path), env=env, device=device)
+        load_copy = copy_for_load(Path(init_path))
+        model = PPO.load(str(load_copy), env=env, device=device)
     except Exception as exc:
         raise AwakeningShotError(f"ppo_load_failed: {exc}") from exc
     _heartbeat(workspace, activity="train_A", train_timesteps=0)

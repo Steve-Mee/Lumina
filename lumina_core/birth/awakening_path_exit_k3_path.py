@@ -51,7 +51,7 @@ def inspect_path_exit_k3_protocol() -> dict[str, Any]:
         "run_evaluate_only_hook_true": (
             f"{EVAL_REL}:{_line_of(EVAL_REL, 'path_exit_k3_shadow=True')}"
         ),
-        "gitpython_pin": f"{REQ_REL}:{_line_of(REQ_REL, 'GitPython==3.1.59')}",
+        "gitpython_pin": f"{REQ_REL}:{_line_of(REQ_REL, 'GitPython==3.1.62')}",
         "codecov_patch_50": f"{CODECOV_REL}:{_line_of(CODECOV_REL, 'target: 50%')}",
     }
     required = (

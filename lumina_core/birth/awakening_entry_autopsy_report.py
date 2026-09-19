@@ -201,7 +201,7 @@ def write_entry_autopsy_reports(
 
 **Prompt:** Where does stop×NEUTRAL start — regime at OPEN or only at CLOSE?
 **Train:** none. optimizer_steps=0. Parent zip 8cc435c6 only.
-**Hygiene:** {hygiene_token} token removed from birth/; GitPython==3.1.59.
+**Hygiene:** {hygiene_token} token removed from birth/; GitPython==3.1.62.
 **Leg A** seed 20260902 n_all={t0_a.get('n_all')} n_policy={t0_a.get('n_policy')} wr_policy={t0_a.get('wr_policy')} mean_r={t0_a.get('mean_r_policy')} ticks={t0_a.get('ticks_sha16')} price={t0_a.get('price_sha16')} hole={t1_a.get('hole')} flags={flags_a}.
 **Leg B** seed 20260903 n_all={t0_b.get('n_all')} n_policy={t0_b.get('n_policy')} wr_policy={t0_b.get('wr_policy')} mean_r={t0_b.get('mean_r_policy')} ticks={t0_b.get('ticks_sha16')} price={t0_b.get('price_sha16')} hole={t1_b.get('hole')} flags={flags_b}.
 **Flags:** A missing={flags_a.get('H_MISSING_ENTRY')} neu={flags_a.get('H_ENTRY_NEUTRAL')} flip={flags_a.get('H_ENTRY_FLIP')} ft={flags_a.get('H_FIRST_TOUCH')}; B missing={flags_b.get('H_MISSING_ENTRY')} neu={flags_b.get('H_ENTRY_NEUTRAL')} flip={flags_b.get('H_ENTRY_FLIP')} ft={flags_b.get('H_FIRST_TOUCH')}. Licensed=`{family}`.

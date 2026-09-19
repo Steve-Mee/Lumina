@@ -120,7 +120,16 @@ def test_artifacts_ok_requires_v2_certificate_and_policy(tmp_path: Path, monkeyp
     write_certificate(tmp_path, cert)
     from lumina_core.birth.evolution_proof_gate import save_evolution_proof_record
 
-    save_evolution_proof_record(tmp_path, {"passed": True})
+    save_evolution_proof_record(
+        tmp_path,
+        {
+            "passed": True,
+            "holdout_trades": 500,
+            "birth_exit_winrate": 0.32,
+            "polish_oos_winrate": 0.46,
+            "oos_winrate": 0.46,
+        },
+    )
     assert svc.artifacts_ok() is True
     BirthService._instance = None  # type: ignore[attr-defined]
 

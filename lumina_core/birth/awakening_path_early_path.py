@@ -160,7 +160,7 @@ def inspect_path_early_protocol() -> dict[str, Any]:
         "close_ledger_path_k5_unreal_r": f"{TRACE_REL}:{_line_of(TRACE_REL, '\"path_k5_unreal_r\"')}",
         "snapshot_site": f"{TELEM_REL}:{_line_of(TELEM_REL, 'def snapshot_path_at_k')}",
         "run_evaluate_only_call": f"{PATH_RUN_REL}:{_line_of(PATH_RUN_REL, 'run_evaluate_only(')}",
-        "gitpython_pin": f"{REQ_REL}:{_line_of(REQ_REL, 'GitPython==3.1.59')}",
+        "gitpython_pin": f"{REQ_REL}:{_line_of(REQ_REL, 'GitPython==3.1.62')}",
         "codecov_patch_50": f"{CODECOV_REL}:{_line_of(CODECOV_REL, 'target: 50%')}",
         "live_path_stash_attr_paths": dict(PATH_STASH_ATTR_PATHS),
     }

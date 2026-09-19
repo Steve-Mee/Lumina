@@ -49,7 +49,7 @@ def inspect_path_unreal_k3_protocol() -> dict[str, Any]:
         "overall_inconclusive_branch": (
             f"{CORE_REL}:{_line_of(CORE_REL, 'return OVERALL_INCONCLUSIVE')}"
         ),
-        "gitpython_pin": f"{REQ_REL}:{_line_of(REQ_REL, 'GitPython==3.1.59')}",
+        "gitpython_pin": f"{REQ_REL}:{_line_of(REQ_REL, 'GitPython==3.1.62')}",
         "codecov_patch_50": f"{CODECOV_REL}:{_line_of(CODECOV_REL, 'target: 50%')}",
     }
     required = (

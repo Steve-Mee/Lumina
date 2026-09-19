@@ -133,8 +133,11 @@ def persist_incumbent_proof(workspace_root: Path, incumbent: dict[str, Any]) -> 
 
 
 def copy_zip(src: Path, dest: Path) -> None:
+    from lumina_core.maturity.awakening.freeze_pin import refuse_birth_pi_star_write
+
     if not src.is_file() or src.stat().st_size <= 0:
         return
+    refuse_birth_pi_star_write(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dest)
 

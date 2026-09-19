@@ -41,6 +41,7 @@ def _seed_workspace(root: Path) -> dict[str, Path]:
         "live_zip": art / "awakening_live_pi_star.zip",
         "live_meta": art / "awakening_live_pi_star.json",
         "live_ledger": art / "awakening_live_holdout.jsonl",
+        "incumbent": art / "awakening_incumbent_pi_star.zip",
         "evo": state / "lumina_evolution_proof.json",
         "aw_progress": state / "lumina_awakening_progress.json",
         "aw_watch": state / "awakening_twin_watch.jsonl",
@@ -61,6 +62,7 @@ def _seed_workspace(root: Path) -> dict[str, Path]:
     _touch(files["enrich"], "{}")
     files["pi_star"].write_bytes(b"frozen-pi-star")
     _touch(files["pi_star_meta"], "{}")
+    files["incumbent"].write_bytes(b"awakening-incumbent")
     files["live_zip"].write_bytes(b"awakening-child")
     _touch(files["live_meta"], "{}")
     _touch(files["live_ledger"], "{}\n")
@@ -93,8 +95,10 @@ def test_wipe_awakening_keeps_birth_and_history(tmp_path: Path) -> None:
     assert not files["aw_progress"].exists()
     assert not files["aw_watch"].exists()
     assert not files["perfect"].exists()
+    assert not files["incumbent"].exists()
     assert files["pi_star"].is_file()
     assert files["pi_star"].read_bytes() == b"frozen-pi-star"
+    assert files["pi_star_meta"].read_text(encoding="utf-8") == "{}"
     assert files["fitness"].is_file()
     assert files["completed"].is_file()
     assert files["progress"].is_file()
@@ -124,8 +128,8 @@ def test_wipe_birth_keeps_setup_and_tick_cache(tmp_path: Path) -> None:
     assert files["charter"].is_file()
     assert files["bible"].is_file()
     assert files["config"].read_text(encoding="utf-8") == "mode: sim\n"
-    # Frozen π* zip is a reports artifact — birth reset does not glob reports/**
-    assert files["pi_star"].is_file()
+    assert not files["pi_star"].exists()
+    assert not files["pi_star_meta"].exists()
 
 
 @pytest.mark.unit

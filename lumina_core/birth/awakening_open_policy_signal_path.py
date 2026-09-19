@@ -85,7 +85,7 @@ def inspect_open_policy_signal_protocol() -> dict[str, Any]:
         "run_evaluate_only_call": (
             f"{SIGNAL_RUN_REL}:{_line_of(SIGNAL_RUN_REL, 'run_evaluate_only(')}"
         ),
-        "gitpython_pin": f"{REQ_REL}:{_line_of(REQ_REL, 'GitPython==3.1.59')}",
+        "gitpython_pin": f"{REQ_REL}:{_line_of(REQ_REL, 'GitPython==3.1.62')}",
         "codecov_patch_50": f"{CODECOV_REL}:{_line_of(CODECOV_REL, 'target: 50%')}",
         "live_policy_signal_stash_attr_paths": dict(POLICY_SIGNAL_STASH_ATTR_PATHS),
     }

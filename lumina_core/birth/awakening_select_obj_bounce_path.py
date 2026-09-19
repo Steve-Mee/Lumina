@@ -95,7 +95,7 @@ def inspect_select_obj_bounce_protocol() -> dict[str, Any]:
             f"{GRIND_REL}:{_line_of(GRIND_REL, 'awakening grind train=False — learn() forbidden')}"
         ),
         "parent_sha_const": f"{CORE_REL}:{_line_of(CORE_REL, 'INIT_SHA256 = \"8cc435c6')}",
-        "gitpython_pin": f"{REQ_REL}:{_line_of(REQ_REL, 'GitPython==3.1.59')}",
+        "gitpython_pin": f"{REQ_REL}:{_line_of(REQ_REL, 'GitPython==3.1.62')}",
         "codecov_patch_50": f"{CODECOV_REL}:{_line_of(CODECOV_REL, 'target: 50%')}",
         "run_no_evaluate_only": _run_no_evaluate_only(),
         "bounce_r": f"{BOUNCE_REL}:{_line_of(BOUNCE_REL, 'def bounce_r')}",

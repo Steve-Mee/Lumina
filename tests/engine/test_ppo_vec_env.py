@@ -95,6 +95,7 @@ def test_make_birth_ppo_env_single_is_gym() -> None:
 
 
 def test_make_birth_ppo_env_dummy_vec_width() -> None:
+    pytest.importorskip("stable_baselines3")
     env = make_birth_ppo_env(
         engine=_stub_engine(),
         bars=_stub_bars(),

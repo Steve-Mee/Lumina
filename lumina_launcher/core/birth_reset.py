@@ -56,6 +56,7 @@ POST_BIRTH_MATURATION_DELETE_TARGETS = (
 
 # ADR-0046: leftover proofs/DNA would re-unlock hub or skip gen-0 handoff.
 FOUNDATION_EXIT_DELETE_TARGETS = (
+    "state/lumina_birth_foundation_receipts.json",
     "state/lumina_birth_fitness_vector.json",
     "state/dna_registry.jsonl",
     "state/dna_registry.json",
@@ -72,6 +73,8 @@ FOUNDATION_EXIT_DELETE_TARGETS = (
 )
 
 BIRTH_DELETE_TARGETS = (
+    "reports/birth_cloud_run/artifacts/birth_exit_pi_star.zip",
+    "reports/birth_cloud_run/artifacts/birth_exit_pi_star.json",
     "state/lumina_birth_completed.flag",
     "state/lumina_birth_practice_completed.flag",
     "state/first_boot_completed.flag",
@@ -295,6 +298,10 @@ def clear_birth_training_state(
         clear_ticks_cache(root)
     removed.extend(_delete_relative_targets(root, skip_relative=skip_targets))
     removed.extend(_delete_glob_targets(root))
+    freeze_pin = root / "state" / "lumina_birth_freeze"
+    rel_pin = _unlink_path(freeze_pin, root)
+    if rel_pin:
+        removed.append(rel_pin)
     if wipe_genesis:
         removed.extend(_delete_genesis_targets(root, preserve_tick_cache=preserve_tick_cache))
 
