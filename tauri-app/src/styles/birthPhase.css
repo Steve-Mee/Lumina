@@ -224,6 +224,18 @@
   }
 }
 
+.awakening-pane {
+  padding: 0.2rem 0.1rem 0.05rem;
+}
+.awakening-pane__kicker {
+  margin: 0 0 0.22rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.5rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--cockpit-glow-primary) 72%, white);
+}
+
 @keyframes birth-core-pulse {
   0%,
   100% {

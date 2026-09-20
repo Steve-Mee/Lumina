@@ -53,7 +53,7 @@ export function awakeningTilesFromLearned(
     {
       label: "Lift vs Birth",
       value: lift == null ? "—" : `${sign}${formatPct(lift)}`,
-      tip: "Child OOS minus Birth fitness OOS. Necessary with occupancy/STABLE, not sufficient alone.",
+      tip: "Child OOS minus cycle-0 parent on the same exam. Necessary with occupancy/STABLE, not sufficient alone.",
       footnote: `Birth ${formatPct(learned.birth_oos_wr)} → child ${formatPct(learned.wr)}`,
     },
     {
@@ -78,15 +78,28 @@ export function awakeningTilesFromLearned(
 }
 
 function nBFootnote(learned: Record<string, unknown>): string {
+  const examKind = typeof learned.exam_kind === "string" ? learned.exam_kind : "";
+  const examN = asFiniteNumber(learned.exam_n);
+  const examBit =
+    examKind === "holdout_B_plus_continuation"
+      ? examN != null
+        ? `Exam B+later OOS · ${Math.round(examN).toLocaleString("en-US")} ticks`
+        : "Exam B+later OOS · same physics"
+      : "";
   const kept = learned.kept;
   const last = asFiniteNumber(learned.last_shot_n_b ?? learned.discarded_n_b);
   if (kept === false && last != null) {
-    return `Last shot ${Math.round(last)} discarded · incumbent kept`;
+    return examBit
+      ? `${examBit} · last shot ${Math.round(last)} discarded`
+      : `Last shot ${Math.round(last)} discarded · incumbent kept`;
   }
   if (kept === true) {
-    return "Child kept · next cycle continues this zip";
+    return examBit ? `${examBit} · child kept` : "Child kept · next cycle continues this zip";
   }
   const cycle = asFiniteNumber(learned.cycle);
+  if (examBit) {
+    return examBit;
+  }
   if (cycle != null) {
     return `Cycle ${Math.round(cycle)} · skill clock · no effective_min cheat`;
   }

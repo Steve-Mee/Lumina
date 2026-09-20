@@ -1,4 +1,5 @@
 """Named hub wipes: awakening-only, birth-keep-history, full-keep-setup."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -46,6 +47,8 @@ def _seed_workspace(root: Path) -> dict[str, Path]:
         "aw_progress": state / "lumina_awakening_progress.json",
         "aw_watch": state / "awakening_twin_watch.jsonl",
         "perfect": state / "perfect_birth_complete.flag",
+        "exam_ext": state / "lumina_awakening_exam_ext.jsonl",
+        "exam_man": state / "lumina_awakening_exam_manifest.json",
     }
     _touch(files["setup"], "{}")
     _touch(files["charter"], "{}")
@@ -70,6 +73,8 @@ def _seed_workspace(root: Path) -> dict[str, Path]:
     _touch(files["aw_progress"], '{"n_b":133}')
     _touch(files["aw_watch"], "{}\n")
     _touch(files["perfect"], "1")
+    _touch(files["exam_ext"], "{}\n")
+    _touch(files["exam_man"], "{}")
 
     mark_phase_completed(root, "genesis", learned={}, exit_proofs=["setup_complete"])
     mark_phase_completed(root, "birth", learned={"trades": 1145}, exit_proofs=["foundation"])
@@ -96,6 +101,8 @@ def test_wipe_awakening_keeps_birth_and_history(tmp_path: Path) -> None:
     assert not files["aw_watch"].exists()
     assert not files["perfect"].exists()
     assert not files["incumbent"].exists()
+    assert not files["exam_ext"].exists()
+    assert not files["exam_man"].exists()
     assert files["pi_star"].is_file()
     assert files["pi_star"].read_bytes() == b"frozen-pi-star"
     assert files["pi_star_meta"].read_text(encoding="utf-8") == "{}"

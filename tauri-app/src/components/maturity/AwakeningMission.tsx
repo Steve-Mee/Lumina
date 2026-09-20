@@ -49,33 +49,45 @@ export function AwakeningMission({
   return (
     <div className="birth-mission-shell relative flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-3 md:p-4">
-        <AwakeningLifePulse
-          running={running}
-          cycle={learned.cycle ?? progress?.progress?.cycle}
-          activity={learned.activity ?? progress?.progress?.activity}
-          trainTimesteps={learned.train_timesteps ?? progress?.progress?.train_timesteps}
-          nB={learned.n_b ?? progress?.progress?.n_b}
-          updatedAt={progress?.progress?.updated_at ?? learned.updated_at}
-        />
-        <p className="phase-hub-verdict shrink-0 px-1">{message}</p>
-        <div className="genesis-charter-tile-grid phase-hub-kpi-grid shrink-0">
-          {tiles.map((tile) => (
-            <CharterTile
-              key={tile.label}
-              label={tile.label}
-              value={tile.value}
-              tip={tile.tip}
-              footnote={tile.footnote}
-            />
-          ))}
-        </div>
-        <div className="min-h-0 flex-1 overflow-auto">
-          <BirthStagePassChecklistCard
-            checklist={checklist}
-            goalLabel="AND gates"
-            showMode={false}
+        <section className="awakening-pane shrink-0" aria-label="Awakening goal">
+          <p className="awakening-pane__kicker">Goal</p>
+          <p className="phase-hub-verdict">{message}</p>
+        </section>
+        <section className="awakening-pane shrink-0" aria-label="Awakening live progress">
+          <p className="awakening-pane__kicker">Progress</p>
+          <AwakeningLifePulse
+            running={running}
+            cycle={learned.cycle ?? progress?.progress?.cycle}
+            activity={learned.activity ?? progress?.progress?.activity}
+            trainTimesteps={learned.train_timesteps ?? progress?.progress?.train_timesteps}
+            nB={learned.n_b ?? progress?.progress?.n_b}
+            updatedAt={progress?.progress?.updated_at ?? learned.updated_at}
           />
-        </div>
+        </section>
+        <section
+          className="awakening-pane flex min-h-0 flex-1 flex-col gap-2 overflow-hidden"
+          aria-label="Awakening performance"
+        >
+          <p className="awakening-pane__kicker">Performance</p>
+          <div className="genesis-charter-tile-grid phase-hub-kpi-grid shrink-0">
+            {tiles.map((tile) => (
+              <CharterTile
+                key={tile.label}
+                label={tile.label}
+                value={tile.value}
+                tip={tile.tip}
+                footnote={tile.footnote}
+              />
+            ))}
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto">
+            <BirthStagePassChecklistCard
+              checklist={checklist}
+              goalLabel="AND gates"
+              showMode={false}
+            />
+          </div>
+        </section>
       </div>
       <div className="risk-envelope-cta-bar genesis-launch-cta phase-hub-cta shrink-0">
         <p className="mb-1.5 text-center font-mono text-[0.5rem] tracking-[0.12em] text-white/30 uppercase">

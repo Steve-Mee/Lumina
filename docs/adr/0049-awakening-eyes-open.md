@@ -49,6 +49,7 @@ SSOT: `lumina_core/maturity/awakening/law.py`. Progress: `state/lumina_awakening
 
 - Honest Awakening takes a longer clock (n_B ≥ 500). That is the point.
 - One eval walking holdout B (`tape_exhausted`) is INCONCLUSIVE when n_B < 500. It is not a pass and not a clock stop. Cycles continue the child zip. Wipe is the only return to frozen π*.
+- If Birth holdout B is physically too thin for 500 policy closes at the plant's observed frequency, the exam **continues after B** with later OOS of the same fixture physics (never train A, never a Birth-cache write). Cycle 0 evals frozen π* on that same exam so lift is same-tape. AND floors are unchanged.
 - Plant FORCE_OPEN / FORCE_EXIT closes are occupancy airframe. Skill (WR, mean_r, Sharpe, edge) is policy-only. Zero plant closes is not a pass law.
 
 ## Alternatives considered

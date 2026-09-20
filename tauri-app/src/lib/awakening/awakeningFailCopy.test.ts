@@ -21,6 +21,27 @@ describe("awakeningFailCopy", () => {
     expect(awakeningMissionMessage(input)).not.toContain("Loading frozen");
   });
 
+  it("idle copy keeps same-exam prefer-better without a loading lie", () => {
+    expect(
+      awakeningMissionMessage({
+        running: false,
+        error: null,
+        focusStatus: "incomplete",
+        progressMessage: null,
+        note: null,
+      }),
+    ).toMatch(/same exam/i);
+    expect(
+      awakeningMissionMessage({
+        running: false,
+        error: null,
+        focusStatus: "incomplete",
+        progressMessage: null,
+        note: null,
+      }),
+    ).toMatch(/never train A/i);
+  });
+
   it("keeps the live progress line while the clock is running", () => {
     const input = {
       running: true,

@@ -1,4 +1,5 @@
 """One Awakening select cycle: train A, eval B, persist metrics. Birth freeze intact."""
+
 from __future__ import annotations
 
 import json
@@ -6,10 +7,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from lumina_core.birth.fitness_vector import load_fitness_vector
 from lumina_core.birth.foundation_metrics import median_loss_r
 from lumina_core.logging_utils import get_logger
 from lumina_core.maturity.awakening.clock import classify_stable
-from lumina_core.maturity.awakening.progress import merge_awakening_progress
+from lumina_core.maturity.awakening.progress import (
+    load_awakening_progress,
+    merge_awakening_progress,
+)
 from lumina_core.maturity.phase_runners.awakening_shot import (
     AwakeningShotError,
     live_child_zip,
@@ -73,23 +78,36 @@ def persist_cycle(workspace_root: Path, shot: dict[str, Any], *, cycle: int) -> 
     sharpe = _f(shot.get("oos_sharpe"))
     dd_pct = _f(shot.get("oos_dd_pct"))
     stable = classify_stable(n_b=n_b, sharpe=sharpe, dd_pct=dd_pct)
+    prev = load_awakening_progress(workspace_root)
     birth_mean = _f(shot.get("birth_mean_r"))
-    if birth_mean is None:
-        try:
-            from lumina_core.birth.fitness_vector import load_fitness_vector
-
+    parent_wr = _f(shot.get("polish_oos_winrate"))
+    parent_same = cycle <= 0 or bool(prev.get("parent_same_tape"))
+    if cycle <= 0:
+        birth_oos = parent_wr
+        if mean_r is not None:
+            birth_mean = mean_r
+    elif parent_same:
+        birth_oos = _f(prev.get("birth_oos_wr"))
+        if _f(prev.get("birth_mean_r")) is not None:
+            birth_mean = _f(prev.get("birth_mean_r"))
+    else:
+        birth_oos = _f(shot.get("birth_exit_winrate"))
+        if birth_mean is None:
             vec = load_fitness_vector(workspace_root)
             if vec is not None:
                 birth_mean = float(vec.mean_r)
-        except Exception:
-            birth_mean = None
+    split_meta = shot.get("split") if isinstance(shot.get("split"), dict) else {}
     patch: dict[str, Any] = {
         "cycle": int(cycle),
         "n_b": n_b,
         "n_plant": max(0, n_all - policy_n),
         "wr": shot.get("polish_oos_winrate"),
-        "birth_oos_wr": shot.get("birth_exit_winrate"),
+        "birth_oos_wr": birth_oos,
         "birth_mean_r": birth_mean,
+        "parent_same_tape": bool(parent_same),
+        "fitness_oos_wr": shot.get("birth_exit_winrate"),
+        "exam_kind": split_meta.get("exam_kind") or prev.get("exam_kind") or "holdout_B",
+        "exam_n": split_meta.get("exam_n") or prev.get("exam_n"),
         "child_sha": shot.get("child_sha256") or "",
         "init_sha": shot.get("init_sha256") or "",
         "freeze_ok": bool(shot.get("freeze_ok")),
@@ -104,6 +122,10 @@ def persist_cycle(workspace_root: Path, shot: dict[str, Any], *, cycle: int) -> 
         "tape_exhausted": bool(shot.get("holdout_exhausted")),
         "occupancy_seed_source": shot.get("occupancy_seed_source") or "",
     }
+    if cycle <= 0:
+        patch["parent_holdout_wr"] = parent_wr
+        patch["parent_holdout_mean_r"] = mean_r
+        patch["parent_holdout_n_b"] = n_b
     merge_awakening_progress(workspace_root, patch)
     return patch
 

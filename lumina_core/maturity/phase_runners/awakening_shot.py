@@ -3,6 +3,7 @@
 Does not mutate Birth receipts, fitness, completed flag, or birth_exit_pi_star.
 ADR-0026 floors unchanged. Missing artefacts fail-closed. No synthetic fixture.
 """
+
 from __future__ import annotations
 
 import json
@@ -30,9 +31,7 @@ FROZEN_RELATIVE: tuple[str, ...] = (
 ProgressFn = Callable[[float, str], None]
 TrainFn = Callable[..., dict[str, Any]]
 EvalFn = Callable[..., dict[str, Any]]
-SplitLoader = Callable[
-    [Path], tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]
-]
+SplitLoader = Callable[[Path], tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]]
 
 
 class AwakeningShotError(RuntimeError):
@@ -120,9 +119,7 @@ def load_live_split(workspace_root: Path) -> tuple[list[dict[str, Any]], list[di
 
     cache_fp = compute_ticks_fingerprint(load_ticks_cache(workspace_root))
     if expected_fp and cache_fp and expected_fp != cache_fp:
-        raise AwakeningShotError(
-            f"ticks_fingerprint_mismatch {cache_fp} != {expected_fp}"
-        )
+        raise AwakeningShotError(f"ticks_fingerprint_mismatch {cache_fp} != {expected_fp}")
     if not split.train or not split.holdout:
         raise AwakeningShotError("birth_split_empty")
     meta = {
@@ -232,7 +229,9 @@ def _run_shot_body(
     if split_loader is not None:
         train, holdout, split_meta = split_loader(root)
     else:
-        train, holdout, split_meta = load_live_split(root)
+        from lumina_core.maturity.awakening.exam_tape import load_awakening_exam_split
+
+        train, holdout, split_meta = load_awakening_exam_split(root)
     if not train or not holdout:
         raise AwakeningShotError("live_split_empty")
     if train is holdout:
@@ -301,9 +300,7 @@ def _run_shot_body(
         "passed": bool(proof.passed),
         "reasons": list(proof.reasons),
     }
-    (reports / CHILD_META_NAME).write_text(
-        json.dumps(sidecar, indent=2) + "\n", encoding="utf-8"
-    )
+    (reports / CHILD_META_NAME).write_text(json.dumps(sidecar, indent=2) + "\n", encoding="utf-8")
     _emit(progress, 85.0, "ADR-0026 evolution proof recorded")
     return {
         "ok": bool(proof.passed),

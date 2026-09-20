@@ -1,4 +1,5 @@
 """Wipe single maturation phase or all post-genesis progress (fail-closed)."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -70,6 +71,8 @@ _AWAKENING_STATE_TARGETS: tuple[str, ...] = (
     "state/perfect_birth_complete.flag",
     "state/perfect_birth_complete.json",
     "state/perfect_birth_last_attempt.json",
+    "state/lumina_awakening_exam_ext.jsonl",
+    "state/lumina_awakening_exam_manifest.json",
 )
 
 _PLAYGROUND_STATE_TARGETS: tuple[str, ...] = (

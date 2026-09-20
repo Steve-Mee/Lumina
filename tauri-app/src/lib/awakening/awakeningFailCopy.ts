@@ -29,7 +29,7 @@ export function awakeningMissionMessage(input: {
   return (
     input.progressMessage ||
     input.note ||
-    "Prefer better than frozen π*. Cycle 0 evals the parent. Then 8 train cycles keep-best. Tape end is not a stop."
+    "Prefer better than frozen π* on the same exam. Cycle 0 evals the parent. Then keep-best. If Birth B cannot carry n_B≥500, the exam continues after B — never train A."
   );
 }
 

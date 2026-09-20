@@ -1,4 +1,5 @@
 """Living Awakening runner — skill clock, stall→retry, Twin-watch, Birth freeze."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -60,22 +61,39 @@ def run_awakening_live(
             from lumina_core.maturity.phase_runners.awakening_shot import assert_birth_freeze
 
             assert_birth_freeze(root, freeze)
-            write_phase_progress(
-                root, "awakening", progress_pct=100.0, message="Awakening law already passed"
-            )
-            return finish_from_exit_eval(
-                root, "awakening", default_proofs=list(learned.get("exit_proofs") or [])
-            )
+            write_phase_progress(root, "awakening", progress_pct=100.0, message="Awakening law already passed")
+            return finish_from_exit_eval(root, "awakening", default_proofs=list(learned.get("exit_proofs") or []))
         cycle = 0
         stall_retries = 0
         prev_n_b = -1
         last_error: str | None = None
         discarded = False
+        if split_loader is None:
+            write_phase_progress(
+                root,
+                "awakening",
+                progress_pct=10.0,
+                message="Preparing eyes-open exam (Birth B, continue later OOS if B cannot carry n_B≥500)",
+            )
+            try:
+                from lumina_core.maturity.awakening.exam_tape import load_awakening_exam_split
+
+                _, exam, exam_meta = load_awakening_exam_split(root)
+                merge_awakening_progress(
+                    root,
+                    {
+                        "exam_kind": exam_meta.get("exam_kind"),
+                        "exam_n": len(exam),
+                        "exam_extended": bool(exam_meta.get("exam_extended")),
+                    },
+                )
+            except Exception:
+                logger.warning("awakening.exam_prepare_failed", exc_info=True)
         write_phase_progress(
             root,
             "awakening",
             progress_pct=12.0,
-            message="Cycle 0 — eval frozen π* on holdout B (no learn)",
+            message="Cycle 0 — eval frozen π* on exam (no learn)",
         )
         try:
             shot = run_select_cycle(
@@ -94,9 +112,7 @@ def run_awakening_live(
             assert_birth_freeze(root, freeze)
             merge_awakening_progress(root, {"freeze_ok": True, "freeze_fingerprint": freeze})
             _watch_cycle(root, shot=shot, n_b=prev_n_b)
-            _persist_regime_and_recovery(
-                root, stall_retries=0, freeze_ok=True, cycles_completed=0
-            )
+            _persist_regime_and_recovery(root, stall_retries=0, freeze_ok=True, cycles_completed=0)
         except AwakeningShotError as exc:
             logger.warning("awakening.parent_eval_fail_closed err=%s", exc)
             last_error = str(exc)
@@ -198,10 +214,7 @@ def run_awakening_live(
                 root,
                 "awakening",
                 progress_pct=90.0,
-                message=(
-                    f"Cycle {cycle}/{max_cycles} · incumbent kept · AND missing: "
-                    + ",".join(law_missing[:6])
-                ),
+                message=(f"Cycle {cycle}/{max_cycles} · incumbent kept · AND missing: " + ",".join(law_missing[:6])),
             )
         else:
             write_phase_progress(root, "awakening", progress_pct=90.0, message="Evaluating ADR-0049 AND")

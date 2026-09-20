@@ -1,4 +1,5 @@
 """Prefer-better incumbent. A worse child never replaces frozen π*."""
+
 from __future__ import annotations
 
 import json
@@ -7,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from lumina_core.birth.foundation_metrics import S3_OCCUPANCY_MAX, S3_OCCUPANCY_MIN
+from lumina_core.maturity.awakening.progress import load_awakening_progress
 
 INCUMBENT_ZIP_NAME = "awakening_incumbent_pi_star.zip"
 
@@ -70,11 +72,7 @@ def child_beats_incumbent(child: dict[str, Any], incumbent: dict[str, Any]) -> b
     inc_wr = _f(incumbent.get("incumbent_wr"))
     inc_mean = _f(incumbent.get("incumbent_mean_r"))
     wr_worse = wr is not None and inc_wr is not None and float(wr) + 1e-12 < float(inc_wr)
-    mean_worse = (
-        mean_r is not None
-        and inc_mean is not None
-        and float(mean_r) + 1e-12 < float(inc_mean)
-    )
+    mean_worse = mean_r is not None and inc_mean is not None and float(mean_r) + 1e-12 < float(inc_mean)
     if wr_worse and mean_worse:
         return False
     if wr_worse and mean_r is None:
@@ -82,11 +80,7 @@ def child_beats_incumbent(child: dict[str, Any], incumbent: dict[str, Any]) -> b
     if mean_worse and wr is None:
         return False
     wr_better = wr is not None and inc_wr is not None and float(wr) > float(inc_wr) + 1e-12
-    mean_better = (
-        mean_r is not None
-        and inc_mean is not None
-        and float(mean_r) > float(inc_mean) + 1e-12
-    )
+    mean_better = mean_r is not None and inc_mean is not None and float(mean_r) > float(inc_mean) + 1e-12
     n_better = n_b > inc_n
     return bool(wr_better or mean_better or n_better)
 
@@ -106,8 +100,13 @@ def persist_incumbent_proof(workspace_root: Path, incumbent: dict[str, Any]) -> 
     root = Path(workspace_root)
     wr = _f(incumbent.get("incumbent_wr"))
     n_b = int(incumbent.get("incumbent_n_b") or 0)
-    vector = load_fitness_vector(root)
-    birth = float(vector.oos_wr) if vector is not None else 0.0
+    prog = load_awakening_progress(root)
+    parent = _f(prog.get("parent_holdout_wr") if prog.get("parent_same_tape") else None)
+    if parent is not None:
+        birth = float(parent)
+    else:
+        vector = load_fitness_vector(root)
+        birth = float(vector.oos_wr) if vector is not None else 0.0
     record_and_evaluate_at_certificate(
         root,
         eval_result={"oos_winrate": float(wr or 0.0), "holdout_trades": n_b},
@@ -127,9 +126,7 @@ def persist_incumbent_proof(workspace_root: Path, incumbent: dict[str, Any]) -> 
         "birth_exit_winrate": birth,
         "incumbent": True,
     }
-    (reports / CHILD_META_NAME).write_text(
-        json.dumps(sidecar, indent=2) + "\n", encoding="utf-8"
-    )
+    (reports / CHILD_META_NAME).write_text(json.dumps(sidecar, indent=2) + "\n", encoding="utf-8")
 
 
 def copy_zip(src: Path, dest: Path) -> None:
