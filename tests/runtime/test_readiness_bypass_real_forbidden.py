@@ -38,6 +38,14 @@ def _stub_stability_pipeline(monkeypatch: pytest.MonkeyPatch, report: dict[str, 
 
 @pytest.mark.unit
 @pytest.mark.safety_gate
+def test_env_unset_mode_real_resolver_stays_false(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LUMINA_TEST_BYPASS_READINESS_GATE", raising=False)
+
+    assert _resolve_test_bypass_readiness_gate(mode="real") is False
+
+
+@pytest.mark.unit
+@pytest.mark.safety_gate
 def test_env_true_mode_real_resolver_stays_false(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LUMINA_TEST_BYPASS_READINESS_GATE", "true")
 
