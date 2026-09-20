@@ -366,8 +366,10 @@ def _evaluate_workspace_recon(root: Path) -> dict[str, Any]:
             "failures": ["reconcile_fills_not_declared"],
             "message": "REAL recon config fail-closed: reconcile_fills not declared",
         }
-    broker = cfg.get("broker") if isinstance(cfg.get("broker"), dict) else {}
-    nt = broker.get("ninjatrader") if isinstance(broker.get("ninjatrader"), dict) else {}
+    broker_raw = cfg.get("broker")
+    broker: dict[str, Any] = broker_raw if isinstance(broker_raw, dict) else {}
+    nt_raw = broker.get("ninjatrader")
+    nt: dict[str, Any] = nt_raw if isinstance(nt_raw, dict) else {}
     live_provider = str(broker.get("live_provider") or "").strip()
     nt_enabled_raw = nt.get("enabled") if "enabled" in nt else None
     nt_enabled = bool(nt_enabled_raw) if nt_enabled_raw is not None else None
