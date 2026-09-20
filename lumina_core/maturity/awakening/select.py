@@ -62,6 +62,11 @@ def child_is_preferable(workspace_root: Path) -> bool:
     return True
 
 
+def same_tape_parent_locked(prog: dict[str, Any]) -> bool:
+    """True once cycle 0 wrote the same-exam parent. Wipe is the only unlock."""
+    return bool(prog.get("parent_same_tape")) and _f(prog.get("parent_holdout_wr")) is not None
+
+
 def persist_cycle(workspace_root: Path, shot: dict[str, Any], *, cycle: int) -> dict[str, Any]:
     policy_n = int(shot.get("policy_trades") or 0)
     n_all = int(shot.get("n_all") or 0)
@@ -81,8 +86,14 @@ def persist_cycle(workspace_root: Path, shot: dict[str, Any], *, cycle: int) -> 
     prev = load_awakening_progress(workspace_root)
     birth_mean = _f(shot.get("birth_mean_r"))
     parent_wr = _f(shot.get("polish_oos_winrate"))
+    locked = same_tape_parent_locked(prev)
     parent_same = cycle <= 0 or bool(prev.get("parent_same_tape"))
-    if cycle <= 0:
+    if cycle <= 0 and locked:
+        birth_oos = _f(prev.get("birth_oos_wr"))
+        if _f(prev.get("birth_mean_r")) is not None:
+            birth_mean = _f(prev.get("birth_mean_r"))
+        parent_same = True
+    elif cycle <= 0:
         birth_oos = parent_wr
         if mean_r is not None:
             birth_mean = mean_r
@@ -122,7 +133,7 @@ def persist_cycle(workspace_root: Path, shot: dict[str, Any], *, cycle: int) -> 
         "tape_exhausted": bool(shot.get("holdout_exhausted")),
         "occupancy_seed_source": shot.get("occupancy_seed_source") or "",
     }
-    if cycle <= 0:
+    if cycle <= 0 and not locked:
         patch["parent_holdout_wr"] = parent_wr
         patch["parent_holdout_mean_r"] = mean_r
         patch["parent_holdout_n_b"] = n_b
@@ -271,4 +282,5 @@ __all__ = [
     "continuation_init_path",
     "persist_cycle",
     "run_select_cycle",
+    "same_tape_parent_locked",
 ]

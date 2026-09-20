@@ -21,7 +21,7 @@ from lumina_core.maturity.awakening.recovery import (
     should_stop_retries,
 )
 from lumina_core.maturity.awakening.regime import attempt_regime_slices
-from lumina_core.maturity.awakening.select import AwakeningShotError, run_select_cycle
+from lumina_core.maturity.awakening.select import AwakeningShotError, run_select_cycle, same_tape_parent_locked
 from lumina_core.maturity.awakening.twin_watch import append_watch, twin_watch_cycle, watch_count
 from lumina_core.maturity.continuum import mark_phase_failed, mark_phase_running
 from lumina_core.maturity.maturation_progress import record_maturation_milestone
@@ -89,34 +89,61 @@ def run_awakening_live(
                 )
             except Exception:
                 logger.warning("awakening.exam_prepare_failed", exc_info=True)
-        write_phase_progress(
-            root,
-            "awakening",
-            progress_pct=12.0,
-            message="Cycle 0 — eval frozen π* on exam (no learn)",
-        )
-        try:
-            shot = run_select_cycle(
+        parent_locked = same_tape_parent_locked(load_awakening_progress(root))
+        if parent_locked:
+            write_phase_progress(
                 root,
-                cycle=0,
-                eval_only=True,
-                progress=lambda p, m: write_phase_progress(root, "awakening", progress_pct=p, message=m),
-                train_fn=train_fn,
-                eval_fn=eval_fn,
-                split_loader=split_loader,
+                "awakening",
+                progress_pct=12.0,
+                message="Continuing living clock from incumbent — same-tape parent locked",
             )
-            last_error = None
-            prev_n_b = int(shot.get("policy_trades") or 0)
             from lumina_core.maturity.phase_runners.awakening_shot import assert_birth_freeze
 
             assert_birth_freeze(root, freeze)
-            merge_awakening_progress(root, {"freeze_ok": True, "freeze_fingerprint": freeze})
-            _watch_cycle(root, shot=shot, n_b=prev_n_b)
-            _persist_regime_and_recovery(root, stall_retries=0, freeze_ok=True, cycles_completed=0)
-        except AwakeningShotError as exc:
-            logger.warning("awakening.parent_eval_fail_closed err=%s", exc)
-            last_error = str(exc)
-            shot = {"error": str(exc), "ok": False, "holdout_trades": 0}
+            merge_awakening_progress(
+                root,
+                {
+                    "freeze_ok": True,
+                    "freeze_fingerprint": freeze,
+                    "cycle_budget_exhausted": False,
+                },
+            )
+            prev_n_b = int(load_awakening_progress(root).get("n_b") or 0)
+            _persist_regime_and_recovery(
+                root,
+                stall_retries=0,
+                freeze_ok=True,
+                cycles_completed=1,
+            )
+        else:
+            write_phase_progress(
+                root,
+                "awakening",
+                progress_pct=12.0,
+                message="Cycle 0 — eval frozen π* on exam (no learn)",
+            )
+            try:
+                shot = run_select_cycle(
+                    root,
+                    cycle=0,
+                    eval_only=True,
+                    progress=lambda p, m: write_phase_progress(root, "awakening", progress_pct=p, message=m),
+                    train_fn=train_fn,
+                    eval_fn=eval_fn,
+                    split_loader=split_loader,
+                )
+                last_error = None
+                prev_n_b = int(shot.get("policy_trades") or 0)
+                from lumina_core.maturity.phase_runners.awakening_shot import assert_birth_freeze
+
+                assert_birth_freeze(root, freeze)
+                merge_awakening_progress(root, {"freeze_ok": True, "freeze_fingerprint": freeze})
+                _watch_cycle(root, shot=shot, n_b=prev_n_b)
+                _persist_regime_and_recovery(root, stall_retries=0, freeze_ok=True, cycles_completed=0)
+            except AwakeningShotError as exc:
+                logger.warning("awakening.parent_eval_fail_closed err=%s", exc)
+                last_error = str(exc)
+                shot = {"error": str(exc), "ok": False, "holdout_trades": 0}
 
         while last_error is None:
             if should_stop is not None and should_stop():

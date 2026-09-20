@@ -155,3 +155,18 @@ def test_persist_cycle_zero_uses_same_tape_parent(tmp_path: Path) -> None:
     assert float(later.get("birth_oos_wr") or 0) == pytest.approx(0.41)
     assert float(later.get("wr") or 0) == pytest.approx(0.44)
     assert float(later.get("birth_mean_r") or 0) == pytest.approx(-0.12)
+    persist_cycle(
+        tmp_path,
+        {
+            "policy_trades": 501,
+            "policy_only": True,
+            "polish_oos_winrate": 0.325,
+            "birth_exit_winrate": 0.33,
+            "mean_r": -0.14,
+        },
+        cycle=0,
+    )
+    locked = load_awakening_progress(tmp_path)
+    assert float(locked.get("birth_oos_wr") or 0) == pytest.approx(0.41)
+    assert float(locked.get("parent_holdout_wr") or 0) == pytest.approx(0.41)
+    assert float(locked.get("wr") or 0) == pytest.approx(0.325)

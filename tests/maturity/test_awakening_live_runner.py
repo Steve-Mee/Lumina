@@ -1,4 +1,5 @@
 """Living Awakening runner — clock, stall→retry, Twin-watch, Birth freeze."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -42,9 +43,7 @@ def test_clock_ignores_tape_exhausted_below_500() -> None:
 def test_exhausted_tape_same_n_b_is_not_a_stall() -> None:
     from lumina_core.maturity.awakening.recovery import is_stall
 
-    assert (
-        is_stall(prev_n_b=86, n_b=86, shot_error=False, tape_exhausted=True) is False
-    )
+    assert is_stall(prev_n_b=86, n_b=86, shot_error=False, tape_exhausted=True) is False
     assert is_stall(prev_n_b=86, n_b=86, shot_error=False, tape_exhausted=False) is True
     assert is_stall(prev_n_b=86, n_b=86, shot_error=True, tape_exhausted=True) is True
 
@@ -253,6 +252,56 @@ def test_cycle_zero_is_eval_only_then_trains(tmp_path: Path) -> None:
         run_awakening(tmp_path, max_cycles=2, max_stall_retries=3)
     assert flags[0] is True
     assert flags[1:] == [False, False]
+
+
+@pytest.mark.unit
+def test_locked_same_tape_parent_skips_cycle_zero(tmp_path: Path) -> None:
+    from lumina_core.maturity.awakening.keep_best import incumbent_zip
+    from lumina_core.maturity.awakening.progress import save_awakening_progress
+    from lumina_core.maturity.phase_runners.awakening_shot import live_child_zip
+
+    _write_birth_plant(tmp_path)
+    freeze = snapshot_birth_freeze(tmp_path)
+    child = live_child_zip(tmp_path)
+    child.parent.mkdir(parents=True, exist_ok=True)
+    child.write_bytes(b"incumbent-child")
+    incumbent_zip(tmp_path).write_bytes(b"incumbent-child")
+    save_awakening_progress(
+        tmp_path,
+        {
+            "parent_same_tape": True,
+            "parent_holdout_wr": 0.273,
+            "birth_oos_wr": 0.273,
+            "birth_mean_r": -0.25,
+            "n_b": 501,
+            "wr": 0.325,
+            "freeze_ok": True,
+            "freeze_fingerprint": freeze,
+            "policy_only": True,
+        },
+    )
+    flags: list[bool] = []
+
+    def _cycle(workspace_root: Path | str, **kwargs: Any) -> dict[str, Any]:
+        flags.append(bool(kwargs.get("eval_only")))
+        return _REAL_SHOT(
+            workspace_root,
+            split_loader=_split,
+            train_fn=lambda **kw: _train_stub(seen={}, **kw),
+            eval_fn=lambda **kw: _eval_stub(seen={}, oos=0.36, n=150, **kw),
+            init_path=kwargs.get("init_path"),
+            eval_only=bool(kwargs.get("eval_only")),
+        )
+
+    with patch(
+        "lumina_core.maturity.phase_runners.awakening_shot.run_live_awakening_shot",
+        side_effect=_cycle,
+    ):
+        run_awakening(tmp_path, max_cycles=2, max_stall_retries=3)
+    assert flags
+    assert flags[0] is False
+    prog = load_awakening_progress(tmp_path)
+    assert float(prog.get("birth_oos_wr") or 0) == pytest.approx(0.273)
 
 
 @pytest.mark.unit
