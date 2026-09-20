@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -241,3 +242,83 @@ def test_real_multi_gate_dry_run_invariants(tmp_path: Path) -> None:
     assert dry["aperture_coverage"]["certified"] is False
     assert dry["aperture_coverage"]["soft_pass"] is True
     assert dry["broker_recon"]["ok"] is False
+
+
+@pytest.mark.unit
+def test_below_target_coverage_not_ready_for_real(tmp_path: Path) -> None:
+    """N≥min with coverage below target is hard-fail, never REAL-green."""
+    _record_real_eligibility(tmp_path, human=True)
+    (tmp_path / "config.yaml").write_text(_REAL_READY_YAML, encoding="utf-8")
+    state = tmp_path / "state"
+    state.mkdir(parents=True)
+    rows = [json.dumps({"decision_context_id": f"c{i}", "stage": "x"}) for i in range(8)]
+    rows.extend(json.dumps({"stage": "no_ctx"}) for _ in range(4))
+    (state / "decision_log.jsonl").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    with _LOAD_PROGRESS_ONLY, _NO_STABILITY:
+        snap = evaluate_real_capital_readiness(tmp_path)
+    assert snap["ready_for_real_capital"] is False
+    aperture = snap["gates"]["capital_aperture_lineage"]
+    assert aperture["ok"] is False
+    assert aperture["certified"] is False
+    assert snap["aperture_coverage"]["hard_fail"] is True
+    assert any("aperture_coverage_below_target" in b for b in snap["blockers"])
+
+
+@pytest.mark.unit
+def test_reconcile_fills_not_declared_fail_closed(tmp_path: Path) -> None:
+    """Missing reconcile_fills must not be treated as REAL recon-ready."""
+    _record_real_eligibility(tmp_path, human=True)
+    (tmp_path / "config.yaml").write_text(
+        "real:\n  approval_required: true\n",
+        encoding="utf-8",
+    )
+    with _LOAD_PROGRESS_ONLY, _NO_STABILITY:
+        snap = evaluate_real_capital_readiness(tmp_path)
+    assert snap["ready_for_real_capital"] is False
+    recon = snap["broker_recon"]
+    assert recon["ok"] is False
+    assert "reconcile_fills_not_declared" in recon["failures"]
+    assert any("broker_recon:reconcile_fills_not_declared" in b for b in snap["blockers"])
+
+
+@pytest.mark.unit
+def test_approval_required_not_true_blocks_dna_gate(tmp_path: Path) -> None:
+    """Workspace real.approval_required must be true — false is not REAL-green."""
+    _record_real_eligibility(tmp_path, human=True)
+    yaml_text = _REAL_READY_YAML.replace("approval_required: true", "approval_required: false")
+    (tmp_path / "config.yaml").write_text(yaml_text, encoding="utf-8")
+    _write_decision_log(tmp_path, 10)
+    with _LOAD_PROGRESS_ONLY, _NO_STABILITY:
+        snap = evaluate_real_capital_readiness(tmp_path)
+    assert snap["ready_for_real_capital"] is False
+    dna = snap["gates"]["real_dna_human_approval_chain"]
+    assert dna["ok"] is False
+    assert "real.approval_required_not_true" in dna["blockers"]
+    assert snap["gates"]["capital_aperture_lineage"]["ok"] is True
+    assert snap["gates"]["final_arbitration"]["ok"] is True
+
+
+@pytest.mark.unit
+def test_dry_run_fail_closed_when_aperture_or_recon_not_dict(tmp_path: Path) -> None:
+    """Malformed readiness evidence must not crash or count as recon-ok."""
+    malformed = {
+        "ready_for_real_capital": False,
+        "blockers": ["malformed_readiness_evidence"],
+        "twin_can_bypass": False,
+        "aperture_coverage": None,
+        "broker_recon": None,
+    }
+    with (
+        _NO_BIRTH_SYNC,
+        _NO_STABILITY,
+        patch(
+            "lumina_core.risk.real_multi_gate.evaluate_real_capital_readiness",
+            return_value=malformed,
+        ),
+    ):
+        dry = run_real_multi_gate_dry_run(tmp_path)
+    assert dry["ready_for_real_capital"] is False
+    assert dry["aperture_coverage"]["certified"] is None
+    assert dry["broker_recon"]["ok"] is False
+    assert "recon_not_evaluated" in dry["broker_recon"]["failures"]
+    assert dry["invariants"]["recon_evaluated"] is True
