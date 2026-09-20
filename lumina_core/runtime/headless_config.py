@@ -118,13 +118,36 @@ def _resolve_sim_overnight_mode(cfg: dict[str, Any]) -> bool:
     return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _resolve_test_bypass_readiness_gate() -> bool:
-    return str(os.getenv("LUMINA_TEST_BYPASS_READINESS_GATE", "false")).strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+_TEST_BYPASS_TRUTHY = frozenset({"1", "true", "yes", "on"})
+_REAL_RUNTIME_MODE = "real"
+_RUNTIME_MODE_ENV_KEYS = ("LUMINA_MODE", "TRADE_MODE")
+
+
+def _test_bypass_env_enabled() -> bool:
+    return str(os.getenv("LUMINA_TEST_BYPASS_READINESS_GATE", "false")).strip().lower() in _TEST_BYPASS_TRUTHY
+
+
+def _runtime_mode_is_real(mode: str | None = None) -> bool:
+    if str(mode or "").strip().lower() == _REAL_RUNTIME_MODE:
+        return True
+    for key in _RUNTIME_MODE_ENV_KEYS:
+        if str(os.getenv(key, "") or "").strip().lower() == _REAL_RUNTIME_MODE:
+            return True
+    return False
+
+
+def _resolve_test_bypass_readiness_gate(mode: str | None = None) -> bool:
+    """SIM/lab test bypass only. Never true when runtime mode is ``real``."""
+    if not _test_bypass_env_enabled():
+        return False
+    if _runtime_mode_is_real(mode):
+        resolved = str(mode or os.getenv("LUMINA_MODE") or os.getenv("TRADE_MODE") or "real").strip().lower()
+        logger.warning(
+            "READINESS_TEST_BYPASS_REFUSED mode=%s reason=test_bypass_forbidden_in_real",
+            resolved,
+        )
+        return False
+    return True
 
 
 def parse_duration_minutes(value: str) -> float:

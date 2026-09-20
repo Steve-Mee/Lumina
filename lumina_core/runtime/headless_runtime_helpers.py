@@ -14,7 +14,11 @@ from lumina_core.engine.sim_stability_checker import (
     format_stability_report,
     generate_stability_report,
 )
-from lumina_core.runtime.headless_config import _resolve_test_bypass_readiness_gate
+from lumina_core.runtime.headless_config import (
+    _resolve_test_bypass_readiness_gate,
+    _runtime_mode_is_real,
+    _test_bypass_env_enabled,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +183,29 @@ def _apply_stability_and_bypass(
     summary["stability_report"] = stability_report
     summary["READY_FOR_REAL"] = bool(stability_report.get("READY_FOR_REAL", False))
     summary["stability_status"] = str(stability_report.get("status", "RED"))
-    if _resolve_test_bypass_readiness_gate():
+    mode = str(summary.get("mode", "")).strip().lower()
+    if _runtime_mode_is_real(mode):
+        if _test_bypass_env_enabled():
+            original_ready = bool(summary["READY_FOR_REAL"])
+            original_status = str(summary["stability_status"])
+            original_stress_gate = bool(summary.get("stress_ready_for_real_gate", False))
+            refusal = {
+                "enabled": False,
+                "refused": True,
+                "reason": "test_bypass_forbidden_in_real",
+                "mode": mode or "real",
+                "original_ready_for_real": original_ready,
+                "original_stability_status": original_status,
+                "original_stress_ready_for_real_gate": original_stress_gate,
+            }
+            summary["test_readiness_bypass"] = refusal
+            stability_report["test_readiness_bypass"] = dict(refusal)
+            runtime_logger.warning(
+                "READINESS_TEST_BYPASS_REFUSED mode=%s reason=test_bypass_forbidden_in_real",
+                mode or "real",
+            )
+        # Fail-closed: never force READY_FOR_REAL in real, even if env bypass is set.
+    elif _resolve_test_bypass_readiness_gate(mode=mode):
         original_ready = bool(summary["READY_FOR_REAL"])
         original_status = str(summary["stability_status"])
         original_stress_gate = bool(summary.get("stress_ready_for_real_gate", False))
