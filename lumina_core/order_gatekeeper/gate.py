@@ -22,12 +22,6 @@ from lumina_core.risk.mode_capabilities import resolve_mode_capabilities
 _LOG = get_logger("lumina.trading.gate")
 
 
-
-
-
-
-
-
 def enforce_pre_trade_gate(
     engine: Any,
     *,
@@ -163,6 +157,8 @@ def enforce_pre_trade_gate(
         proposed_risk=float(proposed_risk),
         order_side=order_side,
         step_handlers=build_admission_step_handlers(gate_ctx, audit_or_fail_closed=_audit_for_steps),
+        # risk_enforced (real + sim_real_guard). SIM learning stays False in mode_capabilities.
+        forbid_bypass=bool(capabilities.risk_enforced),
     )
     admission_context.metadata.setdefault("decision_context_id", decision_context_id)
 
@@ -221,5 +217,9 @@ def enforce_pre_trade_gate(
         pass
     return True, str(admission_context.metadata.get("risk_reason", reason or "OK"))
 
-from lumina_core.order_gatekeeper.gate_lineage import _emit_final_risk_verdict, _emit_gate_entry_lineage, _resolve_decision_context_id  # noqa: F401, E402
 
+from lumina_core.order_gatekeeper.gate_lineage import (
+    _emit_final_risk_verdict,
+    _emit_gate_entry_lineage,
+    _resolve_decision_context_id,
+)  # noqa: F401, E402

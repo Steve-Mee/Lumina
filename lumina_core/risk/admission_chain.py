@@ -15,7 +15,9 @@ ADMISSION_STEP_EQUITY_SNAPSHOT = ADMISSION_STEP_SESSION_EQUITY_SYNC
 ADMISSION_STEP_SESSION_GUARD = ADMISSION_STEP_SESSION_EQUITY_SYNC
 
 _EXPERIMENTAL_BYPASS_ENV = "LUMINA_ADMISSION_BYPASS_STEPS"
-_REAL_MODE = "real"
+# Constitution invariant 7: sim_real_guard shares the REAL capital path.
+# Experimental env bypass is lab-only (paper/sim) and fail-closed here.
+_BYPASS_FORBIDDEN_MODES = frozenset({"real", "sim_real_guard"})
 CANONICAL_ADMISSION_STEPS = (
     ADMISSION_STEP_SESSION_EQUITY_SYNC,
     ADMISSION_STEP_RISK_POLICY,
@@ -76,6 +78,14 @@ class AdmissionContext:
             configured.update(segment.strip() for segment in raw.split(",") if segment.strip())
         return frozenset(configured)
 
+    def experimental_bypass_forbidden(self) -> bool:
+        return self.normalized_mode() in _BYPASS_FORBIDDEN_MODES or bool(self.forbid_bypass)
+
+    def experimental_bypass_forbidden_reason(self, step_id: str) -> str:
+        if bool(self.forbid_bypass):
+            return f"experimental_bypass_forbidden:{step_id}"
+        return f"experimental_bypass_forbidden_in_{self.normalized_mode()}:{step_id}"
+
 
 @dataclass(slots=True)
 class AdmissionChain:
@@ -88,12 +98,8 @@ class AdmissionChain:
 
         for step_id in self.steps:
             if step_id in bypass_step_ids:
-                if mode == _REAL_MODE or bool(ctx.forbid_bypass):
-                    reason = (
-                        f"experimental_bypass_forbidden:{step_id}"
-                        if bool(ctx.forbid_bypass)
-                        else f"experimental_bypass_forbidden_in_real:{step_id}"
-                    )
+                if ctx.experimental_bypass_forbidden():
+                    reason = ctx.experimental_bypass_forbidden_reason(step_id)
                     trace.add_result(
                         AdmissionStepResult(
                             step_id=step_id,

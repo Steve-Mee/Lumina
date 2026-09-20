@@ -94,6 +94,55 @@ def test_admission_chain_blocks_real_mode_bypass_fail_closed() -> None:
 
 
 @pytest.mark.unit
+def test_admission_chain_blocks_sim_real_guard_bypass_fail_closed() -> None:
+    warnings: list[str] = []
+    chain = AdmissionChain(steps=(ADMISSION_STEP_CONSTITUTION,))
+    context = AdmissionContext(
+        engine=_engine_with_logger(warnings),
+        mode="sim_real_guard",
+        symbol="MES JUN26",
+        regime="NEUTRAL",
+        proposed_risk=50.0,
+        step_handlers={ADMISSION_STEP_CONSTITUTION: lambda _ctx: (True, "ok")},
+        experimental_bypass_step_ids=frozenset({ADMISSION_STEP_CONSTITUTION}),
+    )
+
+    allowed, reason, trace = chain.run(context)
+
+    assert allowed is False
+    assert reason.startswith("experimental_bypass_forbidden_in_sim_real_guard")
+    assert trace.results[-1].bypassed is False
+    assert warnings == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("mode", ["real", "sim_real_guard"])
+def test_env_admission_bypass_fails_in_sim_real_guard_and_real(
+    mode: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LUMINA_ADMISSION_BYPASS_STEPS", ADMISSION_STEP_CONSTITUTION)
+    warnings: list[str] = []
+    chain = AdmissionChain(steps=(ADMISSION_STEP_CONSTITUTION,))
+    context = AdmissionContext(
+        engine=_engine_with_logger(warnings),
+        mode=mode,
+        symbol="MES JUN26",
+        regime="NEUTRAL",
+        proposed_risk=50.0,
+        step_handlers={ADMISSION_STEP_CONSTITUTION: lambda _ctx: (True, "ok")},
+    )
+
+    allowed, reason, trace = chain.run(context)
+
+    assert allowed is False
+    assert reason == f"experimental_bypass_forbidden_in_{mode}:{ADMISSION_STEP_CONSTITUTION}"
+    assert trace.results[-1].ok is False
+    assert trace.results[-1].bypassed is False
+    assert warnings == []
+
+
+@pytest.mark.unit
 def test_admission_chain_blocks_when_step_handler_missing() -> None:
     # gegeven
     chain = AdmissionChain(steps=(ADMISSION_STEP_CONSTITUTION, ADMISSION_STEP_RISK_POLICY))
