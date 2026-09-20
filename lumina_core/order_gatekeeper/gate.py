@@ -218,8 +218,8 @@ def enforce_pre_trade_gate(
     return True, str(admission_context.metadata.get("risk_reason", reason or "OK"))
 
 
-from lumina_core.order_gatekeeper.gate_lineage import (
+from lumina_core.order_gatekeeper.gate_lineage import (  # noqa: E402, F401
     _emit_final_risk_verdict,
     _emit_gate_entry_lineage,
     _resolve_decision_context_id,
-)  # noqa: F401, E402
+)
