@@ -250,7 +250,7 @@ def test_below_target_coverage_not_ready_for_real(tmp_path: Path) -> None:
     _record_real_eligibility(tmp_path, human=True)
     (tmp_path / "config.yaml").write_text(_REAL_READY_YAML, encoding="utf-8")
     state = tmp_path / "state"
-    state.mkdir(parents=True)
+    state.mkdir(parents=True, exist_ok=True)
     rows = [json.dumps({"decision_context_id": f"c{i}", "stage": "x"}) for i in range(8)]
     rows.extend(json.dumps({"stage": "no_ctx"}) for _ in range(4))
     (state / "decision_log.jsonl").write_text("\n".join(rows) + "\n", encoding="utf-8")
