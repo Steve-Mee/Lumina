@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from lumina_core.birth.foundation_metrics import S3_OCCUPANCY_MAX, S3_OCCUPANCY_MIN
+from lumina_core.maturity.awakening.clock import classify_stable
 from lumina_core.maturity.awakening.progress import load_awakening_progress
 
 INCUMBENT_ZIP_NAME = "awakening_incumbent_pi_star.zip"
@@ -42,8 +43,11 @@ def incumbent_from_shot(shot: dict[str, Any]) -> dict[str, Any]:
 
 def progress_from_incumbent(incumbent: dict[str, Any]) -> dict[str, Any]:
     """HUD/law fields follow the kept organism, not a discarded shot."""
+    n_b = int(incumbent.get("incumbent_n_b") or 0)
+    sharpe = _f(incumbent.get("incumbent_sharpe"))
+    dd_pct = _f(incumbent.get("incumbent_dd_pct"))
     return {
-        "n_b": int(incumbent.get("incumbent_n_b") or 0),
+        "n_b": n_b,
         "wr": incumbent.get("incumbent_wr"),
         "mean_r": incumbent.get("incumbent_mean_r"),
         "child_sha": str(incumbent.get("incumbent_sha") or ""),
@@ -53,6 +57,7 @@ def progress_from_incumbent(incumbent: dict[str, Any]) -> dict[str, Any]:
         "dd_pct": incumbent.get("incumbent_dd_pct"),
         "median_loss_r": incumbent.get("incumbent_median_loss_r"),
         "n_plant": int(incumbent.get("incumbent_n_plant") or 0),
+        "stable_class": classify_stable(n_b=n_b, sharpe=sharpe, dd_pct=dd_pct),
     }
 
 

@@ -327,6 +327,35 @@ def test_keep_best_discards_worse_child(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_discard_hud_stable_class_follows_incumbent_not_child() -> None:
+    from lumina_core.maturity.awakening.keep_best import progress_from_incumbent
+
+    grind = progress_from_incumbent(
+        {
+            "incumbent_n_b": 500,
+            "incumbent_wr": 0.342,
+            "incumbent_mean_r": -0.098,
+            "incumbent_sha": "66fb",
+            "incumbent_occupancy": 0.747,
+            "incumbent_sharpe": -1.25,
+            "incumbent_dd_pct": 27.7,
+            "incumbent_n_plant": 301,
+        }
+    )
+    assert grind["dd_pct"] == pytest.approx(27.7)
+    assert grind["stable_class"] == "GRIND_REGRESS"
+    stable = progress_from_incumbent(
+        {
+            "incumbent_n_b": 500,
+            "incumbent_wr": 0.36,
+            "incumbent_sharpe": -1.0,
+            "incumbent_dd_pct": 20.0,
+        }
+    )
+    assert stable["stable_class"] == "STABLE"
+
+
+@pytest.mark.unit
 def test_overhold_train_tax_skips_plant_and_short_holds() -> None:
     from lumina_core.birth.awakening_select_env import OVERHOLD_TAX_R, overhold_train_tax
 
