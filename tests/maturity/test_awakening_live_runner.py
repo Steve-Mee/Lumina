@@ -453,3 +453,51 @@ def test_train_heartbeat_writes_activity_and_timesteps(tmp_path: Path) -> None:
     assert prog.get("activity") == "train_A"
     assert int(prog.get("train_timesteps") or 0) == 2048
     assert isinstance(prog.get("updated_at"), str)
+
+
+@pytest.mark.unit
+def test_exam_prepare_merges_progress_when_split_loader_absent(tmp_path: Path) -> None:
+    _write_birth_plant(tmp_path)
+    freeze = snapshot_birth_freeze(tmp_path)
+    train, holdout, _ = _split(tmp_path)
+
+    def _exam(root: Path, **_k: Any) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+        assert root == tmp_path
+        return (
+            train,
+            holdout,
+            {
+                "exam_kind": "holdout_B_plus_continuation",
+                "exam_extended": True,
+                "holdout_pct": 0.2,
+            },
+        )
+
+    def _cycle(workspace_root: Path | str, **kwargs: Any) -> dict[str, Any]:
+        return _REAL_SHOT(
+            workspace_root,
+            split_loader=_split,
+            train_fn=lambda **kw: _train_stub(seen={}, **kw),
+            eval_fn=lambda **kw: _eval_stub(seen={}, oos=0.36, n=150, **kw),
+            init_path=kwargs.get("init_path"),
+            eval_only=bool(kwargs.get("eval_only")),
+        )
+
+    with (
+        patch(
+            "lumina_core.maturity.awakening.exam_tape.load_awakening_exam_split",
+            side_effect=_exam,
+        ),
+        patch(
+            "lumina_core.maturity.phase_runners.awakening_shot.run_live_awakening_shot",
+            side_effect=_cycle,
+        ),
+    ):
+        result = run_awakening(tmp_path, max_cycles=1, max_stall_retries=3)
+    assert result["ok"] is False
+    prog = load_awakening_progress(tmp_path)
+    assert prog.get("exam_kind") == "holdout_B_plus_continuation"
+    assert int(prog.get("exam_n") or 0) == 2
+    assert prog.get("exam_extended") is True
+    assert snapshot_birth_freeze(tmp_path) == freeze
+    assert "awakening" not in load_continuum(tmp_path)["completed_phases"]

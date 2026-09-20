@@ -1,4 +1,5 @@
 """Live Awakening shot: freeze Birth artefacts, honest ADR-0026 persist."""
+
 from __future__ import annotations
 
 import json
@@ -37,9 +38,7 @@ def _write_fitness(root: Path, *, oos_wr: float = 0.333333) -> None:
         "s5_receipt_checksum": "96e2e2362c046173",
         "trades": 162,
     }
-    (root / "state" / "lumina_birth_fitness_vector.json").write_text(
-        json.dumps(payload), encoding="utf-8"
-    )
+    (root / "state" / "lumina_birth_fitness_vector.json").write_text(json.dumps(payload), encoding="utf-8")
 
 
 def _write_pi_star(root: Path, blob: bytes = b"frozen-pi-star-bytes") -> Path:
@@ -231,9 +230,7 @@ def test_run_awakening_uses_shot_then_stays_incomplete_on_fail(tmp_path: Path) -
     from lumina_core.maturity.phase_runners.awakening import run_awakening
 
     _write_birth_plant(tmp_path)
-    (tmp_path / "state" / "twin_mode_metrics_summary.json").write_text(
-        '{"samples": 25}', encoding="utf-8"
-    )
+    (tmp_path / "state" / "twin_mode_metrics_summary.json").write_text('{"samples": 25}', encoding="utf-8")
     freeze = snapshot_birth_freeze(tmp_path)
 
     def _shot(workspace_root: Path | str, **_: Any) -> dict[str, Any]:
@@ -266,9 +263,7 @@ def test_run_awakening_shot_pass_is_not_enough_without_and(tmp_path: Path) -> No
     from lumina_core.maturity.phase_runners.awakening import run_awakening
 
     _write_birth_plant(tmp_path)
-    (tmp_path / "state" / "twin_mode_metrics_summary.json").write_text(
-        '{"samples": 25}', encoding="utf-8"
-    )
+    (tmp_path / "state" / "twin_mode_metrics_summary.json").write_text('{"samples": 25}', encoding="utf-8")
     freeze = snapshot_birth_freeze(tmp_path)
 
     def _shot(workspace_root: Path | str, **_: Any) -> dict[str, Any]:
@@ -289,4 +284,31 @@ def test_run_awakening_shot_pass_is_not_enough_without_and(tmp_path: Path) -> No
     assert any("twin_watch" in str(m) or "occupancy" in str(m) for m in missing)
     data = load_continuum(tmp_path)
     assert "awakening" not in data["completed_phases"]
+    assert snapshot_birth_freeze(tmp_path) == freeze
+
+
+@pytest.mark.unit
+def test_shot_default_split_uses_exam_loader(tmp_path: Path) -> None:
+    _write_birth_plant(tmp_path)
+    freeze = snapshot_birth_freeze(tmp_path)
+    seen: dict[str, Any] = {}
+    loads: list[Path] = []
+
+    def _exam(root: Path, **_k: Any) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+        loads.append(root)
+        return _split(root)
+
+    with patch(
+        "lumina_core.maturity.awakening.exam_tape.load_awakening_exam_split",
+        side_effect=_exam,
+    ):
+        result = run_live_awakening_shot(
+            tmp_path,
+            train_fn=lambda **kw: _train_stub(seen=seen, **kw),
+            eval_fn=lambda **kw: _eval_stub(seen=seen, oos=0.34, n=600, **kw),
+        )
+    assert loads == [tmp_path]
+    assert seen["train_ids"] == ["train-a", "train-b"]
+    assert seen["eval_ids"] == ["hold-a", "hold-b"]
+    assert result["passed"] is False
     assert snapshot_birth_freeze(tmp_path) == freeze
