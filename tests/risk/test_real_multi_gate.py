@@ -9,15 +9,63 @@ import pytest
 
 from lumina_core.maturity.maturation_progress import (
     REAL_ELIGIBILITY_MILESTONES,
+    load_maturation_progress,
     record_maturation_milestone,
 )
+from lumina_core.risk.capital_aperture_lineage import append_lineage_audit_record
 from lumina_core.risk.real_multi_gate import (
     assert_twin_cannot_authorize_real_mode,
     evaluate_real_capital_readiness,
     real_dna_promotion_allowed,
     real_mode_switch_allowed,
+    run_real_multi_gate_dry_run,
     twin_judgment_subordinate_to_real_gates,
 )
+
+_REAL_READY_YAML = """
+reconcile_fills: true
+reconciliation_method: websocket
+reconciliation_timeout_seconds: 15
+real:
+  approval_required: true
+broker:
+  live_provider: ninjatrader
+  ninjatrader:
+    enabled: true
+"""
+
+_NO_BIRTH_SYNC = patch(
+    "lumina_core.maturity.maturation_progress.sync_maturation_from_birth_state",
+    side_effect=lambda root: None,
+)
+_NO_STABILITY = patch(
+    "lumina_core.maturity.maturation_progress.sync_stability_milestone",
+)
+_LOAD_PROGRESS_ONLY = patch(
+    "lumina_core.maturity.maturation_progress.sync_maturation_from_birth_state",
+    side_effect=lambda root: load_maturation_progress(root),
+)
+
+
+def _write_decision_log(
+    root: Path,
+    n: int,
+    *,
+    with_ctx: bool = True,
+    stage: str = "final_arbitration",
+) -> None:
+    for i in range(n):
+        record: dict[str, str] = {"stage": stage}
+        if with_ctx:
+            record["decision_context_id"] = f"ctx-{i}"
+        append_lineage_audit_record(root, record)
+
+
+def _record_real_eligibility(root: Path, *, human: bool) -> None:
+    for mid in REAL_ELIGIBILITY_MILESTONES:
+        record_maturation_milestone(root, mid)
+    if human:
+        record_maturation_milestone(root, "human_real_approval")
 
 
 @pytest.mark.unit
@@ -82,44 +130,96 @@ def test_real_dna_promotion_requires_human() -> None:
 
 @pytest.mark.unit
 def test_real_mode_switch_requires_human_and_maturation(tmp_path: Path) -> None:
-    with patch(
-        "lumina_core.maturity.maturation_progress.sync_maturation_from_birth_state",
-        side_effect=lambda root: None,
-    ), patch(
-        "lumina_core.maturity.maturation_progress.sync_stability_milestone",
-    ):
+    with _NO_BIRTH_SYNC, _NO_STABILITY:
         ok, blockers = real_mode_switch_allowed(tmp_path)
     assert ok is False
     assert any("approval" in b.lower() or "Birth" in b or "Evolution" in b for b in blockers)
 
-    for mid in REAL_ELIGIBILITY_MILESTONES:
-        record_maturation_milestone(tmp_path, mid)
-    with patch(
-        "lumina_core.maturity.maturation_progress.sync_maturation_from_birth_state",
-        side_effect=lambda root: __import__(
-            "lumina_core.maturity.maturation_progress", fromlist=["load_maturation_progress"]
-        ).load_maturation_progress(root),
-    ), patch(
-        "lumina_core.maturity.maturation_progress.sync_stability_milestone",
-    ):
+    _record_real_eligibility(tmp_path, human=False)
+    with _LOAD_PROGRESS_ONLY, _NO_STABILITY:
         ok2, blockers2 = real_mode_switch_allowed(tmp_path)
         assert ok2 is False
         assert any("approval" in b.lower() for b in blockers2)
 
         record_maturation_milestone(tmp_path, "human_real_approval")
         ok3, blockers3 = real_mode_switch_allowed(tmp_path)
-        assert ok3 is True
-        assert blockers3 == []
+        assert ok3 is False
+        assert any(
+            "empty_decision_log" in b or "final_arbitration" in b or "aperture" in b
+            for b in blockers3
+        )
+
+
+@pytest.mark.unit
+def test_empty_decision_log_not_ready_for_real_capital(tmp_path: Path) -> None:
+    _record_real_eligibility(tmp_path, human=True)
+    (tmp_path / "config.yaml").write_text(_REAL_READY_YAML, encoding="utf-8")
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "state" / "decision_log.jsonl").write_text("", encoding="utf-8")
+    with _LOAD_PROGRESS_ONLY, _NO_STABILITY:
+        snap = evaluate_real_capital_readiness(tmp_path)
+    assert snap["ready_for_real_capital"] is False
+    aperture = snap["gates"]["capital_aperture_lineage"]
+    assert aperture["ok"] is False
+    assert aperture["soft_pass"] is True
+    assert aperture["certified"] is False
+    assert aperture["ops_status"] == "yellow"
+    assert snap["gates"]["final_arbitration"]["ok"] is False
+    assert "empty_decision_log_not_ready" in snap["blockers"]
+
+
+@pytest.mark.unit
+def test_soft_pass_thin_samples_not_ready_for_real(tmp_path: Path) -> None:
+    _record_real_eligibility(tmp_path, human=True)
+    (tmp_path / "config.yaml").write_text(_REAL_READY_YAML, encoding="utf-8")
+    _write_decision_log(tmp_path, 3)
+    with _LOAD_PROGRESS_ONLY, _NO_STABILITY:
+        snap = evaluate_real_capital_readiness(tmp_path)
+    assert snap["ready_for_real_capital"] is False
+    aperture = snap["gates"]["capital_aperture_lineage"]
+    assert aperture["ok"] is False
+    assert aperture["soft_pass"] is True
+    assert aperture["ops_status"] == "yellow"
+    assert any("soft_pass" in b for b in snap["blockers"])
+
+
+@pytest.mark.unit
+def test_certified_coverage_recon_and_human_can_ready(tmp_path: Path) -> None:
+    _record_real_eligibility(tmp_path, human=True)
+    (tmp_path / "config.yaml").write_text(_REAL_READY_YAML, encoding="utf-8")
+    _write_decision_log(tmp_path, 10)
+    with _LOAD_PROGRESS_ONLY, _NO_STABILITY:
+        snap = evaluate_real_capital_readiness(tmp_path)
+    assert snap["ready_for_real_capital"] is True
+    assert snap["blockers"] == []
+    gates = snap["gates"]
+    assert gates["maturation_eligible"]["ok"] is True
+    assert gates["human_real_approval"]["ok"] is True
+    assert gates["capital_aperture_lineage"]["ok"] is True
+    assert gates["capital_aperture_lineage"]["soft_pass"] is False
+    assert gates["capital_aperture_lineage"]["certified"] is True
+    assert gates["final_arbitration"]["ok"] is True
+    assert gates["real_dna_human_approval_chain"]["ok"] is True
+    assert snap["broker_recon"]["ok"] is True
+
+
+@pytest.mark.unit
+def test_readiness_snapshot_does_not_hardcode_aperture_fa_dna_ok(tmp_path: Path) -> None:
+    with _NO_BIRTH_SYNC, _NO_STABILITY:
+        snap = evaluate_real_capital_readiness(tmp_path)
+    assert snap["twin_can_bypass"] is False
+    assert snap["policy"]["human_required_for_real_mode"] is True
+    assert snap["policy"]["soft_pass_is_ops_yellow_not_real_green"] is True
+    assert snap["ready_for_real_capital"] is False
+    gates = snap["gates"]
+    assert gates["capital_aperture_lineage"]["ok"] is False
+    assert gates["final_arbitration"]["ok"] is False
+    assert gates["real_dna_human_approval_chain"]["ok"] is False
 
 
 @pytest.mark.unit
 def test_readiness_snapshot_flags_twin_cannot_bypass(tmp_path: Path) -> None:
-    with patch(
-        "lumina_core.maturity.maturation_progress.sync_maturation_from_birth_state",
-        side_effect=lambda root: None,
-    ), patch(
-        "lumina_core.maturity.maturation_progress.sync_stability_milestone",
-    ):
+    with _NO_BIRTH_SYNC, _NO_STABILITY:
         snap = evaluate_real_capital_readiness(tmp_path)
     assert snap["twin_can_bypass"] is False
     assert snap["policy"]["human_required_for_real_mode"] is True
@@ -128,19 +228,16 @@ def test_readiness_snapshot_flags_twin_cannot_bypass(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_real_multi_gate_dry_run_invariants(tmp_path: Path) -> None:
-    from lumina_core.risk.real_multi_gate import run_real_multi_gate_dry_run
-
-    with patch(
-        "lumina_core.maturity.maturation_progress.sync_maturation_from_birth_state",
-        side_effect=lambda root: None,
-    ), patch(
-        "lumina_core.maturity.maturation_progress.sync_stability_milestone",
-    ):
+    with _NO_BIRTH_SYNC, _NO_STABILITY:
         dry = run_real_multi_gate_dry_run(tmp_path)
     assert dry["schema"] == "real_multi_gate_dry_run_v1"
     assert dry["ok"] is True  # invariants hold
     assert dry["ready_for_real_capital"] is False  # empty workspace not ready
     assert dry["invariants"]["twin_cannot_authorize_real"] is True
     assert dry["invariants"]["real_dna_requires_human"] is True
+    assert dry["invariants"]["recon_evaluated"] is True
     assert dry["policy"]["never_arms_real"] is True
     assert dry["twin_floor"]["real_capital_floor"] is True
+    assert dry["aperture_coverage"]["certified"] is False
+    assert dry["aperture_coverage"]["soft_pass"] is True
+    assert dry["broker_recon"]["ok"] is False

@@ -16,7 +16,21 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import yaml
+
+from lumina_core.engine.trade_reconciler.real_recon_gate import (
+    evaluate_real_broker_recon_gate,
+)
+from lumina_core.evolution.twin_mode_types import apply_mode_authority, canonicalize_twin_mode
 from lumina_core.logging_utils import get_logger
+from lumina_core.maturity.maturation_progress import (
+    load_maturation_progress,
+    maturation_eligible_for_real,
+)
+from lumina_core.risk.capital_aperture_lineage import (
+    aperture_coverage_ready_for_real,
+    evaluate_aperture_coverage_gate,
+)
 
 logger = get_logger("lumina.risk.real_multi_gate")
 
@@ -43,12 +57,13 @@ __all__ = [
 def evaluate_real_capital_readiness(
     workspace_root: Path | str,
 ) -> dict[str, Any]:
-    """Full readiness snapshot for REAL capital (operator + API)."""
+    """Full readiness snapshot for REAL capital (operator + API).
+
+    Aperture ``soft_pass`` is ops yellow and never counts as REAL-green.
+    Empty ``decision_log`` samples are not ready. Coverage and recon are
+    evaluated; aperture/FA/DNA-human are never hardcoded ``ok: True``.
+    """
     root = Path(workspace_root)
-    from lumina_core.maturity.maturation_progress import (
-        load_maturation_progress,
-        maturation_eligible_for_real,
-    )
 
     eligible, blockers = maturation_eligible_for_real(root)
     progress = load_maturation_progress(root)
@@ -56,6 +71,13 @@ def evaluate_real_capital_readiness(
     human_ok = "human_real_approval" in reached
     live = "real_trading_live" in reached
 
+    aperture = evaluate_aperture_coverage_gate(workspace_root=root)
+    aperture_ready = aperture_coverage_ready_for_real(aperture)
+    recon = _evaluate_workspace_recon(root)
+    fa_gate = _evaluate_final_arbitration_gate(aperture=aperture, recon=recon)
+    dna_gate = _evaluate_dna_human_chain(root)
+
+    aperture_blockers = _aperture_readiness_blockers(aperture, ready=aperture_ready)
     gate_results = {
         "maturation_eligible": {
             "ok": eligible,
@@ -66,24 +88,46 @@ def evaluate_real_capital_readiness(
             "blockers": [] if human_ok else ["Operator REAL approval not recorded"],
         },
         "capital_aperture_lineage": {
-            "ok": True,
-            "note": "Enforced per-order at admission (strict modes reject missing ctx)",
+            "ok": aperture_ready,
+            "soft_pass": bool(aperture.get("soft_pass")),
+            "certified": bool(aperture.get("certified")),
+            "ops_status": aperture.get("ops_status"),
+            "reason": aperture.get("reason"),
+            "sample_size": aperture.get("sample_size"),
+            "lineage_coverage_pct": aperture.get("lineage_coverage_pct"),
+            "blockers": aperture_blockers,
+            "note": (
+                "Enforced per-order at admission; REAL-green only when coverage is "
+                "certified (soft_pass is ops yellow, never green)."
+            ),
         },
-        "final_arbitration": {
-            "ok": True,
-            "note": "Enforced per-order; no skip path",
-        },
-        "real_dna_human_approval_chain": {
-            "ok": True,
-            "note": "generation_runner + evolution API require human chain in REAL",
-        },
+        "final_arbitration": fa_gate,
+        "real_dna_human_approval_chain": dna_gate,
     }
-    all_ok = eligible and human_ok
+    all_ok = (
+        eligible
+        and human_ok
+        and aperture_ready
+        and bool(fa_gate.get("ok"))
+        and bool(dna_gate.get("ok"))
+    )
     hard_blockers: list[str] = []
     if not eligible:
         hard_blockers.extend(blockers)
     if not human_ok:
         hard_blockers.append("Operator REAL approval required (POST /api/maturity/approve-real)")
+    hard_blockers.extend(aperture_blockers)
+    if not fa_gate.get("ok"):
+        hard_blockers.extend(str(b) for b in list(fa_gate.get("blockers") or []))
+    if not dna_gate.get("ok"):
+        hard_blockers.extend(str(b) for b in list(dna_gate.get("blockers") or []))
+
+    if not all_ok:
+        logger.warning(
+            "real_multi_gate.readiness_not_green ready=%s blockers=%s",
+            all_ok,
+            hard_blockers,
+        )
 
     return {
         "ready_for_real_capital": all_ok,
@@ -92,12 +136,16 @@ def evaluate_real_capital_readiness(
         "real_trading_live": live,
         "blockers": hard_blockers,
         "gates": gate_results,
+        "aperture_coverage": aperture,
+        "broker_recon": recon,
         "twin_can_bypass": False,
         "policy": {
             "twin_role": "judgment_inside_gates_only",
             "human_required_for_real_mode": True,
             "human_required_for_real_dna_promotion": True,
             "auto_evolve_never_arms_real": True,
+            "soft_pass_is_ops_yellow_not_real_green": True,
+            "empty_samples_not_ready": True,
         },
     }
 
@@ -118,7 +166,8 @@ def run_real_multi_gate_dry_run(
     """
     root = Path(workspace_root) if workspace_root else Path.cwd()
     readiness = evaluate_real_capital_readiness(root)
-    switch_ok, switch_blockers = real_mode_switch_allowed(root)
+    switch_ok = bool(readiness.get("ready_for_real_capital"))
+    switch_blockers = list(readiness.get("blockers") or [])
 
     # Twin full_auto cannot sole-authorize REAL
     twin_floor = twin_judgment_subordinate_to_real_gates(
@@ -154,37 +203,19 @@ def run_real_multi_gate_dry_run(
         "human" in str(dna_no_human_reason).lower()
     )
 
-    # Aperture: soft status only (does not fail dry-run on thin samples)
-    aperture: dict[str, Any] = {}
-    try:
-        from lumina_core.risk.capital_aperture_lineage import evaluate_aperture_coverage_gate
-
-        aperture = evaluate_aperture_coverage_gate(workspace_root=root)
-    except Exception as exc:
-        aperture = {"ok": False, "reason": f"aperture_unavailable:{exc}"}
-
-    # T4: REAL recon config gate (defaults assume recon ON for capital-risk modes)
-    recon: dict[str, Any] = {}
-    try:
-        from lumina_core.engine.trade_reconciler.real_recon_gate import (
-            evaluate_real_broker_recon_gate,
-        )
-
-        recon = evaluate_real_broker_recon_gate(
-            trade_mode="real",
-            reconcile_fills=True,
-            reconciliation_method="websocket",
-            reconciliation_timeout_seconds=15.0,
-        )
-    except Exception as exc:
-        recon = {"ok": False, "failures": [f"recon_gate_error:{exc}"]}
+    aperture = readiness.get("aperture_coverage")
+    if not isinstance(aperture, dict):
+        aperture = {}
+    recon = readiness.get("broker_recon")
+    if not isinstance(recon, dict):
+        recon = {"ok": False, "failures": ["recon_not_evaluated"]}
 
     checks = {
         "twin_cannot_authorize_real": twin_invariant_ok and twin_assert_ok,
         "real_dna_requires_human": dna_invariant,
         "readiness_loaded": isinstance(readiness, dict),
         "twin_can_bypass_flag_false": readiness.get("twin_can_bypass") is False,
-        "real_recon_config_defaults_ok": bool(recon.get("ok")),
+        "recon_evaluated": "ok" in recon,
     }
     all_invariants = all(checks.values())
     # dry_run "ready_for_real" mirrors switch — informational only
@@ -207,6 +238,8 @@ def run_real_multi_gate_dry_run(
         "aperture_coverage": {
             "ok": aperture.get("ok"),
             "soft_pass": aperture.get("soft_pass"),
+            "certified": aperture.get("certified"),
+            "ops_status": aperture.get("ops_status"),
             "reason": aperture.get("reason"),
             "sample_size": aperture.get("sample_size"),
             "lineage_coverage_pct": aperture.get("lineage_coverage_pct"),
@@ -218,8 +251,10 @@ def run_real_multi_gate_dry_run(
             "never_calls_approve_real": True,
             "twin_role": "judgment_inside_gates_only",
             "timeout_fill_no_economic_ledger": True,
+            "soft_pass_is_ops_yellow_not_real_green": True,
             "next_step_if_not_ready": (
                 "Complete maturation milestones + POST /api/maturity/approve-real "
+                "+ certified aperture coverage + REAL recon config "
                 "before any REAL mode switch; keep reconcile_fills=true for REAL."
             ),
         },
@@ -264,8 +299,6 @@ def twin_judgment_subordinate_to_real_gates(
 
     Returns effective authority fields for consumers (deck, generation, birth).
     """
-    from lumina_core.evolution.twin_mode_types import apply_mode_authority, canonicalize_twin_mode
-
     cap = str(capital_mode or "sim").strip().lower()
     # Track D: capital floor is inside apply_mode_authority (REAL never executable).
     auth = apply_mode_authority(
@@ -301,3 +334,145 @@ def assert_twin_cannot_authorize_real_mode(
     )
     if result.get("effective_recommendation") or result.get("executable"):
         raise AssertionError("H2 invariant broken: Twin authorized REAL capital")
+
+
+def _load_workspace_mapping(root: Path) -> tuple[dict[str, Any] | None, str | None]:
+    path = root / "config.yaml"
+    if not path.is_file():
+        return None, "workspace_config_yaml_missing"
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return None, f"workspace_config_yaml_unreadable:{exc}"
+    if not isinstance(raw, dict):
+        return None, "workspace_config_yaml_not_mapping"
+    return raw, None
+
+
+def _evaluate_workspace_recon(root: Path) -> dict[str, Any]:
+    """Evaluate REAL recon from workspace config — never hardcode reconcile_fills=True."""
+    cfg, err = _load_workspace_mapping(root)
+    if cfg is None:
+        return {
+            "schema": "real_broker_recon_gate_v1",
+            "ok": False,
+            "failures": [err or "workspace_config_yaml_missing"],
+            "message": "REAL recon config fail-closed: workspace config unavailable",
+        }
+    if "reconcile_fills" not in cfg:
+        return {
+            "schema": "real_broker_recon_gate_v1",
+            "ok": False,
+            "failures": ["reconcile_fills_not_declared"],
+            "message": "REAL recon config fail-closed: reconcile_fills not declared",
+        }
+    broker = cfg.get("broker") if isinstance(cfg.get("broker"), dict) else {}
+    nt = broker.get("ninjatrader") if isinstance(broker.get("ninjatrader"), dict) else {}
+    live_provider = str(broker.get("live_provider") or "").strip()
+    nt_enabled_raw = nt.get("enabled") if "enabled" in nt else None
+    nt_enabled = bool(nt_enabled_raw) if nt_enabled_raw is not None else None
+    live_configured = bool(live_provider) if live_provider else None
+    method = cfg.get("reconciliation_method")
+    timeout = cfg.get("reconciliation_timeout_seconds")
+    try:
+        return evaluate_real_broker_recon_gate(
+            trade_mode="real",
+            reconcile_fills=bool(cfg.get("reconcile_fills")),
+            reconciliation_method=str(method) if method is not None else "websocket",
+            reconciliation_timeout_seconds=(
+                timeout if timeout is not None else 15.0
+            ),
+            live_broker_configured=live_configured,
+            ninjatrader_enabled=nt_enabled,
+        )
+    except Exception as exc:
+        return {
+            "schema": "real_broker_recon_gate_v1",
+            "ok": False,
+            "failures": [f"recon_gate_error:{exc}"],
+            "message": f"REAL recon config fail-closed: {exc}",
+        }
+
+
+def _aperture_readiness_blockers(aperture: dict[str, Any], *, ready: bool) -> list[str]:
+    if ready:
+        return []
+    reason = str(aperture.get("reason") or "aperture_coverage_not_certified")
+    sample = aperture.get("sample_size")
+    if reason == "no_samples" or int(sample or 0) <= 0:
+        return ["empty_decision_log_not_ready"]
+    if reason == "thin_sample" or bool(aperture.get("soft_pass")):
+        return [f"aperture_coverage_soft_pass:{reason}"]
+    if bool(aperture.get("hard_fail")):
+        return [f"aperture_coverage_below_target:{aperture.get('lineage_coverage_pct')}"]
+    return [f"aperture_coverage_not_certified:{reason}"]
+
+
+def _evaluate_final_arbitration_gate(
+    *,
+    aperture: dict[str, Any],
+    recon: dict[str, Any],
+) -> dict[str, Any]:
+    """FA is not green from a static note — requires coverage evidence + recon."""
+    snap = aperture.get("snapshot") if isinstance(aperture.get("snapshot"), dict) else {}
+    fa_n = int(snap.get("final_arbitration_sample_size") or 0)
+    min_n = int(aperture.get("min_sample_size") or 10)
+    recon_ok = bool(recon.get("ok"))
+    coverage_ready = aperture_coverage_ready_for_real(aperture)
+    blockers: list[str] = []
+    if fa_n <= 0:
+        blockers.append("no_final_arbitration_samples")
+    elif fa_n < min_n:
+        blockers.append(f"thin_final_arbitration_samples:{fa_n}<{min_n}")
+    if not coverage_ready:
+        blockers.append("aperture_coverage_not_certified")
+    if not recon_ok:
+        recon_failures = recon.get("failures") or []
+        if recon_failures:
+            blockers.extend(f"broker_recon:{f}" for f in recon_failures)
+        else:
+            blockers.append("broker_recon_not_ok")
+    return {
+        "ok": len(blockers) == 0,
+        "sample_size": fa_n,
+        "min_sample_size": min_n,
+        "coverage_certified": coverage_ready,
+        "recon_ok": recon_ok,
+        "blockers": blockers,
+        "note": (
+            "FA readiness requires certified lineage coverage, FA-stage samples, "
+            "and REAL recon config. Empty samples are not green."
+        ),
+    }
+
+
+def _evaluate_dna_human_chain(root: Path) -> dict[str, Any]:
+    """Prove REAL DNA promotion cannot skip human — never hardcoded ok."""
+    allowed, reason = real_dna_promotion_allowed(
+        mode="real",
+        require_human_approval=False,
+        explicit_human_approval=True,
+        base_promoted=True,
+        has_approval_signatures=True,
+    )
+    invariant_ok = allowed is False and "human" in str(reason).lower()
+    blockers: list[str] = []
+    if not invariant_ok:
+        blockers.append("real_dna_promotion_skips_human")
+    cfg, err = _load_workspace_mapping(root)
+    if cfg is None:
+        blockers.append(err or "workspace_config_yaml_missing")
+    else:
+        real_cfg = cfg.get("real") if isinstance(cfg.get("real"), dict) else {}
+        if real_cfg.get("approval_required") is not True:
+            blockers.append("real.approval_required_not_true")
+    return {
+        "ok": len(blockers) == 0,
+        "blockers": blockers,
+        "invariant_blocks_without_human": invariant_ok,
+        "invariant_reason": reason,
+        "note": (
+            "generation_runner + evolution API require human chain in REAL; "
+            "workspace config must declare real.approval_required=true."
+        ),
+    }

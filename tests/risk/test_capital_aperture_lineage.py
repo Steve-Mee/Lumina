@@ -13,6 +13,7 @@ import pytest
 
 from lumina_core.broker.broker_bridge.admission import run_final_arbitration
 from lumina_core.risk.capital_aperture_lineage import (
+    aperture_coverage_ready_for_real,
     aperture_lineage_integrity_snapshot,
     ensure_order_lineage,
     extract_order_lineage,
@@ -219,7 +220,10 @@ def test_coverage_gate_soft_pass_no_samples(tmp_path: Path) -> None:
     gate = evaluate_aperture_coverage_gate(workspace_root=tmp_path, min_sample_size=10)
     assert gate["ok"] is True
     assert gate["soft_pass"] is True
+    assert gate["certified"] is False
+    assert gate["ops_status"] == "yellow"
     assert gate["reason"] == "no_samples"
+    assert aperture_coverage_ready_for_real(gate) is False
 
 
 @pytest.mark.unit
@@ -239,6 +243,8 @@ def test_coverage_gate_soft_pass_thin_sample(tmp_path: Path) -> None:
     )
     assert gate["ok"] is True
     assert gate["soft_pass"] is True
+    assert gate["certified"] is False
+    assert gate["ops_status"] == "yellow"
     assert gate["reason"] == "thin_sample"
     assert gate["sample_size"] == 3
 
@@ -261,7 +267,10 @@ def test_coverage_gate_hard_fail_below_target(tmp_path: Path) -> None:
     assert gate["sample_size"] == 12
     assert gate["ok"] is False
     assert gate["hard_fail"] is True
+    assert gate["certified"] is False
+    assert gate["ops_status"] == "red"
     assert gate["reason"] == "coverage_below_target"
+    assert aperture_coverage_ready_for_real(gate) is False
 
 
 @pytest.mark.unit
@@ -277,8 +286,11 @@ def test_coverage_gate_hard_pass_at_target(tmp_path: Path) -> None:
     )
     assert gate["ok"] is True
     assert gate["soft_pass"] is False
+    assert gate["certified"] is True
+    assert gate["ops_status"] == "green"
     assert gate["reason"] == "coverage_ok"
     assert gate["lineage_coverage_pct"] == pytest.approx(100.0)
+    assert aperture_coverage_ready_for_real(gate) is True
 
 
 @pytest.mark.unit
