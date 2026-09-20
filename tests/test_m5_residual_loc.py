@@ -177,6 +177,8 @@ def test_m5_residual_split_modules_exist() -> None:
         "lumina_core/birth/awakening_hole_tax.py",
         "lumina_core/birth/awakening_hole_tax_run.py",
         "lumina_core/birth/awakening_hole_tax_path.py",
+        "lumina_core/risk/real_multi_gate_evidence.py",
+        "lumina_core/risk/capital_aperture_coverage.py",
     ]
     missing = [c for c in companions if not (ROOT / c).is_file()]
     assert not missing, f"missing M5 companion modules: {missing}"

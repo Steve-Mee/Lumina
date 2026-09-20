@@ -16,20 +16,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import yaml
-
-from lumina_core.engine.trade_reconciler.real_recon_gate import (
-    evaluate_real_broker_recon_gate,
-)
 from lumina_core.evolution.twin_mode_types import apply_mode_authority, canonicalize_twin_mode
 from lumina_core.logging_utils import get_logger
 from lumina_core.maturity.maturation_progress import (
     load_maturation_progress,
     maturation_eligible_for_real,
 )
-from lumina_core.risk.capital_aperture_lineage import (
-    aperture_coverage_ready_for_real,
-    evaluate_aperture_coverage_gate,
+from lumina_core.risk.capital_aperture_coverage import aperture_coverage_ready_for_real
+from lumina_core.risk.capital_aperture_lineage import evaluate_aperture_coverage_gate
+from lumina_core.risk.real_multi_gate_evidence import (
+    aperture_readiness_blockers,
+    evaluate_dna_human_chain,
+    evaluate_final_arbitration_gate,
+    evaluate_workspace_recon,
 )
 
 logger = get_logger("lumina.risk.real_multi_gate")
@@ -73,11 +72,11 @@ def evaluate_real_capital_readiness(
 
     aperture = evaluate_aperture_coverage_gate(workspace_root=root)
     aperture_ready = aperture_coverage_ready_for_real(aperture)
-    recon = _evaluate_workspace_recon(root)
-    fa_gate = _evaluate_final_arbitration_gate(aperture=aperture, recon=recon)
-    dna_gate = _evaluate_dna_human_chain(root)
+    recon = evaluate_workspace_recon(root)
+    fa_gate = evaluate_final_arbitration_gate(aperture=aperture, recon=recon)
+    dna_gate = evaluate_dna_human_chain(root, promotion_allowed=real_dna_promotion_allowed)
 
-    aperture_blockers = _aperture_readiness_blockers(aperture, ready=aperture_ready)
+    aperture_blockers = aperture_readiness_blockers(aperture, ready=aperture_ready)
     gate_results = {
         "maturation_eligible": {
             "ok": eligible,
@@ -169,7 +168,6 @@ def run_real_multi_gate_dry_run(
     switch_ok = bool(readiness.get("ready_for_real_capital"))
     switch_blockers = list(readiness.get("blockers") or [])
 
-    # Twin full_auto cannot sole-authorize REAL
     twin_floor = twin_judgment_subordinate_to_real_gates(
         twin_recommendation=True,
         twin_executable=True,
@@ -191,7 +189,6 @@ def run_real_multi_gate_dry_run(
         twin_assert_ok = False
         twin_assert_error = str(exc)
 
-    # DNA promotion: REAL without human must fail
     dna_no_human_ok, dna_no_human_reason = real_dna_promotion_allowed(
         mode="real",
         require_human_approval=False,
@@ -218,10 +215,9 @@ def run_real_multi_gate_dry_run(
         "recon_evaluated": "ok" in recon,
     }
     all_invariants = all(checks.values())
-    # dry_run "ready_for_real" mirrors switch — informational only
     return {
         "schema": "real_multi_gate_dry_run_v1",
-        "ok": all_invariants,  # invariants hold (not "ready for REAL")
+        "ok": all_invariants,
         "ready_for_real_capital": bool(readiness.get("ready_for_real_capital")),
         "mode_switch_allowed": bool(switch_ok),
         "blockers": list(switch_blockers),
@@ -300,7 +296,6 @@ def twin_judgment_subordinate_to_real_gates(
     Returns effective authority fields for consumers (deck, generation, birth).
     """
     cap = str(capital_mode or "sim").strip().lower()
-    # Track D: capital floor is inside apply_mode_authority (REAL never executable).
     auth = apply_mode_authority(
         raw_recommendation=bool(twin_recommendation),
         mode=twin_mode,
@@ -334,147 +329,3 @@ def assert_twin_cannot_authorize_real_mode(
     )
     if result.get("effective_recommendation") or result.get("executable"):
         raise AssertionError("H2 invariant broken: Twin authorized REAL capital")
-
-
-def _load_workspace_mapping(root: Path) -> tuple[dict[str, Any] | None, str | None]:
-    path = root / "config.yaml"
-    if not path.is_file():
-        return None, "workspace_config_yaml_missing"
-    try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        return None, f"workspace_config_yaml_unreadable:{exc}"
-    if not isinstance(raw, dict):
-        return None, "workspace_config_yaml_not_mapping"
-    return raw, None
-
-
-def _evaluate_workspace_recon(root: Path) -> dict[str, Any]:
-    """Evaluate REAL recon from workspace config — never hardcode reconcile_fills=True."""
-    cfg, err = _load_workspace_mapping(root)
-    if cfg is None:
-        return {
-            "schema": "real_broker_recon_gate_v1",
-            "ok": False,
-            "failures": [err or "workspace_config_yaml_missing"],
-            "message": "REAL recon config fail-closed: workspace config unavailable",
-        }
-    if "reconcile_fills" not in cfg:
-        return {
-            "schema": "real_broker_recon_gate_v1",
-            "ok": False,
-            "failures": ["reconcile_fills_not_declared"],
-            "message": "REAL recon config fail-closed: reconcile_fills not declared",
-        }
-    broker_raw = cfg.get("broker")
-    broker: dict[str, Any] = broker_raw if isinstance(broker_raw, dict) else {}
-    nt_raw = broker.get("ninjatrader")
-    nt: dict[str, Any] = nt_raw if isinstance(nt_raw, dict) else {}
-    live_provider = str(broker.get("live_provider") or "").strip()
-    nt_enabled_raw = nt.get("enabled") if "enabled" in nt else None
-    nt_enabled = bool(nt_enabled_raw) if nt_enabled_raw is not None else None
-    live_configured = bool(live_provider) if live_provider else None
-    method = cfg.get("reconciliation_method")
-    timeout = cfg.get("reconciliation_timeout_seconds")
-    try:
-        return evaluate_real_broker_recon_gate(
-            trade_mode="real",
-            reconcile_fills=bool(cfg.get("reconcile_fills")),
-            reconciliation_method=str(method) if method is not None else "websocket",
-            reconciliation_timeout_seconds=(
-                timeout if timeout is not None else 15.0
-            ),
-            live_broker_configured=live_configured,
-            ninjatrader_enabled=nt_enabled,
-        )
-    except Exception as exc:
-        return {
-            "schema": "real_broker_recon_gate_v1",
-            "ok": False,
-            "failures": [f"recon_gate_error:{exc}"],
-            "message": f"REAL recon config fail-closed: {exc}",
-        }
-
-
-def _aperture_readiness_blockers(aperture: dict[str, Any], *, ready: bool) -> list[str]:
-    if ready:
-        return []
-    reason = str(aperture.get("reason") or "aperture_coverage_not_certified")
-    sample = aperture.get("sample_size")
-    if reason == "no_samples" or int(sample or 0) <= 0:
-        return ["empty_decision_log_not_ready"]
-    if reason == "thin_sample" or bool(aperture.get("soft_pass")):
-        return [f"aperture_coverage_soft_pass:{reason}"]
-    if bool(aperture.get("hard_fail")):
-        return [f"aperture_coverage_below_target:{aperture.get('lineage_coverage_pct')}"]
-    return [f"aperture_coverage_not_certified:{reason}"]
-
-
-def _evaluate_final_arbitration_gate(
-    *,
-    aperture: dict[str, Any],
-    recon: dict[str, Any],
-) -> dict[str, Any]:
-    """FA is not green from a static note — requires coverage evidence + recon."""
-    snap = aperture.get("snapshot") if isinstance(aperture.get("snapshot"), dict) else {}
-    fa_n = int(snap.get("final_arbitration_sample_size") or 0)
-    min_n = int(aperture.get("min_sample_size") or 10)
-    recon_ok = bool(recon.get("ok"))
-    coverage_ready = aperture_coverage_ready_for_real(aperture)
-    blockers: list[str] = []
-    if fa_n <= 0:
-        blockers.append("no_final_arbitration_samples")
-    elif fa_n < min_n:
-        blockers.append(f"thin_final_arbitration_samples:{fa_n}<{min_n}")
-    if not coverage_ready:
-        blockers.append("aperture_coverage_not_certified")
-    if not recon_ok:
-        recon_failures = recon.get("failures") or []
-        if recon_failures:
-            blockers.extend(f"broker_recon:{f}" for f in recon_failures)
-        else:
-            blockers.append("broker_recon_not_ok")
-    return {
-        "ok": len(blockers) == 0,
-        "sample_size": fa_n,
-        "min_sample_size": min_n,
-        "coverage_certified": coverage_ready,
-        "recon_ok": recon_ok,
-        "blockers": blockers,
-        "note": (
-            "FA readiness requires certified lineage coverage, FA-stage samples, "
-            "and REAL recon config. Empty samples are not green."
-        ),
-    }
-
-
-def _evaluate_dna_human_chain(root: Path) -> dict[str, Any]:
-    """Prove REAL DNA promotion cannot skip human — never hardcoded ok."""
-    allowed, reason = real_dna_promotion_allowed(
-        mode="real",
-        require_human_approval=False,
-        explicit_human_approval=True,
-        base_promoted=True,
-        has_approval_signatures=True,
-    )
-    invariant_ok = allowed is False and "human" in str(reason).lower()
-    blockers: list[str] = []
-    if not invariant_ok:
-        blockers.append("real_dna_promotion_skips_human")
-    cfg, err = _load_workspace_mapping(root)
-    if cfg is None:
-        blockers.append(err or "workspace_config_yaml_missing")
-    else:
-        real_cfg = cfg.get("real") if isinstance(cfg.get("real"), dict) else {}
-        if real_cfg.get("approval_required") is not True:
-            blockers.append("real.approval_required_not_true")
-    return {
-        "ok": len(blockers) == 0,
-        "blockers": blockers,
-        "invariant_blocks_without_human": invariant_ok,
-        "invariant_reason": reason,
-        "note": (
-            "generation_runner + evolution API require human chain in REAL; "
-            "workspace config must declare real.approval_required=true."
-        ),
-    }

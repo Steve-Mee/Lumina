@@ -14,6 +14,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from lumina_core.risk.aperture_guard import STRICT_MODES
+from lumina_core.risk.capital_aperture_coverage import (
+    aperture_coverage_ready_for_real,
+    finish_aperture_coverage_gate,
+    row_is_final_arbitration_evidence,
+)
 
 logger = logging.getLogger("lumina.risk.capital_aperture_lineage")
 
@@ -29,9 +34,6 @@ LINEAGE_SOFT_MODES = frozenset(
 H1_LINEAGE_COVERAGE_TARGET_PCT = 95.0
 # Intermediate ops goal (Phase Hub / Guardian soft band).
 PHASE2_LINEAGE_COVERAGE_TARGET_PCT = 80.0
-
-# Durable log stages that evidence Final Arbitration actually ran (not just ctx present).
-_FA_EVIDENCE_STAGES = frozenset({"final_arbitration", "capital_aperture_admission"})
 
 __all__ = [
     "H1_LINEAGE_COVERAGE_TARGET_PCT",
@@ -230,7 +232,7 @@ def aperture_lineage_integrity_snapshot(
             with_ctx += 1
         else:
             without_ctx += 1
-        if _row_is_final_arbitration_evidence(r):
+        if row_is_final_arbitration_evidence(r):
             fa_rows += 1
     total = with_ctx + without_ctx
     pct = round((with_ctx / total) * 100.0, 2) if total else None
@@ -262,53 +264,6 @@ def aperture_lineage_integrity_snapshot(
     }
 
 
-def _row_is_final_arbitration_evidence(row: dict[str, Any]) -> bool:
-    stage = str(row.get("stage") or "").strip().lower()
-    topic = str(row.get("topic") or "").strip().lower()
-    if stage in _FA_EVIDENCE_STAGES:
-        return True
-    return "final_arbitration" in stage or "final_arbitration" in topic
-
-
-def _coverage_certified_and_ops_status(
-    *,
-    ok: bool,
-    soft_pass: bool,
-    hard_fail: bool,
-) -> tuple[bool, str]:
-    """soft_pass is ops yellow. Only certified coverage is REAL-green."""
-    certified = bool(ok) and not bool(soft_pass) and not bool(hard_fail)
-    if hard_fail:
-        return False, "red"
-    if certified:
-        return True, "green"
-    return False, "yellow"
-
-
-def _with_coverage_readiness_status(payload: dict[str, Any]) -> dict[str, Any]:
-    certified, ops_status = _coverage_certified_and_ops_status(
-        ok=bool(payload.get("ok")),
-        soft_pass=bool(payload.get("soft_pass")),
-        hard_fail=bool(payload.get("hard_fail")),
-    )
-    payload["certified"] = certified
-    payload["ops_status"] = ops_status
-    return payload
-
-
-def aperture_coverage_ready_for_real(gate: dict[str, Any] | None) -> bool:
-    """REAL readiness: certified coverage only. Empty/thin soft_pass is never green."""
-    if not isinstance(gate, dict):
-        return False
-    if bool(gate.get("soft_pass")) or bool(gate.get("hard_fail")):
-        return False
-    if int(gate.get("sample_size") or 0) <= 0:
-        return False
-    if "certified" in gate:
-        return bool(gate.get("certified"))
-    return bool(gate.get("ok"))
-
-
 def evaluate_aperture_coverage_gate(
     snapshot: dict[str, Any] | None = None,
     *,
@@ -318,18 +273,7 @@ def evaluate_aperture_coverage_gate(
     min_sample_size: int = 10,
     phase2_band: bool = False,
 ) -> dict[str, Any]:
-    """H1/T2: pass/fail gate for lineage coverage on durable decision logs.
-
-    - sample_size == 0 → soft_pass (ops yellow; not a CI hard-fail; **not REAL-green**)
-    - sample_size < min_sample_size → soft_pass (thin sample; do not claim H1 green)
-    - sample_size >= min_sample_size → hard gate on coverage_pct vs target
-
-    ``ok`` remains True on soft_pass so ops/CI stay yellow rather than red.
-    ``certified`` / ``aperture_coverage_ready_for_real`` are the REAL-green bits
-    and are False whenever samples are empty or thin.
-
-    Never invents coverage. Never opens capital paths.
-    """
+    """H1/T2 coverage gate. Empty/thin samples are ops yellow, never REAL-green."""
     snap = snapshot or aperture_lineage_integrity_snapshot(
         workspace_root, audit_limit=audit_limit
     )
@@ -342,72 +286,8 @@ def evaluate_aperture_coverage_gate(
             else H1_LINEAGE_COVERAGE_TARGET_PCT
         )
     )
-    sample = int(snap.get("sample_size") or 0)
-    pct_raw = snap.get("lineage_coverage_pct")
-    pct = float(pct_raw) if pct_raw is not None else None
-
-    if sample <= 0:
-        return _with_coverage_readiness_status(
-            {
-                "schema": "aperture_coverage_gate_v1",
-                "ok": True,
-                "soft_pass": True,
-                "hard_fail": False,
-                "reason": "no_samples",
-                "message": (
-                    "No decision_log/audit rows found — ops yellow (soft pass). "
-                    "Not REAL-green. Run SIM/REAL sessions through Final Arbitration "
-                    "to accumulate samples."
-                ),
-                "sample_size": 0,
-                "lineage_coverage_pct": None,
-                "target_coverage_pct": target,
-                "min_sample_size": int(min_sample_size),
-                "snapshot": snap,
-            }
-        )
-
-    if sample < int(min_sample_size):
-        return _with_coverage_readiness_status(
-            {
-                "schema": "aperture_coverage_gate_v1",
-                "ok": True,
-                "soft_pass": True,
-                "hard_fail": False,
-                "reason": "thin_sample",
-                "message": (
-                    f"sample_size={sample} < min_sample_size={min_sample_size} — "
-                    "ops yellow (soft pass). Coverage observed="
-                    f"{pct}% (not H1-certified until N≥{min_sample_size})."
-                ),
-                "sample_size": sample,
-                "lineage_coverage_pct": pct,
-                "target_coverage_pct": target,
-                "min_sample_size": int(min_sample_size),
-                "snapshot": snap,
-            }
-        )
-
-    meets = pct is not None and pct >= target
-    return _with_coverage_readiness_status(
-        {
-            "schema": "aperture_coverage_gate_v1",
-            "ok": bool(meets),
-            "soft_pass": False,
-            "hard_fail": not bool(meets),
-            "reason": "coverage_ok" if meets else "coverage_below_target",
-            "message": (
-                f"coverage={pct}% target={target}% sample_size={sample} — "
-                + ("H1 goal met." if meets else "below target; improve admission lineage emit.")
-            ),
-            "sample_size": sample,
-            "lineage_coverage_pct": pct,
-            "target_coverage_pct": target,
-            "min_sample_size": int(min_sample_size),
-            "coverage_meets_h1_goal": bool(snap.get("coverage_meets_h1_goal")),
-            "coverage_meets_phase2_goal": bool(snap.get("coverage_meets_phase2_goal")),
-            "snapshot": snap,
-        }
+    return finish_aperture_coverage_gate(
+        snap, target=target, min_sample_size=int(min_sample_size)
     )
 
 
