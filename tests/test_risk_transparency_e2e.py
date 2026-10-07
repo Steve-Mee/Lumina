@@ -6,10 +6,27 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from lumina_core.audit.audit_log_service import AuditLogService
+from lumina_core.engine.bar_integrity import BarBookStatus
+from lumina_core.engine.market_data_manager import MarketDataManager
 from lumina_core.risk.risk_controller import HardRiskController, RiskLimits, risk_limits_from_config
 from lumina_core.risk.equity_snapshot import EquitySnapshot
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
 from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+
+
+def _complete_market_data() -> MarketDataManager:
+    md = MarketDataManager()
+    md.integrity = BarBookStatus(
+        complete=True,
+        reason="complete",
+        missing_count=0,
+        filled_count=0,
+        session_holes=0,
+        lock_new_entries=False,
+        last_closed=datetime(2026, 10, 2, 14, 31, tzinfo=timezone.utc),
+        message="Closed 1m book matches NinjaTrader",
+    )
+    return md
 
 
 class _AlwaysApproveArbitration:
@@ -135,6 +152,7 @@ def test_e2e_real_mode_blocks_on_mc_drawdown_and_logs_decision(tmp_path: Path) -
         available_margin=60_000.0,
         positions_margin_used=40_000.0,
         live_position_qty=0,
+        market_data=_complete_market_data(),
         final_arbitration=_AlwaysApproveArbitration(),
     )
 
@@ -242,6 +260,7 @@ def test_e2e_pretrade_uses_default_mc_paths_and_horizon_from_config(tmp_path: Pa
         available_margin=60_000.0,
         positions_margin_used=40_000.0,
         live_position_qty=0,
+        market_data=_complete_market_data(),
         final_arbitration=_AlwaysApproveArbitration(),
     )
 

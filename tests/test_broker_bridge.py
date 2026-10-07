@@ -4,6 +4,7 @@ import pytest
 
 import threading
 from contextlib import nullcontext
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -14,10 +15,27 @@ from lumina_core.broker.broker_bridge import (
     PaperBroker,
     broker_factory,
 )
+from lumina_core.engine.bar_integrity import BarBookStatus
+from lumina_core.engine.market_data_manager import MarketDataManager
 from lumina_core.engine.operations_service import OperationsService
 from lumina_core.risk.final_arbitration import FinalArbitration
 from lumina_core.risk.risk_policy import RiskPolicy
 from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+
+
+def _complete_market_data() -> MarketDataManager:
+    md = MarketDataManager()
+    md.integrity = BarBookStatus(
+        complete=True,
+        reason="complete",
+        missing_count=0,
+        filled_count=0,
+        session_holes=0,
+        lock_new_entries=False,
+        last_closed=datetime(2026, 10, 2, 14, 31, tzinfo=timezone.utc),
+        message="Closed 1m book matches NinjaTrader",
+    )
+    return md
 
 
 class _Event:
@@ -323,6 +341,7 @@ def test_cross_trade_broker_and_operations_service_submit_via_bridge(monkeypatch
         live_data_lock=nullcontext(),
         live_quotes=[{"last": 5000.0}],
         ohlc_1min=[1],
+        market_data=_complete_market_data(),
         valuation_engine=SimpleNamespace(),
         account_balance=50000.0,
         account_equity=50000.0,
@@ -391,6 +410,7 @@ def test_operations_service_blocks_real_without_final_arbitration() -> None:
         live_data_lock=nullcontext(),
         live_quotes=[{"last": 5000.0}],
         ohlc_1min=[1],
+        market_data=_complete_market_data(),
         valuation_engine=SimpleNamespace(),
         account_balance=50000.0,
         account_equity=50000.0,

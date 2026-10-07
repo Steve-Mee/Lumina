@@ -29,6 +29,7 @@ PLANS = ("free", "monthly", "lifetime")
 UNSTATED_PLAN = "free"
 
 _CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.yaml"
+_PLAN_FILE_CACHE: tuple[float, Any] | None = None
 
 
 class CostCardError(ValueError):
@@ -216,19 +217,35 @@ def _plan_value(config: Any) -> Any:
 
 
 def _plan_from_file() -> Any:
+    global _PLAN_FILE_CACHE
     if not _CONFIG_PATH.is_file():
+        _PLAN_FILE_CACHE = None
         return None
+    try:
+        mtime = _CONFIG_PATH.stat().st_mtime
+    except OSError:
+        _PLAN_FILE_CACHE = None
+        return None
+    cached = _PLAN_FILE_CACHE
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
     try:
         import yaml
     except ImportError:
+        _PLAN_FILE_CACHE = (mtime, None)
         return None
     try:
         loaded = yaml.safe_load(_CONFIG_PATH.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError):
+        _PLAN_FILE_CACHE = (mtime, None)
         return None
     if not isinstance(loaded, dict):
+        _PLAN_FILE_CACHE = (mtime, None)
         return None
     section = loaded.get("risk_controller")
     if not isinstance(section, dict):
-        return None
-    return section.get("nt_account_plan")
+        value = None
+    else:
+        value = section.get("nt_account_plan")
+    _PLAN_FILE_CACHE = (mtime, value)
+    return value

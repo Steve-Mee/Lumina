@@ -22,6 +22,7 @@ from lumina_core.birth.birth_trade_geometry import (
 from lumina_core.birth.config import BirthRewardConfig, load_birth_v2_config
 from lumina_core.birth.curriculum import CurriculumStage, filter_ticks_for_stage
 from lumina_core.logging_utils import get_logger
+from lumina_core.market.nt_fees import CostCardError, active_plan
 from lumina_core.rl.observation_builder import build_observation_vector
 from lumina_core.rl.reward_shaper import (
     RewardShapingState,
@@ -200,6 +201,10 @@ def mine_winning_patterns(
     # Net edge floor: require positive edge after same cost model as gym/geometry.
     net_floor = float(min_net_pnl_usd) if min_net_pnl_usd is not None else float(min_pnl_usd)
     net_floor = max(0.0, net_floor)
+    try:
+        desk_plan = active_plan()
+    except CostCardError:
+        desk_plan = None
 
     for i in range(20, len(enriched) - hold - 1, stride):
         release_control_plane(scanned)
@@ -220,7 +225,7 @@ def mine_winning_patterns(
             pnl, exit_idx = outcome
             entry_px = _tick_price(enriched[i])
             if bool(net_of_cost) and entry_px > 0:
-                cost_usd = estimate_round_trip_cost_usd(price=entry_px)
+                cost_usd = estimate_round_trip_cost_usd(price=entry_px, plan=desk_plan)
                 net_pnl = float(pnl) - float(cost_usd)
                 if net_pnl < net_floor:
                     continue
