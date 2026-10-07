@@ -15,9 +15,10 @@ from typing import Any
 
 def no_console() -> dict[str, Any]:
     """Creation flags that keep a child console program invisible on Windows."""
-    if os.name != "nt":
+    flag = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    if os.name != "nt" or not flag:
         return {}
-    return {"creationflags": subprocess.CREATE_NO_WINDOW}
+    return {"creationflags": int(flag)}
 
 
 def pid_is_alive(pid: int) -> bool:

@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
+
 from lumina_core.process_probe import no_console, pid_is_alive, process_image_running
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +36,12 @@ def test_no_console_flag_is_windows_only() -> None:
         assert flags["creationflags"]
     else:
         assert flags == {}
+
+
+def test_no_console_survives_missing_create_no_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("lumina_core.process_probe.os.name", "nt")
+    monkeypatch.delattr("lumina_core.process_probe.subprocess.CREATE_NO_WINDOW", raising=False)
+    assert no_console() == {}
 
 
 def test_hot_paths_do_not_spawn_a_visible_console() -> None:

@@ -51,7 +51,7 @@ def _write_certified_stub(
                 "requested_days": requested,
                 "actual_calendar_days": actual,
                 "tick_count": n,
-                "instruments": instruments or ["MES SEP26"],
+                "instruments": instruments or [live_listing("MES")],
             }
         ),
         encoding="utf-8",
@@ -74,7 +74,8 @@ def test_certified_false_when_legacy_tmp_sibling_exists(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_save_refuses_shallower_certified_overwrite(tmp_path: Path) -> None:
-    _write_certified_stub(tmp_path, n=1000, requested=365, actual=366)
+    listing = live_listing("MES")
+    _write_certified_stub(tmp_path, n=1000, requested=365, actual=366, instruments=[listing])
     ticks = [_tick("2026-06-12T00:00:00", 1.0, 0), _tick("2026-06-13T00:00:00", 2.0, 1)]
     split = PurgedSplit(train=[ticks[0]], holdout=[ticks[1]], holdout_days=1, train_days=1)
     with pytest.raises(TickCacheDepthRegressionError, match="depth regression"):
@@ -87,7 +88,7 @@ def test_save_refuses_shallower_certified_overwrite(tmp_path: Path) -> None:
             train_hash="train",
             requested_days=90,
             actual_calendar_days=77,
-            instruments=[live_listing("MES")],
+            instruments=[listing],
         )
     assert jsonl_still_stub(tmp_path, 1000)
 

@@ -169,7 +169,7 @@ def test_stop_all_activities_stops_backend_and_runtime(mock_run, temp_dirs):
         with patch.object(pm, "_enumerate_backend_pids", return_value=[123, 456]):
             with patch.object(pm, "_enumerate_launcher_worker_pids", return_value=[]):
                 ok, msg = pm.stop_all_activities()
-    assert ok is True
+    assert ok is True, msg
     assert "Backend stopped=2" in msg
     assert mock_run.call_count >= 2
 
