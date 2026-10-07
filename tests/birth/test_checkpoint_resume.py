@@ -55,7 +55,7 @@ def _rising_ticks(n: int) -> list[dict]:
                 "bid": price - 0.125,
                 "ask": price + 0.125,
                 "volume": 100,
-                "source": "real_historical",
+                "source": "nt8",
                 "regime": ("TREND_UP", "TREND_DOWN", "NEUTRAL")[i % 3],
             }
         )
@@ -213,6 +213,14 @@ def test_mid_stage_resume_restores_buffer_and_stage_trades(
             scanned=50,
             regimes_seen={"NEUTRAL"},
         ),
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.holdout_capacity_refusal.refuse_thin_holdout",
+        lambda *_a, **_k: None,
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.holdout_capacity_refusal.void_receipts_for_grown_tape",
+        lambda *_a, **_k: False,
     )
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _capture_rollout)
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.time.time", _fake_time)

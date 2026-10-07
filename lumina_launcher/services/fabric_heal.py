@@ -519,13 +519,12 @@ def _retarget_nt_custom_csproj(text: str, nt_bin: Path | None) -> tuple[str, lis
     if not text or nt_bin is None or not nt_bin.is_dir():
         return text, notes
 
-    nt_bin_s = str(nt_bin)
-
     def _hint(dll_name: str) -> str:
+        hint = str(nt_bin / dll_name)
         return (
             f'    <Reference Include="{dll_name[:-4]}">\n'
             f"      <SpecificVersion>False</SpecificVersion>\n"
-            f"      <HintPath>{nt_bin_s}\\{dll_name}</HintPath>\n"
+            f"      <HintPath>{hint}</HintPath>\n"
             f"      <Private>False</Private>\n"
             f"    </Reference>\n"
         )
@@ -559,7 +558,7 @@ def _retarget_nt_custom_csproj(text: str, nt_bin: Path | None) -> tuple[str, lis
 
     def _sharp_sub(match: re.Match[str]) -> str:
         name = match.group(1).strip()
-        return f"<HintPath>{nt_bin_s}\\{name}</HintPath>"
+        return f"<HintPath>{nt_bin / name}</HintPath>"
 
     text, n_sharp = sharp_pat.subn(_sharp_sub, text)
     if n_sharp:

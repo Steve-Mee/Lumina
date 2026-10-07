@@ -1,0 +1,71 @@
+# Start FastAPI backend from lumina_os with repo-root config and lumina_core on PYTHONPATH.
+$ErrorActionPreference = "Stop"
+$RepoRoot = Split-Path $PSScriptRoot -Parent
+$env:PYTHONPATH = $RepoRoot
+$env:LUMINA_CONFIG = Join-Path $RepoRoot "config.yaml"
+if ([string]::IsNullOrWhiteSpace($env:LUMINA_STATE_DIR)) {
+    $env:LUMINA_STATE_DIR = Join-Path $RepoRoot "state"
+}
+if ([string]::IsNullOrWhiteSpace($env:LUMINA_JWT_SECRET_KEY)) {
+    $env:LUMINA_JWT_SECRET_KEY = "LUMINA_LOCAL_DEVELOPMENT_JWT_SECRET_KEY_32"
+}
+
+$envFile = Join-Path $PSScriptRoot ".env"
+if ((Test-Path $envFile) -and [string]::IsNullOrWhiteSpace($env:LUMINA_BACKEND_PORT)) {
+    Get-Content $envFile -ErrorAction SilentlyContinue | ForEach-Object {
+        $t = $_.Trim()
+        if ($t -match '^(?!#)LUMINA_BACKEND_PORT\s*=\s*(\d+)\s*$') {
+            $env:LUMINA_BACKEND_PORT = $Matches[1]
+        }
+    }
+}
+
+$Port = 8000
+if (-not [string]::IsNullOrWhiteSpace($env:LUMINA_BACKEND_PORT)) {
+    $Port = [int]$env:LUMINA_BACKEND_PORT
+}
+
+# Fail fast with a clear message if the port is already in use (typical: earlier uvicorn still running).
+$listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+    Where-Object { $_.LocalAddress -eq "127.0.0.1" -or $_.LocalAddress -eq "0.0.0.0" } |
+    Select-Object -First 1
+if ($listener) {
+    $pidListen = $listener.OwningProcess
+    Write-Host ""
+    Write-Host "Poort $Port is al in gebruik (PID $pidListen). Een eerdere uvicorn draait waarschijnlijk nog." -ForegroundColor Yellow
+    Write-Host "Stop het met: Stop-Process -Id $pidListen -Force" -ForegroundColor Yellow
+    Write-Host 'Of kies een andere poort: $env:LUMINA_BACKEND_PORT=8001; .\run_backend.ps1' -ForegroundColor Yellow
+    Write-Host ""
+    exit 1
+}
+
+# ADR-0040/0041: default loopback. Override only with full gate (see cyber_sentinel).
+$BindHost = "127.0.0.1"
+if (-not [string]::IsNullOrWhiteSpace($env:LUMINA_API_BIND)) {
+    $BindHost = $env:LUMINA_API_BIND.Trim()
+}
+function Resolve-LuminaPython([string]$Root) {
+    $explicit = [string]$env:LUMINA_PYTHON
+    if (-not [string]::IsNullOrWhiteSpace($explicit)) {
+        if (-not (Test-Path -LiteralPath $explicit)) {
+            throw "LUMINA_PYTHON is set but not found: $explicit"
+        }
+        return (Resolve-Path -LiteralPath $explicit).Path
+    }
+    $venvPy = Join-Path $Root ".venv\Scripts\python.exe"
+    if (Test-Path -LiteralPath $venvPy) {
+        return (Resolve-Path -LiteralPath $venvPy).Path
+    }
+    throw @"
+LUMINA Python not found.
+Expected: $venvPy
+Or set LUMINA_PYTHON to the interpreter that has the training engine (torch + stable-baselines3).
+System Python is forbidden for Birth.
+"@
+}
+
+$PythonExe = Resolve-LuminaPython $RepoRoot
+Write-Host "LUMINA backend Python: $PythonExe"
+Set-Location $PSScriptRoot
+# TLS: set LUMINA_API_TLS_CERT + LUMINA_API_TLS_KEY and prefer `python -m backend.app` entrypoint.
+& $PythonExe -m uvicorn backend.app:app --host $BindHost --port $Port @args

@@ -70,7 +70,7 @@ def _ticks(n: int = 1200) -> list[dict]:
                 "bid": price - 0.125,
                 "ask": price + 0.125,
                 "volume": 100,
-                "source": "real_historical",
+                "source": "nt8",
                 "regime": ("TREND_UP", "TREND_DOWN", "NEUTRAL")[i % 3],
             }
         )

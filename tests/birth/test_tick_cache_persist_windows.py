@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from lumina_core.birth.purged_split import PurgedSplit
+from lumina_core.order_gatekeeper.contract_symbols import live_listing
 from lumina_core.birth.tick_cache_guard import (
     TickCacheDepthRegressionError,
     heal_tick_cache_coherence,
@@ -86,7 +87,7 @@ def test_save_refuses_shallower_certified_overwrite(tmp_path: Path) -> None:
             train_hash="train",
             requested_days=90,
             actual_calendar_days=77,
-            instruments=["MES SEP26"],
+            instruments=[live_listing("MES")],
         )
     assert jsonl_still_stub(tmp_path, 1000)
 
@@ -108,7 +109,7 @@ def test_save_allows_same_depth_rewrite(tmp_path: Path) -> None:
         train_hash="train",
         requested_days=90,
         actual_calendar_days=89,
-        instruments=["MES SEP26"],
+        instruments=[live_listing("MES")],
     )
     assert certified_tick_cache_present(tmp_path)
     save_birth_data_cache(
@@ -120,7 +121,7 @@ def test_save_allows_same_depth_rewrite(tmp_path: Path) -> None:
         train_hash="train",
         requested_days=90,
         actual_calendar_days=89,
-        instruments=["MES SEP26"],
+        instruments=[live_listing("MES")],
     )
     loaded = load_split_cache(tmp_path, holdout_pct=0.2)
     assert loaded is not None
@@ -270,10 +271,14 @@ def test_certified_cache_loaded_without_reuse_flag(tmp_path: Path) -> None:
         holdout_pct=0.2,
         raw_ticks_hash=compute_ticks_fingerprint(ticks),
         train_hash=train_hash(split.train),
-        requested_days=90,
-        actual_calendar_days=89,
-        instruments=["MES SEP26"],
+        requested_days=365,
+        actual_calendar_days=365,
+        instruments=[live_listing("MES")],
     )
+    man_path = tmp_path / "state" / "lumina_birth_cache_manifest.json"
+    payload = json.loads(man_path.read_text(encoding="utf-8"))
+    payload["holdout_tick_count"] = 240_000
+    man_path.write_text(json.dumps(payload), encoding="utf-8")
     assert certified_tick_cache_present(tmp_path) is True
 
     class _Host:

@@ -12,12 +12,15 @@ Mode-semantiek Lumina:
 from __future__ import annotations
 
 from contextlib import nullcontext
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pandas as pd
 
+from lumina_core.engine.bar_integrity import BarBookStatus
+from lumina_core.engine.market_data_manager import MarketDataManager
 from lumina_core.engine.operations_service import OperationsService
 from lumina_core.risk.final_arbitration import FinalArbitration
 from lumina_core.risk.risk_policy import RiskPolicy
@@ -88,6 +91,21 @@ class _FreshEquitySnapshotProvider:
 # ─── helpers ────────────────────────────────────────────────────────────────
 
 
+def _complete_market_data() -> MarketDataManager:
+    md = MarketDataManager()
+    md.integrity = BarBookStatus(
+        complete=True,
+        reason="complete",
+        missing_count=0,
+        filled_count=0,
+        session_holes=0,
+        lock_new_entries=False,
+        last_closed=datetime(2026, 10, 2, 14, 31, tzinfo=timezone.utc),
+        message="Closed 1m book matches NinjaTrader",
+    )
+    return md
+
+
 def _make_engine(trade_mode: str, risk_ok: bool = True, enforce_session_guard: bool = True):
     """Minimal LuminaEngine stand-in."""
     risk_ctrl: Any = MagicMock()
@@ -117,6 +135,7 @@ def _make_engine(trade_mode: str, risk_ok: bool = True, enforce_session_guard: b
             instrument="MES JUN26",
             thought_log=MagicMock(),
         ),
+        market_data=_complete_market_data(),
         app=SimpleNamespace(
             logger=MagicMock(),
             VOICE_ENABLED=False,
@@ -316,7 +335,8 @@ def _make_runtime_ctx(trade_mode: str) -> RuntimeContext:
     session_guard.is_trading_session.return_value = False
 
     engine = SimpleNamespace(
-        config=SimpleNamespace(trade_mode=trade_mode),
+        config=SimpleNamespace(trade_mode=trade_mode, instrument="MES JUN26"),
+        market_data=_complete_market_data(),
         risk_controller=risk_ctrl,
         session_guard=session_guard,
         account_balance=50_000.0,

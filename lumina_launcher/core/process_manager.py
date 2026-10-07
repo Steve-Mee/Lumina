@@ -303,6 +303,15 @@ class ProcessManager:
             log_event("launcher.proc.stop_failed", level=logging.ERROR, error=str(exc))
             return False, f"Failed to stop bot: {exc}"
 
+    def _force_stop_pid(self, pid: int) -> None:
+        """Best-effort kill. Missing PIDs are already stopped."""
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False, **no_console())
+            return
+        os.kill(pid, 15)
+        time.sleep(0.2)
+        os.kill(pid, 9)
+
     def stop_all_activities(self) -> tuple[bool, str]:
         birth_msg = ""
         try:
@@ -324,23 +333,17 @@ class ProcessManager:
         worker_errors = 0
         for pid in backend_pids:
             try:
-                if os.name == "nt":
-                    subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False, **no_console())
-                else:
-                    os.kill(pid, 15)
-                    time.sleep(0.2)
-                    os.kill(pid, 9)
+                self._force_stop_pid(pid)
+                backend_stopped += 1
+            except ProcessLookupError:
                 backend_stopped += 1
             except Exception:
                 backend_errors += 1
         for pid in worker_pids:
             try:
-                if os.name == "nt":
-                    subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False, **no_console())
-                else:
-                    os.kill(pid, 15)
-                    time.sleep(0.2)
-                    os.kill(pid, 9)
+                self._force_stop_pid(pid)
+                worker_stopped += 1
+            except ProcessLookupError:
                 worker_stopped += 1
             except Exception:
                 worker_errors += 1

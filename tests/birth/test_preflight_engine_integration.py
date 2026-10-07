@@ -18,6 +18,7 @@ from lumina_core.birth.preflight import assess_split_preflight
 from lumina_core.birth.purged_split import purged_train_holdout_split
 from lumina_core.birth.sim_runner import SimRolloutResult
 from lumina_core.birth.engine import BirthPhaseEngineV2 as LuminaBirthEngine  # direct after facade delete
+from lumina_core.order_gatekeeper.contract_symbols import live_listing
 
 pytestmark = [pytest.mark.no_preflight_bypass, pytest.mark.timeout(120)]
 
@@ -43,7 +44,7 @@ class _FakePpoTrainer:
         p.write_bytes(b"policy")
 
 
-def _calendar_ticks(*, days: int = 300, ticks_per_day: int = 10, holdout_neutral_only: bool = False) -> list[dict]:
+def _calendar_ticks(*, days: int = 370, ticks_per_day: int = 10, holdout_neutral_only: bool = False) -> list[dict]:
     """Day-bucketed ticks so purged holdout uses calendar days, not tick index."""
     ticks: list[dict] = []
     price = 5000.0
@@ -66,20 +67,20 @@ def _calendar_ticks(*, days: int = 300, ticks_per_day: int = 10, holdout_neutral
                     "bid": price - 0.125,
                     "ask": price + 0.125,
                     "volume": 100,
-                    "source": "real_historical",
+                    "source": "nt8",
                     "regime": regime,
                 }
             )
     return ticks
 
 
-def _three_regime_calendar_ticks(*, days: int = 300, ticks_per_day: int = 10) -> list[dict]:
+def _three_regime_calendar_ticks(*, days: int = 370, ticks_per_day: int = 10) -> list[dict]:
     return _calendar_ticks(days=days, ticks_per_day=ticks_per_day, holdout_neutral_only=False)
 
 
 @pytest.mark.unit
 def test_single_regime_holdout_slice_fails_preflight() -> None:
-    ticks = _calendar_ticks(days=300, ticks_per_day=10, holdout_neutral_only=True)
+    ticks = _calendar_ticks(days=370, ticks_per_day=10, holdout_neutral_only=True)
     split = purged_train_holdout_split(ticks, holdout_pct=0.2)
     report = assess_split_preflight(
         split,
@@ -98,7 +99,7 @@ def test_ensure_holdout_preflight_expands_until_regimes_ok(
 
     def _expand(**_kwargs) -> DataExpansionResult:
         expansion_calls.append(1)
-        ticks = _three_regime_calendar_ticks(days=300, ticks_per_day=10)
+        ticks = _three_regime_calendar_ticks(days=370, ticks_per_day=10)
         split = purged_train_holdout_split(ticks, holdout_pct=0.2)
         return DataExpansionResult(
             train_ticks=list(split.train),
@@ -122,7 +123,7 @@ def test_ensure_holdout_preflight_expands_until_regimes_ok(
         certificate_thresholds=BirthCertificateThresholds(min_holdout_trades=5, min_regimes=3),
     )
     engine.birth_start_time = 1.0
-    ticks = _calendar_ticks(days=300, ticks_per_day=10, holdout_neutral_only=True)
+    ticks = _calendar_ticks(days=370, ticks_per_day=10, holdout_neutral_only=True)
     split = purged_train_holdout_split(ticks, holdout_pct=0.2)
     monkeypatch.setattr("lumina_core.birth.certificate_pipeline.expand_birth_data", _expand)
 
@@ -151,7 +152,7 @@ def test_engine_expands_history_when_holdout_preflight_fails(
 
     def _expand(**_kwargs) -> DataExpansionResult:
         expansion_calls.append(1)
-        ticks = _three_regime_calendar_ticks(days=300, ticks_per_day=10)
+        ticks = _three_regime_calendar_ticks(days=370, ticks_per_day=10)
         split = purged_train_holdout_split(ticks, holdout_pct=0.2)
         return DataExpansionResult(
             train_ticks=list(split.train),
@@ -191,7 +192,7 @@ def test_engine_expands_history_when_holdout_preflight_fails(
 
     monkeypatch.setattr(
         "lumina_core.birth.data_pipeline.load_historical_ticks",
-        lambda **_kwargs: _calendar_ticks(days=300, ticks_per_day=10, holdout_neutral_only=True),
+        lambda **_kwargs: _calendar_ticks(days=370, ticks_per_day=10, holdout_neutral_only=True),
     )
     monkeypatch.setattr(
         "lumina_core.birth.news_enricher.enrich_ticks_with_news",
@@ -289,7 +290,7 @@ def test_reuse_data_manifest_skips_tick_load_and_expansion(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ticks = _three_regime_calendar_ticks(days=300, ticks_per_day=10)
+    ticks = _three_regime_calendar_ticks(days=370, ticks_per_day=10)
     split = purged_train_holdout_split(ticks, holdout_pct=0.2)
 
     from lumina_core.birth.tick_cache_persist import save_split_cache, save_ticks_cache
@@ -302,7 +303,7 @@ def test_reuse_data_manifest_skips_tick_load_and_expansion(
 
     def _load_historical_ticks(**_kwargs) -> list[dict]:
         load_calls.append(1)
-        return _calendar_ticks(days=300, ticks_per_day=10, holdout_neutral_only=True)
+        return _calendar_ticks(days=370, ticks_per_day=10, holdout_neutral_only=True)
 
     def _expand(**_kwargs) -> DataExpansionResult:
         expand_calls.append(1)
@@ -323,9 +324,11 @@ def test_reuse_data_manifest_skips_tick_load_and_expansion(
         raw_ticks_hash="raw",
         train_hash=train_hash,
         holdout_pct=0.2,
-        requested_days=90,
-        actual_calendar_days=300,
-        instruments=["MES SEP26"],
+        requested_days=365,
+        actual_calendar_days=370,
+        tick_count=3700,
+        holdout_tick_count=240_000,
+        instruments=[live_listing("MES")],
     )
     engine = LuminaBirthEngine(
         runtime=SimpleNamespace(),
@@ -408,6 +411,10 @@ def test_reuse_data_manifest_skips_tick_load_and_expansion(
         },
     )
 
+    monkeypatch.setattr(
+        "lumina_core.birth.holdout_capacity_refusal.refuse_thin_holdout",
+        lambda *_a, **_k: None,
+    )
     result = engine.run_birth_phase(
         target_trades=100,
         force=False,
@@ -426,7 +433,7 @@ def test_reuse_data_manifest_without_checkpoint_skips_tick_load(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Physics restart: reuse_data_manifest loads cache with no checkpoint."""
-    ticks = _three_regime_calendar_ticks(days=300, ticks_per_day=10)
+    ticks = _three_regime_calendar_ticks(days=370, ticks_per_day=10)
     split = purged_train_holdout_split(ticks, holdout_pct=0.2)
 
     from lumina_core.birth.tick_cache_persist import save_split_cache, save_ticks_cache
@@ -439,7 +446,7 @@ def test_reuse_data_manifest_without_checkpoint_skips_tick_load(
 
     def _load_historical_ticks(**_kwargs) -> list[dict]:
         load_calls.append(1)
-        return _calendar_ticks(days=300, ticks_per_day=10, holdout_neutral_only=True)
+        return _calendar_ticks(days=370, ticks_per_day=10, holdout_neutral_only=True)
 
     def _expand(**_kwargs) -> DataExpansionResult:
         expand_calls.append(1)
@@ -460,12 +467,11 @@ def test_reuse_data_manifest_without_checkpoint_skips_tick_load(
         raw_ticks_hash="raw",
         train_hash=train_hash,
         holdout_pct=0.2,
-        requested_days=90,
-        actual_calendar_days=300,
-        instruments=["MES SEP26"],
-        tick_count=len(ticks),
-        train_tick_count=len(split.train),
-        holdout_tick_count=len(split.holdout),
+        requested_days=365,
+        actual_calendar_days=370,
+        tick_count=3700,
+        holdout_tick_count=240_000,
+        instruments=[live_listing("MES")],
     )
     engine = LuminaBirthEngine(
         runtime=SimpleNamespace(),
@@ -528,6 +534,10 @@ def test_reuse_data_manifest_without_checkpoint_skips_tick_load(
         },
     )
 
+    monkeypatch.setattr(
+        "lumina_core.birth.holdout_capacity_refusal.refuse_thin_holdout",
+        lambda *_a, **_k: None,
+    )
     result = engine.run_birth_phase(
         target_trades=100,
         force=False,
@@ -546,7 +556,7 @@ def test_resume_checkpoint_skips_tick_load_without_reuse_manifest(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Auto cache reuse on checkpoint resume must not require reuse_data_manifest=True."""
-    ticks = _three_regime_calendar_ticks(days=300, ticks_per_day=10)
+    ticks = _three_regime_calendar_ticks(days=370, ticks_per_day=10)
     split = purged_train_holdout_split(ticks, holdout_pct=0.2)
 
     from lumina_core.birth.tick_cache_persist import save_split_cache, save_ticks_cache
@@ -560,7 +570,7 @@ def test_resume_checkpoint_skips_tick_load_without_reuse_manifest(
 
     def _load_historical_ticks(**_kwargs) -> list[dict]:
         load_calls.append(1)
-        return _calendar_ticks(days=300, ticks_per_day=10, holdout_neutral_only=True)
+        return _calendar_ticks(days=370, ticks_per_day=10, holdout_neutral_only=True)
 
     def _expand(**_kwargs) -> DataExpansionResult:
         expand_calls.append(1)
@@ -584,9 +594,11 @@ def test_resume_checkpoint_skips_tick_load_without_reuse_manifest(
         raw_ticks_hash="raw",
         train_hash=train_hash,
         holdout_pct=0.2,
-        requested_days=90,
-        actual_calendar_days=300,
-        instruments=["MES SEP26"],
+        requested_days=365,
+        actual_calendar_days=370,
+        tick_count=3700,
+        holdout_tick_count=240_000,
+        instruments=[live_listing("MES")],
     )
     engine = LuminaBirthEngine(
         runtime=SimpleNamespace(),
@@ -666,6 +678,10 @@ def test_resume_checkpoint_skips_tick_load_without_reuse_manifest(
         },
     )
 
+    monkeypatch.setattr(
+        "lumina_core.birth.holdout_capacity_refusal.refuse_thin_holdout",
+        lambda *_a, **_k: None,
+    )
     result = engine.run_birth_phase(
         target_trades=100,
         force=False,

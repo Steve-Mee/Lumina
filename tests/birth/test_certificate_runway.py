@@ -44,7 +44,7 @@ def test_purged_validation_split_holdout_untouched() -> None:
 
 @pytest.mark.unit
 def test_runway_stage5_is_not_a_birth_pass_gate() -> None:
-    """Former S5 profit lives in Playground economic_viability, not evaluate_stage_pass."""
+    """Former S5 profit lives in Apprenticeship economic_viability, not evaluate_stage_pass."""
     from lumina_core.birth.curriculum import evaluate_stage_pass
 
     cfg = BirthCurriculumConfig()
@@ -63,7 +63,7 @@ def test_runway_stage5_is_not_a_birth_pass_gate() -> None:
     assert "legacy_intra_birth_stage_rejected" in result.message
     eco = economic_viability(mean_r=0.05, skill_wr=0.42, breakeven_wr=0.40)
     assert eco.passed is True
-    assert eco.home_phase == "playground"
+    assert eco.home_phase == "apprenticeship"
 
 
 @pytest.mark.unit

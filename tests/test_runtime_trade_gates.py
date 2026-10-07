@@ -1,11 +1,29 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
 
+from lumina_core.engine.bar_integrity import BarBookStatus
+from lumina_core.engine.market_data_manager import MarketDataManager
 from lumina_core.runtime_trade_gates import apply_hard_risk_controller_to_signal
 from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+
+
+def _complete_market_data() -> MarketDataManager:
+    md = MarketDataManager()
+    md.integrity = BarBookStatus(
+        complete=True,
+        reason="complete",
+        missing_count=0,
+        filled_count=0,
+        session_holes=0,
+        lock_new_entries=False,
+        last_closed=datetime(2026, 10, 2, 14, 31, tzinfo=timezone.utc),
+        message="Closed 1m book matches NinjaTrader",
+    )
+    return md
 
 
 @pytest.mark.unit
@@ -14,7 +32,8 @@ def test_runtime_trade_gates_blocks_strict_mode_without_final_arbitration() -> N
     warnings: list[str] = []
     logger = SimpleNamespace(warning=lambda message, *_args: warnings.append(str(message)))
     engine = SimpleNamespace(
-        config=SimpleNamespace(trade_mode="real"),
+        config=SimpleNamespace(trade_mode="real", instrument="MES JUN26"),
+        market_data=_complete_market_data(),
         risk_controller=SimpleNamespace(
             _active_limits=SimpleNamespace(enforce_session_guard=False),
             apply_regime_override=lambda *_a, **_k: None,

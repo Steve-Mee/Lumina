@@ -70,6 +70,7 @@ class SupervisorPhaseStateMachine:
         self._swarm_last_cycle = 0.0
         self._swarm_last_cycle_minute: Optional[tuple[int, int, int, int, int]] = None
         self._swarm_last_dashboard = 0.0
+        self._clock = datetime.now
         # Prefer app.logger only when it exposes standard levels; SimpleNamespace
         # without .warning caused SUPERVISOR_LOOP_CRASH after monitoring soft-fail (C1).
         app_logger = getattr(app, "logger", None)
@@ -108,7 +109,7 @@ class SupervisorPhaseStateMachine:
         ctx = SupervisorTickCtx(
             price=float(price),
             dream_snapshot=dream_snapshot,
-            now=datetime.now(),
+            now=self._clock(),
             push_trader_league_trade=_push_trader_league_trade,
             compute_session_kpis=_compute_session_kpis,
             publish_runtime_monitoring_snapshot=_publish_runtime_monitoring_snapshot,

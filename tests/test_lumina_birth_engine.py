@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -55,16 +56,17 @@ class _FakePpoTrainer:
 def _rising_historical_ticks(n: int) -> list[dict]:
     ticks = []
     price = 5000.0
+    start = datetime(2025, 1, 1, tzinfo=timezone.utc)
     for i in range(n):
         price += 0.5
         ticks.append(
             {
-                "timestamp": f"2026-01-01T{i:04d}:00Z",
+                "timestamp": (start + timedelta(days=i)).isoformat(),
                 "last": price,
                 "bid": price - 0.125,
                 "ask": price + 0.125,
                 "volume": 100,
-                "source": "real_historical",
+                "source": "nt8",
             }
         )
     return ticks
@@ -232,6 +234,10 @@ def test_engine_continues_research_on_rollout_stall(tmp_path: Path, monkeypatch:
             constitution_blocks=0,
         )
 
+    monkeypatch.setattr(
+        "lumina_core.birth.holdout_capacity_refusal.refuse_thin_holdout",
+        lambda *_a, **_k: None,
+    )
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _stalled_rollout)
     engine.birth_config = BirthV2Config(
         curriculum=BirthCurriculumConfig(
@@ -285,17 +291,17 @@ def test_resume_checkpoint_reuses_existing_policy(tmp_path: Path, monkeypatch: p
     patch_holdout_preflight_ok(monkeypatch)
     ticks = []
     price = 5000.0
+    start = datetime(2025, 1, 1, tzinfo=timezone.utc)
     for i in range(800):
         price += 0.5
-        ts = "2026-01-01T00:00:00+00:00" if i == 0 else "2026-04-01T00:00:00+00:00"
         ticks.append(
             {
-                "timestamp": ts,
+                "timestamp": (start + timedelta(days=i)).isoformat(),
                 "last": price,
                 "bid": price - 0.125,
                 "ask": price + 0.125,
                 "volume": 100,
-                "source": "real_historical",
+                "source": "nt8",
             }
         )
     monkeypatch.setattr(
@@ -366,6 +372,14 @@ def test_resume_checkpoint_reuses_existing_policy(tmp_path: Path, monkeypatch: p
             wall_behavior="strict",
         ),
         trade_budget_cap=500,
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.holdout_capacity_refusal.refuse_thin_holdout",
+        lambda *_a, **_k: None,
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.holdout_capacity_refusal.void_receipts_for_grown_tape",
+        lambda *_a, **_k: False,
     )
     result = engine.run_birth_phase(target_trades=500, force=False, prefer_real_data_only=False)
     assert trainer.loaded_paths == [str(policy_path)]

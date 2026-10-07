@@ -26,12 +26,12 @@ def test_save_full_settings_syncs_birth_v2_trade_budget_cap(tmp_path: Path) -> N
     raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8")) or {}
     assert raw["first_boot"]["training_trades"] == 30_000
     assert raw["birth_v2"]["trade_budget_cap"] == 30_000
-    assert raw["birth_v2"]["max_real_days"] == 120
+    assert raw["birth_v2"]["max_real_days"] == 365
     assert raw["birth_v2"]["prefer_real_data_only"] is True
 
     cfg = load_birth_v2_config(tmp_path)
     assert cfg.trade_budget_cap == 30_000
-    assert cfg.max_real_days == 120
+    assert cfg.max_real_days == 365
     assert cfg.prefer_real_data_only is True
 
 

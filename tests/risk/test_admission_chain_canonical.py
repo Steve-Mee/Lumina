@@ -6,6 +6,8 @@ from typing import Any, Callable
 
 import pytest
 
+from lumina_core.engine.bar_integrity import BarBookStatus
+from lumina_core.engine.market_data_manager import MarketDataManager
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
 from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
 from lumina_core.risk.admission_chain import (
@@ -126,9 +128,25 @@ def _fresh_snapshot() -> SimpleNamespace:
     )
 
 
+def _complete_market_data() -> MarketDataManager:
+    md = MarketDataManager()
+    md.integrity = BarBookStatus(
+        complete=True,
+        reason="complete",
+        missing_count=0,
+        filled_count=0,
+        session_holes=0,
+        lock_new_entries=False,
+        last_closed=datetime(2026, 10, 2, 14, 31, tzinfo=timezone.utc),
+        message="Closed 1m book matches NinjaTrader",
+    )
+    return md
+
+
 def _make_engine(*, trade_mode: str = "real") -> SimpleNamespace:
     return SimpleNamespace(
         config=SimpleNamespace(trade_mode=trade_mode, instrument="MES JUN26"),
+        market_data=_complete_market_data(),
         risk_controller=_RiskController(),
         session_guard=None,
         reasoning_service=SimpleNamespace(

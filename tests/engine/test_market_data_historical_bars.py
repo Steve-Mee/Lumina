@@ -13,6 +13,7 @@ import pytest
 from lumina_core.engine import EngineConfig, MarketDataIngestService
 from lumina_core.engine.lumina_engine import LuminaEngine
 from lumina_core.order_gatekeeper import is_stale_contract_symbol, roll_stale_contract_symbol
+from lumina_core.order_gatekeeper.contract_symbols import live_listing
 
 
 @pytest.mark.unit
@@ -115,10 +116,6 @@ def test_fetch_historical_bars_rolls_stale_instrument(
         return response
 
     monkeypatch.setattr("lumina_core.engine.market_data_service.requests.post", _fake_post)
-    monkeypatch.setattr(
-        "lumina_core.engine.market_data_service.roll_stale_contract_symbol",
-        lambda symbol, **_k: "MES SEP26" if symbol == "MES JUN26" else symbol,
-    )
 
     market_data_service._fetch_historical_bars(
         instrument="MES JUN26",
@@ -127,7 +124,7 @@ def test_fetch_historical_bars_rolls_stale_instrument(
     )
 
     assert payloads
-    assert payloads[0]["instrument"] == "MES SEP26"
+    assert payloads[0]["instrument"] == live_listing("MES JUN26")
 
 
 @pytest.mark.unit

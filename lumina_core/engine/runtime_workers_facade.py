@@ -50,6 +50,8 @@ class SupervisorLoopRunner:
     def run(self) -> None:
         try:
             self.run_inner()
+        except StopIteration:
+            raise
         except Exception as exc:
             err = LuminaError(
                 severity=ErrorSeverity.FATAL_UNRECOVERABLE,
@@ -86,6 +88,8 @@ class SupervisorLoopRunner:
                     else None
                 )
                 phases.advance_or_tick(float(price), dream_snapshot=dream_snapshot)
+            except StopIteration:
+                raise
             except Exception as exc:
                 if tick_failure_is_fatal(trade_mode_of(app)):
                     raise

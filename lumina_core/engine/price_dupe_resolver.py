@@ -83,7 +83,10 @@ class PriceDupeResolver:
                     ohlc = getattr(market, "ohlc_1min", None)
                 if price <= 0.0 and ohlc is not None and len(ohlc) > 0:
                     price = float(ohlc["close"].iloc[-1] or 0.0)
-                df = ohlc.copy() if ohlc is not None else ohlc
+                df = ohlc
+                copy_fn = getattr(ohlc, "copy", None) if ohlc is not None else None
+                if callable(copy_fn) and hasattr(ohlc, "iloc"):
+                    df = copy_fn()
                 return price, df
         except Exception:
             return 0.0, None

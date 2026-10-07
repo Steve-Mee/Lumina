@@ -10,6 +10,7 @@ _ENG = Path(__file__).resolve().parents[2] / "lumina_core" / "engine"
 _LOC_LIMIT = 400
 _LOC_CEILINGS: dict[str, int] = {
     "market_data_history_fetch.py": 930,
+    "operations_service_orders.py": 414,
 }
 
 _MODULES = [

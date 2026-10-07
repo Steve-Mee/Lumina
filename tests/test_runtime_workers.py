@@ -29,8 +29,19 @@ def _patch_supervisor_phase_state_machine(
     from lumina_core.engine import supervisor_tick_signal as tick_signal
 
     if fake_datetime is not None:
+        from lumina_core.engine import runtime_workers_facade as facade
+
         monkeypatch.setattr(sp_sm, "datetime", fake_datetime)
         monkeypatch.setattr(tick_ops, "datetime", fake_datetime)
+        monkeypatch.setattr(facade, "datetime", fake_datetime)
+        monkeypatch.setattr(facade.time, "sleep", lambda *_a, **_k: None)
+        orig_init = sp_sm.SupervisorPhaseStateMachine.__init__
+
+        def _init(self: Any, *args: Any, **kwargs: Any) -> None:
+            orig_init(self, *args, **kwargs)
+            self._clock = fake_datetime.now
+
+        monkeypatch.setattr(sp_sm.SupervisorPhaseStateMachine, "__init__", _init)
 
     def _risk(**kwargs: Any) -> tuple[str, bool, str]:
         return (str(kwargs.get("signal", "HOLD")), True, "ok")
