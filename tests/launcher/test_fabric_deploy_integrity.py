@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from lumina_launcher.services.fabric_bootstrap import (
+    NT_BIN_OWNED_ASSEMBLIES,
+    nt_bin_owned_present,
+    reconcile_nt_owned_overlay,
+)
 from lumina_launcher.services.fabric_deploy_integrity import (
     NT_BRIDGE_MIN_BYTES,
     NT_BRIDGE_REQUIRED_MARKERS,
@@ -57,6 +62,37 @@ def test_pick_best_prefers_largest_ok(tmp_path: Path) -> None:
     write_ok(large, 5000)
     best = pick_best_nt_bridge([small, large])
     assert best == large
+
+
+def test_nt_bin_owned_skips_overlay_when_nt_ships_assembly(tmp_path: Path) -> None:
+    nt_bin = tmp_path / "bin"
+    custom = tmp_path / "Custom"
+    nt_bin.mkdir()
+    custom.mkdir()
+    (nt_bin / "Google.Protobuf.dll").write_bytes(b"NT34")
+    overlay = custom / "Google.Protobuf.dll"
+    overlay.write_bytes(b"OURS28")
+    owned = nt_bin_owned_present(nt_bin)
+    assert "Google.Protobuf.dll" in owned
+    assert "Google.Protobuf.dll" in NT_BIN_OWNED_ASSEMBLIES
+    tag = reconcile_nt_owned_overlay(custom, "Google.Protobuf.dll", owned)
+    assert tag is not None and "quarantined_nt_owned" in tag
+    assert not overlay.is_file()
+    assert (custom / "Google.Protobuf.dll.NT_BIN_OWNED").is_file()
+    # Second pass: already quarantined, just skip copy.
+    tag2 = reconcile_nt_owned_overlay(custom, "Google.Protobuf.dll", owned)
+    assert tag2 == "skip_nt_owned:Google.Protobuf.dll"
+
+
+def test_nt_bin_owned_still_deploys_when_nt_bin_missing_file(tmp_path: Path) -> None:
+    nt_bin = tmp_path / "bin"
+    custom = tmp_path / "Custom"
+    nt_bin.mkdir()
+    custom.mkdir()
+    owned = nt_bin_owned_present(nt_bin)
+    assert "Google.Protobuf.dll" not in owned
+    assert reconcile_nt_owned_overlay(custom, "Google.Protobuf.dll", owned) is None
+    assert reconcile_nt_owned_overlay(custom, "Lumina.Fabric.NtBridge.dll", owned) is None
 
 
 def test_write_fabric_json_migrates_legacy_sim(tmp_path: Path, monkeypatch) -> None:

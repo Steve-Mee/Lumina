@@ -62,8 +62,25 @@ def _lock_path_for(path: Path, *, config: StateManagerConfig) -> Path:
     return target.parent / ".locks" / f"{target.name}.lock"
 
 
+def _ntfs_deleted_namespace(path: Path) -> bool:
+    lowered = str(path).lower()
+    return "$extend" in lowered or "$deleted" in lowered
+
+
+def _lock_key(path: Path) -> str:
+    """Identity for a lock file. A deleted-file final path is not a lock location."""
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = path.absolute()
+    chosen = path.absolute() if _ntfs_deleted_namespace(resolved) else resolved
+    if _ntfs_deleted_namespace(chosen):
+        raise OSError(f"refusing NTFS deleted lock path: {chosen}")
+    return os.path.normcase(os.path.normpath(str(chosen)))
+
+
 def _get_file_lock(path: Path) -> FileLock:
-    lock_key = str(path.resolve())
+    lock_key = _lock_key(path)
     with _LOCK_CACHE_GUARD:
         lock = _LOCK_CACHE.get(lock_key)
         if lock is None:

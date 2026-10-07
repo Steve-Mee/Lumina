@@ -2,6 +2,8 @@
 High-quality unit tests for ProcessManager.
 """
 
+import os
+import subprocess
 import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -34,17 +36,19 @@ def test_pid_is_alive_false_for_zero():
     assert pm._pid_is_alive(-5) is False
 
 
-@patch("lumina_launcher.core.process_manager.os.name", "nt")
-@patch("lumina_launcher.core.process_manager.subprocess.run")
-def test_pid_is_alive_windows(mock_run, temp_dirs):
+def test_pid_is_alive_does_not_open_a_console(temp_dirs, monkeypatch):
     root, runtime = temp_dirs
     pm = ProcessManager(root, runtime)
+    seen: list[int] = []
 
-    mock_run.return_value = MagicMock(stdout="1234\n")
+    def _probe(pid: int) -> bool:
+        seen.append(pid)
+        return pid == 1234
+
+    monkeypatch.setattr("lumina_launcher.core.process_manager.pid_is_alive", _probe)
     assert pm._pid_is_alive(1234) is True
-
-    mock_run.return_value = MagicMock(stdout="")
     assert pm._pid_is_alive(9999) is False
+    assert seen == [1234, 9999]
 
 
 def test_is_process_alive_no_state(temp_dirs):
@@ -66,6 +70,26 @@ def test_is_process_alive_clears_stale_state_file(temp_dirs):
         with patch.object(pm, "_find_external_runtime_pid", return_value=0):
             assert pm.is_process_alive() is False
     assert not pm.process_state_path.exists()
+
+
+@patch("lumina_launcher.core.process_manager.subprocess.Popen")
+def test_start_bot_hides_the_empty_console_on_windows(mock_popen, temp_dirs):
+    if os.name != "nt":
+        pytest.skip("console flags are Windows-only")
+    root, runtime = temp_dirs
+    pm = ProcessManager(root, runtime)
+    proc = MagicMock(pid=4242)
+    proc.poll.return_value = None
+    mock_popen.return_value = proc
+    with patch("lumina_launcher.runtime.spawn.resolve_runtime_python", return_value="python"):
+        with patch.object(pm, "_pid_is_alive", return_value=True):
+            with patch.object(pm, "is_process_alive", return_value=False):
+                with patch("lumina_launcher.core.process_manager.time.sleep", return_value=None):
+                    success, _ = pm.start_bot(mode="sim")
+    assert success is True
+    flags = mock_popen.call_args.kwargs["creationflags"]
+    assert flags & subprocess.CREATE_NO_WINDOW
+    assert not (flags & subprocess.DETACHED_PROCESS)
 
 
 def test_start_bot_entry_not_found(temp_dirs):

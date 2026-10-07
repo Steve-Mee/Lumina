@@ -147,15 +147,10 @@ def test_reissue_returns_remaining_sec(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_reissue_dedupe_key_includes_expires() -> None:
     """Reissue must not share dedupe with prior token (expires_at in key)."""
-    keys: list[str] = []
-
-    def capture_notify(ev, workspace_root=None):
-        keys.append(str(getattr(ev, "dedupe_key", "") or ""))
-
     with patch(
-        "lumina_core.notifications.attention_notifier.notify_attention",
-        side_effect=capture_notify,
-    ):
+        "lumina_core.notifications.phase_status_notify.notify_phase_handoff",
+        return_value=True,
+    ) as handoff:
         _notify_telegram_advance(
             Path("."),
             "birth",
@@ -172,10 +167,12 @@ def test_reissue_dedupe_key_includes_expires() -> None:
             expires_at="2026-08-08T12:00:00+00:00",
             ttl_sec=3600,
         )
-    assert len(keys) == 2
-    assert keys[0] != keys[1]
-    assert "phase_advance_request:birth:awakening:" in keys[0]
-    assert "phase_advance_request:birth:awakening:" in keys[1]
+    assert handoff.call_count == 2
+    first = handoff.call_args_list[0].kwargs
+    second = handoff.call_args_list[1].kwargs
+    assert first["expires_at"] != second["expires_at"]
+    assert first["token"] == "token-aaa"
+    assert second["token"] == "token-bbb"
 
 
 @pytest.mark.unit

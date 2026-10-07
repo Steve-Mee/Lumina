@@ -23,12 +23,18 @@ describe("Phase Hub named wipes", () => {
     expect(HUB_WIPE_CARDS[2]?.tone).toBe("danger");
   });
 
-  it("PhaseHubDeck uses recovery glass cards, not Refresh or window.confirm", () => {
+  it("PhaseHubDeck uses Genesis wipe cards with keep/destroy hints, not window.confirm", () => {
     const deck = source("PhaseHubDeck.tsx");
+    const advance = source("PhaseHubAdvanceSection.tsx");
     expect(deck).toContain("HUB_WIPE_CARDS");
-    expect(deck).toContain("genesis-recovery-action-grid--3");
     expect(deck).toContain("RecoveryActionCard");
+    expect(deck).not.toContain("BirthStagePassChecklistCard");
     expect(deck).toContain("onWipe(card.kind)");
+    expect(deck).toContain("card.hint");
+    expect(deck).toContain("card.tip");
+    expect(advance).toContain("RecoveryActionCard");
+    expect(advance).toContain("opt.tip");
+    expect(advance).toContain("opt.hint");
     expect(deck).not.toContain("Refresh hub");
     expect(deck).not.toContain("Wipe all");
     expect(deck).not.toContain("RotateCcw");
@@ -36,15 +42,26 @@ describe("Phase Hub named wipes", () => {
     expect(deck).not.toContain("from \"@/components/ui/button\"");
   });
 
-  it("PhaseHubScreen uses two-step BirthPortaledDialog confirm", () => {
+  it("PhaseHubScreen uses three-step BirthPortaledDialog typed confirm", () => {
     const screen = source("PhaseHubScreen.tsx");
     const confirm = source("PhaseHubWipeConfirm.tsx");
+    const copy = source("phaseWipeCopy.ts");
     expect(screen).toContain("PhaseHubWipeConfirm");
     expect(screen).not.toContain("window.confirm");
     expect(confirm).toContain("BirthPortaledDialog");
     expect(confirm).toContain("I understand — continue");
-    expect(confirm).toContain("Smart Setup stays");
-    expect(confirm).toContain("Birth plant");
+    expect(confirm).toContain("I accept the loss — continue");
+    expect(confirm).toContain("wipePhraseMatches");
+    expect(confirm).toContain("WIPE_CONFIRM_PHRASES");
+    expect(confirm).toContain('type="text"');
+    expect(confirm).toContain("birth-portaled-dialog__phrase");
+    expect(confirm).toContain("placeholder={requiredPhrase}");
+    expect(readFileSync(join(root, "../../styles/birthPhase.css"), "utf8")).toContain(
+      ".birth-portaled-dialog__phrase",
+    );
+    expect(copy).toContain("Smart Setup stays");
+    expect(copy).toContain("Birth plant");
+    expect(copy).toContain("WIPE AWAKENING");
   });
 
   it("Final confirmation commits on pointerup so WebView2 taps wipe", () => {
@@ -52,7 +69,17 @@ describe("Phase Hub named wipes", () => {
     expect(confirm).toContain("onPointerUp");
     expect(confirm).toContain("fireConfirm");
     expect(confirm).toContain("confirmOnce");
-    expect(confirm).toContain("Wipe Awakening");
+    expect(source("phaseWipeCopy.ts")).toContain("Wipe Awakening");
+  });
+
+  it("offers Activate Birth when the next phase is Birth", () => {
+    const deck = source("PhaseHubDeck.tsx");
+    const screen = source("PhaseHubScreen.tsx");
+    expect(deck).toContain('birthNext ? "ACTIVATE BIRTH"');
+    expect(deck).not.toContain("Start Birth from the Birth screen");
+    expect(screen).toContain("openBirthGenesis(setPhase)");
+    expect(screen).not.toContain("Start Birth from the Birth screen");
+    expect(screen).toContain('kind === "birth" || kind === "full"');
   });
 
   it("cinematic and hub wipe do not disable confirm with start/stop busy", () => {
@@ -62,6 +89,6 @@ describe("Phase Hub named wipes", () => {
     expect(awakening).not.toContain("wiping={busy}");
     expect(hub).toContain("wiping={wiping}");
     expect(hub).not.toContain("if (!wipeKind || busy) return");
-    expect(hub).toContain("postWipeMaturityPhase(kind)");
+    expect(hub).toContain("postWipeMaturityPhase(kind, phrase)");
   });
 });

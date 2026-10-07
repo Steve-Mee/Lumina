@@ -4,13 +4,16 @@ from __future__ import annotations
 import json
 import logging
 import os
-import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
 
 logger = logging.getLogger(__name__)
+
+# One writer. Concurrent User-env updates must not pile up on startup.
+_USER_ENV_LOCK = threading.Lock()
 
 DEFAULT_FABRIC_JSON: dict[str, Any] = {
     "BindHost": "127.0.0.1",
@@ -44,6 +47,7 @@ def write_fabric_json_defaults(
     *,
     path: Path | None = None,
     auth_token: str | None = None,
+    account_name: str | None = None,
 ) -> Path:
     """Write operator fabric.json defaults. Creates parent dirs.
 
@@ -66,7 +70,14 @@ def write_fabric_json_defaults(
         try:
             existing = json.loads(target.read_text(encoding="utf-8-sig"))
             if isinstance(existing, dict):
-                for key in ("GatewayMode", "BindHost", "BindPort", "AccountName", "AuthTokenEnv"):
+                for key in (
+                    "GatewayMode",
+                    "BindHost",
+                    "BindPort",
+                    "AccountName",
+                    "RealAccountName",
+                    "AuthTokenEnv",
+                ):
                     if key in existing and existing[key] is not None:
                         payload[key] = existing[key]
                 existing_token = str(existing.get("AuthToken") or "").strip()
@@ -77,6 +88,11 @@ def write_fabric_json_defaults(
                     payload["GatewayMode"] = "nt"
         except (OSError, json.JSONDecodeError):
             logger.warning("Could not merge existing fabric.json; rewriting defaults", exc_info=True)
+    # Caller passes the operator account from config.yaml. That name wins over
+    # the product default Sim101. A token heal that omits it keeps the file's name.
+    chosen_account = str(account_name or "").strip()
+    if chosen_account:
+        payload["AccountName"] = chosen_account
     token = str(auth_token or "").strip() or existing_token
     if token:
         # Local APPDATA only — required so NT AddOn ResolveToken matches Brain.
@@ -88,11 +104,68 @@ def write_fabric_json_defaults(
     return target
 
 
+def _broadcast_environment_change() -> None:
+    """Tell other processes the user environment changed.
+
+    Runs off the caller thread. ``Environment.SetEnvironmentVariable`` does this
+    broadcast on the caller and waits on every top-level window. A window that
+    is not pumping messages holds that call, and a 15s PowerShell timeout then
+    leaves the child alive. Fabric bootstrap runs on the uvicorn loop, so the
+    whole API stops answering and cold start looks like a dead Fabric link.
+    """
+
+    def _run() -> None:
+        try:
+            import ctypes
+
+            hwnd_broadcast = 0xFFFF
+            wm_settingchange = 0x001A
+            smto_abortifhung = 0x0002
+            result = ctypes.c_size_t()
+            ctypes.windll.user32.SendMessageTimeoutW(
+                hwnd_broadcast,
+                wm_settingchange,
+                0,
+                "Environment",
+                smto_abortifhung,
+                1000,
+                ctypes.byref(result),
+            )
+        except Exception:
+            logger.debug("User env broadcast skipped", exc_info=True)
+
+    threading.Thread(target=_run, name="lumina-env-broadcast", daemon=True).start()
+
+
+def _write_windows_user_env(name: str, value: str) -> bool:
+    """Persist HKCU\\Environment. Skip when the value is already stored."""
+    import winreg
+
+    with _USER_ENV_LOCK:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            "Environment",
+            0,
+            winreg.KEY_READ | winreg.KEY_SET_VALUE,
+        ) as key:
+            try:
+                current, _ = winreg.QueryValueEx(key, name)
+            except FileNotFoundError:
+                current = None
+            if str(current or "") == value:
+                return True
+            winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
+    _broadcast_environment_change()
+    return True
+
+
 def set_user_environment_variable(name: str, value: str) -> bool:
     """Best-effort set User-level env var so NT8 can read it after process restart.
 
-    On Windows uses .NET Environment.SetEnvironmentVariable User scope via PowerShell.
-    Returns True when the write was attempted successfully.
+    Process env is updated immediately. On Windows the durable copy is
+    ``HKCU\\Environment`` via the registry API. A matching value is not rewritten.
+    Returns True when the process env is set and the registry write succeeded
+    or was already current.
     """
     name = str(name or "").strip()
     value = str(value or "").strip()
@@ -103,29 +176,7 @@ def set_user_environment_variable(name: str, value: str) -> bool:
     if sys.platform != "win32":
         return True
     try:
-        # User scope so new processes (NinjaTrader) inherit the secret.
-        completed = subprocess.run(
-            [
-                "powershell",
-                "-NoProfile",
-                "-Command",
-                f"[Environment]::SetEnvironmentVariable('{name}', $env:__LUMINA_SET_VAL, 'User')",
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-            env={**os.environ, "__LUMINA_SET_VAL": value},
-            timeout=15,
-        )
-        if completed.returncode != 0:
-            logger.warning(
-                "User env set failed for %s: rc=%s stderr=%s",
-                name,
-                completed.returncode,
-                (completed.stderr or "").strip()[:400],
-            )
-            return False
-        return True
+        return _write_windows_user_env(name, value)
     except Exception:
         logger.warning("User env set failed for %s", name, exc_info=True)
         return False

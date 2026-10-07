@@ -67,6 +67,10 @@ SSOT: `lumina_core/maturity/proving_ground/law.py`. Progress: `state/lumina_prov
 5. Pull human `approve-real` into Proving Ground — rejected; capital consent is REAL.
 6. Reuse apprenticeship tape as n_G — rejected; walking is not the exam.
 
+## Amendment (2026-10-02) — no shadow promotion during the final exam
+
+While this phase or REAL is active, a Playground shadow must not become the living policy. The cert walls, the shadow evidence of this clock, and PromotionGate stay as written. They are not lowered.
+
 ## Links
 
 - Code: `lumina_core/maturity/proving_ground/`

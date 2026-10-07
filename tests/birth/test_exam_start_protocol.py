@@ -77,6 +77,22 @@ def test_force_exit_close_is_plant_not_policy() -> None:
     assert plant_tag_for_close(entry_is_plant=False, participation_mode="PASSTHROUGH") is False
     assert plant_tag_for_close(entry_is_plant=False, participation_mode=MODE_FORCE_EXIT) is True
     assert plant_tag_for_close(entry_is_plant=True, participation_mode="PASSTHROUGH") is True
+    assert (
+        plant_tag_for_close(
+            entry_is_plant=False,
+            participation_mode=MODE_FORCE_EXIT,
+            close_reason="time_stop",
+        )
+        is False
+    )
+    assert (
+        plant_tag_for_close(
+            entry_is_plant=True,
+            participation_mode=MODE_FORCE_EXIT,
+            close_reason="time_stop",
+        )
+        is True
+    )
 
 
 @pytest.mark.unit

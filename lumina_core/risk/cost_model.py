@@ -4,15 +4,12 @@ Canonical location: ``lumina_core.risk.cost_model``
 
 Covers all costs incurred when opening and closing a futures position:
 
-Fee components (per side unless noted)
----------------------------------------
-- Slippage    : ATR-based half-spread + Almgren-Chriss market impact
-- Commission  : Broker commission (round-trip by default)
-- Exchange fee: CME Group fee
-- Clearing fee: NFA clearing charge
-- NFA fee     : Regulatory fee per contract
+Fee components come from ``lumina_core.market.nt_fees`` (ADR-0055).
+``from_config`` stamps that card. A dollar key in config does not replace it.
+NFA is already inside the exchange column, so ``nfa_fee_per_side_usd`` is 0.
 
-Round-trip total = 2 × (slippage + commission + exchange + clearing + nfa)
+Slippage below is the paper/risk fill simulator. Phase scores do not add it
+again on top of a fill price.
 
 Usage
 -----
@@ -125,10 +122,10 @@ class TradeExecutionCostModel:
 
     tick_size: float = 0.25
     tick_value: float = 1.25  # MES: $1.25/tick
-    commission_per_side_usd: float = 1.29
-    exchange_fee_per_side_usd: float = 0.35
-    clearing_fee_per_side_usd: float = 0.10
-    nfa_fee_per_side_usd: float = 0.02
+    commission_per_side_usd: float = 0.39
+    exchange_fee_per_side_usd: float = 0.36
+    clearing_fee_per_side_usd: float = 0.19
+    nfa_fee_per_side_usd: float = 0.0
     slippage_base_ticks: float = 0.5  # floor: half a tick
     slippage_atr_ratio: float = 0.10  # 10 % of ATR as half-spread
     slippage_sigma: float = 0.0  # deterministic by default
@@ -172,13 +169,18 @@ class TradeExecutionCostModel:
         if not isinstance(spread_mults, dict):
             spread_mults = {"open": 2.5, "midday": 1.0, "close": 2.0}
 
+        from lumina_core.market.nt_fees import spec_for
+
+        quote = spec_for(instrument)
+        plan_name = str(_get(rc, "nt_account_plan", "") or "")
+        commission = quote.commission(plan_name or None)
         return cls(
             tick_size=_tick_size,
             tick_value=_tick_value,
-            commission_per_side_usd=float(_get(rc, "commission_per_side_usd", 1.29)),
-            exchange_fee_per_side_usd=float(_get(rc, "exchange_fee_per_side_usd", 0.35)),
-            clearing_fee_per_side_usd=float(_get(rc, "clearing_fee_per_side_usd", 0.10)),
-            nfa_fee_per_side_usd=float(_get(rc, "nfa_fee_per_side_usd", 0.02)),
+            commission_per_side_usd=commission,
+            exchange_fee_per_side_usd=float(quote.exchange_nfa),
+            clearing_fee_per_side_usd=float(quote.clearing),
+            nfa_fee_per_side_usd=0.0,
             slippage_base_ticks=float(_get(rc, "slippage_base_points", 0.5)),
             slippage_atr_ratio=float(_get(rc, "order_book_spread_atr_ratio", 0.10)),
             slippage_sigma=float(_get(rc, "slippage_sigma", 0.0)),

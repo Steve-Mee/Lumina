@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import time
 import traceback
+from datetime import datetime
 from typing import Any, Callable
 
 import pandas as pd
@@ -23,47 +24,79 @@ class MarketDataHistoryMixin(MarketDataHistoryFetchMixin):
 
     __slots__ = ()
 
-    def load_historical_ohlc(self, days_back: int = 3, limit: int = 5000) -> bool:
+    def load_historical_ohlc(
+        self, days_back: int = 3, limit: int = 5000, *, now: datetime | None = None
+    ) -> bool:
         instrument = self._normalize_symbol(getattr(self._app(), "INSTRUMENT", self.engine.config.instrument))
-        rows = self.load_historical_ohlc_for_symbol(instrument=instrument, days_back=days_back, limit=limit)
-        if rows.empty:
+        closed, forming = self._fetch_closed_and_forming(
+            instrument=instrument, days_back=days_back, limit=limit, now=now
+        )
+        if closed.empty and forming is None:
             return False
 
-        self.engine.market_data.append_ohlc_rows(rows)
+        md = self.engine.market_data
+        if not closed.empty:
+            md.append_ohlc_rows(closed, now=now)
+        if forming is not None:
+            md.apply_nt_bar(forming, now=now)
         log_structured(
             LuminaError(
                 severity=ErrorSeverity.RECOVERABLE_LEARNING,
                 code="INFO_PRINT_LEGACY",
-                message=f"Loaded {len(rows)} historical 1-min candles -> ohlc_1min now {len(self.engine.ohlc_1min)} rows",
-                context={"rows": len(rows)},
+                message=(
+                    f"Loaded {len(closed)} closed historical 1-min candles"
+                    f"{' + forming current_candle' if forming is not None else ''}"
+                    f" -> ohlc_1min now {len(md.ohlc_1min)} rows"
+                ),
+                context={
+                    "closed": int(len(closed)),
+                    "forming": forming is not None,
+                },
             )
         )
         return True
 
-    def load_historical_ohlc_for_symbol(self, instrument: str, days_back: int = 3, limit: int = 5000) -> pd.DataFrame:
-        bars = self._fetch_historical_bars(instrument=instrument, days_back=days_back, limit=limit)
-        rows: list[dict[str, Any]] = []
-        for bar in bars:
-            ts_str = bar.get("timestamp") or bar.get("time")
-            if not ts_str:
-                continue
-            ts = pd.to_datetime(ts_str)
-            if ts.tzinfo is not None:
-                ts = ts.tz_convert(None)
-            rows.append(
-                {
-                    "timestamp": ts,
-                    "open": float(bar.get("open") or bar.get("last") or 0),
-                    "high": float(bar.get("high") or bar.get("last") or 0),
-                    "low": float(bar.get("low") or bar.get("last") or 0),
-                    "close": float(bar.get("close") or bar.get("last") or 0),
-                    "volume": int(bar.get("volume", 0)),
-                }
-            )
+    def load_historical_ohlc_for_symbol(
+        self,
+        instrument: str,
+        days_back: int = 3,
+        limit: int = 5000,
+        *,
+        now: datetime | None = None,
+    ) -> pd.DataFrame:
+        """Closed NT 1m bars only. A still-forming last bar is not historical."""
+        closed, _forming = self._fetch_closed_and_forming(
+            instrument=instrument, days_back=days_back, limit=limit, now=now
+        )
+        return closed
 
+    def _fetch_closed_and_forming(
+        self,
+        instrument: str,
+        days_back: int,
+        limit: int,
+        *,
+        now: datetime | None = None,
+    ) -> tuple[pd.DataFrame, dict[str, Any] | None]:
+        from lumina_core.engine.market_data_manager import partition_closed_and_forming
+        from lumina_core.engine.nt_bar_ssot import accept_source_bars, skip_ratio_fail
+
+        empty = pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+        bars = self._fetch_historical_bars(instrument=instrument, days_back=days_back, limit=limit)
+        rows, rejected = accept_source_bars(bars)
+        if skip_ratio_fail(len(rows), rejected):
+            log_structured(
+                LuminaError(
+                    severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
+                    code="MDS_HIST_SKIP_RATIO",
+                    message="historical 1m load rejected: too many dishonest NT bars",
+                    context={"accepted": len(rows), "rejected": rejected, "instrument": instrument},
+                )
+            )
+            return empty, None
         if not rows:
-            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
-        return pd.DataFrame(rows)
+            return empty, None
+        return partition_closed_and_forming(pd.DataFrame(rows), now=now)
 
     def load_historical_ohlc_extended(
         self,
@@ -73,9 +106,12 @@ class MarketDataHistoryMixin(MarketDataHistoryFetchMixin):
         on_chunk: Callable[..., None] | None = None,
         prefer_daysback_only: bool = False,
         instrument: str | None = None,
+        *,
+        now: datetime | None = None,
     ) -> list[dict[str, Any]]:
-        """Load historical bars and expand each bar into pseudo ticks.
+        """Load closed historical bars and expand each into pseudo ticks.
 
+        A still-forming last NT bar is not a closed minute and is not expanded.
         Crosstrade historical endpoint is bar-based; this creates a deterministic
         tick stream (open/high/low/close path) for simulation workloads.
         Optional ``instrument`` fetches a specific listing (Birth stitch); default
@@ -95,22 +131,34 @@ class MarketDataHistoryMixin(MarketDataHistoryFetchMixin):
                 prefer_daysback_only=prefer_daysback_only,
             )
 
-            ticks: list[dict[str, Any]] = []
-            total_bars = len(bars)
-            expand_batch = 500
-            for bar_index, bar in enumerate(bars):
-                ts_str = bar.get("timestamp") or bar.get("time")
-                if not ts_str:
-                    continue
-                bar_ts = pd.to_datetime(ts_str)
-                if bar_ts.tzinfo is not None:
-                    bar_ts = bar_ts.tz_convert(None)
+            from lumina_core.engine.nt_bar_ssot import accept_source_bars, is_forming_bar, skip_ratio_fail
 
-                o = float(bar.get("open") or bar.get("last") or 0.0)
-                h = float(bar.get("high") or bar.get("last") or 0.0)
-                low_price = float(bar.get("low") or bar.get("last") or 0.0)
-                c = float(bar.get("close") or bar.get("last") or 0.0)
-                v = max(1, int(bar.get("volume", 1)))
+            honest, rejected = accept_source_bars(bars)
+            if skip_ratio_fail(len(honest), rejected):
+                log_structured(
+                    LuminaError(
+                        severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
+                        code="MDS_HIST_SKIP_RATIO",
+                        message="historical 1m expand rejected: too many dishonest NT bars",
+                        context={"accepted": len(honest), "rejected": rejected, "instrument": instrument},
+                    )
+                )
+                return []
+
+            closed = [bar for bar in honest if not is_forming_bar(bar["timestamp"], now)]
+            if not closed:
+                return []
+
+            ticks: list[dict[str, Any]] = []
+            total_bars = len(closed)
+            expand_batch = 500
+            for bar_index, bar in enumerate(closed):
+                bar_ts = bar["timestamp"]
+                o = float(bar["open"])
+                h = float(bar["high"])
+                low_price = float(bar["low"])
+                c = float(bar["close"])
+                v = max(1, int(bar.get("volume") or 1))
 
                 # Price path with directional bias from open->close.
                 path = [o, h, low_price, c]
@@ -122,18 +170,20 @@ class MarketDataHistoryMixin(MarketDataHistoryFetchMixin):
 
                 per_tick_vol = max(1, int(v / max(1, len(path))))
                 cum_vol = 0
+                walk = str(bar.get("history_walk") or "")
                 for idx, px in enumerate(path):
                     cum_vol += per_tick_vol
                     spread = max(0.25, abs(h - low_price) * 0.02)
-                    ticks.append(
-                        {
-                            "timestamp": (bar_ts + pd.Timedelta(seconds=idx * (60 / max(1, len(path))))).isoformat(),
-                            "last": float(px),
-                            "bid": float(px - spread / 2.0),
-                            "ask": float(px + spread / 2.0),
-                            "volume": int(cum_vol),
-                        }
-                    )
+                    tick = {
+                        "timestamp": (bar_ts + pd.Timedelta(seconds=idx * (60 / max(1, len(path))))).isoformat(),
+                        "last": float(px),
+                        "bid": float(px - spread / 2.0),
+                        "ask": float(px + spread / 2.0),
+                        "volume": int(cum_vol),
+                    }
+                    if walk:
+                        tick["history_walk"] = walk
+                    ticks.append(tick)
                 if on_chunk is not None and total_bars > 0 and (
                     (bar_index + 1) % expand_batch == 0 or (bar_index + 1) == total_bars
                 ):
@@ -162,24 +212,23 @@ class MarketDataHistoryMixin(MarketDataHistoryFetchMixin):
 
     def gap_recovery_daemon(self) -> None:
         while True:
-            time.sleep(300)
+            time.sleep(30)
             try:
-                with self.engine.live_data_lock:
-                    if len(self.engine.ohlc_1min) < 50:
-                        continue
-                    df = self.engine.ohlc_1min[["timestamp"]].copy()
-                    deltas = df["timestamp"].diff().dt.total_seconds()
-                    max_gap = deltas.max() if len(deltas) > 1 else 0
-                if max_gap > 120:
-                    log_structured(
-                        LuminaError(
-                            severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                            code="INFO_PRINT_LEGACY",
-                            message=f"GAP DETECTED ({max_gap / 60:.1f} min) -> recovery",
-                            context={"max_gap_sec": max_gap},
-                        )
-                    )
-                    self.load_historical_ohlc(days_back=2, limit=2000)
+                from lumina_core.broker.ninjatrader.fabric_link_supervisor import (
+                    get_fabric_link_supervisor,
+                )
+
+                app = self._app()
+                client = get_fabric_link_supervisor().get_client()
+                instrument = str(
+                    getattr(app, "INSTRUMENT", None)
+                    or getattr(getattr(self.engine, "config", None), "instrument", "")
+                    or ""
+                ).strip()
+                reconcile = getattr(self, "_reconcile_nt_book", None)
+                if client is None or not instrument or reconcile is None:
+                    continue
+                reconcile(app, client, instrument)
             except Exception as exc:
                 err = LuminaError(
                     severity=ErrorSeverity.RECOVERABLE_TRANSIENT,

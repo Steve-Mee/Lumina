@@ -1,14 +1,15 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { LucideIcon } from "lucide-react";
 import { Layers, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import { useModeMotion } from "@/hooks/useModeMotion";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
+import { getLuminaOverlayRoot } from "@/lib/luminaOverlayRoot";
 import { modeLabelClass, drawerBadgeClass, type DrawerBadgeVariant } from "@/lib/modePresentation";
 import { panelCrossfadeWith, transitionOrNone } from "@/lib/motionPresets";
 import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
-import { luminaInteractiveClass } from "@/lib/glassGlowTaxonomy";
 import { cn } from "@/lib/utils";
 
 export interface DrawerSection<TTab extends string = string> {
@@ -62,7 +63,7 @@ export function SubsystemsDrawerTrigger({
       data-mode={operatorMode}
       onClick={onClick}
       className={cn(
-        "deck-tab-chip lumina-interactive lumina-glass lumina-glass--panel inline-flex h-8 items-center gap-1.5 px-2.5 font-mono text-[10px] tracking-wide text-muted-foreground uppercase transition-colors lumina-glow-edge hover:text-foreground",
+        "command-deck-ops__organ-btn genesis-recovery-action-card__btn genesis-recovery-action-card__btn--idle whitespace-nowrap",
         className,
       )}
     >
@@ -106,7 +107,24 @@ export function SubsystemsDrawer<TTab extends string>({
     onOpenChange(false);
   };
 
-  return (
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onOpenChange(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onOpenChange]);
+
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  return createPortal(
     <AnimatePresence>
       {open ? (
         <>
@@ -136,18 +154,15 @@ export function SubsystemsDrawer<TTab extends string>({
             <div className="relative flex items-center justify-between border-b border-white/10 px-4 py-3">
               <div className="deck-panel-accent absolute inset-x-4 top-0 h-px origin-left" />
               <div>
-                <h3 className="font-mono text-xs tracking-[0.14em] text-foreground uppercase">
+                <h3 className="risk-envelope-panel__toolbar-title">
                   {title}
                 </h3>
-                <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">{subtitle}</p>
+                <p className="mt-0.5 font-mono text-[10px] tracking-wide text-white/40 uppercase">{subtitle}</p>
               </div>
               <button
                 type="button"
                 aria-label="Close"
-                className={cn(
-                  luminaInteractiveClass("ghost"),
-                  "rounded-md p-1.5 text-muted-foreground hover:bg-white/5 hover:text-foreground",
-                )}
+                className="subsystems-drawer-airlock__close genesis-recovery-action-card__btn genesis-recovery-action-card__btn--idle"
                 onClick={() => onOpenChange(false)}
               >
                 <X className="size-4" />
@@ -189,11 +204,10 @@ export function SubsystemsDrawer<TTab extends string>({
                           <button
                             type="button"
                             className={cn(
-                              luminaInteractiveClass("ghost"),
-                              "flex w-full items-center justify-between rounded-md px-2 py-2 text-left font-mono text-[10px] tracking-wide uppercase transition-colors hover:bg-white/5 lumina-glass--panel",
+                              "genesis-recovery-action-card__btn",
                               active
-                                ? "deck-accent-text bg-white/5"
-                                : "text-muted-foreground/80",
+                                ? "genesis-recovery-action-card__btn--accent"
+                                : "genesis-recovery-action-card__btn--idle",
                               getTabHighlightClass?.(tab),
                             )}
                             onClick={() => selectTab(tab)}
@@ -231,6 +245,7 @@ export function SubsystemsDrawer<TTab extends string>({
           </motion.aside>
         </>
       ) : null}
-    </AnimatePresence>
+    </AnimatePresence>,
+    getLuminaOverlayRoot(),
   );
 }

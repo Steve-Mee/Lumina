@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from lumina_core.birth.foundation_metrics import occupancy_ratio
+from lumina_core.io.atomic_fs import atomic_write_text
 from lumina_core.maturity.playground.envelope import envelope_sealed_for_pass
 from lumina_core.maturity.playground.fills import first_honest_fill
 from lumina_core.maturity.playground.progress import load_playground_progress
@@ -28,25 +30,53 @@ def read_mode(workspace_root: Path | str) -> str:
     return str(raw.get("mode") or "").strip().lower()
 
 
-def habitat_error(*, mode: str, nt_down: bool = False) -> bool:
+def habitat_error(*, mode: str, nt_health: str = "unknown") -> bool:
     if str(mode or "").strip().lower() == "real":
         return True
-    return bool(nt_down)
+    return str(nt_health or "") == "down"
 
 
-def nt_down(workspace_root: Path | str) -> bool:
+def nt_health(workspace_root: Path | str) -> str:
+    """``up``, ``down``, or ``unknown``. A missing file is unknown, not up."""
     path = Path(workspace_root) / HEALTH_REL
     if not path.is_file():
-        return False
+        return "unknown"
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return True
+        return "down"
     if not isinstance(raw, dict):
-        return True
+        return "down"
     if raw.get("ok") is False or raw.get("healthy") is False:
-        return True
-    return False
+        return "down"
+    return "up"
+
+
+def nt_down(workspace_root: Path | str) -> bool:
+    return nt_health(workspace_root) == "down"
+
+
+def write_occupancy(
+    workspace_root: Path | str,
+    *,
+    flat_bars: int,
+    total_bars: int,
+    live_px: float | None = None,
+) -> float | None:
+    """Plant-flat ratio. Denominator 0 leaves occupancy missing. Never copies Awakening."""
+    occ = occupancy_ratio(flat_bars=int(flat_bars), total_signals=int(total_bars))
+    path = Path(workspace_root) / OCCUPANCY_REL
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload: dict[str, Any] = {
+        "flat_bars": int(flat_bars),
+        "total_bars": int(total_bars),
+        "occupancy": occ,
+    }
+    px = _f(live_px)
+    if px is not None and px > 0.0:
+        payload["live_px"] = px
+    atomic_write_text(path, json.dumps(payload, ensure_ascii=True, indent=2) + "\n")
+    return occ
 
 
 def live_occupancy(workspace_root: Path | str) -> float | None:
@@ -56,16 +86,35 @@ def live_occupancy(workspace_root: Path | str) -> float | None:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             raw = None
-        if isinstance(raw, dict):
-            occ = _f(raw.get("occupancy"))
-            if occ is not None:
-                return occ
-    return _f(load_playground_progress(workspace_root).get("occupancy"))
+        if isinstance(raw, dict) and "occupancy" in raw:
+            if int(raw.get("total_bars") or 0) <= 0:
+                return None
+            return _f(raw.get("occupancy"))
+    return None
+
+
+def _live_price(workspace_root: Path | str) -> float | None:
+    fill = first_honest_fill(workspace_root)
+    price = _f((fill or {}).get("fill_px"))
+    if price is not None and price > 0.0:
+        return price
+    path = Path(workspace_root) / OCCUPANCY_REL
+    if not path.is_file():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    live = _f(raw.get("live_px"))
+    if live is None or live <= 0.0:
+        return None
+    return live
 
 
 def live_breakeven_wr(workspace_root: Path | str) -> float | None:
-    fill = first_honest_fill(workspace_root)
-    price = _f((fill or {}).get("fill_px"))
+    price = _live_price(workspace_root)
     if price is None or price <= 0.0:
         return None
     from lumina_core.birth.birth_trade_geometry import (
@@ -78,6 +127,7 @@ def live_breakeven_wr(workspace_root: Path | str) -> float | None:
         BIRTH_FALLBACK_STOP_PCT,
         BIRTH_FALLBACK_TARGET_PCT,
         price=float(price),
+        instrument="MES",
     )
     return float(be_wr)
 
@@ -97,11 +147,12 @@ def waiting_operator(workspace_root: Path | str) -> bool:
 
 def habitat_snapshot(workspace_root: Path | str) -> dict[str, Any]:
     mode = read_mode(workspace_root)
-    down = nt_down(workspace_root)
+    health = nt_health(workspace_root)
     return {
         "mode": mode,
-        "nt_down": down,
-        "habitat_error": habitat_error(mode=mode, nt_down=down),
+        "nt_down": health == "down",
+        "nt_health": health,
+        "habitat_error": habitat_error(mode=mode, nt_health=health),
         "occupancy": live_occupancy(workspace_root),
         "breakeven_wr": live_breakeven_wr(workspace_root),
         "envelope_breached": envelope_breached(workspace_root),

@@ -79,3 +79,18 @@ def test_completed_returns_hub(tmp_path: Path) -> None:
     surface, reason = resolve_app_surface(**_ready_kwargs(tmp_path))
     assert surface == "hub"
     assert reason == "maturation_hub"
+
+
+@pytest.mark.unit
+def test_unreadable_progress_is_not_replaced(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from lumina_core.maturity.playground.progress import merge_playground_progress, progress_path
+
+    save_playground_progress(tmp_path, {"deck_live": True, "n_p": 0})
+    path = progress_path(tmp_path)
+    before = path.read_text(encoding="utf-8")
+    monkeypatch.setattr(
+        "lumina_core.maturity.playground.progress.read_progress_for_merge",
+        lambda _path: None,
+    )
+    assert merge_playground_progress(tmp_path, {"last_px": 1.0}) == {}
+    assert path.read_text(encoding="utf-8") == before

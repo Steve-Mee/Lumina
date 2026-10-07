@@ -9,6 +9,30 @@ from lumina_core.rl.observation_builder import OBSERVATION_DIM, build_observatio
 
 
 @pytest.mark.unit
+def test_bible_layer_is_built_once_for_a_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
+    from lumina_core.birth import bible_observation as bible
+
+    bible._LAYER_CACHE.clear()
+    built = {"n": 0}
+
+    class _Engine:
+        def __init__(self, workspace_root: object = None) -> None:
+            _ = workspace_root
+            built["n"] += 1
+            self.evolvable_layer = {
+                "probability_model": {"base_winrate": 0.5, "confluence_bonus": 0.1},
+                "news_avoidance": {},
+                "mtf_matrix": {},
+            }
+
+    monkeypatch.setattr(bible, "BibleEngine", _Engine)
+    bible.bible_features_for_tick({"regime": "NEUTRAL"}, workspace_root="same")
+    bible.bible_features_for_tick({"regime": "TREND_UP"}, workspace_root="same")
+    assert built["n"] == 1
+    bible._LAYER_CACHE.clear()
+
+
+@pytest.mark.unit
 def test_bible_observation_slots_reflect_tick_regime() -> None:
     ticks = enrich_ticks_for_sim(
         [

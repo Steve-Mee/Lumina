@@ -63,6 +63,12 @@ SSOT: `lumina_core/maturity/apprenticeship/law.py`. Progress: `state/lumina_appr
 4. Soft-complete lab stamp — rejected in production (same as ADR-0049 / ADR-0050).
 5. Pull cert OOS or WR≥BE into Apprenticeship — rejected; those walls have homes.
 
+## Amendment (2026-10-02) — this is the trading exam
+
+Five green session days moved to Playground. They are no longer this exit.
+
+This exit keeps n_A ≥ 150 on **this** tape, occupancy, process-R, Sharpe ≥ 0.20, DD ≤ 12%, constitution 0, and adds WR ≥ live geometry breakeven and mean R ≥ 0. The Playground tape does not count. A shadow may still learn. Promoting it into the exam policy resets this exam. Proving Ground floors are unchanged.
+
 ## Links
 
 - Code: `lumina_core/maturity/apprenticeship/`

@@ -23,7 +23,7 @@ Visual surfaces are classified T0–T3 so onboarding, birth, and cockpit share o
 10. **Status orchestrator** — `resolveDeckStatus()` owns blocking overlay, rail chip, and recovery; no orphan banners.
 11. **Fail-closed backend** — `backendHealthStore` defaults `alive=false` until first probe; overlay only when `known && !alive`.
 12. **Motion contract** — `visualQuality=low` freezes organism clock; ReasoningSpine/Stage honor `motionReduced`; bloom tier matrix explicit.
-13. **Glass stack** — max 2 blurred glass surfaces visible in the default cockpit viewport (HUD + one active deck panel); enforced by `glassStackBudget.test.ts`. StatusBar uses reduced-blur `lumina-glass--hud` (`status-bar--glass`); inactive deck columns use `lumina-surface-muted`.
+13. **Glass stack** — Command Deck default viewport: compact phase header + dense ladder + genesis helix + one overlay glass ops panel, locked to `h-dvh` with no page scroll. Panel is a flex column: chrome row + fortress strip + boards that fill remaining height. CommandHud lives in the chrome row (not a second glass slab). StatusBar is not mounted. Evolution and Intelligence use muted frames and `min-height: 0`. Enforced by `glassStackBudget.test.ts`.
 14. **Decision Theater hero cap** — stage renders max 2 `HudSignal` tiles; overflow lives in debug panel only.
 15. **Contextual annex-only** — regime/P&L contextual metrics never occupy HUD secondary slots; Performance annex hint owns them.
 16. **Evolution REAL background** — `EvolutionArena` sets `data-mode` + `evolution-arena-shell--real` on mount (no SIM gradient flash).

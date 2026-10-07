@@ -7,7 +7,6 @@ import traceback
 from datetime import datetime
 from typing import Any
 
-import pandas as pd
 import requests
 
 from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
@@ -36,28 +35,9 @@ class OperationsMarketMixin:
         with self.engine.live_data_lock:
             if len(self.engine.ohlc_1min) < 60:
                 return "PARTIAL_DATA_ONLY"
-            df = self.engine.ohlc_1min.copy()
+        from lumina_core.engine.nt_ohlc_frames import snapshot_native
 
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
-        snapshots: dict[str, Any] = {}
-        for tf_name, seconds in timeframes.items():
-            resampled = (
-                df.set_index("timestamp")
-                .resample(f"{seconds // 60}min")
-                .agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"})
-                .dropna()
-            )
-            if len(resampled) > 0:
-                row = resampled.iloc[-1]
-                snapshots[tf_name] = {
-                    "open": float(row["open"]),
-                    "high": float(row["high"]),
-                    "low": float(row["low"]),
-                    "close": float(row["close"]),
-                    "volume": int(row["volume"]),
-                }
-            else:
-                snapshots[tf_name] = {"open": 0.0, "high": 0.0, "low": 0.0, "close": 0.0, "volume": 0}
+        snapshots = snapshot_native(self.engine.market_data, timeframes)
         return json.dumps(snapshots, ensure_ascii=False)
 
     def get_high_impact_news(self) -> dict[str, Any]:

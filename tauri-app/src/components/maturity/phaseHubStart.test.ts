@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { followPhaseStart } from "@/components/maturity/phaseHubStart";
+import { followPhaseStart, livingClockPhase } from "@/components/maturity/phaseHubStart";
 import type { MaturityHubPayload } from "@/lib/maturationClient";
+
+describe("livingClockPhase", () => {
+  it("returns the running living phase", () => {
+    expect(livingClockPhase({ runner_active: true, active_phase: "awakening" })).toBe("awakening");
+  });
+
+  it("ignores an idle hub focus", () => {
+    expect(livingClockPhase({ runner_active: false, active_phase: "awakening" })).toBeNull();
+    expect(livingClockPhase({ runner_active: true, active_phase: "birth" })).toBeNull();
+  });
+});
 
 describe("followPhaseStart", () => {
   it("waits until the runner idles then reports missing proofs", async () => {
@@ -14,8 +25,8 @@ describe("followPhaseStart", () => {
       {
         runner_active: false,
         focus_status: "failed",
-        last_result: { ok: false, missing: ["evolution_proof_passed"] },
-        exit_eval: { ok: false, missing: ["evolution_proof_passed"] },
+        last_result: { ok: false, missing: ["baseline_not_the_plant"] },
+        exit_eval: { ok: false, missing: ["baseline_not_the_plant"] },
       } as MaturityHubPayload,
     ];
     let index = 0;
@@ -25,7 +36,7 @@ describe("followPhaseStart", () => {
       { attempts: 5, delayMs: 1 },
     );
     expect(result.ok).toBe(false);
-    expect(result.message).toContain("Evolution proof");
+    expect(result.message).toMatch(/Plant baseline/i);
     expect(result.hub.focus_status).toBe("failed");
   });
 });

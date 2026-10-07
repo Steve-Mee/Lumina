@@ -9,12 +9,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from lumina_core.birth.policy_signal_extract import extract_policy_signals
+from lumina_core.birth.certificate_evaluator import max_drawdown_pct
 from lumina_core.birth.foundation_metrics import (
     S5_DD_EQUITY_USD,
     build_foundation_snapshot,
     occupancy_ratio,
+    s5_holdout_sharpe,
 )
-from lumina_core.birth.runway import risk_metrics_from_pnl
 from lumina_core.birth.s5_process_decomp import target_clean_count
 
 TRAIN = False
@@ -28,6 +30,7 @@ REGRESS_SHARPE_LE = -3.0
 STABLE_DD_MAX_PCT = 25.0
 ONE_WAY_DD_PCT = 50.0
 ADR0026_MIN_TRADES = 500
+
 
 CLASS_STABLE = "STABLE"
 CLASS_REGRESS = "GRIND_REGRESS"
@@ -56,6 +59,7 @@ class GrindLegMetrics:
     plant: int = 0
     force_open: int = 0
     occupancy: float | None = None
+    occupancy_at_nb: float | None = None
     closes_stop: int = 0
     closes_target: int = 0
     closes_time_stop: int = 0
@@ -77,6 +81,9 @@ class GrindLegMetrics:
     optimizer_steps: int = 0
     train: bool = TRAIN
     classification: str = CLASS_INCONCLUSIVE
+    stopped: bool = False
+    constitution_violations: int | None = None
+    constitution_blocks: int | None = None
 
 
 class EvaluateOnlyPolicy:
@@ -86,6 +93,8 @@ class EvaluateOnlyPolicy:
         self._inner = inner
         self.optimizer_steps = 0
         self.last_open_signal: dict[str, Any] | None = None
+        self._pending_obs: Any = None
+        self._pending_action: Any = None
 
     @property
     def policy(self) -> Any:
@@ -95,10 +104,15 @@ class EvaluateOnlyPolicy:
         raw = self._inner.predict(*args, **kwargs)
         obs = args[0] if args else kwargs.get("observation")
         action = raw[0] if isinstance(raw, (tuple, list)) and raw else raw
-        from lumina_core.birth.policy_signal_extract import extract_policy_signals
-
-        self.last_open_signal = extract_policy_signals(self._inner, obs, action)
+        self._pending_obs = obs
+        self._pending_action = action
         return raw
+
+    def capture_open_signal(self) -> None:
+        """Second forward only on the bar that opens. Same obs and action as predict."""
+        self.last_open_signal = extract_policy_signals(
+            self._inner, self._pending_obs, self._pending_action
+        )
 
     def learn(self, *args: Any, **kwargs: Any) -> Any:
         raise RuntimeError("awakening grind train=False — learn() forbidden")
@@ -154,6 +168,15 @@ def classify_overall(class_a: str, class_b: str) -> str:
     return OVERALL_INCONCLUSIVE
 
 
+def _optional_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _f(row: dict[str, Any], key: str, default: float = 0.0) -> float:
     raw = row.get(key)
     try:
@@ -184,7 +207,14 @@ def grind_table_from_rows(
             _f(r, "pnl") / max(_f(r, "intended_risk_usd", _f(r, "risk_usd")), 1e-9)
             for r in rows
         ]
-    sharpe, dd = risk_metrics_from_pnl(pnl) if n else (0.0, 0.0)
+    # Trade information ratio. sqrt(252) treats each close as a session and
+    # pushes every Birth-legal plant through the -3 regress line.
+    if n:
+        ratio = s5_holdout_sharpe(pnl)
+        sharpe = float(ratio) if ratio is not None else 0.0
+        dd = max_drawdown_pct(pnl)
+    else:
+        sharpe, dd = 0.0, 0.0
     plant = int(getattr(rollout, "plant_trades", 0) or 0) if rollout is not None else sum(
         1 for r in rows if r.get("plant")
     )
@@ -235,6 +265,9 @@ def grind_table_from_rows(
         if rollout is not None
         else 0,
         occupancy=occ,
+        occupancy_at_nb=_optional_float(getattr(rollout, "occupancy_at_nb", None))
+        if rollout is not None
+        else None,
         closes_stop=int(getattr(rollout, "closes_stop", 0) or 0) if rollout is not None else _reason_count("stop"),
         closes_target=int(getattr(rollout, "closes_target", 0) or 0)
         if rollout is not None

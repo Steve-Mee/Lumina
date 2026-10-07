@@ -23,23 +23,10 @@ from lumina_core.engine.market_data_history_helpers import MarketDataHistoryHelp
 
 
 def _is_ninjatrader_exe_running() -> bool:
-    """Lightweight Windows process probe — no launcher imports (Code Red telemetry only)."""
-    import subprocess
-    import sys
+    """Windows image probe. No tasklist console from the pythonw engine."""
+    from lumina_core.process_probe import process_image_running
 
-    if sys.platform != "win32":
-        return False
-    try:
-        r = subprocess.run(
-            ["tasklist", "/FI", "IMAGENAME eq NinjaTrader.exe", "/NH"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-        return "ninjatrader.exe" in (r.stdout or "").lower()
-    except (OSError, subprocess.TimeoutExpired):
-        return False
+    return process_image_running("NinjaTrader.exe", "ninjatrader") is True
 
 
 def pd_to_utc(raw: Any) -> datetime | None:
@@ -67,7 +54,9 @@ class MarketDataHistoryFetchMixin(MarketDataHistoryHelpersMixin):
 
     def _resolve_historical_instrument(self, instrument: str, app: Any) -> str:
         normalized = self._normalize_symbol(instrument)
-        rolled = _mds().roll_stale_contract_symbol(normalized)
+        from lumina_core.order_gatekeeper.contract_symbols import live_listing
+
+        rolled = live_listing(normalized)
         if rolled != normalized:
             app.logger.warning(
                 "birth.history.stale_contract_roll from=%s to=%s",
@@ -159,12 +148,12 @@ class MarketDataHistoryFetchMixin(MarketDataHistoryHelpersMixin):
                     "timestamp": ts_iso,
                     "time": ts_iso,
                     "epoch": epoch,
-                    "open": float(b.get("open") or b.get("last") or 0.0),
-                    "high": float(b.get("high") or b.get("last") or 0.0),
-                    "low": float(b.get("low") or b.get("last") or 0.0),
-                    "close": float(b.get("close") or b.get("last") or 0.0),
+                    "open": float(b.get("open") or 0.0),
+                    "high": float(b.get("high") or 0.0),
+                    "low": float(b.get("low") or 0.0),
+                    "close": float(b.get("close") or 0.0),
                     "volume": int(b.get("volume") or 0),
-                    "last": float(b.get("last") or b.get("close") or 0.0),
+                    "last": float(b.get("last") or 0.0),
                 }
             )
         return out
@@ -237,22 +226,24 @@ class MarketDataHistoryFetchMixin(MarketDataHistoryHelpersMixin):
             target_cap if target_cap is not None else HISTORICAL_BAR_LIMIT_SAFETY_CAP,
             max(est_bars_per_day * days_back_i, 2_000),
         )
-        # Per-chunk bar budget: enough for ~1 week of 1m futures, but NOT a HDS storm.
-        # Code Red: rapid multi-k bars storms correlated with NT/Tradovate process exits.
-        per_chunk = min(8_000, max(need_bars // max(1, days_back_i // 7), 4_000))
-        if target_cap is not None:
-            per_chunk = min(per_chunk, target_cap)
         # Calendar chunk width for from/to pagination (full trading days).
         chunk_days = 5 if days_back_i >= 21 else (7 if days_back_i >= 14 else max(2, min(7, days_back_i)))
+        # Ask for every bar in the chunk. A max below the real count used to
+        # come back as zero bars. The stored list still stops at target_cap.
+        per_chunk = min(20_000, max(est_bars_per_day * chunk_days, 4_000))
         # Minimum settle between BarsRequest RPCs (seconds) — protect NT process.
         chunk_settle_sec = 2.0 if days_back_i >= 14 else 1.0
         # Only abort if NT was observed alive earlier this fetch, then disappeared.
         # Lightweight process check — never import lumina_launcher (heavy import graph).
         nt_seen_alive = bool(_is_ninjatrader_exe_running())
 
+        from lumina_core.market.globex_hours import history_request_end
+        from lumina_core.order_gatekeeper.contract_symbols import front_month_symbol
+
         now_utc = datetime.now(timezone.utc)
-        window_end = now_utc
-        window_start = now_utc - timedelta(days=days_back_i)
+        window_end = history_request_end(now_utc)
+        window_start = window_end - timedelta(days=days_back_i)
+        history_root = str(instrument or "MES").split()[0]
 
         app.logger.info(
             "Historical bars via Fabric instrument=%s daysBack=%s need_bars≈%s "
@@ -323,13 +314,16 @@ class MarketDataHistoryFetchMixin(MarketDataHistoryHelpersMixin):
                 chunk_start = max(window_start, cursor_end - timedelta(days=chunk_days))
                 start_ms = int(chunk_start.timestamp() * 1000)
                 end_ms = int(cursor_end.timestamp() * 1000)
-                remaining = None if target_cap is None else max(0, target_cap - len(merged))
-                max_bars = per_chunk if remaining is None else min(per_chunk, remaining)
-                if max_bars <= 0:
+                if target_cap is not None and len(merged) >= target_cap:
                     break
+                # Storage cap must not be the BarsRequest cap. A 5-day window
+                # holds thousands of 1-minute bars. max=500 made NT return them
+                # and this client record zero.
+                max_bars = per_chunk
 
+                chunk_listing = front_month_symbol(history_root, now_utc=cursor_end) or instrument
                 hist = client.request_historical_data(
-                    instrument=instrument,
+                    instrument=chunk_listing,
                     bar_period="1m",
                     start_unix_ms=start_ms,
                     end_unix_ms=end_ms,
@@ -356,6 +350,7 @@ class MarketDataHistoryFetchMixin(MarketDataHistoryHelpersMixin):
                     if ts is None:
                         continue
                     if lo <= ts <= hi:
+                        b["history_walk"] = "per_chunk_front"
                         in_window.append(b)
 
                 if code.lower() != "ok" or not in_window:
@@ -364,7 +359,7 @@ class MarketDataHistoryFetchMixin(MarketDataHistoryHelpersMixin):
                         "instrument=%s window=%s→%s raw=%s in_window=%s merged=%s",
                         code,
                         hist.get("message"),
-                        instrument,
+                        chunk_listing,
                         chunk_start.date(),
                         cursor_end.date(),
                         len(shaped),

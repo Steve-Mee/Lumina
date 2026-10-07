@@ -8,6 +8,15 @@ import { setPreferProvingGroundHub } from "@/lib/provingGround/provingGroundSurf
 
 const LIVING_PHASES = new Set(["awakening", "playground", "apprenticeship", "proving_ground"]);
 
+/** Living phase whose clock is actually running. Idle hub focus is not a clock. */
+export function livingClockPhase(
+  hub: { runner_active?: boolean; active_phase?: string | null } | null | undefined,
+): string | null {
+  if (!hub?.runner_active) return null;
+  const phase = String(hub.active_phase || "");
+  return LIVING_PHASES.has(phase) ? phase : null;
+}
+
 export function clearLivingHubPref(phase: string): void {
   if (phase === "awakening") setPreferAwakeningHub(false);
   if (phase === "playground") setPreferPlaygroundHub(false);

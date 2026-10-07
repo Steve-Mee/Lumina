@@ -16,6 +16,7 @@ from lumina_core.birth.foundation_metrics import FOUNDATION_SCHEMA
 from lumina_core.maturity.continuum import load_continuum, mark_phase_completed
 from lumina_core.maturity.phase_runners.awakening_shot import (
     AwakeningShotError,
+    assert_birth_freeze,
     live_child_zip,
     run_live_awakening_shot,
     snapshot_birth_freeze,
@@ -42,7 +43,11 @@ def _write_fitness(root: Path, *, oos_wr: float = 0.333333) -> None:
     )
 
 
-def _write_pi_star(root: Path, blob: bytes = b"frozen-pi-star-bytes") -> Path:
+def _write_pi_star(root: Path, blob: bytes | None = None) -> Path:
+    from lumina_core.maturity.awakening.weight_sha import pack_policy_weight_zip
+
+    if blob is None:
+        blob = pack_policy_weight_zip(b"frozen-weights")
     path = root / "reports" / "birth_cloud_run" / "artifacts" / "birth_exit_pi_star.zip"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(blob)
@@ -85,7 +90,9 @@ def _split(_root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dic
 def _train_stub(*, train: list[dict[str, Any]], child_path: Path, seen: dict[str, Any], **_: Any) -> dict[str, Any]:
     seen["train_ids"] = [str(t.get("id")) for t in train]
     child_path.parent.mkdir(parents=True, exist_ok=True)
-    child_path.write_bytes(b"awakening-child-policy")
+    from lumina_core.maturity.awakening.weight_sha import pack_policy_weight_zip
+
+    child_path.write_bytes(pack_policy_weight_zip(b"child-weights"))
     return {"actual_timesteps": 10_000}
 
 
@@ -105,6 +112,48 @@ def _eval_stub(
         "n_all": int(n),
         "policy_only": True,
     }
+
+
+@pytest.mark.unit
+def test_birth_hub_card_rewrite_does_not_break_freeze(tmp_path: Path) -> None:
+    from lumina_core.maturity.continuum import load_continuum, save_continuum
+    from lumina_core.maturity.phase_runners.awakening_shot import (
+        assert_birth_freeze,
+        snapshot_birth_freeze,
+    )
+
+    _write_birth_plant(tmp_path)
+    before = snapshot_birth_freeze(tmp_path)
+    data = load_continuum(tmp_path)
+    birth = dict((data.get("phase_records") or {}).get("birth") or {})
+    learned = dict(birth.get("learned") or {})
+    learned["message"] = "hub card refreshed"
+    learned.pop("birth_exit", None)
+    birth.pop("completed_at", None)
+    birth["learned"] = learned
+    data["phase_records"]["birth"] = birth
+    save_continuum(tmp_path, data)
+    assert_birth_freeze(tmp_path, before)
+
+
+@pytest.mark.unit
+def test_dropping_birth_exit_proofs_breaks_freeze(tmp_path: Path) -> None:
+    from lumina_core.maturity.continuum import load_continuum, save_continuum
+    from lumina_core.maturity.phase_runners.awakening_shot import (
+        AwakeningShotError,
+        assert_birth_freeze,
+        snapshot_birth_freeze,
+    )
+
+    _write_birth_plant(tmp_path)
+    before = snapshot_birth_freeze(tmp_path)
+    data = load_continuum(tmp_path)
+    birth = dict((data.get("phase_records") or {}).get("birth") or {})
+    birth["exit_proofs"] = []
+    data["phase_records"]["birth"] = birth
+    save_continuum(tmp_path, data)
+    with pytest.raises(AwakeningShotError, match="continuum.birth_exit_proofs"):
+        assert_birth_freeze(tmp_path, before)
 
 
 @pytest.mark.unit
@@ -135,6 +184,25 @@ def test_refuse_write_to_birth_exit_pi_star(tmp_path: Path) -> None:
         refuse_birth_pi_star_write(frozen)
     with pytest.raises(RuntimeError, match="refused write"):
         copy_zip(src, frozen)
+
+
+@pytest.mark.unit
+def test_snapshot_aligns_harvest_live_to_pin(tmp_path: Path) -> None:
+    from lumina_core.birth.birth_exit_policy_export import file_sha256
+    from lumina_core.maturity.awakening.freeze_pin import pin_birth_pi_star
+
+    _write_birth_plant(tmp_path)
+    pi_star = tmp_path / "reports" / "birth_cloud_run" / "artifacts" / "birth_exit_pi_star.zip"
+    plant = file_sha256(pi_star)
+    pin_birth_pi_star(tmp_path)
+    pi_star.write_bytes(b"harvest-8cc435c6-not-this-birth")
+    meta = pi_star.with_name("birth_exit_pi_star.json")
+    meta.write_text('{"sha256":"harvest"}', encoding="utf-8")
+    freeze = snapshot_birth_freeze(tmp_path)
+    assert file_sha256(pi_star) == plant
+    key = next(k for k in freeze if str(k).endswith("birth_exit_pi_star.zip"))
+    assert freeze[key] == plant
+    assert_birth_freeze(tmp_path, freeze)
 
 
 @pytest.mark.unit
@@ -185,9 +253,11 @@ def test_shot_honest_fail_insufficient_lift(tmp_path: Path) -> None:
     assert result["passed"] is False
     assert result["birth_exit_winrate"] == pytest.approx(0.333333)
     assert result["polish_oos_winrate"] == pytest.approx(0.34)
-    assert any("insufficient lift" in r for r in result["reasons"])
+    assert any("parent_replay_missing" in r for r in result["reasons"])
     rec = json.loads(evolution_proof_state_path(tmp_path).read_text(encoding="utf-8"))
     assert rec["passed"] is False
+    assert rec.get("child_sha256")
+    assert rec.get("init_sha256")
     assert evolution_proof_passed(tmp_path) is False
     assert "hold-a" not in seen["train_ids"]
     assert "train-a" not in seen["eval_ids"]
@@ -195,7 +265,7 @@ def test_shot_honest_fail_insufficient_lift(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_shot_honest_pass_on_lift(tmp_path: Path) -> None:
+def test_shot_winrate_lift_without_replay_does_not_pass(tmp_path: Path) -> None:
     _write_birth_plant(tmp_path)
     seen: dict[str, Any] = {}
     result = run_live_awakening_shot(
@@ -204,13 +274,262 @@ def test_shot_honest_pass_on_lift(tmp_path: Path) -> None:
         train_fn=lambda **kw: _train_stub(seen=seen, **kw),
         eval_fn=lambda **kw: _eval_stub(seen=seen, oos=0.40, n=600, **kw),
     )
-    assert result["passed"] is True
+    assert result["passed"] is False
     assert result["winrate_lift"] == pytest.approx(0.066667, abs=1e-6)
+    assert result["parent_replay_present"] is False
+    assert evolution_proof_passed(tmp_path) is False
+
+
+@pytest.mark.unit
+def test_shot_passes_on_paired_closes(tmp_path: Path) -> None:
+    _write_birth_plant(tmp_path)
+    seen: dict[str, Any] = {}
+    child = []
+    parent = []
+    for index in range(8):
+        day = f"2026-03-{index + 1:02d}"
+        child.append({"day": day, "trade_r": 0.30, "plant": False})
+        parent.append({"day": day, "trade_r": -0.20, "plant": False})
+
+    def _eval(**kw: Any) -> dict[str, Any]:
+        base = _eval_stub(seen=seen, oos=0.36, n=600, **kw)
+        base["child_closes"] = child
+        base["parent_closes"] = parent
+        return base
+
+    result = run_live_awakening_shot(
+        tmp_path,
+        split_loader=_split,
+        train_fn=lambda **kw: _train_stub(seen=seen, **kw),
+        eval_fn=_eval,
+    )
+    assert result["passed"] is True
+    assert float(result["paired_ci_low"]) >= 0.05
     assert evolution_proof_passed(tmp_path) is True
-    rec = json.loads(evolution_proof_state_path(tmp_path).read_text(encoding="utf-8"))
-    assert rec["birth_exit_winrate"] == pytest.approx(0.333333)
-    assert rec["polish_oos_winrate"] == pytest.approx(0.40)
-    assert rec["holdout_trades"] == 600
+    assert "hold-a" not in seen["train_ids"]
+
+
+@pytest.mark.unit
+def test_default_train_never_feeds_holdout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from lumina_core.maturity.phase_runners.awakening_shot_io import default_train
+
+    seen: dict[str, Any] = {}
+
+    def _env(ticks: list[dict[str, Any]], **_kwargs: Any) -> None:
+        seen["ids"] = [row.get("id") for row in ticks]
+        raise RuntimeError("tape-captured")
+
+    monkeypatch.setattr(
+        "lumina_core.birth.awakening_select_env.make_select_train_env",
+        _env,
+    )
+    with pytest.raises(RuntimeError, match="tape-captured"):
+        default_train(
+            train=[{"id": "train-a", "last": 1.0}],
+            holdout=[{"id": "hold-a", "last": 2.0}],
+            init_path=tmp_path / "missing.zip",
+            child_path=tmp_path / "child.zip",
+            workspace=tmp_path,
+            reports=tmp_path,
+            pin=10,
+        )
+    assert seen["ids"] == ["train-a"]
+
+
+@pytest.mark.unit
+def test_default_train_stop_requested_before_learn() -> None:
+    from lumina_core.maturity.phase_runners.awakening_shot import AwakeningShotError
+    from lumina_core.maturity.phase_runners.awakening_shot_io import default_train
+
+    with pytest.raises(AwakeningShotError, match="stop_requested"):
+        default_train(
+            train=[{"id": "train-a"}],
+            holdout=[{"id": "hold-a"}],
+            init_path=Path("missing.zip"),
+            child_path=Path("child.zip"),
+            workspace=Path("."),
+            reports=Path("."),
+            pin=10,
+            should_stop=lambda: True,
+        )
+
+
+@pytest.mark.unit
+def test_default_eval_forwards_should_stop_and_honors_operator_stop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lumina_core.birth.awakening_grind import GrindLegMetrics
+    from lumina_core.maturity.phase_runners.awakening_shot import AwakeningShotError
+    from lumina_core.maturity.phase_runners.awakening_shot_io import default_eval
+
+    seen: dict[str, Any] = {}
+
+    def _eval(**kwargs: Any) -> GrindLegMetrics:
+        seen["should_stop"] = kwargs.get("should_stop")
+        return GrindLegMetrics(stopped=False, holdout_exhausted=True)
+
+    monkeypatch.setattr(
+        "lumina_core.birth.awakening_grind_run.run_evaluate_only",
+        _eval,
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.awakening_grind_run.resolve_awakening_occupancy_seed",
+        lambda *_a, **_k: (0.27, "test"),
+    )
+    child = tmp_path / "child.zip"
+    child.write_bytes(b"not-a-real-zip")
+    ledger = tmp_path / "ledger.jsonl"
+    result = default_eval(
+        holdout=[{"last": 1.0}],
+        child_path=child,
+        workspace=tmp_path,
+        reports=tmp_path,
+        ledger_path=ledger,
+        should_stop=lambda: False,
+    )
+    assert seen["should_stop"] is not None
+    assert seen["should_stop"]() is False
+    assert result["holdout_exhausted"] is True
+
+    def _stopped(**_kwargs: Any) -> GrindLegMetrics:
+        return GrindLegMetrics(stopped=True)
+
+    monkeypatch.setattr(
+        "lumina_core.birth.awakening_grind_run.run_evaluate_only",
+        _stopped,
+    )
+    with pytest.raises(AwakeningShotError, match="stop_requested"):
+        default_eval(
+            holdout=[{"last": 1.0}],
+            child_path=child,
+            workspace=tmp_path,
+            reports=tmp_path,
+            ledger_path=ledger,
+            should_stop=lambda: False,
+        )
+
+
+@pytest.mark.unit
+def test_train_callback_stops_when_operator_requests(tmp_path: Path) -> None:
+    from lumina_core.maturity.phase_runners.awakening_shot_io import _timestep_cap_callback
+
+    callback = _timestep_cap_callback(8, workspace=tmp_path, should_stop=lambda: True)
+    if callback is None:
+        pytest.skip("stable-baselines3 callback base is not importable")
+    assert callback._on_step() is False
+    assert callback.stopped is True
+    assert callback.ran == 0
+
+
+def _exam_card(**overrides: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "policy_trades": 500,
+        "polish_oos_winrate": 0.402,
+        "birth_exit_winrate": 0.30,
+        "mean_r": -0.1696,
+        "birth_mean_r": -0.399,
+        "edge": 0.10,
+        "median_loss_r": 0.83,
+        "occupancy": 0.27,
+        "occupancy_at_nb": 0.268,
+        "oos_sharpe": -0.213,
+        "oos_dd_pct": 8.4,
+        "paired_delta": 0.15,
+        "paired_ci_low": 0.08,
+        "parent_replay_present": True,
+        "child_median_win_r": 0.55,
+        "parent_median_win_r": 0.80,
+        "child_weight_sha": "child-weight",
+        "init_weight_sha": "birth-weight",
+        "policy_only": True,
+    }
+    base.update(overrides)
+    return base
+
+
+def _incumbent_from_exam(**overrides: object) -> dict[str, object]:
+    child = _exam_card(**overrides)
+    return {
+        "incumbent_n_b": child["policy_trades"],
+        "incumbent_wr": child["polish_oos_winrate"],
+        "incumbent_mean_r": child["mean_r"],
+        "incumbent_occupancy": child["occupancy"],
+        "incumbent_occupancy_at_nb": child["occupancy_at_nb"],
+        "incumbent_edge": child["edge"],
+        "incumbent_sharpe": child["oos_sharpe"],
+        "incumbent_dd_pct": child["oos_dd_pct"],
+        "incumbent_median_loss_r": child["median_loss_r"],
+        "incumbent_paired_delta": child["paired_delta"],
+        "incumbent_paired_ci_low": child["paired_ci_low"],
+        "incumbent_parent_replay_present": child["parent_replay_present"],
+        "incumbent_child_median_win_r": child["child_median_win_r"],
+        "incumbent_parent_median_win_r": child["parent_median_win_r"],
+        "incumbent_weight_sha": child["child_weight_sha"],
+        "incumbent_init_weight_sha": child["init_weight_sha"],
+    }
+
+
+@pytest.mark.unit
+def test_a_ci_clearance_does_not_replace_the_plant_baseline() -> None:
+    """First Watch keeps the plant. A later card with a better CI is not the exit."""
+    from lumina_core.maturity.awakening.keep_best import keep_block_reason
+
+    collapsed = _incumbent_from_exam(
+        polish_oos_winrate=0.384,
+        mean_r=-0.1702,
+        paired_delta=0.26,
+        paired_ci_low=0.113,
+        child_median_win_r=0.425,
+        parent_median_win_r=0.962,
+        child_weight_sha="incumbent-weight",
+    )
+    passer = _exam_card(paired_delta=0.15, paired_ci_low=0.08)
+    assert keep_block_reason(passer, collapsed) is not None
+
+
+@pytest.mark.unit
+def test_keeper_still_ranks_two_exam_passes_by_paired_delta() -> None:
+    from lumina_core.maturity.awakening.keep_best import keep_block_reason
+
+    incumbent = _incumbent_from_exam(paired_delta=0.20, paired_ci_low=0.09)
+    lower = _exam_card(paired_delta=0.12, paired_ci_low=0.06)
+    assert keep_block_reason(lower, incumbent) == "paired_delta_not_higher"
+
+
+@pytest.mark.unit
+def test_keeper_does_not_drop_a_higher_paired_delta_for_a_mean_r_twitch() -> None:
+    from lumina_core.maturity.awakening.keep_best import child_beats_incumbent, keep_block_reason
+
+    incumbent = {
+        "incumbent_n_b": 940,
+        "incumbent_wr": 0.382,
+        "incumbent_mean_r": -0.153,
+        "incumbent_occupancy": 0.40,
+        "incumbent_occupancy_at_nb": 0.40,
+        "incumbent_sharpe": -0.23,
+        "incumbent_dd_pct": 12.6,
+        "incumbent_paired_delta": 0.08,
+        "incumbent_paired_ci_low": 0.04,
+    }
+    twitch = {
+        "policy_trades": 947,
+        "polish_oos_winrate": 0.361,
+        "mean_r": -0.144,
+        "occupancy": 0.40,
+        "occupancy_at_nb": 0.269,
+        "oos_sharpe": -0.22,
+        "oos_dd_pct": 11.9,
+        "paired_delta": 0.02,
+        "paired_ci_low": 0.01,
+    }
+    assert keep_block_reason(twitch, incumbent) == "paired_delta_not_higher"
+    assert child_beats_incumbent(twitch, incumbent) is False
+    closer = dict(twitch)
+    closer["paired_delta"] = 0.10
+    closer["paired_ci_low"] = 0.06
+    closer["polish_oos_winrate"] = 0.36
+    closer["mean_r"] = -0.20
+    assert child_beats_incumbent(closer, incumbent) is True
 
 
 @pytest.mark.unit
@@ -290,3 +609,58 @@ def test_run_awakening_shot_pass_is_not_enough_without_and(tmp_path: Path) -> No
     data = load_continuum(tmp_path)
     assert "awakening" not in data["completed_phases"]
     assert snapshot_birth_freeze(tmp_path) == freeze
+
+
+@pytest.mark.unit
+def test_cycle_zero_reuses_its_own_ledger_as_the_parent_replay(tmp_path: Path) -> None:
+    from lumina_core.maturity.phase_runners.awakening_shot import _paired_for_shot
+
+    frozen = tmp_path / "birth_exit_pi_star.zip"
+    child = tmp_path / "awakening_live_pi_star.zip"
+    frozen.write_bytes(b"same-frozen-policy")
+    child.write_bytes(b"same-frozen-policy")
+    ledger = tmp_path / "awakening_live_holdout.jsonl"
+    lines = []
+    for index in range(8):
+        day = f"2026-06-{index + 1:02d}"
+        lines.append(
+            '{"entry_bar_index": %d, "trade_r": -0.2, "plant": false, "ts_iso": "%sT00:00:00"}\n'
+            % (index, day)
+        )
+    ledger.write_text("".join(lines), encoding="utf-8")
+
+    def _boom(**_kwargs: Any) -> dict[str, Any]:
+        raise AssertionError("frozen parent was walked a second time")
+
+    book = _paired_for_shot(
+        {},
+        eval_fn=None,
+        holdout=[{"timestamp": f"2026-06-{i + 1:02d}T00:00:00"} for i in range(8)],
+        frozen_path=frozen,
+        child_path=child,
+        child_ledger=ledger,
+        workspace=tmp_path,
+        reports=tmp_path,
+        should_stop=None,
+        progress=None,
+        cycle=0,
+    )
+    assert book["parent_replay_present"] is True
+    assert book["paired_delta"] == pytest.approx(0.0)
+    with patch(
+        "lumina_core.maturity.phase_runners.awakening_shot_io.default_eval",
+        _boom,
+    ):
+        again = _paired_for_shot(
+            {},
+            eval_fn=None,
+            holdout=[],
+            frozen_path=frozen,
+            child_path=tmp_path / "missing-student.zip",
+            child_ledger=ledger,
+            workspace=tmp_path,
+            reports=tmp_path,
+            should_stop=None,
+            cycle=1,
+        )
+    assert again["parent_replay_present"] is True

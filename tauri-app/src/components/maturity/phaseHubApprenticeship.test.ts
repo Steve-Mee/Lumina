@@ -14,13 +14,14 @@ describe("apprenticeship hub tiles", () => {
     });
     expect(tiles[0]?.label).toBe("Doel");
     expect(tiles[0]?.value).toBe("Lopen");
-    expect(tiles[1]?.value).toBe("2 / 5");
+    expect(tiles[1]?.label).toBe("Sessiedagen");
+    expect(tiles[1]?.value).toBe("2");
   });
 
   it("checklist is not allMet without pass_now", () => {
     const checklist = buildApprenticeshipChecklist({
       pass_now: false,
-      missing: ["n_D=2 < 5"],
+      missing: ["mean_r=-0.1 < 0"],
       learned: {
         exit_proofs: ["birth_freeze_intact"],
         n_d: 2,
@@ -28,7 +29,7 @@ describe("apprenticeship hub tiles", () => {
       },
     });
     expect(checklist.allMet).toBe(false);
-    expect(checklist.requirements.some((row) => row.id === "n_D>=5" && !row.met)).toBe(true);
+    expect(checklist.requirements.some((row) => row.id === "economic_viability" && !row.met)).toBe(true);
   });
 
   it("checklist allMet only when pass_now and every gate is proven", () => {
@@ -40,7 +41,7 @@ describe("apprenticeship hub tiles", () => {
       "deck_live",
       "mode_sim_real_guard",
       "n_A>=150",
-      "n_D>=5",
+      "economic_viability",
       "occupancy_in_band",
       "process_r",
       "risk_discipline",

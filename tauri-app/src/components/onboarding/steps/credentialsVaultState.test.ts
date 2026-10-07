@@ -36,6 +36,7 @@ describe("credentialsVaultState", () => {
       "jwt",
       "admin",
       "fabric_token",
+      "nt_accounts",
       "twin_base",
       "telegram_bot",
       "telegram_chat",

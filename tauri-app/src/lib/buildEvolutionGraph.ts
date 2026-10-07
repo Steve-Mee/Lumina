@@ -323,3 +323,21 @@ export function buildEvolutionGraph(
   const merged = mergeGraphs(api, storeGraph);
   return merged.nodes.length > 0 ? merged : seedDemoGraph();
 }
+
+/** Synthetic store/demo hashes — not a harvested lineage. */
+export const SYNTHETIC_ROOT_HASH = `${"0".repeat(63)}1`;
+const SEED_DEMO_HASHES = new Set([
+  SYNTHETIC_ROOT_HASH,
+  "a".repeat(64),
+  "b".repeat(64),
+  "c".repeat(64),
+  "d".repeat(64),
+  "e".repeat(64),
+]);
+
+export function isIdleEvolutionGraph(graph: EvolutionGraph): boolean {
+  if (graph.nodes.length === 0) {
+    return true;
+  }
+  return graph.nodes.every((node) => SEED_DEMO_HASHES.has(node.hash));
+}

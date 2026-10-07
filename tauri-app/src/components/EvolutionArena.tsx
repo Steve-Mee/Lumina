@@ -1,11 +1,14 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
-import { BirthOrganismVisual } from "@/components/birth/BirthOrganismVisual";
+import { BirthKpiTile } from "@/components/birth/BirthKpiTile";
 import { DECK_LOADING_COPY } from "@/lib/deckLoadingCopy";
 import { PanelLoader } from "@/components/cockpit/PanelLoader";
 import { VisibilityCanvas } from "@/components/cockpit/VisibilityCanvas";
+import { arenaCameraDistance } from "@/components/evolution/EvolutionArenaCamera";
+import { EvolutionArenaIdle } from "@/components/evolution/EvolutionArenaIdle";
 import { EvolutionForceGraphScene } from "@/components/evolution/EvolutionForceGraphScene";
+import { isIdleEvolutionGraph } from "@/lib/buildEvolutionGraph";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +18,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { useDeckPanelStore } from "@/store/deckPanelStore";
 import {
   approveProposal,
   rejectProposal,
@@ -196,6 +198,9 @@ export function EvolutionArena({ className }: EvolutionArenaProps) {
   const { graph, newNodeIds, loading, error, clearNewNodes, refresh } = useEvolutionTree();
   const [selectedNode, setSelectedNode] = useState<EvolutionNode | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const idle = !loading && !error && isIdleEvolutionGraph(graph);
+  const proposedCount = graph.nodes.filter((node) => node.status === "proposed").length;
+  const champion = graph.nodes.find((node) => node.id === graph.championHash) ?? null;
 
   useEffect(() => {
     if (newNodeIds.length === 0) {
@@ -228,7 +233,7 @@ export function EvolutionArena({ className }: EvolutionArenaProps) {
     <>
       <div
         className={cn(
-          "evolution-arena-shell relative min-h-[220px] w-full",
+          "evolution-arena-shell relative flex min-h-[220px] min-w-0 flex-1 flex-col",
           isCalmMode ? "evolution-arena-shell--real" : "evolution-arena-shell--sim",
           className,
         )}
@@ -273,65 +278,68 @@ export function EvolutionArena({ className }: EvolutionArenaProps) {
           ) : null}
         </AnimatePresence>
 
-        {!loading && !error && graph.nodes.length === 0 ? (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 px-6 text-center">
-            <BirthOrganismVisual className="size-20 opacity-70" />
-            <p
-              className={cn(
-                "mode-text-tier2 font-mono text-xs tracking-wide uppercase",
-                modeTitleClass(currentMode),
-              )}
+        {idle ? (
+          <EvolutionArenaIdle mode={currentMode} onRefresh={() => void refresh()} />
+        ) : (
+          <>
+            <motion.div
+              className="relative min-h-0 flex-1 h-full w-full"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: loading ? 0.3 : 1 }}
+              transition={transitionOrNone(reducedMotion, modeMotion)}
             >
-              No evolution tree yet
-            </p>
-            <p className="max-w-xs text-[11px] text-muted-foreground">
-              Strategies appear here after birth completes and evolution proposals are recorded.
-            </p>
-            <div className="flex flex-wrap justify-center gap-2">
-              <Button type="button" size="sm" variant="command-primary" onClick={() => void refresh()}>
-                Refresh
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="command-ghost"
-                onClick={() => useDeckPanelStore.getState().setActiveRightTab("monitor")}
+              <Suspense
+                fallback={
+                  <PanelLoader label={DECK_LOADING_COPY.forceGraph} className="min-h-[220px]" variant="pulse" />
+                }
               >
-                Open Monitor
-              </Button>
-            </div>
-          </div>
-        ) : null}
-
-        <motion.div
-          className="h-full w-full"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: loading ? 0.3 : 1 }}
-          transition={transitionOrNone(reducedMotion, modeMotion)}
-        >
-          <Suspense
-            fallback={
-              <PanelLoader label={DECK_LOADING_COPY.forceGraph} className="min-h-[220px]" variant="pulse" />
-            }
-          >
-            <VisibilityCanvas
-              panelName="Evolution Arena"
-              idleLabel="Evolution arena paused — scroll into view"
-              camera={{ position: [0, 0, 5.5], fov: 50 }}
-            >
-              <EvolutionForceGraphScene
-                graph={graph}
-                newNodeIds={newNodeIds}
-                reducedMotion={reducedMotion}
-                calmMode={isCalmMode}
-                mode={currentMode}
-                visualQuality={visualQuality}
-                renderConfig={renderConfig}
-                onNodeClick={handleNodeClick}
+                <VisibilityCanvas
+                  panelName="Evolution Arena"
+                  idleLabel="Evolution arena paused — scroll into view"
+                  camera={{ position: [0, 0, arenaCameraDistance(graph.nodes.length)], fov: 40 }}
+                  clearAlpha={1}
+                >
+                  <EvolutionForceGraphScene
+                    graph={graph}
+                    newNodeIds={newNodeIds}
+                    reducedMotion={reducedMotion}
+                    calmMode={isCalmMode}
+                    mode={currentMode}
+                    visualQuality={visualQuality}
+                    renderConfig={renderConfig}
+                    onNodeClick={handleNodeClick}
+                  />
+                </VisibilityCanvas>
+              </Suspense>
+            </motion.div>
+            <div className="command-deck-ops__arena-kpis" role="status" aria-label="Arena lineage">
+              <BirthKpiTile
+                label="Lineages"
+                value={`${graph.nodes.length}`}
+                detail="recorded DNA"
+                tone="accent"
               />
-            </VisibilityCanvas>
-          </Suspense>
-        </motion.div>
+              <BirthKpiTile
+                label="Pending"
+                value={`${proposedCount}`}
+                detail="mutation queue"
+                tone={proposedCount > 0 ? "accent" : "default"}
+              />
+              <BirthKpiTile
+                label="Champion"
+                value={
+                  champion
+                    ? champion.fitness >= 0 && champion.fitness <= 1
+                      ? `${Math.round(champion.fitness * 100)}%`
+                      : champion.fitness.toFixed(2)
+                    : "—"
+                }
+                detail={champion ? truncateHash(champion.hash) : "none planted"}
+                tone={champion ? "success" : "default"}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       <NodeDetailDialog

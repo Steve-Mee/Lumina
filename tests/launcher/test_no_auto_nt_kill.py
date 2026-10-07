@@ -34,6 +34,24 @@ def test_heal_default_close_nt_is_false() -> None:
     assert sig.parameters["close_nt"].default is False
 
 
+def test_watch_and_ensure_never_kill_nt() -> None:
+    watch = (ROOT / "lumina_launcher" / "services" / "ninjatrader_watch.py").read_text(
+        encoding="utf-8"
+    )
+    assert "close_ninjatrader" not in watch
+    assert "taskkill" not in watch.lower()
+    heal_src = (ROOT / "lumina_launcher" / "services" / "fabric_heal.py").read_text(
+        encoding="utf-8"
+    )
+    for fn in ("def ensure_custom_compile_ready", "def ensure_ninjascript_config_references"):
+        ensure_idx = heal_src.find(fn)
+        assert ensure_idx > 0, fn
+        next_def = heal_src.find("\ndef ", ensure_idx + 1)
+        body = heal_src[ensure_idx:next_def]
+        assert "close_ninjatrader" not in body
+        assert "taskkill" not in body.lower()
+
+
 def test_api_heal_request_default_close_false() -> None:
     text = (ROOT / "lumina_os" / "backend" / "setup_endpoints_fabric.py").read_text(encoding="utf-8")
     assert "close_ninjatrader: bool = False" in text

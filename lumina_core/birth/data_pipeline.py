@@ -3,7 +3,7 @@
 Bounded modules:
 - ``data_pipeline_types`` — host protocol, result, pure helpers
 - ``data_pipeline_resume`` — checkpoint cache resume
-- ``data_pipeline_load`` — cold history / synthetic
+- ``data_pipeline_load`` — cold history; empty tape is a refusal, never synthetic fill
 - ``data_pipeline_enrich`` — news + regime + purged split
 """
 

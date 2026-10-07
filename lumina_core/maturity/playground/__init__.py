@@ -1,7 +1,7 @@
 """Playground bounded context — first contact in NT SIM (ADR-0050)."""
 
 from lumina_core.maturity.playground.law import (
-    N_P_MIN,
+    N_D_SCHOOL,
     PlaygroundPassResult,
     PlaygroundSnapshot,
     evaluate_playground_exit,
@@ -10,7 +10,7 @@ from lumina_core.maturity.playground.law import (
 )
 
 __all__ = [
-    "N_P_MIN",
+    "N_D_SCHOOL",
     "PlaygroundPassResult",
     "PlaygroundSnapshot",
     "evaluate_playground_exit",

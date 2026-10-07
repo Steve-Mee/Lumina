@@ -32,6 +32,7 @@ namespace Lumina.Execution.Fabric.Grpc
         private readonly FabricAuditLog? _audit;
         private readonly IHistoricalDataProvider _historical;
         private readonly ILiveMarketDataProvider _liveMarket;
+        private readonly ILiveBarProvider _liveBars;
         private readonly Action<string>? _log;
         private readonly object _streamWriteGate = new object();
 
@@ -48,7 +49,8 @@ namespace Lumina.Execution.Fabric.Grpc
             FabricAuditLog? audit = null,
             Action<string>? log = null,
             IHistoricalDataProvider? historical = null,
-            ILiveMarketDataProvider? liveMarket = null)
+            ILiveMarketDataProvider? liveMarket = null,
+            ILiveBarProvider? liveBars = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
@@ -62,6 +64,7 @@ namespace Lumina.Execution.Fabric.Grpc
             _audit = audit;
             _historical = historical ?? new NullHistoricalDataProvider();
             _liveMarket = liveMarket ?? new NullLiveMarketDataProvider();
+            _liveBars = liveBars ?? new NullLiveBarProvider();
             _log = log;
         }
 
@@ -373,14 +376,16 @@ namespace Lumina.Execution.Fabric.Grpc
                     }
                     var sub = brain.SubscribeMarketData;
                     var instruments = sub?.Instruments;
-                    if (instruments == null || instruments.Count == 0)
+                    if (sub == null || instruments == null || instruments.Count == 0)
                     {
                         replies.Add(Reject("", "", "INVALID_INSTRUMENT", "SubscribeMarketData requires instruments"));
                         break;
                     }
+                    // ADR-0053/0054: quotes are tape-only. Native NT bars are mandatory when include_bars.
+                    var periods = BarPeriodNames.ResolveSubscribePeriods(sub.BarPeriods, sub.BarPeriod);
                     foreach (var inst in instruments)
                     {
-                        var code = _liveMarket.Subscribe(inst ?? "", "", update =>
+                        Action<MarketDataUpdate> broadcast = update =>
                         {
                             try
                             {
@@ -390,16 +395,33 @@ namespace Lumina.Execution.Fabric.Grpc
                             {
                                 Log("live md broadcast: " + ex.Message);
                             }
-                        });
+                        };
+                        var code = _liveMarket.Subscribe(inst ?? "", "", broadcast);
                         if (!string.Equals(code, "ok", StringComparison.OrdinalIgnoreCase))
                         {
-                            replies.Add(Reject("", "", code, "Live market subscribe failed for "
+                            replies.Add(Reject("", "", code, "Live quote subscribe failed for "
                                 + inst + ": " + code + " (provider=" + _liveMarket.ProviderKind + ")"));
                         }
                         else
                         {
                             _audit?.Record("subscribe_market_data", "ok", new { instrument = inst, provider = _liveMarket.ProviderKind });
-                            Log("[FabricLive] subscribed " + inst + " provider=" + _liveMarket.ProviderKind);
+                            Log("[FabricLive] subscribed quotes " + inst + " provider=" + _liveMarket.ProviderKind);
+                        }
+                        foreach (var period in periods)
+                        {
+                            var barCode = _liveBars.Subscribe(inst ?? "", period, "", broadcast);
+                            if (!string.Equals(barCode, "ok", StringComparison.OrdinalIgnoreCase))
+                            {
+                                replies.Add(Reject("", "", barCode, "Live bar subscribe failed for "
+                                    + inst + " period=" + period + ": " + barCode
+                                    + " (provider=" + _liveBars.ProviderKind + ")"));
+                            }
+                            else
+                            {
+                                _audit?.Record("subscribe_live_bars", "ok", new { instrument = inst, period, provider = _liveBars.ProviderKind });
+                                Log("[FabricLive] subscribed bars " + inst + " period=" + period
+                                    + " provider=" + _liveBars.ProviderKind);
+                            }
                         }
                     }
                     break;
@@ -416,7 +438,10 @@ namespace Lumina.Execution.Fabric.Grpc
                     if (unsub?.Instruments != null)
                     {
                         foreach (var inst in unsub.Instruments)
+                        {
                             _liveMarket.Unsubscribe(inst ?? "");
+                            _liveBars.Unsubscribe(inst ?? "");
+                        }
                     }
                     break;
                 }

@@ -21,6 +21,7 @@ from lumina_core.birth.data_source_honesty import (
     assert_pct_matches_ticks,
     host_real_data_pct,
     real_data_percentage,
+    real_historical_tape_reason,
     source_is_real,
 )
 from lumina_core.birth.purged_split import PurgedSplit
@@ -80,6 +81,36 @@ def test_startswith_real_is_not_enough() -> None:
 
 
 @pytest.mark.unit
+def test_synthetic_tape_cannot_be_a_truthful_birth() -> None:
+    assert real_historical_tape_reason([{"source": "synthetic"}]) == "synthetic_source:synthetic"
+    assert real_historical_tape_reason(
+        [{"source": "synthetic_cloud_fixture"}]
+    ) == "synthetic_source:synthetic_cloud_fixture"
+    assert real_historical_tape_reason([{"source": "real_historical"}]) == "synthetic_source:real_historical"
+    assert real_historical_tape_reason([{"source": "real"}]) is None
+    assert real_historical_tape_reason([]) == "real_historical_tape_empty"
+    assert real_historical_tape_reason(real_data_pct=0.0, source="synthetic") == "synthetic_tape:synthetic"
+    assert real_historical_tape_reason(real_data_pct=100.0, source="real") is None
+    assert real_historical_tape_reason(real_data_pct=99.0, source="real") == "real_data_pct=99.00<100"
+    assert real_historical_tape_reason() is None
+
+
+def test_synthetic_manifest_blocks_birth_exit(tmp_path: Path) -> None:
+    import json
+
+    from lumina_core.maturity.birth_exit import collect_birth_exit_proofs
+
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "lumina_birth_cache_manifest.json").write_text(
+        json.dumps({"source": "synthetic_cloud_fixture", "real_data_pct": 0.0}),
+        encoding="utf-8",
+    )
+    proofs, detail = collect_birth_exit_proofs(tmp_path)
+    assert "foundation_five_receipts_v2" not in proofs
+    assert "synthetic_tape:synthetic_cloud_fixture" == detail["real_historical_tape"]
+
+
 def test_empty_source_is_not_real() -> None:
     assert source_is_real("") is False
     assert source_is_real("   ") is False

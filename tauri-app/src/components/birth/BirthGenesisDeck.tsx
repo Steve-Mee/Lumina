@@ -15,6 +15,7 @@ import { BirthLaunchButton } from "@/components/birth/BirthLaunchButton";
 import {
   GenesisMaturityGoalsPreview,
 } from "@/components/birth/GenesisMaturityLadder";
+import { GenesisAdvanceChoice } from "@/components/birth/GenesisAdvanceChoice";
 import { BirthTwinMicroHost } from "@/components/birth/BirthTwinMicroHost";
 import { Button } from "@/components/ui/button";
 import { HelpTip } from "@/components/ui/HelpTip";
@@ -153,6 +154,13 @@ export function BirthGenesisDeck({
   const showRecoveryTab = presentation.showRecoveryTab;
   const decisionSurface =
     presentation.ctaMode === "decision" || presentation.preferRecoveryTab;
+  const historyBlocked =
+    birthStatus?.progress?.attention_reason_code === "history_unavailable" ||
+    birthStatus?.progress?.phase === "loading_history_failed";
+  const capacityBlocked =
+    birthStatus?.progress?.attention_reason_code === "holdout_capacity_below_n_b_min" ||
+    birthStatus?.progress?.phase === "holdout_capacity_refused" ||
+    birthStatus?.progress?.stage === "holdout_capacity_refused";
 
   // Land on Recovery when birth needs a decision / failed (not Charter frontpage).
   useEffect(() => {
@@ -402,6 +410,7 @@ export function BirthGenesisDeck({
                 ) : null}
 
                 <GenesisMaturityGoalsPreview />
+                <GenesisAdvanceChoice />
               </motion.div>
             </TabsContent>
 
@@ -479,14 +488,22 @@ export function BirthGenesisDeck({
                       >
                         {presentation.physicsMissing
                           ? "Training engine missing:"
+                          : capacityBlocked
+                            ? "Holdout cannot host Awakening:"
                           : checkpointAvailable
                             ? "Checkpoint ready — choose one path:"
                             : presentation.hasAttention
-                              ? "Recovery required:"
+                              ? historyBlocked
+                                ? "History refused:"
+                                : "Recovery required:"
                               : "Recovery tools:"}
                       </strong>{" "}
                       {presentation.physicsMissing
                         ? "Run python scripts/install_birth_physics_stack.py, then retry. Do not wipe — tick cache stays valid."
+                        : capacityBlocked
+                          ? "Continue loads 365 days and retrains from stage 1. Stage passes on this tape were not frozen. Do not wipe."
+                        : historyBlocked
+                          ? "Retry Birth. The exchange may be closed. Do not wipe: the tick cache stays valid."
                         : checkpointAvailable
                           ? "Continue resumes training. Start clean clears curriculum (tick cache kept). Full wipe also drops tick cache."
                           : presentation.hasAttention

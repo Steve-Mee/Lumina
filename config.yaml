@@ -125,7 +125,7 @@ models:
   meta: qwen3.5:9b
   grok_trader_1b: qwen3.5-35b
 trading:
-  instrument: MES SEP26
+  instrument: MES
   risk_profile: Balanced
   news_avoidance_pre_minutes: 10
   news_avoidance_post_minutes: 5
@@ -158,10 +158,7 @@ risk_controller:
   slippage_base_points: 0.125
   slippage_sigma: 0.5
   slippage_volatility_factor: 1.0
-  commission_per_side_usd: 1.29
-  exchange_fee_per_side_usd: 0.35
-  clearing_fee_per_side_usd: 0.1
-  nfa_fee_per_side_usd: 0.02
+  nt_account_plan: free
   real_capital_safety_threshold_usd: 1000.0
   real_capital_safety_threshold_ratio: 0.9
   var_es_method: historical

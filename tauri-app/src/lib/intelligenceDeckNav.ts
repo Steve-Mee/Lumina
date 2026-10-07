@@ -14,7 +14,7 @@ export const INTELLIGENCE_DECK_TAB_SUBTITLES: Record<RightDeckTab, string> = {
   monitor: "Health, twin, shadow & training metrics",
   community: "Trader league & global wisdom",
   hardware: "Hardware tier & model management",
-  admin: "Maintenance & first-boot reset",
+  admin: "Named phase wipes, maintenance & first-boot",
 };
 
 export const OPS_TAB_LABELS: Partial<Record<RightDeckTab, string>> = {
@@ -25,7 +25,7 @@ export const OPS_TAB_LABELS: Partial<Record<RightDeckTab, string>> = {
   realOps: "REAL Ops",
   community: "Community",
   hardware: "Hardware",
-  admin: "Admin",
+  admin: "Phase reset",
 };
 
 export interface OpsSection {

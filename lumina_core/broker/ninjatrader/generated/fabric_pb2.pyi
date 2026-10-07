@@ -395,16 +395,18 @@ class AccountState(_message.Message):
     def __init__(self, account: _Optional[_Union[AccountMetrics, _Mapping]] = ..., positions: _Optional[_Iterable[_Union[PositionUpdate, _Mapping]]] = ..., open_orders: _Optional[_Iterable[_Union[WorkingOrder, _Mapping]]] = ..., safe_mode: _Optional[_Union[SafeModeState, str]] = ..., timestamp_unix_ms: _Optional[int] = ...) -> None: ...
 
 class SubscribeMarketData(_message.Message):
-    __slots__ = ("instruments", "include_ticks", "include_bars", "bar_period")
+    __slots__ = ("instruments", "include_ticks", "include_bars", "bar_period", "bar_periods")
     INSTRUMENTS_FIELD_NUMBER: _ClassVar[int]
     INCLUDE_TICKS_FIELD_NUMBER: _ClassVar[int]
     INCLUDE_BARS_FIELD_NUMBER: _ClassVar[int]
     BAR_PERIOD_FIELD_NUMBER: _ClassVar[int]
+    BAR_PERIODS_FIELD_NUMBER: _ClassVar[int]
     instruments: _containers.RepeatedScalarFieldContainer[str]
     include_ticks: bool
     include_bars: bool
     bar_period: str
-    def __init__(self, instruments: _Optional[_Iterable[str]] = ..., include_ticks: bool = ..., include_bars: bool = ..., bar_period: _Optional[str] = ...) -> None: ...
+    bar_periods: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, instruments: _Optional[_Iterable[str]] = ..., include_ticks: bool = ..., include_bars: bool = ..., bar_period: _Optional[str] = ..., bar_periods: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class UnsubscribeMarketData(_message.Message):
     __slots__ = ("instruments",)
@@ -413,7 +415,7 @@ class UnsubscribeMarketData(_message.Message):
     def __init__(self, instruments: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class MarketDataUpdate(_message.Message):
-    __slots__ = ("instrument", "timestamp_unix_ms", "last", "bid", "ask", "volume", "open", "high", "low", "close", "is_bar")
+    __slots__ = ("instrument", "timestamp_unix_ms", "last", "bid", "ask", "volume", "open", "high", "low", "close", "is_bar", "bar_period")
     INSTRUMENT_FIELD_NUMBER: _ClassVar[int]
     TIMESTAMP_UNIX_MS_FIELD_NUMBER: _ClassVar[int]
     LAST_FIELD_NUMBER: _ClassVar[int]
@@ -425,6 +427,7 @@ class MarketDataUpdate(_message.Message):
     LOW_FIELD_NUMBER: _ClassVar[int]
     CLOSE_FIELD_NUMBER: _ClassVar[int]
     IS_BAR_FIELD_NUMBER: _ClassVar[int]
+    BAR_PERIOD_FIELD_NUMBER: _ClassVar[int]
     instrument: str
     timestamp_unix_ms: int
     last: float
@@ -436,7 +439,8 @@ class MarketDataUpdate(_message.Message):
     low: float
     close: float
     is_bar: bool
-    def __init__(self, instrument: _Optional[str] = ..., timestamp_unix_ms: _Optional[int] = ..., last: _Optional[float] = ..., bid: _Optional[float] = ..., ask: _Optional[float] = ..., volume: _Optional[int] = ..., open: _Optional[float] = ..., high: _Optional[float] = ..., low: _Optional[float] = ..., close: _Optional[float] = ..., is_bar: bool = ...) -> None: ...
+    bar_period: str
+    def __init__(self, instrument: _Optional[str] = ..., timestamp_unix_ms: _Optional[int] = ..., last: _Optional[float] = ..., bid: _Optional[float] = ..., ask: _Optional[float] = ..., volume: _Optional[int] = ..., open: _Optional[float] = ..., high: _Optional[float] = ..., low: _Optional[float] = ..., close: _Optional[float] = ..., is_bar: bool = ..., bar_period: _Optional[str] = ...) -> None: ...
 
 class HistoricalDataRequest(_message.Message):
     __slots__ = ("instrument", "bar_period", "start_unix_ms", "end_unix_ms", "max_bars", "correlation_id")

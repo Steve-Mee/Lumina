@@ -74,8 +74,7 @@ namespace NinjaTrader.NinjaScript.AddOns
                         var update = new MarketDataUpdate
                         {
                             Instrument = key,
-                            TimestampUnixMs = new DateTimeOffset(DateTime.SpecifyKind(e.Time, DateTimeKind.Local))
-                                .ToUniversalTime().ToUnixTimeMilliseconds(),
+                            TimestampUnixMs = NtBarClock.ToUnixMs(e.Time),
                             Last = e.Last > 0 ? e.Last : e.Price,
                             Bid = e.Bid,
                             Ask = e.Ask,

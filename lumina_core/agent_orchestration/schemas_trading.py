@@ -140,3 +140,19 @@ class MarketTapePayload(BaseModel):
     volume: float | None = Field(default=None, ge=0.0)
     signal: str | None = None
 
+
+class MarketBarIntegrityPayload(BaseModel):
+    """NT 1m book completeness. Completeness is not an observation slot (dim stays 43)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    complete: bool
+    reason: str
+    missing_count: int = 0
+    filled_count: int = 0
+    session_holes: int = 0
+    lock_new_entries: bool
+    last_closed: str = ""
+    message: str = ""
+    period: str = "1m"
+

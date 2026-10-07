@@ -6,12 +6,15 @@ never hit on 1-min MES (median move ~0.15%) and produced permanent patterns=0.
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 
 from lumina_core.birth.bible_observation import bible_features_for_tick
+from lumina_core.birth.control_plane_yield import release_control_plane
 from lumina_core.birth.birth_trade_geometry import (
     calibrate_oracle_stops,
     estimate_round_trip_cost_usd,
@@ -115,6 +118,7 @@ def mine_winning_patterns(
     auto_calibrate: bool = True,
     net_of_cost: bool = True,
     min_net_pnl_usd: float | None = None,
+    on_progress: Callable[[str, int, int], None] | None = None,
 ) -> PatternMineResult:
     """Scan historical ticks for hindsight-profitable entries (oracle labeling).
 
@@ -157,7 +161,25 @@ def mine_winning_patterns(
             use_stop, use_target = cal_stop, cal_target
 
     enriched: list[dict[str, Any]] = []
-    for row in pool:
+    pool_n = len(pool)
+    last_beat = time.monotonic()
+
+    def _beat(phase: str, done: int) -> None:
+        nonlocal last_beat
+        if on_progress is None:
+            return
+        now = time.monotonic()
+        if done != pool_n and (now - last_beat) < 2.0:
+            return
+        last_beat = now
+        try:
+            on_progress(phase, done, pool_n)
+        except Exception:
+            logger.debug("birth.oracle.progress_failed", exc_info=True)
+
+    for row_i, row in enumerate(pool):
+        release_control_plane(row_i)
+        _beat("prepare", row_i + 1)
         tick = dict(row)
         c, n, s, m = bible_features_for_tick(tick, workspace_root=workspace_root)
         tick["bible_confluence"] = c
@@ -180,6 +202,8 @@ def mine_winning_patterns(
     net_floor = max(0.0, net_floor)
 
     for i in range(20, len(enriched) - hold - 1, stride):
+        release_control_plane(scanned)
+        _beat("scan", scanned)
         scanned += 1
         for side, signal in ((1, "BUY"), (-1, "SELL")):
             outcome = _simulate_outcome(

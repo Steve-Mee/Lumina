@@ -7,9 +7,13 @@ export function awakeningHeaderStatus(input: {
   error?: string | null;
   progressMessage?: string | null;
 }): string {
-  if (input.running) return input.progressMessage || "Living clock";
+  if (input.running) return input.progressMessage || "First Watch living clock";
   if (input.passNow) return "AND passed — return to Phase Hub";
+  if (input.focusStatus === "stopped") return "Stopped — Birth plant intact";
   if (isAwakeningFailed(input)) return "Clock halted — fail-closed, Birth intact";
+  if (!input.focusStatus || input.focusStatus === "pending") {
+    return "Not started — start Awakening from Phase Hub";
+  }
   return "Incomplete — floors stay fail-closed";
 }
 
@@ -21,7 +25,10 @@ export function awakeningMissionMessage(input: {
   note?: string | null;
 }): string {
   if (input.running) {
-    return input.progressMessage || "Living clock";
+    return input.progressMessage || "First Watch living clock";
+  }
+  if (input.focusStatus === "stopped") {
+    return input.progressMessage || "Stopped — Birth plant intact. Freeze held.";
   }
   if (isAwakeningFailed(input)) {
     return failLine(input.error, input.progressMessage);
@@ -29,7 +36,7 @@ export function awakeningMissionMessage(input: {
   return (
     input.progressMessage ||
     input.note ||
-    "Prefer better than frozen π*. Cycle 0 evals the parent. Then 8 train cycles keep-best. Tape end is not a stop."
+    "First Watch: frozen Birth plant on holdout B. One eval, no learn(). Tape end is the exam."
   );
 }
 

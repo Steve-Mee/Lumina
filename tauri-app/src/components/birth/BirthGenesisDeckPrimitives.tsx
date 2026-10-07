@@ -28,6 +28,7 @@ export function StatusChip({
     >
       <span className="risk-envelope-status-chip__dot" />
       {label}
+      <HelpTip text={tip} label={`${label} info`} />
     </span>
   );
 }

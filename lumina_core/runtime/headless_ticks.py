@@ -174,12 +174,16 @@ def _run_simulation(
     apply_learning_shaping: bool | None = None,
     symbol: str = "MES",
     point_value: float = 5.0,
-    commission_per_side: float = 2.55,
+    commission_per_side: float | None = None,
 ) -> dict[str, Any]:
     """
     Core simulation loop.  Processes ticks and returns trade statistics.
     Deliberately fast (pure Python, sub-second for <=50 k ticks).
     """
+    if commission_per_side is None:
+        from lumina_core.market.nt_fees import all_in_per_side_usd
+
+        commission_per_side = all_in_per_side_usd(symbol, qty=1)
     rng = random.Random(seed)
     pnl_values: list[float] = []
     running_pnl = 0.0

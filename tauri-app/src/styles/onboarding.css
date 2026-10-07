@@ -2779,6 +2779,11 @@
 }
 
 .systems-go-banner {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 60;
   border-top: 1px solid var(--status-partial-border);
   background: color-mix(in srgb, var(--lumina-void) 55%, var(--status-partial-bg));
   backdrop-filter: blur(12px);

@@ -128,6 +128,9 @@ def normalize_tick_rows(rows: list[dict[str, Any]], *, source_label: str) -> lis
                 "source": resolved_tick_source(row, default_if_empty=source_label),
             }
         )
+        walk = str(row.get("history_walk") or "").strip()
+        if walk:
+            normalized[-1]["history_walk"] = walk
     return normalized
 
 

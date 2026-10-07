@@ -29,6 +29,7 @@ from lumina_core.birth.birth_trade_geometry import (
 )
 from lumina_core.birth.config_curriculum import BirthCurriculumConfig
 from lumina_core.birth.curriculum_types import CurriculumStage
+from lumina_core.birth.evolution_proof_gate import attach_session_days, require_policy_session_days
 from lumina_core.birth.foundation_occupancy_envelope import (
     foundation_envelope_controller_spec,
     foundation_occupancy_envelope_enabled,
@@ -74,13 +75,24 @@ def write_grind_closes(
     trajectories: list[dict[str, Any]],
     *,
     ledger_source: str = "awakening_grind",
+    tape: list[dict[str, Any]] | None = None,
 ) -> int:
-    """New file per leg. Never the Birth s5 archive path."""
+    """New file per leg. Never the Birth s5 archive path.
+
+    When ``tape`` is the eval walk, every policy close stores that bar's real
+    timestamp. A policy close that still has no day is not written.
+    """
     if path.name == "s5_close_ledger.jsonl":
         raise RuntimeError("grind must not write the Birth s5 archive")
+    stamped = attach_session_days(
+        [tr for tr in trajectories if isinstance(tr, dict)],
+        tape,
+    )
+    if tape is not None:
+        require_policy_session_days(stamped)
     rows: list[dict[str, Any]] = []
-    for tr in trajectories:
-        if not isinstance(tr, dict) or tr.get("pnl") is None:
+    for tr in stamped:
+        if tr.get("pnl") is None:
             continue
         row = close_ledger_row(tr)
         rows.append(enrich_archive_row(row, stage=S5_STAGE.value, tr=tr, source=str(ledger_source)))
@@ -199,7 +211,7 @@ def s5_envelope_kwargs(cfg: BirthCurriculumConfig, geometry: Any) -> dict[str, A
         "trade_geometry": geometry,
         "exploration_steps": 0,
         "expectancy_gap": 0.0,
-        "geometry_max_hold_in_band": False,
+        "geometry_max_hold_in_band": True,
         "policy_edge_min_trades": int(ADR0026_MIN_TRADES),
     }
 
@@ -225,6 +237,7 @@ def run_evaluate_only(
     rollout_fn: Callable[..., Any] | None = None,
     ledger_source: str = "awakening_grind",
     path_exit_k3_shadow: bool = False,
+    should_stop: Any | None = None,
 ) -> GrindLegMetrics:
     """Single-pass holdout eval. No train, no 172-stop, no env loop farm.
 
@@ -263,6 +276,9 @@ def run_evaluate_only(
     cfg = BirthCurriculumConfig()
     n_bars = len(holdout)
     kwargs = s5_envelope_kwargs(cfg, geometry)
+    # Skill sample ends here. The flat tail is occupancy_full_tape, not the AND
+    # (ADR-0049 amendment 2026-09-23). Do not delete this to "fix" occupancy.
+    kwargs["forbid_plant_open_after"] = int(ADR0026_MIN_TRADES)
     kwargs.update(occupancy_seed_kwargs(reports_dir, workspace_root=root))
     _occ, seed_source = resolve_awakening_occupancy_seed(reports_dir, root)
     logger.info("awakening.grind.occupancy_seed source=%s occ=%s", seed_source, _occ)
@@ -280,14 +296,32 @@ def run_evaluate_only(
             max_steps=n_bars,
             rollout_step_budget=n_bars,
             stall_probe_steps=max(n_bars, 1),
+            should_stop=should_stop,
             **kwargs,
         )
     finally:
         PATH_EXIT_K3_SHADOW.reset(token)
     if wrapped.optimizer_steps != 0:
         raise RuntimeError("awakening grind recorded optimizer steps")
+    if bool(getattr(rollout, "stopped", False)):
+        metrics = GrindLegMetrics(
+            frozen_loaded=True,
+            frozen_path=str(frozen_path or ""),
+            frozen_sha256=sha,
+            train=TRAIN,
+            stopped=True,
+        )
+        metrics.classification = "INCONCLUSIVE"
+        metrics.start_choice = START_CHOICE
+        metrics.start_bar_index = START_BAR_INDEX
+        return metrics
     trajectories = list(getattr(rollout, "trajectories", None) or [])
-    write_grind_closes(ledger_path, trajectories, ledger_source=str(ledger_source))
+    write_grind_closes(
+        ledger_path,
+        trajectories,
+        ledger_source=str(ledger_source),
+        tape=list(holdout),
+    )
     steps = int(getattr(rollout, "rollout_steps", 0) or 0)
     exhausted = steps >= max(0, n_bars - 1)
     rows: list[dict[str, Any]] = []
@@ -308,6 +342,8 @@ def run_evaluate_only(
     metrics.start_bar_index = START_BAR_INDEX
     metrics.start_choice = START_CHOICE
     metrics.optimizer_steps = 0
+    metrics.constitution_violations = getattr(rollout, "constitution_violations", None)
+    metrics.constitution_blocks = getattr(rollout, "constitution_blocks", None)
     metrics.train = TRAIN
     logger.info(
         "awakening.grind.leg n=%s wr=%.3f sharpe=%.3f dd=%.3f mean=%.2f class=%s archive_s5=%s",

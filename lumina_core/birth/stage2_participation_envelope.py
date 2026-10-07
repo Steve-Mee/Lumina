@@ -180,6 +180,8 @@ def decide_stage2_participation(
     # In-band zombie holds (live 3180 bars) starve n_B. Geometry max-hold is
     # plant time-stop airframe, not a floor cut.
     geometry_max_hold_in_band: bool = False,
+    # Eval B after n_B floor: no plant FORCE_OPEN flood. Birth keeps True.
+    allow_force_open: bool = True,
 ) -> ParticipationDecision:
     """Return participation mode for one SIM step.
 
@@ -312,6 +314,12 @@ def decide_stage2_participation(
     # even when the rolling window already looks in-band.
     if over_flat > force_open_hi + 1e-12:
         if pos == 0:
+            if not bool(allow_force_open):
+                return ParticipationDecision(
+                    MODE_PASSTHROUGH,
+                    None,
+                    "over_flat_force_open_forbidden",
+                )
             if bool(force_open_refractory):
                 return ParticipationDecision(
                     MODE_PASSTHROUGH,

@@ -32,7 +32,7 @@ describe("maturationPhaseChrome", () => {
     ).toBe("proving_ground");
   });
 
-  it("maps running birth to birth step and finale to awakening", () => {
+  it("maps running birth and the birth finale handoff to the birth step", () => {
     expect(
       resolveChromeMaturationPhase({
         appPhase: "birth",
@@ -46,7 +46,7 @@ describe("maturationPhaseChrome", () => {
         birthSurface: "running",
         birthUiPhase: "finale",
       }),
-    ).toBe("awakening");
+    ).toBe("birth");
   });
 
   it("maps awakening app phase to awakening step", () => {

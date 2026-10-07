@@ -3,6 +3,10 @@
 > **Supersession (2026-08-14):** Birth Foundation no longer uses a WR 35–45% curriculum pass ([ADR-0046](./0046-birth-foundation-evolvable-plant.md)). Evolution Proof remains an **Awakening / post-Birth** wall. Certificate OOS ≥48% remains Proving Ground — not Birth exit.
 >
 > **Implementation (2026-09-18, [ADR-0049](./0049-awakening-eyes-open.md)):** n_B ≥ 500 is hard (`effective_min_trades` deleted). Lift ≥5pp or OOS ≥45% is necessary, not sufficient — Awakening AND also requires occupancy, process-R, STABLE, Twin-watch of this run, recovery, freeze.
+>
+> **Amendment (2026-09-24):** The 5pp winrate point estimate is retired as the wall. It stays a journal diagnosis. The clause is now a paired regret: lower 95% day-blocked bootstrap bound of `mean_R(child) − mean_R(frozen parent replay)` on holdout B ≥ +0.05R, plant closes excluded, n_B ≥ 500. `OOS ≥ 45%` remains the alternate. Missing parent replay fails closed. Median win-R below half the parent's fails closed (anti-scalp). The finished `20260923T224531Z` run is not regraded. Playground and Proving Ground floors do not move.
+>
+> **Moved (2026-10-06, [ADR-0049](./0049-awakening-eyes-open.md)):** This paired-regret clause is **not** the Awakening exit. Awakening exit is First Watch. The clause remains the exam before a Playground rule becomes the hand. The numbers do not move. Finished Awakening runs are not regraded.
 
 ## Status
 
@@ -22,7 +26,7 @@ Introduce a **three-layer promotion model**:
 |-------|---------|-----------|--------------|
 | Birth curriculum (stage 1) | Pipeline bootstrap | Configurable (default 45%, floor 35%) | No |
 | Birth Certificate v2 OOS | Holdout quality | ≥48% winrate (existing) | Yes |
-| **Evolution Proof Gate** (new) | Post-birth improvement | Winrate lift ≥5% vs birth exit **or** polish OOS ≥45% on ≥500 trades | Yes |
+| **Evolution Proof Gate** (new) | Post-birth improvement | Paired mean-R CI low ≥ +0.05R vs frozen parent replay **or** polish OOS ≥45%, on ≥500 trades. Winrate lift is a diagnosis. | Yes |
 
 Implementation SSOT: [`lumina_core/birth/evolution_proof_gate.py`](../../lumina_core/birth/evolution_proof_gate.py)
 

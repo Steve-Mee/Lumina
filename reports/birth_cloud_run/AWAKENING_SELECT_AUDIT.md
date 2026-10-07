@@ -1,3 +1,5 @@
+> **Historical audit. Not current Awakening law.** The exit since 2026-10-06 is First Watch. See the current-law box in `docs/adr/0049-awakening-eyes-open.md`.
+
 # AWAKENING SELECT AUDIT
 
 **Date:** 2026-09-03

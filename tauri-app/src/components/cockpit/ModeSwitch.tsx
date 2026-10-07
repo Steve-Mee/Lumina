@@ -34,7 +34,7 @@ export function ModeSwitch({
     reportedMode !== null && reportedMode !== mode && syncStatus !== "pending";
 
   return (
-    <div className="relative flex flex-col items-end gap-0.5">
+    <div className="mode-switch relative flex flex-col items-end gap-0.5">
       {(showMismatch || showSyncDot) && (
         <span
           className={cn(
@@ -60,7 +60,7 @@ export function ModeSwitch({
       <motion.div
         layout
         className={cn(
-          "relative flex rounded-lg border p-0.5 lumina-glow-edge",
+          "mode-switch__shell relative flex rounded-lg border p-0.5 lumina-glow-edge",
           modeSwitchShellClass(mode),
         )}
         transition={modeMotion}
@@ -106,7 +106,7 @@ export function ModeSwitch({
           );
         })}
       </motion.div>
-      <span className="font-mono text-[9px] tracking-[0.14em] text-muted-foreground/70 uppercase">
+      <span className="mode-switch__hint font-mono text-[9px] tracking-[0.14em] text-muted-foreground/70 uppercase">
         {modeSwitchTooltip(mode)}
       </span>
     </div>

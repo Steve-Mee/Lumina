@@ -115,6 +115,33 @@ class MultiSymbolSwarmManager(MultiSymbolSwarmPlotMixin):
         node.regimes_rolling.append(str(regime).upper())
         node.dream_state.update({"regime": str(regime).upper(), "last_price": last, "symbol": symbol_key})
 
+    def apply_nt_bar(self, symbol: str, raw: dict[str, Any]) -> dict[str, Any] | None:
+        """NT 1m Last bar onto the swarm node. Quotes never write this OHLC."""
+        symbol_key = str(symbol).strip().upper()
+        if symbol_key not in self.nodes:
+            return None
+        node = self.nodes[symbol_key]
+        closed = node.market_data.apply_nt_bar(raw)
+        close_px = float(raw.get("close") or 0.0)
+        if close_px > 0:
+            prev = float(node.last_price) if node.last_price else 0.0
+            node.prices_rolling.append(close_px)
+            if prev > 0:
+                node.returns_rolling.append((close_px - prev) / prev)
+            node.last_price = close_px
+        ohlc = node.market_data.copy_ohlc()
+        if len(ohlc) >= 20:
+            try:
+                regime = self.engine.detect_market_regime(ohlc)
+            except Exception:
+                logging.exception("swarm.apply_nt_bar.regime_failed")
+                regime = "NEUTRAL"
+        else:
+            regime = "NEUTRAL"
+        node.regimes_rolling.append(str(regime).upper())
+        node.dream_state.update({"regime": str(regime).upper(), "last_price": node.last_price, "symbol": symbol_key})
+        return closed
+
     def ingest_historical_rows(self, symbol: str, rows_df: pd.DataFrame) -> None:
         symbol_key = str(symbol).strip().upper()
         if symbol_key not in self.nodes or rows_df is None or rows_df.empty:

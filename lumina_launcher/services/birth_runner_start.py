@@ -504,7 +504,16 @@ def start_birth(
                     os.environ["LUMINA_CONFIG"] = previous_cfg
                 else:
                     os.environ.pop("LUMINA_CONFIG", None)
-            logger.info("Birth Phase completed successfully")
+            result = svc._result if isinstance(svc._result, dict) else {}
+            status = str(result.get("status") or "")
+            if status in {"completed", "practice_completed"}:
+                logger.info("Birth Phase completed successfully")
+            else:
+                logger.info(
+                    "Birth Phase finished status=%s reason=%s",
+                    status or "unknown",
+                    result.get("failure_reason") or result.get("message") or "",
+                )
         except Exception as e:
             from lumina_core.birth.physics_preflight import (
                 birth_exception_attention,

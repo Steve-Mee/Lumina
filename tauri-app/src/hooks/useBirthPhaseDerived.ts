@@ -151,7 +151,6 @@ export function useBirthPhaseDerived(recoveryDismissed: boolean) {
   const phaseHeader = resolveBirthScreenPhaseHeader({
     genesisMode,
     missionMode,
-    awakening,
     activating,
     launching: launchingMode,
     decisionMode,

@@ -127,14 +127,14 @@ def _safe_dict(value) -> dict:
 
 
 def _default_trading_instrument() -> str:
-    """SSOT: INSTRUMENT env > trading.instrument yaml > non-expired fallback."""
+    """SSOT: env or yaml root, then the liquid month for today. No stored month wins past its roll."""
+    from lumina_core.order_gatekeeper.contract_symbols import live_listing
+
     env = str(os.getenv("INSTRUMENT") or "").strip()
-    if env:
-        return env.upper()
     yaml_inst = str(_config_yaml_nested("", "trading", "instrument") or "").strip()
-    if yaml_inst:
-        return yaml_inst.upper()
-    return "MES SEP26"
+    raw = (env or yaml_inst or "MES").upper()
+    rolled = str(live_listing(raw) or "").strip().upper()
+    return rolled or raw
 
 
 def _parse_swarm_symbols() -> list[str]:

@@ -4,9 +4,9 @@
     <RootNamespace>LuminaNt8AddOn</RootNamespace>
     <!-- Unique name so NT never binds a stale LuminaNt8AddOn 1.0 without FabricNtHost. -->
     <AssemblyName>Lumina.Fabric.NtBridge</AssemblyName>
-    <Version>1.5.0</Version>
-    <AssemblyVersion>1.5.0.0</AssemblyVersion>
-    <FileVersion>1.5.0.0</FileVersion>
+    <Version>1.7.1</Version>
+    <AssemblyVersion>1.7.1.0</AssemblyVersion>
+    <FileVersion>1.7.1.0</FileVersion>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
   </PropertyGroup>

@@ -10,6 +10,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import numpy as np
+
 from lumina_core.logging_utils import write_runtime_monitoring_snapshot
 
 _logger = logging.getLogger(__name__)
@@ -24,7 +26,6 @@ class RuntimeMonitoringService:
     def compute_session_kpis(self) -> dict[str, float]:
         """Compute live session KPIs using the same formulas as the ORACLE log block."""
         app = self.app
-        np = app.np
         pnl_history = list(getattr(app, "pnl_history", []) or [])
         equity_curve = list(getattr(app, "equity_curve", []) or [])
 

@@ -21,13 +21,16 @@ export function normalizeMaturationPhase(raw: string | null | undefined): Matura
 
 /**
  * Resolve which maturation step the chrome ladder should highlight.
- * Pre-deck surfaces use local journey context; deck prefers API phase.
+ * Pre-deck surfaces use local journey context. On the deck, a post-genesis
+ * `app_surface` (e.g. playground) wins so YOU ARE HERE matches the visit;
+ * otherwise the API phase is used.
  */
 export function resolveChromeMaturationPhase(input: {
   appPhase: string;
   birthSurface?: BirthSurface | null;
   birthUiPhase?: BirthUiPhase | null;
   apiPhase?: string | null;
+  appSurface?: string | null;
 }): MaturationPhaseId {
   const app = String(input.appPhase ?? "").toLowerCase();
   const surface = input.birthSurface ?? null;
@@ -40,7 +43,9 @@ export function resolveChromeMaturationPhase(input: {
   }
 
   if (app === "birth") {
-    if (ui === "finale") return "awakening";
+    // Finale is a handoff, not the Awakening mission. The ladder stays on Birth
+    // until OnboardingGate mounts Phase Hub.
+    if (ui === "finale") return "birth";
     if (surface === "running" || ui === "running" || ui === "error" || ui === "stage_stalled") {
       return "birth";
     }
@@ -66,6 +71,10 @@ export function resolveChromeMaturationPhase(input: {
   }
 
   if (app === "cockpit" || app === "deck") {
+    const fromSurface = normalizeMaturationPhase(input.appSurface);
+    if (fromSurface && fromSurface !== "setup" && fromSurface !== "genesis") {
+      return fromSurface;
+    }
     return api ?? "playground";
   }
 

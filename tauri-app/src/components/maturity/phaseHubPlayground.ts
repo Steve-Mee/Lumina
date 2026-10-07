@@ -40,36 +40,37 @@ export function playgroundTilesFromLearned(
   learned: Record<string, unknown>,
 ): HubCharterTile[] {
   const nP = asFiniteNumber(learned.n_p);
+  const green = asFiniteNumber(learned.green_days);
   return [
     {
       label: "Doel",
-      value: "Eerste stappen",
-      tip: "Crawl in NinjaTrader SIM with fictional capital. Not a Birth WR exam. Not REAL.",
-      footnote: "First fill · WR ≥ BE · mean R ≥ 0",
+      value: "Leerschool",
+      tip: "Zij probeert op SIM. Een 240-minutenkaars is geen startsein. Geen REAL.",
+      footnote: "Poort: 5 groene sessiedagen",
     },
     {
-      label: "First fill",
-      value: yn(learned.first_fill),
-      tip: "Venue fill via the order path. JSON stamps and health flags do not count.",
-      footnote: String(learned.first_fill_source || "orderpath only"),
+      label: "Groene dagen",
+      value: `${Math.round(green ?? 0)} / 5`,
+      tip: "Aaneengesloten sessiedagen met een echte fill en verwachting boven 0. Een bijvul is geen dag.",
+      footnote: "Vrijdag naar maandag telt",
     },
     {
-      label: "n_P",
-      value: nP == null ? "0 / 150" : `${Math.round(nP).toLocaleString("en-US")} / 150`,
-      tip: "Policy-only SIM closes. n_P < 150 is INCONCLUSIVE, never a pass.",
-      footnote: "Skill clock · no JSON cheat",
+      label: "Closes",
+      value: nP == null ? "0" : Math.round(nP).toLocaleString("en-US"),
+      tip: "Echte policy-closes. Dit getal is geen poort van 150.",
+      footnote: "150 closes is het examen in Apprenticeship",
     },
     {
       label: "WR vs BE",
       value: `${formatPct(learned.skill_wr)} / ${formatPct(learned.breakeven_wr)}`,
-      tip: "Skill WR must meet live geometry breakeven on this SIM tape, not Birth fitness.",
-      footnote: "Playground tape · policy-only",
+      tip: "Meting. Zonder closes is er geen breakeven. Dit is niet de schoolpoort.",
+      footnote: "De poort WR ≥ BE zit in Apprenticeship",
     },
     {
       label: "Mean R",
       value: formatScore(learned.mean_r),
-      tip: "Mean R ≥ 0 on playground policy closes. Birth mean R is a baseline, not a pass.",
-      footnote: "Economic viability AND",
+      tip: "Meting op policy-closes. Geen schoolpoort.",
+      footnote: "Mean R ≥ 0 zit in Apprenticeship",
     },
     {
       label: "Envelope",

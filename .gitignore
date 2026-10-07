@@ -28,9 +28,13 @@ reports/birth_cloud_run/workspace/state/lumina_birth_split_cache.json
 # Live operator exam dumps (named experiment ledgers stay tracked)
 reports/birth_cloud_run/artifacts/s5_close_ledger.jsonl
 reports/birth_cloud_run/artifacts/s5_close_ledger.sha256
-# Live Awakening incumbent / holdout (local operator exam — never publish)
+# Live Awakening incumbent / holdout / student (local operator exam — never publish)
 reports/birth_cloud_run/artifacts/awakening_live_*
-reports/birth_cloud_run/artifacts/awakening_incumbent_pi_star.zip
+reports/birth_cloud_run/artifacts/awakening_incumbent_*
+reports/birth_cloud_run/artifacts/awakening_parent_holdout*
+reports/birth_cloud_run/artifacts/awakening_student_pi_star.zip
+reports/birth_cloud_run/artifacts/awakening_birth_tape_a_*
+reports/birth_cloud_run/artifacts/awakening_parent_tape_a_*
 !reports/genesis_cloud_run/
 !reports/genesis_cloud_run/**
 reports/genesis_cloud_run/workspace/
@@ -104,6 +108,9 @@ tmp_*.log
 tmp_*.txt
 tmp_*.json
 tmp_*.md
+# Leading-dot session dumps (tmp_* does not match .tmp_*)
+.tmp_*
+.tmp_pytest/
 tmp_test_subset.txt
 tsc_errors.txt
 tsc-errors.txt

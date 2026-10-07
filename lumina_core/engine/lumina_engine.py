@@ -264,9 +264,19 @@ class LuminaEngine:
 
     def generate_price_action_summary(self) -> str:
         from .analysis_helpers import generate_price_action_summary as _summary
-        ohlc = getattr(getattr(self, "market_data", None), "copy_ohlc", lambda: None)()
+        from lumina_core.engine.nt_bar_periods import CANONICAL_LIVE
+
+        md = getattr(self, "market_data", None)
+        ohlc = getattr(md, "copy_ohlc", lambda: None)()
         tfs = getattr(getattr(self, "config", None), "timeframes", None)
-        return _summary(ohlc, tfs)
+        native: dict[str, Any] = {}
+        copy_period = getattr(md, "copy_ohlc_period", None)
+        if copy_period is not None:
+            for period in CANONICAL_LIVE:
+                frame = copy_period(period, forming=False)
+                if frame is not None and not frame.empty:
+                    native[period] = frame
+        return _summary(ohlc, tfs, native_frames=native)
 
     def detect_market_regime(self, df) -> str:
         if self.technical_analysis_service is None:

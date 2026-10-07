@@ -1,5 +1,5 @@
 /**
- * Awakening AND checklist — HUD green ⇔ engine proofs.
+ * Awakening AND checklist — HUD green ⇔ First Watch proofs (ADR-0049).
  * Never paint a gate from hub copy; only from pass_now / exit_proofs / blockers.
  */
 import type { StagePassChecklist, StagePassRequirement } from "@/lib/birth/birthStagePassChecklist";
@@ -9,17 +9,16 @@ import {
   type ConditionTone,
 } from "@/lib/conditionTone";
 
-const GATES: readonly { id: string; label: string }[] = [
+export const FIRST_WATCH_GATES: readonly { id: string; label: string }[] = [
   { id: "birth_freeze_intact", label: "Birth freeze" },
   { id: "policy_only", label: "Policy-only skill" },
   { id: "n_B>=500", label: "n_B ≥ 500" },
   { id: "occupancy_in_band", label: "Occupancy exam band" },
   { id: "process_r", label: "Process-R" },
-  { id: "prefer_better_edge", label: "Prefer-better edge" },
-  { id: "prefer_better_mean_r", label: "Prefer-better mean R" },
-  { id: "evolution_proof_passed", label: "Evolution proof" },
+  { id: "baseline_book", label: "Baseline book" },
   { id: "STABLE", label: "STABLE" },
-  { id: "no_substitution", label: "No substitution" },
+  { id: "baseline_is_plant", label: "Plant baseline" },
+  { id: "constitution_clear", label: "Constitution" },
   { id: "twin_watch", label: "Twin watch of this run" },
   { id: "recovery_ok", label: "Recovery without cheat" },
   { id: "regime_visibility", label: "Regime visibility" },
@@ -61,6 +60,21 @@ function yn(value: unknown): string {
   return "—";
 }
 
+function plantCurrent(learned: Record<string, unknown>): string {
+  const child = typeof learned.child_weight_sha === "string" ? learned.child_weight_sha : "";
+  const init = typeof learned.init_weight_sha === "string" ? learned.init_weight_sha : "";
+  if (!child || !init) return "—";
+  return child === init ? "plant" : "not plant";
+}
+
+function constitutionCurrent(learned: Record<string, unknown>): string {
+  const violations = asNumber(learned.constitution_violations);
+  const blocks = asNumber(learned.constitution_blocks);
+  if (violations == null || blocks == null) return "—";
+  if (violations === 0 && blocks === 0) return "clear";
+  return `${Math.round(violations)} viol · ${Math.round(blocks)} block`;
+}
+
 function currentFor(id: string, learned: Record<string, unknown>): { current: string; need: string } {
   switch (id) {
     case "birth_freeze_intact":
@@ -69,20 +83,19 @@ function currentFor(id: string, learned: Record<string, unknown>): { current: st
       return { current: yn(learned.policy_only), need: "policy closes only" };
     case "recovery_ok":
       return { current: yn(learned.recovery_ok), need: "stall→retry, freeze held" };
-    case "no_substitution": {
-      const child = typeof learned.child_sha === "string" ? learned.child_sha : "";
-      const init = typeof learned.init_sha === "string" ? learned.init_sha : "";
-      const same = Boolean(child) && child === init;
+    case "baseline_is_plant":
+      return { current: plantCurrent(learned), need: "weight sha = Birth plant" };
+    case "baseline_book":
+      return { current: yn(learned.parent_replay_present), need: "parent ledger on disk" };
+    case "constitution_clear":
+      return { current: constitutionCurrent(learned), need: "0 violations · 0 blocks" };
+    case "n_B>=500": {
+      const nB = asNumber(learned.n_b);
       return {
-        current: !child || !init ? "—" : same ? "child = parent" : "child ≠ parent",
-        need: "child sha ≠ frozen π*",
-      };
-    }
-    case "n_B>=500":
-      return {
-        current: `${Math.round(asNumber(learned.n_b) ?? 0).toLocaleString("en-US")}`,
+        current: nB == null ? "—" : `${Math.round(nB).toLocaleString("en-US")}`,
         need: "≥ 500 policy closes",
       };
+    }
     case "occupancy_in_band":
       return { current: pct(learned.occupancy), need: "25–75%" };
     case "process_r":
@@ -90,28 +103,18 @@ function currentFor(id: string, learned: Record<string, unknown>): { current: st
         current: asNumber(learned.median_loss_r)?.toFixed(2) ?? "—",
         need: "median loss R ≤ 1.5",
       };
-    case "prefer_better_edge":
-      return { current: pct(learned.edge), need: "edge ≥ 0" };
-    case "prefer_better_mean_r":
-      return {
-        current: asNumber(learned.mean_r)?.toFixed(2) ?? "—",
-        need: `≥ Birth ${asNumber(learned.birth_mean_r)?.toFixed(2) ?? "—"}`,
-      };
-    case "evolution_proof_passed":
-      return {
-        current: pct(learned.lift),
-        need: "lift ≥ 5pp or OOS ≥ 45%",
-      };
     case "STABLE":
       return {
         current: typeof learned.stable_class === "string" ? learned.stable_class : "INCONCLUSIVE",
         need: "Sharpe > −2 · DD ≤ 25%",
       };
-    case "twin_watch":
+    case "twin_watch": {
+      const n = asNumber(learned.twin_watch_n);
       return {
-        current: `${Math.round(asNumber(learned.twin_watch_n) ?? 0)}`,
+        current: n == null ? "—" : `${Math.round(n)}`,
         need: "Twin-source watch ≥ 1",
       };
+    }
     case "regime_visibility": {
       const observed = Array.isArray(learned.regime_observed)
         ? learned.regime_observed.map(String)
@@ -151,7 +154,7 @@ export function buildAwakeningChecklist(view: AwakeningProgressView | null): Sta
   const learned = view?.learned ?? {};
   const proofs = proofsOf(learned);
   const missing = new Set((view?.missing ?? []).map((item) => String(item)));
-  const requirements: StagePassRequirement[] = GATES.map((gate) => {
+  const requirements: StagePassRequirement[] = FIRST_WATCH_GATES.map((gate) => {
     const met = proofs.has(gate.id) && !missing.has(gate.id);
     const { current, need } = currentFor(gate.id, learned);
     const tone = toneFor(gate.id, met, learned);
@@ -175,11 +178,11 @@ export function buildAwakeningChecklist(view: AwakeningProgressView | null): Sta
   else if (tones.includes("warn")) overallTone = "warn";
   else if (allMet) overallTone = "ok";
   return {
-    stageTitle: "Eyes open",
+    stageTitle: "First Watch",
     stageIndex: null,
     stageTotal: null,
-    passCriteriaId: "awakening_and_adr_0049",
-    mission: "Prefer better than frozen π*. STABLE + n_B≥500. Not REAL.",
+    passCriteriaId: "awakening_first_watch_adr_0049",
+    mission: "Frozen Birth plant on holdout B. One eval, no learn(). Not REAL.",
     requirements,
     metCount,
     totalCount: requirements.length,

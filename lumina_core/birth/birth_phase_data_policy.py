@@ -50,6 +50,42 @@ def prepare_birth_data_and_policy(
         return BirthPhaseDataReady(ticks=[], split=None, start_price=0.0, early_return=data_prep.early_return)
     ticks = data_prep.ticks
     split = data_prep.split
+    from lumina_core.birth.data_source_honesty import real_historical_tape_reason
+
+    tape_reason = real_historical_tape_reason(list(ticks or []))
+    if tape_reason:
+        message = (
+            "Birth refused: the tape is not 100% real NinjaTrader history "
+            f"({tape_reason}). Synthetic data cannot pass Birth."
+        )
+        logger.error("birth.tape.synthetic_refused reason=%s", tape_reason)
+        write_birth_progress(
+            host.workspace_root,
+            stage="history_unavailable",
+            phase="loading_history_failed",
+            message=message,
+            progress_pct=0.0,
+            cumulative_trades=int(getattr(host, "cumulative_trades", 0) or 0),
+            target_trades=cfg.trade_budget_cap,
+            birth_start_time=float(getattr(host, "birth_start_time", 0) or 0),
+            ppo_steps=int(getattr(host, "ppo_steps", 0) or 0),
+            retryable=True,
+            failure_reason=tape_reason,
+            attention_reason_code="synthetic_tape_refused",
+            needs_attention=True,
+        )
+        return BirthPhaseDataReady(
+            ticks=[],
+            split=None,
+            start_price=0.0,
+            early_return={
+                "status": "synthetic_tape_refused",
+                "failure_reason": tape_reason,
+                "training_mode": training_mode,
+                "total_trades": int(getattr(host, "cumulative_trades", 0) or 0),
+                "ppo_steps": int(getattr(host, "ppo_steps", 0) or 0),
+            },
+        )
     resume_cache_decision = data_prep.resume_cache_decision
     resume_skip_load = data_prep.resume_skip_load
     _ = data_prep.resume_reenrich_only
@@ -76,7 +112,7 @@ def prepare_birth_data_and_policy(
         stage="historical_loaded",
         phase="ticks_ready",
         message=(
-            f"Data geladen: {len(ticks):,} ticks, holdout {split.holdout_days} dagen, "
+            f"History loaded: {len(ticks):,} ticks, holdout {split.holdout_days} days, "
             f"regimes {','.join(host._data_manifest.get('holdout_regimes', []))}."
         ),
         progress_pct=25.0,

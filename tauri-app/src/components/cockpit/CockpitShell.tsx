@@ -3,7 +3,6 @@ import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 import { OrganismEnvelopeProvider } from "@/context/OrganismEnvelopeContext";
-import { CommandHud } from "@/components/cockpit/CommandHud";
 import { EvolutionLadderStrip } from "@/components/shared/EvolutionLadderStrip";
 import { LuminaPhaseHeader } from "@/components/shared/LuminaPhaseHeader";
 import { resolveDeckPhaseHeader } from "@/lib/luminaPhasePresentation";
@@ -11,12 +10,12 @@ import { DeckBlockingOverlay } from "@/components/cockpit/DeckBlockingOverlay";
 import { PPOEvolutionProvider } from "@/context/PPOEvolutionContext";
 import { AdaptiveIntelligenceProvider } from "@/context/AdaptiveIntelligenceContext";
 import { RealSafeModeOverlay } from "@/components/cockpit/RealSafeModeOverlay";
-import { StatusBar } from "@/components/cockpit/StatusBar";
 import { useOrganismClock } from "@/hooks/useOrganismClock";
 import { useRealSafeModeMonitor } from "@/hooks/useRealSafeModeMonitor";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useDeckStatusSyncToast } from "@/hooks/useDeckStatusResolution";
 import { useDeckLifecycleGuard } from "@/hooks/useDeckLifecycleGuard";
+import { postPlaygroundDeckLive } from "@/lib/maturationClient";
 import { fetchAndHydrateDeckApiKey } from "@/lib/setupClient";
 import { connectCoreLive, disconnectCoreLive } from "@/lib/websocket";
 import { useApiKeyStore } from "@/store/apiKeyStore";
@@ -25,6 +24,7 @@ import {
   selectModeSyncStatus,
   useCoreStore,
 } from "@/store/coreStore";
+import { useOnboardingStore } from "@/store/onboardingStore";
 import { useVisualSettingsStore, selectVisualQuality } from "@/store/visualSettingsStore";
 import { cn } from "@/lib/utils";
 
@@ -49,6 +49,7 @@ export function CockpitShell({ className, children }: CockpitShellProps) {
   const reducedMotion = usePrefersReducedMotion();
   const visualQuality = useVisualSettingsStore(selectVisualQuality);
   const clockFrozen = visualQuality === "low";
+  const appSurface = useOnboardingStore((s) => s.payload?.app_surface);
 
   useOrganismClock(shellRef, operatorMode, reducedMotion, clockFrozen);
 
@@ -73,6 +74,11 @@ export function CockpitShell({ className, children }: CockpitShellProps) {
     return () => disconnectCoreLive();
   }, [hydrateOperatorMode, hydrateVisualSettings, hydrateApiKey]);
 
+  useEffect(() => {
+    if (appSurface !== "playground") return;
+    void postPlaygroundDeckLive().catch(() => undefined);
+  }, [appSurface]);
+
   useRealSafeModeMonitor();
   useDeckLifecycleGuard();
 
@@ -82,30 +88,27 @@ export function CockpitShell({ className, children }: CockpitShellProps) {
         ref={shellRef}
         data-mode={operatorMode}
         className={cn(
-          "cockpit-shell lumina-glow-ambient relative flex h-screen flex-col overflow-hidden text-foreground",
+          "cockpit-shell cockpit-shell--phase birth-phase-screen birth-phase-screen--cinematic lumina-glow-ambient relative h-dvh max-h-dvh min-h-0 overflow-hidden text-foreground",
           className,
         )}
       >
         <div className="cockpit-stars pointer-events-none absolute inset-0" />
         <div className="cockpit-grid pointer-events-none absolute inset-0 opacity-40" />
-        <div className="deck-vignette pointer-events-none" aria-hidden />
 
         <PPOEvolutionProvider>
           <AdaptiveIntelligenceProvider>
             <LuminaPhaseHeader
               {...resolveDeckPhaseHeader(operatorMode)}
-              variant="strip"
-              className="relative z-20 shrink-0"
+              variant="compact"
+              className="lumina-phase-header relative z-20 shrink-0"
             />
-            <EvolutionLadderStrip className="relative z-20" showBlockers />
-            <CommandHud />
+            <EvolutionLadderStrip className="relative z-20 evolution-ladder-strip--dense !py-1" />
             <DeckBlockingOverlay />
 
-            <div className="relative z-10 min-h-0 flex-1 overflow-hidden p-3">
+            <div className="cockpit-shell__stage relative z-10 min-h-0 overflow-hidden">
               {children}
             </div>
 
-            <StatusBar />
             <RealSafeModeOverlay />
           </AdaptiveIntelligenceProvider>
         </PPOEvolutionProvider>

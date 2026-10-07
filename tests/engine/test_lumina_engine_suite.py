@@ -37,26 +37,18 @@ def _trace_y_values(trace: Any) -> list[Any]:
     return list(values)
 
 
-def test_candle_building_closes_minute(engine: LuminaEngine) -> None:
+def test_quote_ticks_never_write_ohlc(engine: LuminaEngine) -> None:
     md = engine.market_data
 
     ts0 = datetime(2026, 1, 2, 14, 30, 5)
-    ts1 = datetime(2026, 1, 2, 14, 30, 45)
-    ts2 = datetime(2026, 1, 2, 14, 31, 2)
+    ts1 = datetime(2026, 1, 2, 14, 31, 2)
 
     closed0 = md.process_quote_tick(ts=ts0, price=5000.0, bid=4999.75, ask=5000.25, volume_cumulative=100)
+    closed1 = md.process_quote_tick(ts=ts1, price=5002.0, bid=5001.75, ask=5002.25, volume_cumulative=170)
     assert closed0 is None
-
-    closed1 = md.process_quote_tick(ts=ts1, price=5001.0, bid=5000.75, ask=5001.25, volume_cumulative=130)
     assert closed1 is None
-
-    closed2 = md.process_quote_tick(ts=ts2, price=5002.0, bid=5001.75, ask=5002.25, volume_cumulative=170)
-    assert closed2 is not None
-    assert float(closed2["open"]) == 5000.0
-    assert float(closed2["close"]) == 5001.0
-    assert float(closed2["high"]) >= 5001.0
-    assert float(closed2["low"]) <= 5000.0
-    assert int(closed2["volume"]) >= 30
+    assert md.ohlc_1min.empty
+    assert md.current_candle is None
 
 
 @pytest.mark.integration

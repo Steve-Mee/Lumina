@@ -1,4 +1,5 @@
 """Named hub wipes: awakening-only, birth-keep-history, full-keep-setup."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -46,6 +47,14 @@ def _seed_workspace(root: Path) -> dict[str, Path]:
         "aw_progress": state / "lumina_awakening_progress.json",
         "aw_watch": state / "awakening_twin_watch.jsonl",
         "perfect": state / "perfect_birth_complete.flag",
+        "seal": state / "lumina_first_watch_baseline.json",
+        "heartbeat": state / "lumina_awakening_heartbeat.json",
+        "incumbent_ledger": art / "awakening_incumbent_holdout.jsonl",
+        "parent_ledger": art / "awakening_incumbent_parent_holdout.jsonl",
+        "day_book": art / "awakening_birth_tape_a_days.json",
+        "student": art / "awakening_student_pi_star.zip",
+        "rule_exam": root / "reports" / "playground_rule_exams" / "h1.json",
+        "experiment": root / "reports" / "awakening_cycle_journal" / "EXPERIMENT.md",
     }
     _touch(files["setup"], "{}")
     _touch(files["charter"], "{}")
@@ -70,6 +79,14 @@ def _seed_workspace(root: Path) -> dict[str, Path]:
     _touch(files["aw_progress"], '{"n_b":133}')
     _touch(files["aw_watch"], "{}\n")
     _touch(files["perfect"], "1")
+    _touch(files["seal"], '{"schema":"first_watch_baseline_v1"}')
+    _touch(files["heartbeat"], "{}")
+    _touch(files["incumbent_ledger"], "{}\n")
+    _touch(files["parent_ledger"], "{}\n")
+    _touch(files["day_book"], "{}")
+    files["student"].write_bytes(b"student")
+    _touch(files["rule_exam"], "{}")
+    _touch(files["experiment"], "keep this log\n")
 
     mark_phase_completed(root, "genesis", learned={}, exit_proofs=["setup_complete"])
     mark_phase_completed(root, "birth", learned={"trades": 1145}, exit_proofs=["foundation"])
@@ -96,6 +113,15 @@ def test_wipe_awakening_keeps_birth_and_history(tmp_path: Path) -> None:
     assert not files["aw_watch"].exists()
     assert not files["perfect"].exists()
     assert not files["incumbent"].exists()
+    assert not files["seal"].exists()
+    assert not files["heartbeat"].exists()
+    assert not files["incumbent_ledger"].exists()
+    assert not files["parent_ledger"].exists()
+    assert not files["day_book"].exists()
+    assert not files["student"].exists()
+    assert not files["rule_exam"].exists()
+    assert files["experiment"].is_file()
+    assert files["experiment"].read_text(encoding="utf-8") == "keep this log\n"
     assert files["pi_star"].is_file()
     assert files["pi_star"].read_bytes() == b"frozen-pi-star"
     assert files["pi_star_meta"].read_text(encoding="utf-8") == "{}"
@@ -173,3 +199,30 @@ def test_named_wipes_require_confirm(tmp_path: Path) -> None:
     assert wipe_all_maturation(tmp_path, confirm=False)["ok"] is False
     assert (tmp_path / "state" / "lumina_birth_completed.flag").is_file()
     assert (tmp_path / "reports" / "birth_cloud_run" / "artifacts" / "awakening_live_pi_star.zip").is_file()
+
+
+@pytest.mark.unit
+def test_awakening_wipe_keeps_cycle_journal(tmp_path: Path) -> None:
+    from lumina_core.maturity.awakening.cycle_journal import append_cycle, journal_path
+
+    _seed_workspace(tmp_path)
+    append_cycle(tmp_path, {"schema": "awakening_cycle_journal_v1", "cycle": 7, "evolution_proof": "gehaald"})
+    row = journal_path(tmp_path).read_text(encoding="utf-8")
+    result = wipe_phase(tmp_path, "awakening", confirm=True)
+    assert result["ok"] is True
+    assert journal_path(tmp_path).is_file()
+    assert journal_path(tmp_path).read_text(encoding="utf-8") == row
+    assert not (tmp_path / "state" / "lumina_awakening_progress.json").exists()
+
+
+@pytest.mark.unit
+def test_playground_wipe_keeps_experiment_journal(tmp_path: Path) -> None:
+    from lumina_core.maturity.playground.journal import append_heartbeat, heartbeat_path
+
+    _seed_workspace(tmp_path)
+    append_heartbeat(tmp_path, {"n_p": 0, "stop_reason": "stall_retries_exhausted"})
+    row = heartbeat_path(tmp_path).read_text(encoding="utf-8")
+    result = wipe_phase(tmp_path, "playground", confirm=True)
+    assert result["ok"] is True
+    assert heartbeat_path(tmp_path).is_file()
+    assert heartbeat_path(tmp_path).read_text(encoding="utf-8") == row

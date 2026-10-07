@@ -328,7 +328,7 @@ def get_birth_status(svc: Any) -> Dict[str, Any]:
                 "orphaned": status_name == "interrupted",
                 "message": str(
                     progress.get("message")
-                    or "Vorige sessie onderbroken — klik Hervat checkpoint om verder te gaan."
+                    or "Previous session stopped — choose Resume checkpoint to continue."
                 ),
                 "adaptive_intelligence": _ai(),
             },
@@ -369,7 +369,7 @@ def get_birth_status(svc: Any) -> Dict[str, Any]:
         {
             **base_meta,
             "status": "idle",
-            "message": "Birth Phase nog niet gestart",
+            "message": "Birth has not started",
             "orphaned": False,
             "adaptive_intelligence": _ai(),
         },

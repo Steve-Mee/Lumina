@@ -11,6 +11,9 @@ import numpy as np
 
 from lumina_core.birth.birth_constitution_guard import BirthConstitutionGuard
 from lumina_core.birth.bible_observation import bible_features_for_tick
+from lumina_core.birth.control_plane_yield import (
+    release_control_plane,
+)
 from lumina_core.birth.birth_trade_geometry import (
     BirthTradeGeometry,
     calibrate_birth_stops,
@@ -53,6 +56,7 @@ class SimRolloutResult:
     rollout_steps: int = 0
     stalled: bool = False
     stall_reason: str | None = None
+    stopped: bool = False
     exploration_steps_used: int = 0
     constitution_blocks: int = 0
     partial_complete: bool = False
@@ -93,6 +97,28 @@ class SimRolloutResult:
     last_close_gap: bool = False
     occ_floor_band_bars: int = 0
     occ_total_bars: int = 0
+    occupancy_at_nb: float | None = None
+
+
+def freeze_occupancy_at_nb(
+    *,
+    policy_trades: int,
+    flat_bars: int,
+    total_signals: int,
+    frozen: float | None,
+    n_min: int = 500,
+) -> float | None:
+    """Flat ratio at the n_B-th policy close. Later closes leave it unchanged.
+
+    ``n_min`` matches Awakening ``N_B_MIN`` / ``ADR0026_MIN_TRADES``. The full-tape
+    occupancy gate is a different number and stays on the rollout totals.
+    """
+    if int(policy_trades) > int(n_min):
+        return frozen
+    den = int(total_signals)
+    if den <= 0:
+        return frozen
+    return float(flat_bars) / float(den)
 
 
 def run_policy_rollout(
@@ -114,6 +140,7 @@ def run_policy_rollout(
     range_patience_active: bool = False,
     plateau_active: bool = False,
     on_progress: Callable[[dict[str, Any]], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
     reward_override: BirthRewardConfig | None = None,
     participation_envelope_enabled: bool = False,
     participation_min_signals: int = 50,
@@ -151,6 +178,7 @@ def run_policy_rollout(
     occupancy_exam_window: Any = None,
     geometry_max_hold_in_band: bool = False,
     policy_edge_min_trades: int | None = None,
+    forbid_plant_open_after: int | None = None,
 ) -> SimRolloutResult:
     from lumina_core.birth.stage2_participation_envelope import (
         MODE_FORCE_EXIT,
@@ -197,7 +225,8 @@ def run_policy_rollout(
 
     guard = constitution_guard or BirthConstitutionGuard()
     enriched = []
-    for row in data:
+    for row_i, row in enumerate(data):
+        release_control_plane(row_i)
         tick = dict(row)
         c, n, s, m = bible_features_for_tick(tick, workspace_root=workspace_root)
         tick["bible_confluence"] = c
@@ -344,6 +373,7 @@ def run_policy_rollout(
     entry_is_plant = False
     open_telem: dict[str, Any] | None = None
     policy_trades = 0
+    occupancy_at_nb: float | None = None
     policy_wins = 0
     plant_trades = 0
     plant_wins = 0
@@ -421,7 +451,12 @@ def run_policy_rollout(
             last_progress_at = now
             _emit_progress()
 
+    operator_stop = False
     while trades < target_trades:
+        release_control_plane(rollout_steps)
+        if should_stop is not None and should_stop():
+            operator_stop = True
+            break
         if rollout_steps >= step_budget:
             break
 
@@ -565,6 +600,11 @@ def run_policy_rollout(
             force_open_refractory=chatter.blocks(int(participation_min_dwell_bars)),
             in_band_seen=bool(occupancy_in_band_seen),
             geometry_max_hold_in_band=bool(geometry_max_hold_in_band),
+            allow_force_open=(
+                True
+                if forbid_plant_open_after is None
+                else (int(policy_trades_prior) + int(policy_trades) < int(forbid_plant_open_after))
+            ),
         )
         last_participation_mode = decision.mode
         participation_counts[decision.mode] = int(participation_counts.get(decision.mode, 0) or 0) + 1
@@ -656,6 +696,13 @@ def run_policy_rollout(
         stamp_open_host(
             env, occupancy_control_flat(cumulative_flat=envelope_flat_ratio, rolling_flat=rolling_flat),
             occupancy_in_band_seen, envelope_flat_bars, envelope_signals, range_flat_bars, range_total_signals, geometry)
+        opened_now = int(pos_before) == 0 and (
+            int(pos_after) != 0 or bool(info.get("trade_closed"))
+        )
+        if opened_now:
+            capture_open = getattr(policy, "capture_open_signal", None)
+            if callable(capture_open):
+                capture_open()
         open_telem = update_open_telem(
             open_telem, env, info, pos_before, pos_after, enriched[idx], enriched,
             policy_signals=getattr(policy, "last_open_signal", None),
@@ -704,6 +751,7 @@ def run_policy_rollout(
             closed_was_plant = plant_tag_for_close(
                 entry_is_plant=bool(entry_is_plant),
                 participation_mode=str(last_participation_mode),
+                close_reason=str(info.get("close_reason") or ""),
             )
             if closed_was_plant:
                 plant_trades += 1
@@ -711,6 +759,12 @@ def run_policy_rollout(
                     plant_wins += 1
             else:
                 policy_trades += 1
+                occupancy_at_nb = freeze_occupancy_at_nb(
+                    policy_trades=int(policy_trades),
+                    flat_bars=int(range_flat_bars),
+                    total_signals=int(range_total_signals),
+                    frozen=occupancy_at_nb,
+                )
                 if is_win:
                     policy_wins += 1
                 trade_r_raw = info.get("trade_r")
@@ -801,9 +855,14 @@ def run_policy_rollout(
 
     _emit_progress()
 
-    partial_complete = trades > 0 and trades < target_trades and rollout_steps >= step_budget
-    stalled = trades == 0 and rollout_steps >= step_budget
-    stall_reason: str | None = None
+    partial_complete = (
+        not operator_stop
+        and trades > 0
+        and trades < target_trades
+        and rollout_steps >= step_budget
+    )
+    stalled = (not operator_stop) and trades == 0 and rollout_steps >= step_budget
+    stall_reason: str | None = "stop_requested" if operator_stop else None
     if stalled:
         if exploration_steps_used > 0:
             stall_reason = "hold_only_after_exploration"
@@ -862,6 +921,7 @@ def run_policy_rollout(
         rollout_steps=rollout_steps,
         stalled=stalled,
         stall_reason=stall_reason,
+        stopped=operator_stop,
         exploration_steps_used=exploration_steps_used,
         constitution_blocks=constitution_blocks,
         partial_complete=partial_complete,
@@ -885,6 +945,7 @@ def run_policy_rollout(
         mean_entry_target_pct=mean_entry_target,
         policy_trades=int(policy_trades),
         policy_wins=int(policy_wins),
+        occupancy_at_nb=occupancy_at_nb,
         plant_trades=int(plant_trades),
         plant_wins=int(plant_wins),
         occupancy_control_flat=float(control_flat),

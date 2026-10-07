@@ -17,6 +17,12 @@ const birthPhaseSource = [
   "BirthPhaseRecoveryOverlays.tsx",
 ]
   .map((name) => readFileSync(join(birthPhaseRoot, name), "utf8"))
+  .concat([
+    readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../components/shared/PhaseCinematicFrames.tsx"),
+      "utf8",
+    ),
+  ])
   .join("\n");
 
 const birthMissionControlSource = readFileSync(

@@ -33,7 +33,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import subprocess
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -93,26 +92,9 @@ _PROM_ETA = ("lumina_training_eta_minutes", "lumina_eta_minutes_remaining")
 
 
 def _pid_alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        if os.name == "nt":
-            result = subprocess.run(
-                [
-                    "powershell",
-                    "-NoProfile",
-                    "-Command",
-                    f"Get-Process -Id {pid} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id",
-                ],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            return str(pid) in (result.stdout or "")
-        os.kill(pid, 0)
-        return True
-    except Exception:
-        return False
+    from lumina_core.process_probe import pid_is_alive
+
+    return pid_is_alive(pid)
 
 
 def _runtime_alive_from_state(state_dir: Path) -> bool:

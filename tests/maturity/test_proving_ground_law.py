@@ -59,7 +59,14 @@ def _seal(root: Path) -> None:
     state = root / "state"
     state.mkdir(parents=True, exist_ok=True)
     (state / "lumina_sim_envelope_sealed.json").write_text(
-        json.dumps({"sealed": True, "source": "test"}),
+        json.dumps(
+            {
+                "sealed": True,
+                "source": "test",
+                "daily_loss_cap": -1000.0,
+                "max_total_open_risk": 3000.0,
+            }
+        ),
         encoding="utf-8",
     )
 

@@ -27,6 +27,26 @@ def _assert_birth_phase_completed(workspace_root: Path | None = None) -> None:
     )
 
 
+def _assert_runtime_birth_gate(workspace_root: Path | None = None, *, trade_mode: str) -> None:
+    """SIM needs Birth foundation exit. REAL still needs the certificate.
+
+    The 48/0.35/8% certificate lives in Proving Ground (ADR-0036). It must not
+    keep a SIM Playground crawl from seeing NinjaTrader bars.
+    """
+    root = workspace_root or _WORKSPACE_ROOT
+    mode = str(trade_mode or "").strip().lower()
+    if mode in {"sim", "paper"}:
+        from lumina_core.maturity.birth_exit import is_birth_exit_sufficient
+
+        if is_birth_exit_sufficient(root):
+            return
+        raise RuntimeError(
+            "SIM runtime stays closed until Birth foundation exit is sufficient (ADR-0046). "
+            "The certificate is Proving Ground, not this door."
+        )
+    _assert_birth_phase_completed(root)
+
+
 def start_runtime_services(
     *,
     start_daemon_fn: Callable,
@@ -48,10 +68,11 @@ def start_runtime_services(
     auto_journal_daemon_fn: RuntimeWorker,
     auto_backtest_daemon_fn: RuntimeWorker,
     enforce_birth_guard: bool = False,
+    trade_mode: str = "",
 ) -> None:
     """Start all runtime workers from a single engine-driven bootstrap call."""
     if enforce_birth_guard:
-        _assert_birth_phase_completed()
+        _assert_runtime_birth_gate(_WORKSPACE_ROOT, trade_mode=trade_mode)
         try:
             from lumina_core.maturity.autopilot import start_maturation_autopilot
 

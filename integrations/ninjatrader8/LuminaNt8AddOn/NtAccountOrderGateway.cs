@@ -135,7 +135,7 @@ namespace NinjaTrader.NinjaScript.AddOns
 
                 if (found == null)
                 {
-                    Log("FATAL: no NT Account matching '" + wanted + "'. Connect a SIM account (Sim101) in Control Center.");
+                    Log("FATAL: no NT Account matching '" + wanted + "'. Connect that account in Control Center.");
                     return false;
                 }
 
@@ -340,17 +340,17 @@ namespace NinjaTrader.NinjaScript.AddOns
                 return new[] { Reject(command, "invalid_order_fields") };
             }
 
-            // REAL capital hard gate: only Sim* accounts until promotion ADR.
+            // REAL stays on local Sim/Playback/Backtest until the promotion ADR.
+            // A brokerage DEMO name is paper only in sim, paper, or sim_real_guard.
             var acctName = acct.Name ?? "";
             var mode = (command.ModeContext ?? "").Trim().ToLowerInvariant();
             if (mode == "real" && !IsSimAccountName(acctName))
             {
                 return new[] { Reject(command, "real_account_blocked_pending_promotion_adr") };
             }
-            if (!IsSimAccountName(acctName) && mode != "real")
+            if (!AllowsPaperOrders(acctName, mode))
             {
-                // Still allow non-sim only when explicitly real+promoted later; for now fail-closed.
-                Log("Reject place on non-SIM account '" + acctName + "' (PR-F SIM-only)");
+                Log("Reject place on non-paper account '" + acctName + "' mode='" + mode + "'");
                 return new[] { Reject(command, "only_sim_accounts_allowed") };
             }
 
@@ -1173,6 +1173,25 @@ namespace NinjaTrader.NinjaScript.AddOns
                 || name.IndexOf("Sim101", StringComparison.OrdinalIgnoreCase) >= 0
                 || name.IndexOf("Playback", StringComparison.OrdinalIgnoreCase) >= 0
                 || name.IndexOf("Backtest", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsBrokerDemoAccountName(string name)
+        {
+            return !string.IsNullOrWhiteSpace(name)
+                && name.StartsWith("DEMO", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Local Sim/Playback/Backtest in every mode that already passed the REAL gate.
+        /// Brokerage DEMO* only when the order mode is an explicit paper mode.
+        /// </summary>
+        private static bool AllowsPaperOrders(string name, string mode)
+        {
+            if (IsSimAccountName(name))
+                return true;
+            if (mode != "sim" && mode != "paper" && mode != "sim_real_guard")
+                return false;
+            return IsBrokerDemoAccountName(name);
         }
 
         private static int StableClientId(string clientOrderId)

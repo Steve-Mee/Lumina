@@ -225,10 +225,10 @@ def test_flatten_theater_fails_settlement() -> None:
     assert "settlement" in result.message
 
 
-def test_relocated_economic_viability_is_playground_not_birth() -> None:
+def test_relocated_economic_viability_is_apprenticeship_not_birth() -> None:
     gate = economic_viability(mean_r=-0.3, skill_wr=0.30, breakeven_wr=0.425)
     assert gate.passed is False
-    assert gate.home_phase == "playground"
+    assert gate.home_phase == "apprenticeship"
 
 
 def test_relocated_cert_oos_not_birth() -> None:
@@ -564,7 +564,7 @@ def test_complete_foundation_birth_uses_s5_oos_sharpe(tmp_path) -> None:  # type
         practice_completed_flag_path=tmp_path / "state" / "practice.flag",
         completion_flag_path=tmp_path / "state" / "lumina_birth_completed.flag",
         ppo_steps=0,
-        _real_data_pct=1.0,
+        _real_data_pct=100.0,
         birth_start_time=0.0,
     )
     out = complete_foundation_birth(

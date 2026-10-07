@@ -56,7 +56,7 @@ class StageLoopIterationMixin(
                 )
                 self._write_progress(
                     phase="paused",
-                    message="Birth Phase gepauzeerd door gebruiker.",
+                    message="Birth paused by you.",
                 )
                 return self.host._paused_result()
 

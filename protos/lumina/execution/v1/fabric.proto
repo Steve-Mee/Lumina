@@ -293,7 +293,8 @@ message SubscribeMarketData {
   repeated string instruments = 1;
   bool include_ticks = 2;
   bool include_bars = 3;
-  string bar_period = 4;  // e.g. "1m", "5m"
+  string bar_period = 4;  // e.g. "1m", "5m" — default 1m still subscribes all native TFs
+  repeated string bar_periods = 5;  // additive: native NT minute periods (ADR-0054)
 }
 
 message UnsubscribeMarketData {
@@ -313,6 +314,7 @@ message MarketDataUpdate {
   double low = 9;
   double close = 10;
   bool is_bar = 11;
+  string bar_period = 12;  // "1m"|"5m"|"15m"|"30m"|"60m"|"240m" when is_bar
 }
 
 message HistoricalDataRequest {

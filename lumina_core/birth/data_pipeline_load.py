@@ -1,4 +1,8 @@
-"""Cold history load + synthetic fallback for birth data pipeline (M5)."""
+"""Cold history load for the birth data pipeline. Empty history is a refusal.
+
+Synthetic generators are not a Birth tape. practice_mode and
+allow_minimal_synthetic do not invent bars.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +12,6 @@ from lumina_core.birth.config import BirthCurriculumConfig
 from lumina_core.birth.data_pipeline_types import (
     BirthDataPipelineHost,
     BirthDataPrepareResult,
-    generate_synthetic_ticks,
 )
 from lumina_core.birth.foundation_history import (
     apply_foundation_history_manifest,
@@ -87,9 +90,9 @@ class BirthDataPipelineLoadMixin:
             resume_cache_decision.resume_message
             if resume and resume_cache_decision and resume_cache_decision.resume_message
             else (
-                "Checkpoint hervat — data opnieuw voorbereid (curriculum gaat verder, geen wipe)."
+                "Resuming checkpoint — data prepared again. Curriculum continues. Nothing was wiped."
                 if resume
-                else f"Historische data laden ({days_back} dagen)…"
+                else f"Loading history ({days_back} days)…"
             )
         )
         _write_birth_progress(
@@ -133,16 +136,16 @@ class BirthDataPipelineLoadMixin:
             if chunk_idx > 0 and chunk_total > 0:
                 if chunk_phase == "expand":
                     message = (
-                        f"Ticks uitbreiden: {chunk_idx:,}/{chunk_total:,} bars "
+                        f"Expanding ticks: {chunk_idx:,}/{chunk_total:,} bars "
                         f"({bars_loaded:,} merged)"
                     )
                 else:
                     message = (
-                        f"Historische data laden: chunk {chunk_idx}/{chunk_total} "
+                        f"Loading history: chunk {chunk_idx}/{chunk_total} "
                         f"({bars_loaded:,} bars)"
                     )
             else:
-                message = f"Historische data laden ({days_back} dagen)…"
+                message = f"Loading history ({days_back} days)…"
             _write_birth_progress(
                 host.workspace_root,
                 stage="loading_data",
@@ -182,24 +185,27 @@ class BirthDataPipelineLoadMixin:
             )
         self.write_data_prep_progress(
             phase="enriching_news",
-            message=f"Historische data geladen ({len(ticks):,} ticks) — news enrichment…",
+            message=f"History loaded ({len(ticks):,} ticks) — news enrichment…",
             progress_pct=20.5,
             training_mode=training_mode,
         )
 
-        if not ticks and not prefer_real:
-            ticks = generate_synthetic_ticks(max(20_000, max_days * 1000), start_price=5000.0)
-        elif not ticks and prefer_real and practice_mode:
-            ticks = generate_synthetic_ticks(20_000, start_price=5000.0)
-        elif not ticks and prefer_real and allow_minimal_synthetic:
-            logger.info("birth.synthetic.minimal_fallback reason=allow_minimal_synthetic_fallback")
-            ticks = generate_synthetic_ticks(20_000, start_price=5000.0)
-        elif not ticks:
-            fail_msg = history_depth_fail_message(
-                requested_days=loaded.requested_days,
-                actual_days=loaded.actual_calendar_days,
-                instruments=loaded.instruments,
-                stitched_from=loaded.stitched_from,
+        if not ticks:
+            logger.error(
+                "birth.history.synthetic_fill_refused prefer_real=%s practice_mode=%s "
+                "allow_minimal_synthetic=%s",
+                prefer_real,
+                practice_mode,
+                allow_minimal_synthetic,
+            )
+            fail_msg = (
+                "Birth refused a synthetic fill. Historical NinjaTrader bars are required. "
+                + history_depth_fail_message(
+                    requested_days=loaded.requested_days,
+                    actual_days=loaded.actual_calendar_days,
+                    instruments=loaded.instruments,
+                    stitched_from=loaded.stitched_from,
+                )
             )
             _write_birth_progress(
                 host.workspace_root,
@@ -221,7 +227,7 @@ class BirthDataPipelineLoadMixin:
                     "status": "history_unavailable",
                     "total_trades": 0,
                     "ppo_steps": 0,
-                    "training_mode": "certified",
+                    "training_mode": training_mode,
                 },
             )
         return ticks

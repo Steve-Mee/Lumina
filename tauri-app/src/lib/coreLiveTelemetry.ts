@@ -19,6 +19,14 @@ export type { FortressSnapshot } from "@/lib/fortressTypes";
 export type { PerformanceSnapshot } from "@/lib/performanceTypes";
 export type { RealOpsSnapshot } from "@/lib/realOpsTypes";
 
+export interface BarBookTelemetry {
+  complete: boolean;
+  lock_new_entries: boolean;
+  reason: string;
+  missing_count: number;
+  message: string;
+}
+
 export interface NinjaTraderTelemetry {
   connected: boolean;
   account: string;
@@ -42,6 +50,7 @@ export interface CoreLiveTelemetry {
   active_mutations: ActiveMutation[];
   source_ts: string | null;
   ninjatrader?: NinjaTraderTelemetry | null;
+  bar_book?: BarBookTelemetry | null;
   adaptive_intelligence?: AdaptiveIntelligenceWsBlock | null;
   live_trading?: LiveTradingSnapshot | null;
   fortress?: FortressSnapshot | null;
@@ -96,6 +105,23 @@ function parseActiveMutation(value: unknown): ActiveMutation | null {
   };
 }
 
+export function parseBarBookTelemetry(value: unknown): BarBookTelemetry | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  if (!("complete" in value) && !("lock_new_entries" in value)) {
+    return null;
+  }
+  return {
+    complete: value.complete === true,
+    lock_new_entries: value.lock_new_entries === true,
+    reason: typeof value.reason === "string" ? value.reason : "",
+    missing_count:
+      typeof value.missing_count === "number" ? value.missing_count : 0,
+    message: typeof value.message === "string" ? value.message : "",
+  };
+}
+
 function parseNinjaTraderTelemetry(value: unknown): NinjaTraderTelemetry | null {
   if (!isRecord(value)) {
     return null;
@@ -142,6 +168,7 @@ export function parseTelemetryPayload(value: unknown): CoreLiveTelemetry | null 
   const performance = parsePerformanceSnapshot(value.performance);
   const realOps = parseRealOpsSnapshot(value.real_ops);
   const ninjatrader = parseNinjaTraderTelemetry(value.ninjatrader);
+  const bar_book = parseBarBookTelemetry(value.bar_book);
 
   return {
     mode: typeof value.mode === "string" ? value.mode : "unknown",
@@ -158,6 +185,7 @@ export function parseTelemetryPayload(value: unknown): CoreLiveTelemetry | null 
     source_ts:
       typeof value.source_ts === "string" ? value.source_ts : null,
     ninjatrader,
+    bar_book,
     adaptive_intelligence:
       adaptiveBlock && typeof adaptiveBlock === "object"
         ? (adaptiveBlock as AdaptiveIntelligenceWsBlock)

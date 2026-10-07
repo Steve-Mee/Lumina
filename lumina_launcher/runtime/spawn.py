@@ -32,6 +32,8 @@ class SpawnResult:
 
 
 def _python_has_module(python_cmd: str, module_name: str, *, cwd: Path) -> bool:
+    from lumina_core.process_probe import no_console
+
     try:
         result = subprocess.run(
             [python_cmd, "-c", f"import {module_name}"],
@@ -40,6 +42,7 @@ def _python_has_module(python_cmd: str, module_name: str, *, cwd: Path) -> bool:
             capture_output=True,
             text=True,
             timeout=4,
+            **no_console(),
         )
         return result.returncode == 0
     except Exception:
@@ -70,6 +73,23 @@ def resolve_runtime_python(launcher_root: Path) -> str:
     return "python"
 
 
+def windows_gui_python(runtime_python: str) -> str:
+    """Use pythonw so the venv launcher does not open an empty console.
+
+    Python 3.13's venv ``python.exe`` re-executes the base interpreter, and that
+    child allocates a console. ``pythonw.exe`` is the windowless twin. Tk still opens.
+    """
+    if os.name != "nt":
+        return runtime_python
+    path = Path(runtime_python)
+    if path.name.lower() != "python.exe":
+        return runtime_python
+    pythonw = path.with_name("pythonw.exe")
+    if pythonw.is_file():
+        return str(pythonw)
+    return runtime_python
+
+
 def validate_loop_mode(mode: str, *, extra_argv: list[str]) -> tuple[bool, str]:
     normalized = str(mode or "auto").strip().lower() or "auto"
     if normalized in REAL_MODES and "--real-safe" not in extra_argv:
@@ -92,6 +112,8 @@ def build_runtime_command(
     """Build argv for runtime_entrypoint (full loop, production headless, or smoke)."""
     normalized_mode = str(mode or "auto").strip().lower() or "auto"
     runtime_python = resolve_runtime_python(launcher_root)
+    if not headless and not smoke:
+        runtime_python = windows_gui_python(runtime_python)
     command = [runtime_python, str(launcher_root / runtime_entry), "--mode", normalized_mode]
     if smoke:
         command.append("--smoke")
@@ -124,26 +146,9 @@ def _read_runtime_stderr_tail(launcher_root: Path, *, max_lines: int = 6) -> str
 
 
 def _pid_is_alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        if os.name == "nt":
-            result = subprocess.run(
-                [
-                    "powershell",
-                    "-NoProfile",
-                    "-Command",
-                    f"Get-Process -Id {pid} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id",
-                ],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            return str(pid) in (result.stdout or "")
-        os.kill(pid, 0)
-        return True
-    except Exception:
-        return False
+    from lumina_core.process_probe import pid_is_alive
+
+    return pid_is_alive(pid)
 
 
 def save_process_state(

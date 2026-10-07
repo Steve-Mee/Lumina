@@ -10,18 +10,27 @@ import {
 
 const GATES: readonly { id: string; label: string }[] = [
   { id: "birth_freeze_intact", label: "Birth freeze" },
-  { id: "awakening_child_loaded", label: "Awakening child" },
+  { id: "awakening_child_loaded", label: "First Watch baseline" },
   { id: "sim_envelope_sealed", label: "SIM envelope" },
   { id: "deck_live", label: "Command Deck live" },
   { id: "mode_sim_fail_closed", label: "SIM mode" },
-  { id: "first_honest_fill", label: "First honest fill" },
   { id: "policy_only", label: "Policy-only skill" },
-  { id: "n_P>=150", label: "n_P ≥ 150" },
-  { id: "occupancy_in_band", label: "Occupancy exam band" },
-  { id: "process_r", label: "Process-R" },
-  { id: "economic_viability", label: "WR ≥ BE · mean R ≥ 0" },
+  { id: "green_days>=5", label: "5 groene sessiedagen" },
   { id: "envelope_not_breached", label: "Envelope intact" },
 ];
+
+export interface PlaygroundSenseBrief {
+  pass_now?: boolean;
+  headline?: string;
+  waiting?: string;
+  clock?: string;
+  market?: string;
+  paper?: string;
+  venue?: string;
+  alerts?: string[];
+  tone?: "live" | "wait" | "alert" | "idle";
+  lines?: string[];
+}
 
 export interface PlaygroundProgressView {
   pass_now?: boolean;
@@ -29,6 +38,7 @@ export interface PlaygroundProgressView {
   learned?: Record<string, unknown>;
   runner_active?: boolean;
   progress?: Record<string, unknown>;
+  sense?: PlaygroundSenseBrief;
 }
 
 function asNumber(value: unknown): number | null {
@@ -64,7 +74,10 @@ function currentFor(id: string, learned: Record<string, unknown>): { current: st
     case "birth_freeze_intact":
       return { current: yn(learned.freeze_ok), need: "Birth artefacts read-only" };
     case "awakening_child_loaded":
-      return { current: yn(Boolean(learned.child_sha) && learned.child_sha === learned.awakening_child_sha), need: "child = awakening zip" };
+      return {
+        current: yn(Boolean(learned.child_sha) && learned.child_sha === learned.awakening_child_sha),
+        need: "loaded zip = sealed baseline (may be Birth plant)",
+      };
     case "sim_envelope_sealed":
       return { current: yn(learned.envelope_sealed), need: "operator sealed" };
     case "deck_live":
@@ -75,6 +88,11 @@ function currentFor(id: string, learned: Record<string, unknown>): { current: st
       return { current: yn(learned.first_fill), need: "orderpath fill" };
     case "policy_only":
       return { current: yn(learned.policy_only), need: "policy closes only" };
+    case "green_days>=5":
+      return {
+        current: `${Math.round(asNumber(learned.green_days) ?? 0)}`,
+        need: "5 aaneengesloten groene sessiedagen",
+      };
     case "n_P>=150":
       return { current: `${Math.round(asNumber(learned.n_p) ?? 0).toLocaleString("en-US")}`, need: "≥ 150 policy closes" };
     case "occupancy_in_band":
@@ -87,7 +105,7 @@ function currentFor(id: string, learned: Record<string, unknown>): { current: st
         need: "WR ≥ live BE and mean R ≥ 0",
       };
     case "envelope_not_breached":
-      return { current: yn(learned.envelope_breached !== true), need: "daily kill / open risk held" };
+      return { current: yn(learned.envelope_breached !== true), need: "open risk held · verlies stopt de school niet" };
     default:
       return { current: "—", need: id.replace(/_/g, " ") };
   }
@@ -132,7 +150,7 @@ export function buildPlaygroundChecklist(view: PlaygroundProgressView | null): S
     stageIndex: null,
     stageTotal: null,
     passCriteriaId: "playground_and_adr_0050",
-    mission: "Crawl in NT SIM. First honest fill. WR ≥ geometry BE and mean R ≥ 0. Not REAL.",
+    mission: "Leerschool in SIM. Poort: 5 groene sessiedagen. WR en mean R zijn het examen daarna. Geen REAL.",
     requirements,
     metCount,
     totalCount: requirements.length,

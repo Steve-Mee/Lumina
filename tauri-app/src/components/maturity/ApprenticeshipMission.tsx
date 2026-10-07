@@ -1,14 +1,22 @@
 import { ApprenticeshipLifePulse } from "@/components/maturity/ApprenticeshipLifePulse";
-import { CharterTile } from "@/components/birth/BirthGenesisDeckPrimitives";
-import { BirthLaunchButton } from "@/components/birth/BirthLaunchButton";
-import { BirthStagePassChecklistCard } from "@/components/birth/BirthStagePassChecklistCard";
 import { apprenticeshipTilesFromLearned } from "@/components/maturity/phaseHubApprenticeship";
+import { LivingPhaseMission } from "@/components/shared/LivingPhaseMission";
+import type { PhaseChip } from "@/components/shared/PhaseCinematicFrames";
 import type { MaturityHubPayload } from "@/lib/maturationClient";
 import {
   buildApprenticeshipChecklist,
   type ApprenticeshipProgressView,
 } from "@/lib/apprenticeship/apprenticeshipChecklist";
 import { apprenticeshipMissionMessage } from "@/lib/apprenticeship/apprenticeshipFailCopy";
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
 
 export function ApprenticeshipMission({
   hub,
@@ -30,10 +38,12 @@ export function ApprenticeshipMission({
   const running = Boolean(hub?.runner_active || progress?.runner_active);
   const learned = {
     ...(hub?.focus_learned ?? {}),
+    ...(progress?.progress ?? {}),
     ...(progress?.learned ?? {}),
   };
   const checklist = buildApprenticeshipChecklist(progress);
   const tiles = apprenticeshipTilesFromLearned(learned);
+  const tile = (label: string) => tiles.find((item) => item.label === label);
   const note = typeof progress?.learned?.note === "string" ? progress.learned.note : null;
   const message = apprenticeshipMissionMessage({
     running,
@@ -43,10 +53,92 @@ export function ApprenticeshipMission({
     note,
   });
   const retry = !running && !progress?.pass_now;
+  const nA = asNumber(learned.n_a) ?? 0;
+  const nD = asNumber(learned.n_d) ?? 0;
+  const sharpe = asNumber(learned.sharpe);
+  const constitutionOk = tile("Constitution")?.value === "0";
+  const recoveryOk = learned.recovery_ok === true;
+
+  const chips: PhaseChip[] = [
+    {
+      label: "n_A",
+      state: nA >= 150 ? "ok" : running ? "partial" : "idle",
+      tip: "Policy-only apprenticeship tape. Playground closes do not count.",
+    },
+    {
+      label: "SHARPE",
+      state: sharpe != null && sharpe >= 0.2 ? "ok" : running ? "partial" : "idle",
+      tip: "Daily-return Sharpe × √252. Floor 0.20. Missing if fewer than 5 days.",
+    },
+    {
+      label: "DD",
+      state: running ? "partial" : "idle",
+      tip: "Peak-to-trough of MES 1-lot equity vs $50k. Ceiling 12%.",
+    },
+    {
+      label: "CONST",
+      state: constitutionOk ? "ok" : "warn",
+      tip: "risk_events=0, VaR intact, envelope held, never REAL.",
+    },
+  ];
 
   return (
-    <div className="birth-mission-shell relative flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-3 md:p-4">
+    <LivingPhaseMission
+      running={running}
+      busy={busy}
+      panelTitle="Lopen"
+      panelSubtitle={running ? "Walking exam · this tape" : "Trading exam · click to start"}
+      titleTip="REAL rules, SIM capital. Playground tape does not count. Not REAL money."
+      progressLabel={`${checklist.metCount}/${checklist.totalCount}`}
+      statusLine={message}
+      chips={chips}
+      tiles={tiles}
+      kpis={[
+        {
+          label: "n_A",
+          value: `${Math.round(nA)} / 150`,
+          detail: "/ 150 policy closes",
+          tone: nA >= 150 ? "success" : "accent",
+        },
+        {
+          label: "Sharpe",
+          value: tile("Sharpe")?.value ?? "—",
+          detail: tile("Sharpe")?.footnote,
+          tone: sharpe != null && sharpe >= 0.2 ? "success" : "accent",
+        },
+        {
+          label: "DD",
+          value: tile("DD")?.value ?? "—",
+          detail: tile("DD")?.footnote,
+        },
+        {
+          label: "Constitution",
+          value: tile("Constitution")?.value ?? "—",
+          detail: tile("Constitution")?.footnote,
+          tone: constitutionOk ? "success" : "warn",
+        },
+      ]}
+      fields={[
+        {
+          label: "Sessiedagen",
+          value: tile("Sessiedagen")?.value ?? String(nD),
+          hint: tile("Sessiedagen")?.footnote,
+        },
+        {
+          label: "Recovery",
+          value: tile("Recovery")?.value ?? "—",
+          hint: tile("Recovery")?.footnote,
+          tone: recoveryOk ? "ok" : "warn",
+        },
+        {
+          label: "Doel",
+          value: tile("Doel")?.value ?? "Lopen",
+          hint: tile("Doel")?.footnote,
+        },
+      ]}
+      checklist={checklist}
+      checklistGoal="AND gates"
+      lifePulse={
         <ApprenticeshipLifePulse
           running={running}
           activity={learned.activity ?? progress?.progress?.activity}
@@ -54,60 +146,19 @@ export function ApprenticeshipMission({
           nD={learned.n_d ?? progress?.progress?.n_d}
           updatedAt={progress?.progress?.updated_at ?? learned.updated_at}
         />
-        <p className="phase-hub-verdict shrink-0 px-1">{message}</p>
-        <div className="genesis-charter-tile-grid phase-hub-kpi-grid shrink-0">
-          {tiles.map((tile) => (
-            <CharterTile
-              key={tile.label}
-              label={tile.label}
-              value={tile.value}
-              tip={tile.tip}
-              footnote={tile.footnote}
-            />
-          ))}
-        </div>
-        <div className="min-h-0 flex-1 overflow-auto">
-          <BirthStagePassChecklistCard
-            checklist={checklist}
-            goalLabel="AND gates"
-            showMode={false}
-          />
-        </div>
-      </div>
-      <div className="risk-envelope-cta-bar genesis-launch-cta phase-hub-cta shrink-0">
-        <div className="phase-hub-cta__row">
-          {running ? (
-            <BirthLaunchButton
-              idleLabel="STOP CLOCK"
-              className="phase-hub-cta__primary"
-              disabled={busy}
-              onActivate={onStop}
-            />
-          ) : (
-            <BirthLaunchButton
-              idleLabel={retry ? "RETRY APPRENTICESHIP" : "START APPRENTICESHIP"}
-              className="phase-hub-cta__primary"
-              disabled={busy}
-              onActivate={onStart}
-            />
-          )}
-          <BirthLaunchButton
-            idleLabel="PHASE HUB"
-            className="phase-hub-cta__deck"
-            disabled={busy}
-            onActivate={onReturnHub}
-          />
-        </div>
-        {!running ? (
-          <button
-            type="button"
-            className="mt-2 text-xs text-amber-200/80 underline-offset-2 hover:underline"
-            onClick={onWipe}
-          >
-            Wipe Apprenticeship (keep Playground)
-          </button>
-        ) : null}
-      </div>
-    </div>
+      }
+      intelTitle="AND gates"
+      intelSubtitle="n_A 150 · Sharpe 0.20 · DD 12% · constitution 0"
+      intelChips={chips}
+      startLabel={retry ? "RETRY APPRENTICESHIP" : "START APPRENTICESHIP"}
+      onStart={onStart}
+      onStop={onStop}
+      onSecondary={onReturnHub}
+      wipeLabel="Wipe Apprenticeship (keep Playground)"
+      onWipe={onWipe}
+      ctaFootnote={
+        running ? "Living clock · walking exam" : "Start · floors stay fail-closed · no REAL"
+      }
+    />
   );
 }

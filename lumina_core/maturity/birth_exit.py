@@ -119,7 +119,7 @@ def birth_exit_policy_dict() -> dict[str, Any]:
             "next_phase": MaturationPhase.AWAKENING.value,
             "perfect_birth": "awakening_or_phase2_unlock_not_birth_gate",
             "certificate_skill_walls": "proving_ground_and_cert_pipeline",
-            "economic_viability": "playground",
+            "economic_viability": "apprenticeship",
             "risk_discipline": "apprenticeship",
             "evolution_proof": "awakening",
         },
@@ -174,6 +174,29 @@ def effective_stage1_floors(cfg: Any | None = None) -> dict[str, Any]:
         "expectancy_floor": skill["expectancy_floor"],
         "survival": surv.to_dict(),
     }
+
+
+def _real_historical_manifest_reason(workspace_root: Path) -> str | None:
+    """A cache manifest that is not 100% real historical data blocks Birth exit.
+
+    No manifest is not evidence (receipt-only tests). A written manifest is.
+    """
+    try:
+        from lumina_core.birth.data_source_honesty import real_historical_tape_reason
+        from lumina_core.birth.tick_cache_persist import load_cache_manifest
+
+        manifest = load_cache_manifest(workspace_root)
+    except Exception:
+        logger.warning("birth.exit.tape_manifest_unreadable", exc_info=True)
+        return "real_historical_manifest_unreadable"
+    if not isinstance(manifest, dict) or not manifest:
+        return None
+    source = manifest.get("source") if "source" in manifest else None
+    pct = manifest.get("real_data_pct") if "real_data_pct" in manifest else None
+    return real_historical_tape_reason(
+        real_data_pct=None if pct is None else pct,
+        source=None if source is None else str(source),
+    )
 
 
 def collect_birth_exit_proofs(workspace_root: Path | str) -> tuple[list[str], dict[str, Any]]:
@@ -261,6 +284,10 @@ def collect_birth_exit_proofs(workspace_root: Path | str) -> tuple[list[str], di
 
     detail["completed_flag"] = (root / "state" / "lumina_birth_completed.flag").is_file()
     detail["artifacts_insufficient_alone"] = True
+    tape_reason = _real_historical_manifest_reason(root)
+    if tape_reason:
+        detail["real_historical_tape"] = tape_reason
+        proofs = [item for item in proofs if item not in BIRTH_EXIT_PROOFS]
 
     seen: set[str] = set()
     ordered: list[str] = []

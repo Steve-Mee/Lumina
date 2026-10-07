@@ -404,7 +404,7 @@ def test_pause_ssot_orphan_is_not_user_stop(tmp_path: Path) -> None:
     }
     payload = build_pause_ssot_payload(
         progress=progress,
-        message="Runner gestopt zonder gebruikersstop",
+        message="Runner stopped without a user stop",
         user_initiated=False,
     )
     assert payload["user_initiated_stop"] is False

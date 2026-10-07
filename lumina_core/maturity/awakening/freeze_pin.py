@@ -101,6 +101,35 @@ def restore_birth_pi_star_from_pin(workspace_root: Path) -> bool:
     return True
 
 
+def live_matches_pin(workspace_root: Path) -> bool:
+    """True when canonical zip bytes equal the Birth pin. Pin is SSOT, not git HEAD."""
+    root = Path(workspace_root)
+    pinned = pin_dir(root) / PI_STAR_ZIP_NAME
+    live = resolve_pi_star_path(root)
+    if not pinned.is_file() or pinned.stat().st_size <= 0:
+        return False
+    if not live.is_file() or live.stat().st_size <= 0:
+        return False
+    return file_sha256(pinned) == file_sha256(live)
+
+
+def align_live_pi_star_to_pin(workspace_root: Path) -> bool:
+    """Restore canonical zip/json from pin when they diverge. True iff live==pin after.
+
+    Restoring the honest Birth plant is not a freeze violation. Git-tracked harvest
+    bytes on the reports path must not win over ``state/lumina_birth_freeze/``.
+    """
+    root = Path(workspace_root)
+    pinned = pin_dir(root) / PI_STAR_ZIP_NAME
+    if not pinned.is_file() or pinned.stat().st_size <= 0:
+        return False
+    if live_matches_pin(root):
+        return True
+    if not restore_birth_pi_star_from_pin(root):
+        return False
+    return live_matches_pin(root)
+
+
 def copy_for_load(src: Path) -> Path:
     """Temp copy so PPO.load cannot mutate the freeze original."""
     if not src.is_file() or src.stat().st_size <= 0:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,23 @@ logger = get_logger("lumina.maturity.autopilot")
 _AUTOPILOT_THREAD: threading.Thread | None = None
 _AUTOPILOT_STOP = threading.Event()
 _AUTOPILOT_INTERVAL_SEC = 300.0
+_PLAYGROUND_POLL_SEC = 20.0
+_WAKE_SEC = 20.0
+
+
+def autopilot_interval_sec(workspace_root: Path | str) -> float:
+    """20s while the Playground clock is open. 300s otherwise. One poller either way."""
+    from lumina_core.maturity.continuum import load_continuum
+
+    root = Path(workspace_root)
+    data = load_continuum(root)
+    if str(data.get("active_phase") or "") != "playground":
+        return _AUTOPILOT_INTERVAL_SEC
+    records = data.get("phase_records")
+    rec = records.get("playground") if isinstance(records, dict) else None
+    if isinstance(rec, dict) and str(rec.get("status") or "") == "running":
+        return _PLAYGROUND_POLL_SEC
+    return _AUTOPILOT_INTERVAL_SEC
 
 
 def _workspace_root() -> Path:
@@ -124,13 +142,19 @@ def run_maturation_autopilot_tick(workspace_root: Path | str | None = None) -> d
 
 
 def _autopilot_loop(workspace_root: Path) -> None:
-    while not _AUTOPILOT_STOP.wait(_AUTOPILOT_INTERVAL_SEC):
+    last_tick = 0.0
+    while not _AUTOPILOT_STOP.wait(_WAKE_SEC):
+        interval = autopilot_interval_sec(workspace_root)
+        now = time.monotonic()
+        if last_tick and (now - last_tick) < interval:
+            continue
         try:
             from lumina_launcher.services.birth_service import BirthService
 
             svc = BirthService()
             svc.configure_workspace(workspace_root)
             if not svc.artifacts_ok():
+                last_tick = time.monotonic()
                 continue
             tick = run_maturation_autopilot_tick(workspace_root)
             logger.info(
@@ -140,6 +164,7 @@ def _autopilot_loop(workspace_root: Path) -> None:
             )
         except Exception as exc:
             logger.warning("maturity.autopilot.loop_error: %s", exc)
+        last_tick = time.monotonic()
 
 
 def start_maturation_autopilot(workspace_root: Path | str | None = None) -> None:

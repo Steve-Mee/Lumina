@@ -173,14 +173,14 @@ class BirthDataPipelineResumeMixin:
         if resume_skip_load:
             if (reuse_data or certified) and not resume:
                 resume_message = (
-                    "Certified tick-cache geladen — Stage 1 herstart "
-                    "(reused_manifest, geen Fabric history-probe)."
+                    "Certified tick cache loaded — stage 1 restarts "
+                    "(reused manifest, no Fabric history probe)."
                 )
             else:
                 resume_message = (
                     resume_cache_decision.resume_message
                     if resume_cache_decision and resume_cache_decision.resume_message
-                    else "Checkpoint hervat — cached data geladen (curriculum gaat verder)."
+                    else "Resuming checkpoint — cached data loaded. Curriculum continues."
                 )
             write_birth_progress(
                 host.workspace_root,

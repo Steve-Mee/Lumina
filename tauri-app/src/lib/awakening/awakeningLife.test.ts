@@ -45,22 +45,36 @@ describe("awakeningLife", () => {
     ).toBe("computing");
   });
 
-  it("formats an honest activity line from real fields", () => {
+  it("formats an honest First Watch activity line from real fields", () => {
     const line = awakeningLifeLine({
       running: true,
-      cycle: 2,
-      activity: "train_A",
-      trainTimesteps: 3072,
+      activity: "eval_B",
       nB: 133,
       updatedAt: "2026-09-19T12:00:08Z",
       nowMs: Date.parse("2026-09-19T12:00:20Z"),
     });
-    expect(line).toContain("Cycle 2");
-    expect(line).toContain("train A");
-    expect(line).toContain("3,072");
+    expect(line).toContain("First Watch");
+    expect(line).toContain("eval B");
+    expect(line).not.toMatch(/Cycle/);
     expect(line).toContain("133/500");
     expect(line).toContain("12s ago");
     expect(formatHeartbeatAge(4000)).toBe("just now");
+  });
+
+  it("names a leftover day-book walk by bars, not as PPO steps", () => {
+    const line = awakeningLifeLine({
+      running: true,
+      activity: "probe_A",
+      probeBars: 8192,
+      nB: 500,
+      updatedAt: "2026-10-06T04:00:00Z",
+      nowMs: Date.parse("2026-10-06T04:01:00Z"),
+    });
+    expect(line).toContain("First Watch");
+    expect(line).toContain("day book");
+    expect(line).toContain("bar 8,192");
+    expect(line).not.toContain("steps");
+    expect(line).not.toMatch(/Cycle/);
   });
 
   it("life pulse does not embed the Birth helix (rings leaked over the cinematic)", () => {

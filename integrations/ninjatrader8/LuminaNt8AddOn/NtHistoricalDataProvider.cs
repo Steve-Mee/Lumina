@@ -12,7 +12,6 @@
 #region Using declarations
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Threading;
 using Lumina.Execution.Fabric.MarketData;
 using Lumina.Execution.V1;
@@ -56,6 +55,13 @@ namespace NinjaTrader.NinjaScript.AddOns
             var correlationId = request?.CorrelationId ?? "";
             if (string.IsNullOrWhiteSpace(instrumentName))
                 return Fail(instrumentName, correlationId, "INVALID_INSTRUMENT", "Instrument is required");
+            if (!NtBarPeriods.TryParse(request?.BarPeriod, out var periodType, out var periodValue, out var canonicalPeriod))
+                return Fail(
+                    instrumentName,
+                    correlationId,
+                    "BAR_PERIOD_UNSUPPORTED",
+                    "ADR-0054: native NT minute periods only (1/5/15/30/60/240). Got '"
+                    + (request?.BarPeriod ?? "") + "'.");
 
             // Code Red: do not storm HDS/Tradovate while primary connection is still Connecting.
             // Vendor crash observed: NullReferenceException in Tradovate.Adapter WebSocket path.
@@ -76,7 +82,6 @@ namespace NinjaTrader.NinjaScript.AddOns
 
             // Cap per RPC high enough for ~2 weeks of 1m futures bars (birth chunks).
             var maxBars = request?.MaxBars > 0 ? Math.Min(request.MaxBars, 50_000) : 5_000;
-            var (periodType, periodValue) = ParseBarPeriod(request?.BarPeriod);
             var (from, to) = ResolveWindow(request);
 
             // Birth pages multi-day windows. When from/to are set, NEVER fall back to
@@ -93,16 +98,9 @@ namespace NinjaTrader.NinjaScript.AddOns
             var attemptList = new List<(string label, Func<BarsSnapshot> run)>();
             void add(string label, Func<BarsSnapshot> run) => attemptList.Add((label, run));
 
+            // ADR-0053: instrument TradingHours only. Silent all-session and daily fallbacks are a different series.
             if (windowedBirthLoad)
             {
-                // Only from/to strategies — filter results to [from,to].
-                add("fromTo+Provider+24x7+1m", () => FetchSnapshot(
-                    instrument, periodType, periodValue, maxBars,
-                    useBarsBack: false, barsBack: 0,
-                    from: from, to: to,
-                    tradingHoursName: "Default 24 x 7",
-                    lookupProvider: true,
-                    filterToWindow: true));
                 add("fromTo+Provider+instrTH+1m", () => FetchSnapshot(
                     instrument, periodType, periodValue, maxBars,
                     useBarsBack: false, barsBack: 0,
@@ -110,43 +108,35 @@ namespace NinjaTrader.NinjaScript.AddOns
                     tradingHoursName: null,
                     lookupProvider: true,
                     filterToWindow: true));
-                add("fromTo+Repository+24x7+1m", () => FetchSnapshot(
+                add("fromTo+Repository+instrTH+1m", () => FetchSnapshot(
                     instrument, periodType, periodValue, maxBars,
                     useBarsBack: false, barsBack: 0,
                     from: from, to: to,
-                    tradingHoursName: "Default 24 x 7",
+                    tradingHoursName: null,
                     lookupProvider: false,
-                    filterToWindow: true));
-                add("fromTo+Provider+24x7+1d", () => FetchSnapshot(
-                    instrument, BarsPeriodType.Day, 1, Math.Max(maxBars, 60),
-                    useBarsBack: false, barsBack: 0,
-                    from: from, to: to,
-                    tradingHoursName: "Default 24 x 7",
-                    lookupProvider: true,
                     filterToWindow: true));
             }
             else
             {
-                // Diagnostics / short loads: barsBack is fine.
-                add("barsBack+Provider+24x7+1m", () => FetchSnapshot(
+                add("barsBack+Provider+instrTH+1m", () => FetchSnapshot(
                     instrument, periodType, periodValue, maxBars,
                     useBarsBack: true, barsBack: Math.Max(maxBars, 200),
                     from: from, to: to,
-                    tradingHoursName: "Default 24 x 7",
+                    tradingHoursName: null,
                     lookupProvider: true,
                     filterToWindow: false));
-                add("fromTo+Provider+24x7+1m", () => FetchSnapshot(
+                add("fromTo+Provider+instrTH+1m", () => FetchSnapshot(
                     instrument, periodType, periodValue, maxBars,
                     useBarsBack: false, barsBack: 0,
                     from: from, to: to,
-                    tradingHoursName: "Default 24 x 7",
+                    tradingHoursName: null,
                     lookupProvider: true,
                     filterToWindow: true));
-                add("barsBack+Repository+24x7+1m", () => FetchSnapshot(
+                add("barsBack+Repository+instrTH+1m", () => FetchSnapshot(
                     instrument, periodType, periodValue, maxBars,
                     useBarsBack: true, barsBack: Math.Max(maxBars, 500),
                     from: from, to: to,
-                    tradingHoursName: "Default 24 x 7",
+                    tradingHoursName: null,
                     lookupProvider: false,
                     filterToWindow: false));
             }
@@ -171,7 +161,7 @@ namespace NinjaTrader.NinjaScript.AddOns
 
                 Log($"try {attempt.label} code={snap.ErrorCode} bars={snap.Rows.Count} msg={snap.ErrorMessage} span={snap.SpanHint}");
                 if (!snap.Failed && snap.ErrorCode == ErrorCode.NoError && snap.Rows.Count > 0)
-                    return ToResponse(resolved, correlationId, snap, maxBars, attempt.label);
+                    return ToResponse(resolved, correlationId, snap, maxBars, attempt.label, canonicalPeriod);
 
                 last = snap;
                 last.Label = attempt.label;
@@ -180,12 +170,18 @@ namespace NinjaTrader.NinjaScript.AddOns
             var detail = last == null
                 ? "no attempts"
                 : $"last={last.Label} code={last.ErrorCode} msg={last.ErrorMessage} bars={last.Rows.Count}";
+            var failCode = "NO_BARS";
+            if (last != null && last.ErrorMessage == "TRADING_HOURS_MISSING")
+                failCode = "TRADING_HOURS_MISSING";
+            else if (last != null && last.ErrorMessage != null
+                     && last.ErrorMessage.StartsWith("BAR_WINDOW_TOO_LARGE", StringComparison.Ordinal))
+                failCode = "BAR_WINDOW_TOO_LARGE";
 
             return Fail(
                 resolved,
                 correlationId,
-                "NO_BARS",
-                "NT returned zero bars after multi-strategy BarsRequest. " + detail
+                failCode,
+                "NT returned zero honest 1m Last bars after instrument-TradingHours BarsRequest. " + detail
                 + ". Ensure Control Center shows Connected (price feed); open a MES chart once; "
                 + "verify historical data server / Continuum-Kinetick subscription.");
         }
@@ -444,13 +440,24 @@ namespace NinjaTrader.NinjaScript.AddOns
                         if (th == null)
                             th = instrument.MasterInstrument?.TradingHours;
                         if (th == null)
-                            th = TradingHours.Get("Default 24 x 7");
-                        if (th != null)
-                            barsRequest.TradingHours = th;
+                        {
+                            snap.Failed = true;
+                            snap.ErrorCode = ErrorCode.NoError;
+                            snap.ErrorMessage = "TRADING_HOURS_MISSING";
+                            Log("TRADING_HOURS_MISSING instrument=" + instrument.FullName);
+                            try { done.Set(); } catch { /* ignore */ }
+                            return snap;
+                        }
+                        barsRequest.TradingHours = th;
                     }
                     catch (Exception ex)
                     {
                         Log("TradingHours set failed: " + ex.Message);
+                        snap.Failed = true;
+                        snap.ErrorCode = ErrorCode.NoError;
+                        snap.ErrorMessage = "TRADING_HOURS_MISSING";
+                        try { done.Set(); } catch { /* ignore */ }
+                        return snap;
                     }
 
                     Log($"BarsRequest fire barsBack={useBarsBack}/{barsBack} period={periodType}/{periodValue} lookup={(lookupProvider ? "Provider" : "Repository")} th={tradingHoursName ?? "default"} from={from:yyyy-MM-dd} to={to:yyyy-MM-dd}");
@@ -499,8 +506,7 @@ namespace NinjaTrader.NinjaScript.AddOns
                                         try { vol = (long)bars.GetVolume(i); } catch { vol = 0; }
                                         tmp.Add(new BarRow
                                         {
-                                            TimestampUnixMs = new DateTimeOffset(DateTime.SpecifyKind(ts, DateTimeKind.Local))
-                                                .ToUniversalTime().ToUnixTimeMilliseconds(),
+                                            TimestampUnixMs = NtBarClock.ToUnixMs(ts),
                                             Open = bars.GetOpen(i),
                                             High = bars.GetHigh(i),
                                             Low = bars.GetLow(i),
@@ -508,18 +514,15 @@ namespace NinjaTrader.NinjaScript.AddOns
                                             Volume = vol,
                                         });
                                     }
-                                    // Cap if needed — keep chronological order
                                     if (tmp.Count > maxBars)
                                     {
-                                        // Prefer keeping coverage across the window (even sample) for SLA span
-                                        var step = (double)tmp.Count / maxBars;
-                                        for (var k = 0; k < maxBars; k++)
-                                            snap.Rows.Add(tmp[(int)(k * step)]);
+                                        // Honest bars exist. Keep the newest maxBars.
+                                        // Rejecting the whole series made a full week look like zero bars.
+                                        var drop = tmp.Count - maxBars;
+                                        tmp.RemoveRange(0, drop);
+                                        Log("BarsRequest capped count=" + (drop + maxBars) + " kept=" + maxBars);
                                     }
-                                    else
-                                    {
-                                        snap.Rows.AddRange(tmp);
-                                    }
+                                    snap.Rows.AddRange(tmp);
                                 }
                                 else
                                 {
@@ -532,8 +535,7 @@ namespace NinjaTrader.NinjaScript.AddOns
                                         try { vol = (long)bars.GetVolume(i); } catch { vol = 0; }
                                         snap.Rows.Add(new BarRow
                                         {
-                                            TimestampUnixMs = new DateTimeOffset(DateTime.SpecifyKind(ts, DateTimeKind.Local))
-                                                .ToUniversalTime().ToUnixTimeMilliseconds(),
+                                            TimestampUnixMs = NtBarClock.ToUnixMs(ts),
                                             Open = bars.GetOpen(i),
                                             High = bars.GetHigh(i),
                                             Low = bars.GetLow(i),
@@ -635,7 +637,8 @@ namespace NinjaTrader.NinjaScript.AddOns
             string correlationId,
             BarsSnapshot snap,
             int maxBars,
-            string strategy)
+            string strategy,
+            string canonicalPeriod)
         {
             var response = new HistoricalDataResponse
             {
@@ -661,6 +664,7 @@ namespace NinjaTrader.NinjaScript.AddOns
                     Close = r.Close,
                     Volume = r.Volume,
                     IsBar = true,
+                    BarPeriod = canonicalPeriod,
                 });
             }
 
@@ -687,18 +691,6 @@ namespace NinjaTrader.NinjaScript.AddOns
             if ((to - from).TotalDays > 120)
                 from = to.AddDays(-120);
             return (from, to);
-        }
-
-        private static (BarsPeriodType type, int value) ParseBarPeriod(string? barPeriod)
-        {
-            var raw = (barPeriod ?? "1m").Trim().ToLowerInvariant();
-            if (string.IsNullOrEmpty(raw) || raw == "1m" || raw == "1min" || raw == "minute" || raw == "1")
-                return (BarsPeriodType.Minute, 1);
-            if (raw.EndsWith("m") && int.TryParse(raw.TrimEnd('m'), NumberStyles.Integer, CultureInfo.InvariantCulture, out var mins) && mins > 0)
-                return (BarsPeriodType.Minute, Math.Min(mins, 60));
-            if (raw == "1d" || raw == "day" || raw == "daily")
-                return (BarsPeriodType.Day, 1);
-            return (BarsPeriodType.Minute, 1);
         }
 
         private static Instrument? TryGetInstrument(string name)

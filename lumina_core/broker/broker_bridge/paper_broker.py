@@ -46,10 +46,14 @@ class PaperBroker(BrokerBridge):
     _cost_model: TradeExecutionCostModel | None = field(default=None, init=False)
 
     def _resolve_cost_model(self, symbol: str) -> TradeExecutionCostModel:
-        if self._cost_model is not None:
-            return self._cost_model
+        from lumina_core.market.nt_fees import contract_root
+
         cfg = getattr(self.engine, "config", None)
         instrument = str(symbol or getattr(cfg, "instrument", "MES"))
+        wanted = contract_root(instrument)
+        cached = self._cost_model
+        if cached is not None and contract_root(str(cached.instrument)) == wanted:
+            return cached
         self._cost_model = TradeExecutionCostModel.from_config(cfg, instrument=instrument)
         return self._cost_model
 

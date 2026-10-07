@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -7,11 +7,11 @@ import {
 } from "@/components/birth/GenesisMaturityLadder";
 import { PhaseHubAdvanceSection } from "@/components/maturity/PhaseHubAdvanceSection";
 import { PhaseHubDeck } from "@/components/maturity/PhaseHubDeck";
-import { PhaseHubHonestyBoard } from "@/components/maturity/PhaseHubHonestyBoard";
 import { PhaseHubWipeConfirm } from "@/components/maturity/PhaseHubWipeConfirm";
 import {
   clearLivingHubPref,
   followPhaseStart,
+  livingClockPhase,
   maybeOpenLivingCinematic,
 } from "@/components/maturity/phaseHubStart";
 import type { HubWipeKind } from "@/components/maturity/phaseHubFormat";
@@ -29,12 +29,24 @@ import {
   postWipeMaturityPhase,
 } from "@/lib/maturationClient";
 import { fetchTwinReadiness, type TwinReadiness } from "@/lib/twinClient";
-import { useOnboardingStore } from "@/store/onboardingStore";
+import { useBirthStore } from "@/store/birthStore";
+import { useOnboardingStore, type AppPhase } from "@/store/onboardingStore";
 import {
   distressPanelClass,
   warnOverlayBodyClass,
 } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
+
+/** Leave Phase Hub for the Genesis charter that owns Activate Birth. */
+function openBirthGenesis(setPhase: (phase: AppPhase) => void): void {
+  useBirthStore.getState().returnToGenesis();
+  useOnboardingStore.setState({
+    operatorDeckActive: false,
+    birthPhaseCommitted: false,
+    setupReviewActive: false,
+  });
+  setPhase("birth");
+}
 
 export function PhaseHubScreen() {
   const [hub, setHub] = useState<MaturityHubPayload | null>(null);
@@ -44,11 +56,12 @@ export function PhaseHubScreen() {
   const [telegramToken, setTelegramToken] = useState("");
   const [twinReady, setTwinReady] = useState<TwinReadiness | null>(null);
   const [wipeKind, setWipeKind] = useState<HubWipeKind | null>(null);
-  const [wipeStep, setWipeStep] = useState<1 | 2>(1);
   const [wipeError, setWipeError] = useState<string | null>(null);
   const [wiping, setWiping] = useState(false);
   const enterOperatorDeck = useOnboardingStore((s) => s.enterOperatorDeck);
   const refreshOnboarding = useOnboardingStore((s) => s.refresh);
+  const setPhase = useOnboardingStore((s) => s.setPhase);
+  const openedClock = useRef(false);
 
   const reload = useCallback(async () => {
     try {
@@ -74,6 +87,15 @@ export function PhaseHubScreen() {
     }, 4000);
     return () => window.clearInterval(id);
   }, [reload]);
+
+  useEffect(() => {
+    const phase = livingClockPhase(hub);
+    if (!phase || openedClock.current) return;
+    openedClock.current = true;
+    clearLivingHubPref(phase);
+    setPhase(phase as AppPhase);
+    void refreshOnboarding();
+  }, [hub, refreshOnboarding, setPhase]);
 
   const nextPhase = hub?.next_phase ?? null;
   const focus = (hub?.focus_phase || nextPhase || "birth") as MaturationPhaseId;
@@ -108,7 +130,7 @@ export function PhaseHubScreen() {
       return;
     }
     if (nextPhase === "birth") {
-      toast.info("Start Birth from the Birth screen");
+      openBirthGenesis(setPhase);
       return;
     }
     setBusy(true);
@@ -155,7 +177,6 @@ export function PhaseHubScreen() {
 
   const closeWipe = () => {
     setWipeKind(null);
-    setWipeStep(1);
     setWipeError(null);
   };
 
@@ -165,24 +186,23 @@ export function PhaseHubScreen() {
       return;
     }
     setWipeKind(kind);
-    setWipeStep(1);
     setWipeError(null);
   };
 
-  const runWipe = async () => {
+  const runWipe = async (phrase: string) => {
     if (!wipeKind || wiping) return;
     const kind = wipeKind;
     setWiping(true);
     setWipeError(null);
     try {
       if (kind === "full") {
-        await postWipeAllMaturation();
+        await postWipeAllMaturation(phrase);
         toast.success("Full wipe complete — blank Genesis, setup kept");
       } else if (kind === "birth") {
-        await postWipeMaturityPhase("birth");
+        await postWipeMaturityPhase("birth", phrase);
         toast.success("Birth wiped — history kept. Restart from Genesis.");
       } else {
-        await postWipeMaturityPhase(kind);
+        await postWipeMaturityPhase(kind, phrase);
         toast.success(
           kind === "awakening"
             ? "Awakening data wiped — Birth plant kept"
@@ -190,9 +210,11 @@ export function PhaseHubScreen() {
         );
       }
       setWipeKind(null);
-      setWipeStep(1);
       await reload();
       await refreshOnboarding();
+      if (kind === "birth" || kind === "full") {
+        openBirthGenesis(setPhase);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Wipe failed";
       setWipeError(message);
@@ -209,7 +231,7 @@ export function PhaseHubScreen() {
 
   return (
     <OnboardingShell className="phase-hub-screen birth-phase-screen birth-phase-screen--cinematic onboarding-shell--form">
-      <div className="birth-phase-cinematic relative mx-auto flex h-dvh min-h-0 w-full max-w-5xl flex-col overflow-hidden px-3 py-2">
+      <div className="birth-phase-cinematic relative mx-auto flex h-dvh min-h-0 w-full max-w-none flex-col overflow-hidden">
         <LuminaPhaseHeader
           eyebrow="Organism continuum"
           title="Phase Hub"
@@ -220,16 +242,17 @@ export function PhaseHubScreen() {
           }
           tone="violet"
           variant="strip"
+          className="lumina-phase-header relative z-20"
         />
 
-        <div className="mt-2 shrink-0">
+        <div className="relative z-20 shrink-0">
           <GenesisMaturityLadder activePhase={focus} />
         </div>
 
         {hub?.soft_legacy_complete ? (
           <p
             className={cn(
-              "mt-2 shrink-0 rounded-md border px-3 py-2 font-mono text-[10px]",
+              "mx-3 mt-2 shrink-0 rounded-md border px-3 py-2 font-mono text-[10px]",
               distressPanelClass("warn"),
               warnOverlayBodyClass(),
             )}
@@ -238,50 +261,45 @@ export function PhaseHubScreen() {
           </p>
         ) : null}
 
-        {hub ? (
-          <div className="mt-1.5">
-            <PhaseHubHonestyBoard hub={hub} twinReady={twinReady} />
-          </div>
-        ) : null}
-
-        {loading && !hub ? (
-          <p className="mt-8 text-center font-mono text-sm text-muted-foreground">Loading hub…</p>
-        ) : null}
-
         {error ? (
-          <p className="mt-3 rounded-md border border-rose-500/40 bg-rose-950/30 px-3 py-2 font-mono text-xs text-rose-200">
+          <p className="mx-3 mt-3 shrink-0 rounded-md border border-rose-500/40 bg-rose-950/30 px-3 py-2 font-mono text-xs text-rose-200">
             {error}
           </p>
         ) : null}
 
-        <PhaseHubDeck
-          hub={hub}
-          busy={busy}
-          runnerActive={runnerActive}
-          onStartNext={() => void onStartNext()}
-          onOpenDeck={onOpenDeck}
-          onWipe={onWipe}
-        >
-          <PhaseHubAdvanceSection
+        {loading && !hub ? (
+          <p className="mt-8 text-center font-mono text-sm text-muted-foreground">
+            Loading hub…
+          </p>
+        ) : (
+          <PhaseHubDeck
             hub={hub}
+            twinReady={twinReady}
             busy={busy}
-            telegramToken={telegramToken}
-            setTelegramToken={setTelegramToken}
-            onSetMode={onSetMode}
-            onAdvance={onAdvance}
-            setBusy={setBusy}
-            reload={reload}
-          />
-        </PhaseHubDeck>
+            runnerActive={runnerActive}
+            onStartNext={() => void onStartNext()}
+            onOpenDeck={onOpenDeck}
+            onWipe={onWipe}
+          >
+            <PhaseHubAdvanceSection
+              hub={hub}
+              busy={busy}
+              telegramToken={telegramToken}
+              setTelegramToken={setTelegramToken}
+              onSetMode={onSetMode}
+              onAdvance={onAdvance}
+              setBusy={setBusy}
+              reload={reload}
+            />
+          </PhaseHubDeck>
+        )}
       </div>
       <PhaseHubWipeConfirm
         kind={wipeKind}
-        step={wipeStep}
         wiping={wiping}
         error={wipeError}
         onCancel={closeWipe}
-        onContinue={() => setWipeStep(2)}
-        onConfirm={() => void runWipe()}
+        onConfirm={(phrase) => void runWipe(phrase)}
       />
     </OnboardingShell>
   );

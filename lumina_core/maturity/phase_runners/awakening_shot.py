@@ -18,6 +18,8 @@ HOLD_PCT = 0.20
 CHILD_ZIP_NAME = "awakening_live_pi_star.zip"
 CHILD_META_NAME = "awakening_live_pi_star.json"
 LEDGER_NAME = "awakening_live_holdout.jsonl"
+INCUMBENT_LEDGER_NAME = "awakening_incumbent_holdout.jsonl"
+INCUMBENT_PARENT_LEDGER_NAME = "awakening_incumbent_parent_holdout.jsonl"
 CHILD_SCHEMA = "awakening_live_pi_star_v1"
 
 FROZEN_RELATIVE: tuple[str, ...] = (
@@ -63,6 +65,7 @@ def snapshot_birth_freeze(workspace_root: Path | str) -> dict[str, str]:
         path = root / rel
         out[rel] = file_sha256(path) if path.is_file() else ""
     from lumina_core.maturity.awakening.freeze_pin import (
+        align_live_pi_star_to_pin,
         freeze_rel_key,
         pin_birth_pi_star,
         remember_fingerprint_sha,
@@ -75,27 +78,38 @@ def snapshot_birth_freeze(workspace_root: Path | str) -> dict[str, str]:
         pin_birth_pi_star(root)
     except FileNotFoundError:
         pass
+    align_live_pi_star_to_pin(root)
     out[freeze_rel_key(root, pi_star)] = file_sha256(pi_star) if pi_star.is_file() else ""
     meta = pi_star.with_name("birth_exit_pi_star.json")
     out[freeze_rel_key(root, meta)] = file_sha256(meta) if meta.is_file() else ""
     data = _continuum_birth_slice(root)
     out["continuum.birth_completed"] = "1" if data["birth_completed"] else "0"
-    out["continuum.birth_record"] = _stable_json(data["birth_record"])
+    # Learned text and completed_at are the hub card. Migrate and status polls
+    # rewrite them. The plant freeze is the completed flag plus exit proofs.
+    out["continuum.birth_status"] = str(data["birth_status"] or "")
+    out["continuum.birth_exit_proofs"] = _stable_json(data["birth_exit_proofs"])
     return out
 
 
 def assert_birth_freeze(workspace_root: Path | str, before: dict[str, str]) -> None:
-    from lumina_core.maturity.awakening.freeze_pin import restore_birth_pi_star_from_pin
+    from lumina_core.maturity.awakening.freeze_pin import (
+        align_live_pi_star_to_pin,
+        live_matches_pin,
+    )
 
     root = Path(workspace_root)
     after = snapshot_birth_freeze(root)
     if after == before:
         return
-    restore_birth_pi_star_from_pin(root)
+    align_live_pi_star_to_pin(root)
     after = snapshot_birth_freeze(root)
-    if after != before:
-        delta = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
-        raise AwakeningShotError(f"birth_freeze_violated: {delta}")
+    if after == before:
+        return
+    delta = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+    pi_only = all("birth_exit_pi_star" in k for k in delta) if delta else False
+    if pi_only and live_matches_pin(root):
+        return
+    raise AwakeningShotError(f"birth_freeze_violated: {delta}")
 
 
 def load_live_split(workspace_root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
@@ -145,6 +159,7 @@ def run_live_awakening_shot(
     eval_only: bool = False,
     lr_scale: float = 1.0,
     cycle: int = 0,
+    should_stop: Any | None = None,
 ) -> dict[str, Any]:
     """Train on Birth train split, eval holdout, persist ADR-0026 record (pass or fail)."""
     root = Path(workspace_root)
@@ -160,6 +175,7 @@ def run_live_awakening_shot(
             eval_only=eval_only,
             lr_scale=lr_scale,
             cycle=cycle,
+            should_stop=should_stop,
         )
     except Exception:
         assert_birth_freeze(root, freeze)
@@ -179,8 +195,9 @@ def _run_shot_body(
     eval_only: bool = False,
     lr_scale: float = 1.0,
     cycle: int = 0,
+    should_stop: Any | None = None,
 ) -> dict[str, Any]:
-    from lumina_core.birth.awakening_select import AWAKENING_SELECT_PPO_TIMESTEPS
+    from lumina_core.maturity.awakening.clock import LIVE_PPO_TIMESTEPS
     from lumina_core.birth.birth_exit_policy_export import (
         file_sha256,
         is_gitignored_ppo_zip,
@@ -237,15 +254,27 @@ def _run_shot_body(
         raise AwakeningShotError("live_split_empty")
     if train is holdout:
         raise AwakeningShotError("train_is_holdout_same_object")
+    if split_loader is None:
+        from lumina_core.birth.awakening_holdout_capacity import thin_holdout_reason
+        from lumina_core.birth.birth_trade_geometry import calibrate_birth_stops
+
+        geo = calibrate_birth_stops(holdout)
+        cap_fail = thin_holdout_reason(
+            len(holdout), int(getattr(geo, "hold_bars", 120) or 120)
+        )
+        if cap_fail:
+            raise AwakeningShotError(cap_fail)
 
     child = live_child_zip(root)
     ledger = live_ledger_path(root)
     reports = artifacts_dir(root)
     reports.mkdir(parents=True, exist_ok=True)
-    pin = int(AWAKENING_SELECT_PPO_TIMESTEPS)
+    pin = int(LIVE_PPO_TIMESTEPS)
     from lumina_core.maturity.phase_runners.awakening_shot_io import default_eval, default_train
 
     train_info: dict[str, Any] = {"actual_timesteps": 0, "optimizer_steps": 0}
+    if should_stop is not None and should_stop():
+        raise AwakeningShotError("stop_requested")
     if eval_only:
         _emit(progress, 40.0, f"Cycle {int(cycle)} eval frozen π* on holdout B — no learn()")
         from lumina_core.maturity.awakening.freeze_pin import refuse_birth_pi_star_write
@@ -254,7 +283,10 @@ def _run_shot_body(
         if load_path.resolve() != child.resolve():
             child.write_bytes(load_path.read_bytes())
     else:
-        _emit(progress, 40.0, f"Cycle {int(cycle)} train A (10k PPO)")
+        _emit(progress, 40.0, f"Cycle {int(cycle)} train A ({pin} PPO)")
+        from lumina_core.maturity.awakening.progress import merge_awakening_progress
+
+        merge_awakening_progress(root, {"cycle": int(cycle), "activity": "probe_A"})
         trainer = train_fn or default_train
         train_info = trainer(
             train=train,
@@ -265,12 +297,24 @@ def _run_shot_body(
             reports=reports,
             pin=pin,
             lr_scale=float(lr_scale),
+            should_stop=should_stop,
         )
     if not child.is_file() or child.stat().st_size <= 0:
         raise AwakeningShotError("child_zip_missing_after_train")
     child_sha = file_sha256(child)
-    if child_sha == init_sha:
-        logger.warning("awakening.live.child_sha_equals_init — eval still runs; ADR-0026 decides")
+    from lumina_core.maturity.awakening.weight_sha import PolicyWeightShaError, policy_weight_sha256
+
+    try:
+        child_weight_sha = policy_weight_sha256(child)
+        init_weight_sha = policy_weight_sha256(frozen_path)
+    except PolicyWeightShaError as exc:
+        raise AwakeningShotError(f"weight_sha_unreadable:{exc}") from exc
+    if child_sha == init_sha or child_weight_sha == init_weight_sha:
+        logger.warning(
+            "awakening.live.child_matches_frozen_parent file_sha_equal=%s weight_sha_equal=%s",
+            child_sha == init_sha,
+            child_weight_sha == init_weight_sha,
+        )
 
     _emit(progress, 70.0, f"Cycle {int(cycle)} eval holdout B")
     evaluator = eval_fn or default_eval
@@ -280,13 +324,33 @@ def _run_shot_body(
         workspace=root,
         reports=reports,
         ledger_path=ledger,
+        should_stop=should_stop,
     )
     oos = float(eval_info["oos_winrate"])
     n_trades = int(eval_info["holdout_trades"])
+    paired = _paired_for_shot(
+        eval_info,
+        eval_fn=eval_fn,
+        holdout=holdout,
+        frozen_path=frozen_path,
+        child_path=child,
+        child_ledger=ledger,
+        workspace=root,
+        reports=reports,
+        should_stop=should_stop,
+        progress=progress,
+        cycle=int(cycle),
+    )
     proof = record_and_evaluate_at_certificate(
         root,
-        eval_result={"oos_winrate": oos, "holdout_trades": n_trades},
+        eval_result={
+            "oos_winrate": oos,
+            "holdout_trades": n_trades,
+            **paired,
+        },
         birth_exit_winrate=float(vector.oos_wr),
+        child_sha256=child_sha,
+        init_sha256=init_sha,
     )
     sidecar = {
         "schema": CHILD_SCHEMA,
@@ -316,6 +380,8 @@ def _run_shot_body(
         "child_path": str(child),
         "child_sha256": child_sha,
         "init_sha256": init_sha,
+        "child_weight_sha": child_weight_sha,
+        "init_weight_sha": init_weight_sha,
         "split": split_meta,
         "train_n": len(train),
         "holdout_n": len(holdout),
@@ -325,15 +391,123 @@ def _run_shot_body(
         "oos_sharpe": eval_info.get("oos_sharpe"),
         "oos_dd_pct": eval_info.get("oos_dd_pct"),
         "occupancy": eval_info.get("occupancy"),
+        "occupancy_at_nb": eval_info.get("occupancy_at_nb"),
         "mean_r": eval_info.get("mean_r"),
         "edge": eval_info.get("edge"),
         "median_loss_r": eval_info.get("median_loss_r"),
         "holdout_exhausted": bool(eval_info.get("holdout_exhausted")),
         "occupancy_seed_source": eval_info.get("occupancy_seed_source") or "",
         "n_plant": int(eval_info.get("n_plant") or 0),
+        "constitution_violations": eval_info.get("constitution_violations"),
+        "constitution_blocks": eval_info.get("constitution_blocks"),
+        "mean_hold_bars": eval_info.get("mean_hold_bars"),
+        "geometry_hold_bars": eval_info.get("geometry_hold_bars"),
+        "paired_delta": proof.paired_delta,
+        "paired_ci_low": proof.paired_ci_low,
+        "parent_replay_present": proof.parent_replay_present,
+        "child_median_win_r": proof.child_median_win_r,
+        "parent_median_win_r": proof.parent_median_win_r,
         "eval_only": bool(eval_only),
         "lr_scale": float(lr_scale),
     }
+
+
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    rows: list[dict[str, Any]] = []
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            raw = line.strip()
+            if not raw:
+                continue
+            row = json.loads(raw)
+            if isinstance(row, dict):
+                rows.append(row)
+    except (OSError, ValueError, TypeError):
+        return []
+    return rows
+
+
+def _parent_replay_paths(child_ledger: Path) -> tuple[Path, Path]:
+    parent = child_ledger.with_name("awakening_parent_holdout.jsonl")
+    return parent, parent.with_name("awakening_parent_holdout.frozen_sha")
+
+
+def _frozen_parent_cache_matches(parent_ledger: Path, sha_path: Path, frozen_sha: str) -> bool:
+    if not parent_ledger.is_file() or parent_ledger.stat().st_size <= 0 or not sha_path.is_file():
+        return False
+    return sha_path.read_text(encoding="utf-8").strip() == frozen_sha
+
+
+def _remember_frozen_parent(sha_path: Path, frozen_sha: str) -> None:
+    sha_path.write_text(frozen_sha + "\n", encoding="utf-8")
+
+
+def _paired_for_shot(
+    eval_info: dict[str, Any],
+    *,
+    eval_fn: Any,
+    holdout: list[dict[str, Any]],
+    frozen_path: Path,
+    child_path: Path,
+    child_ledger: Path,
+    workspace: Path,
+    reports: Path,
+    should_stop: Any | None,
+    progress: ProgressFn | None = None,
+    cycle: int = 0,
+) -> dict[str, Any]:
+    """Pair the child ledger with one frozen-parent walk. Never walk that parent twice.
+
+    Cycle 0 evaluates the frozen zip. That ledger is the parent replay. Later
+    cycles reuse it. A second full holdout walk is only done when the cache is
+    missing and this shot was not the frozen policy.
+    """
+    keys = (
+        "paired_ci_low",
+        "paired_delta",
+        "parent_replay_present",
+        "child_median_win_r",
+        "parent_median_win_r",
+        "child_closes",
+        "parent_closes",
+    )
+    forwarded = {key: eval_info[key] for key in keys if key in eval_info}
+    if forwarded:
+        return forwarded
+    if eval_fn is not None:
+        return {}
+    from lumina_core.birth.birth_exit_policy_export import file_sha256
+    from lumina_core.birth.evolution_proof_gate import attach_session_days, paired_book_from_rows
+    from lumina_core.maturity.phase_runners.awakening_shot_io import default_eval
+
+    parent_ledger, sha_path = _parent_replay_paths(child_ledger)
+    frozen_sha = file_sha256(frozen_path) if frozen_path.is_file() else ""
+    if frozen_sha and not _frozen_parent_cache_matches(parent_ledger, sha_path, frozen_sha):
+        child_is_frozen = (
+            child_path.is_file()
+            and child_ledger.is_file()
+            and child_ledger.stat().st_size > 0
+            and file_sha256(child_path) == frozen_sha
+        )
+        if child_is_frozen:
+            parent_ledger.write_bytes(child_ledger.read_bytes())
+        else:
+            _emit(progress, 72.0, f"Cycle {int(cycle)} parent replay on holdout B")
+            default_eval(
+                holdout=holdout,
+                child_path=frozen_path,
+                workspace=workspace,
+                reports=reports,
+                ledger_path=parent_ledger,
+                should_stop=should_stop,
+            )
+        if parent_ledger.is_file() and parent_ledger.stat().st_size > 0:
+            _remember_frozen_parent(sha_path, frozen_sha)
+    child_rows = attach_session_days(_read_jsonl(child_ledger), holdout)
+    parent_rows = attach_session_days(_read_jsonl(parent_ledger), holdout)
+    return paired_book_from_rows(child_rows, parent_rows)
 
 
 def _emit(progress: ProgressFn | None, pct: float, message: str) -> None:
@@ -350,7 +524,18 @@ def _continuum_birth_slice(root: Path) -> dict[str, Any]:
         return {"birth_completed": False, "birth_record": None}
     completed = list(data.get("completed_phases") or [])
     rec = (data.get("phase_records") or {}).get("birth")
-    return {"birth_completed": "birth" in completed, "birth_record": rec}
+    if not isinstance(rec, dict):
+        rec = {}
+    proofs = rec.get("exit_proofs")
+    if isinstance(proofs, list):
+        proof_list = sorted(str(item) for item in proofs)
+    else:
+        proof_list = []
+    return {
+        "birth_completed": "birth" in completed,
+        "birth_status": str(rec.get("status") or ""),
+        "birth_exit_proofs": proof_list,
+    }
 
 
 def _stable_json(value: Any) -> str:

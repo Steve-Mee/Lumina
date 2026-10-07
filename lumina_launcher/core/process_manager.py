@@ -17,6 +17,7 @@ from typing import Any, Callable
 
 import psutil  # type: ignore[import]
 
+from lumina_core.process_probe import no_console, pid_is_alive
 from lumina_launcher.telemetry.events import log_event, timed_event
 from lumina_launcher.telemetry.hooks import emit_launcher_event
 
@@ -37,25 +38,16 @@ class ProcessManager:
         if not cmdline_raw:
             return False
         norm = self._normalize_process_cmdline(cmdline_raw)
+        # A shell snippet that merely mentions the entry file is not the engine.
+        if " -c " in f" {norm} ":
+            return False
         if "lumina_runtime.py" in norm:
             return True
         marker = (self.launcher_root / self.runtime_entry).resolve().as_posix().lower()
-        return marker in norm or "runtime_entrypoint.py" in norm and "lumina_core" in norm
+        return marker in norm or ("runtime_entrypoint.py" in norm and "lumina_core" in norm)
 
     def _pid_is_alive(self, pid: int) -> bool:
-        if pid <= 0:
-            return False
-        try:
-            if os.name == "nt":
-                result = subprocess.run(
-                    ["powershell", "-NoProfile", "-Command", f"Get-Process -Id {pid} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id"],
-                    check=False, capture_output=True, text=True
-                )
-                return str(pid) in (result.stdout or "")
-            os.kill(pid, 0)
-            return True
-        except Exception:
-            return False
+        return pid_is_alive(pid)
 
     def _enumerate_lumina_runtime_pids(self) -> list[int]:
         collected: list[int] = []
@@ -224,18 +216,26 @@ class ProcessManager:
         log_dir = self.launcher_root / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         stderr_log_path = log_dir / "launcher_runtime_stderr.log"
-        stderr_handle = open(stderr_log_path, "a", encoding="utf-8")
+        stderr_handle = open(stderr_log_path, "ab", buffering=0)
+        creationflags = 0
+        if os.name == "nt":
+            # CREATE_NO_WINDOW hides the empty console. Logs stay in
+            # launcher_runtime_stderr.log. DETACHED_PROCESS ignores CREATE_NO_WINDOW
+            # and python.exe then opens a black window with no text.
+            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
         try:
             with timed_event("launcher.proc.start", mode=normalized_mode):
                 proc = subprocess.Popen(
                     command,
                     cwd=str(self.launcher_root),
                     env=env,
-                    stdout=subprocess.DEVNULL,
+                    stdin=subprocess.DEVNULL,
+                    stdout=stderr_handle,
                     stderr=stderr_handle,
+                    creationflags=creationflags,
                 )
+            stderr_handle.close()
             self._save_process_state(proc.pid, command, mode=normalized_mode)
-            stderr_handle.flush()
             time.sleep(1.0)
             self._alive_cache = None
             still_running = proc.poll() is None and self._pid_is_alive(proc.pid)
@@ -287,7 +287,7 @@ class ProcessManager:
                 for pid in target_pids:
                     try:
                         if os.name == "nt":
-                            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False)
+                            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False, **no_console())
                         else:
                             os.kill(pid, 15)
                             time.sleep(0.3)
@@ -325,7 +325,7 @@ class ProcessManager:
         for pid in backend_pids:
             try:
                 if os.name == "nt":
-                    subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False)
+                    subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False, **no_console())
                 else:
                     os.kill(pid, 15)
                     time.sleep(0.2)
@@ -336,7 +336,7 @@ class ProcessManager:
         for pid in worker_pids:
             try:
                 if os.name == "nt":
-                    subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False)
+                    subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False, **no_console())
                 else:
                     os.kill(pid, 15)
                     time.sleep(0.2)

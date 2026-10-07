@@ -9,6 +9,7 @@ import pytest
 
 from lumina_core.maturity.advance_policy import confirm_telegram_advance, on_phase_complete
 from lumina_core.maturity.continuum import (
+    ContinuumUnreadable,
     load_continuum,
     mark_phase_completed,
     mark_phase_failed,
@@ -71,6 +72,26 @@ def test_save_continuum_retries_winerror_5(tmp_path: Path, monkeypatch: pytest.M
     data = load_continuum(tmp_path)
     assert next_phase_id(data["completed_phases"]) == "awakening"
     assert "birth" in data["completed_phases"]
+
+
+@pytest.mark.unit
+def test_corrupt_continuum_file_is_not_migrated(tmp_path: Path) -> None:
+    path = tmp_path / "state" / "lumina_phase_continuum.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("{{{", encoding="utf-8")
+    with pytest.raises(ContinuumUnreadable):
+        load_continuum(tmp_path)
+    assert path.read_text(encoding="utf-8") == "{{{"
+
+
+@pytest.mark.unit
+def test_non_object_continuum_is_not_migrated(tmp_path: Path) -> None:
+    path = tmp_path / "state" / "lumina_phase_continuum.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("null", encoding="utf-8")
+    with pytest.raises(ContinuumUnreadable):
+        load_continuum(tmp_path)
+    assert path.read_text(encoding="utf-8") == "null"
 
 
 @pytest.mark.unit

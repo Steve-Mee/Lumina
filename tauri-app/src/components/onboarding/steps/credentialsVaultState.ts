@@ -28,6 +28,7 @@ export type VaultFocusId =
   | "crosstrade_token"
   | "crosstrade_account"
   | "nt_install"
+  | "nt_accounts"
   | "twin_base";
 
 export type VaultFocusRow = {
@@ -289,6 +290,8 @@ export function focusTitle(id: VaultFocusId): string {
       return "Crosstrade account";
     case "nt_install":
       return "NinjaTrader install";
+    case "nt_accounts":
+      return "NT-rekeningen";
     case "twin_base":
       return "Twin base training";
     default:
@@ -316,6 +319,8 @@ export function focusHint(id: VaultFocusId): string {
       return "Emergency feed account · optional";
     case "nt_install":
       return "NinjaTrader 8 is required for Fabric";
+    case "nt_accounts":
+      return "Control Center → Accounts · demo bindt, real wordt bewaard";
     case "twin_base":
       return "Operator judgment DNA · required before Birth";
     default:
@@ -357,6 +362,14 @@ export function buildVaultFocusRows(opts: {
       summary: setOrMissing(creds.LUMINA_FABRIC_TOKEN, present.LUMINA_FABRIC_TOKEN),
       state: fieldFillState(creds.LUMINA_FABRIC_TOKEN, present.LUMINA_FABRIC_TOKEN),
       tip: "Brain ↔ NT8 shared secret",
+      section: "fabric",
+    },
+    {
+      id: "nt_accounts",
+      label: "NT-rekeningen",
+      summary: "Demo en real",
+      state: "partial",
+      tip: "Control Center → Accounts. Demo wordt AccountName. Real wordt RealAccountName.",
       section: "fabric",
     },
     {
@@ -421,64 +434,4 @@ export function diagnosticDisplayState(
   return "fail";
 }
 
-/** Build channel cards for the vault matrix (security / fabric / alerts / data). */
-export function buildVaultChannelCards(opts: {
-  secState: ChipState;
-  fabricState: ChipState;
-  linkState: ChipState;
-  alertsState: ChipState;
-  dataState: ChipState;
-  emergencyFeed: boolean;
-  fabricGreen: boolean;
-  fabricReport: FabricConnectionTestReport | null;
-  fabricCertified: boolean;
-}): ChannelCardModel[] {
-  const cards: ChannelCardModel[] = [
-    {
-      id: "security",
-      label: "Security",
-      summary:
-        opts.secState === "ok"
-          ? "JWT + admin set"
-          : opts.secState === "partial"
-            ? "Keys incomplete"
-            : "Awaiting secrets",
-      state: opts.secState,
-      tip: "JWT secret and Admin API key for session + deck control",
-    },
-    {
-      id: "fabric",
-      label: "Fabric",
-      summary: linkSummary(opts.fabricGreen, opts.fabricReport, opts.fabricCertified),
-      state: opts.linkState === "idle" ? opts.fabricState : opts.linkState,
-      tip: "Brain ↔ NinjaTrader 8 link · diagnostic must be GREEN",
-    },
-    {
-      id: "alerts",
-      label: "Alerts",
-      summary:
-        opts.alertsState === "ok"
-          ? "Telegram ready"
-          : opts.alertsState === "partial"
-            ? "Telegram partial"
-            : "Optional",
-      state: opts.alertsState,
-      tip: "Optional Telegram bot + chat for operator alerts",
-    },
-  ];
-  if (opts.emergencyFeed) {
-    cards.push({
-      id: "data",
-      label: "Data",
-      summary:
-        opts.dataState === "ok"
-          ? "Emergency feed set"
-          : opts.dataState === "partial"
-            ? "Feed incomplete"
-            : "Emergency only",
-      state: opts.dataState,
-      tip: "CrossTrade emergency market-data fallback",
-    });
-  }
-  return cards;
-}
+

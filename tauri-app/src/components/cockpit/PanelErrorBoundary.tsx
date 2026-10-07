@@ -1,4 +1,4 @@
-import { AlertTriangle, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -13,17 +13,16 @@ interface PanelErrorBoundaryProps {
 
 interface PanelErrorBoundaryState {
   hasError: boolean;
-  message: string | null;
 }
 
 export class PanelErrorBoundary extends Component<
   PanelErrorBoundaryProps,
   PanelErrorBoundaryState
 > {
-  state: PanelErrorBoundaryState = { hasError: false, message: null };
+  state: PanelErrorBoundaryState = { hasError: false };
 
-  static getDerivedStateFromError(error: Error): PanelErrorBoundaryState {
-    return { hasError: true, message: error.message };
+  static getDerivedStateFromError(): PanelErrorBoundaryState {
+    return { hasError: true };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
@@ -32,7 +31,7 @@ export class PanelErrorBoundary extends Component<
 
   private handleRetry = (): void => {
     this.props.onRetry?.();
-    this.setState({ hasError: false, message: null });
+    this.setState({ hasError: false });
   };
 
   render(): ReactNode {
@@ -40,21 +39,18 @@ export class PanelErrorBoundary extends Component<
       return (
         <div
           className={cn(
-            "flex h-full min-h-[120px] flex-col items-center justify-center gap-3 rounded-lg border border-red-500/25 bg-red-950/20 p-4 text-center",
+            "flex h-full min-h-0 flex-col items-center justify-center gap-3 rounded-lg px-4 py-6 text-center",
+            "border border-[color-mix(in_srgb,var(--lumina-cyan)_16%,transparent)]",
+            "bg-[color-mix(in_srgb,var(--lumina-void)_70%,transparent)]",
             this.props.className,
           )}
           role="alert"
         >
-          <AlertTriangle className="size-5 text-red-400" aria-hidden />
-          <div className="font-mono text-[11px]">
-            <p className="tracking-wide text-red-200">{this.props.panelName} unavailable</p>
-            {import.meta.env.DEV && this.state.message ? (
-              <p className="mt-1 max-w-xs truncate text-[10px] text-red-200/60">
-                {this.state.message}
-              </p>
-            ) : null}
-          </div>
-          <Button size="xs" variant="outline" onClick={this.handleRetry}>
+          <p className="risk-envelope-panel__toolbar-title">{this.props.panelName}</p>
+          <p className="max-w-xs font-mono text-[11px] leading-relaxed text-white/55">
+            This organ is silent. Retry does not invent a graph or a decision chain.
+          </p>
+          <Button size="xs" variant="command-ghost" onClick={this.handleRetry}>
             <RotateCcw data-icon="inline-start" />
             Retry
           </Button>

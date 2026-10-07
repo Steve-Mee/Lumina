@@ -41,11 +41,16 @@ describe("birthCertificateDiagnostics", () => {
   });
 
   it("builds runway-aware subtitle", () => {
-    const status: BirthStatusPayload = {
+    const withRunway: BirthStatusPayload = {
+      status: "certificate_failed",
+      runway_phase: "proving_ground",
+    };
+    expect(resolveCertificateFailureSubtitle(withRunway)).toContain("proving_ground");
+    const foundationOnly: BirthStatusPayload = {
       status: "certificate_failed",
       fast_path_eligible: true,
     };
-    expect(resolveCertificateFailureSubtitle(status)).toContain("runway");
+    expect(resolveCertificateFailureSubtitle(foundationOnly)).toContain("Proving Ground");
   });
 });
 
@@ -54,7 +59,6 @@ describe("resolveBirthScreenPhaseHeader certificate overlay", () => {
     const header = resolveBirthScreenPhaseHeader({
       genesisMode: false,
       missionMode: false,
-      awakening: false,
       activating: false,
       interrupted: false,
       certificateFailed: true,

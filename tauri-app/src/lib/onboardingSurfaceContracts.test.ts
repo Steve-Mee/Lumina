@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 
 const birthPhaseRoot = join(dirname(fileURLToPath(import.meta.url)), "../components/birth");
 const birthHooksRoot = join(dirname(fileURLToPath(import.meta.url)), "../hooks");
+const sharedRoot = join(dirname(fileURLToPath(import.meta.url)), "../components/shared");
 
 /** Birth phase UX surface after Wave C PR-E3 split (shell + branches + hooks). */
 const birthPhaseSource = [
@@ -22,6 +23,7 @@ const birthPhaseSource = [
   .concat([
     readFileSync(join(birthHooksRoot, "useBirthPhaseDerived.ts"), "utf8"),
     readFileSync(join(birthHooksRoot, "useBirthPhaseActions.ts"), "utf8"),
+    readFileSync(join(sharedRoot, "PhaseCinematicFrames.tsx"), "utf8"),
   ])
   .join("\n");
 
@@ -162,13 +164,13 @@ const luminaPhaseHeaderCssSource = readFileSync(
 
 describe("onboarding surface contracts", () => {
 
-  it("Birth finale shows mission control and command deck entry on main screen", () => {
-    expect(birthPhaseSource).toContain("Birth complete");
-    expect(birthPhaseSource).not.toContain("CheckCircle2");
-    expect(birthPhaseSource).not.toContain("birth-finale-hero");
+  it("Birth finale is not the Awakening start window", () => {
+    expect(birthPhaseSource).not.toContain("Enter command deck");
+    expect(birthPhaseSource).not.toContain("onEnterDeck={enterCommandDeck}");
+    expect(birthPhaseSource).not.toContain('title: "Awakening"');
+    expect(birthCommandBarSource).not.toContain("Enter command deck");
+    expect(birthCommandBarSource).not.toContain('mode === "finale"');
     expect(birthPhaseSource).toContain("BirthMissionControl");
-    expect(birthCommandBarSource).toContain("Enter command deck");
-    expect(birthPhaseSource).toContain("onEnterDeck={enterCommandDeck}");
   });
 
 
@@ -273,9 +275,7 @@ describe("onboarding surface contracts", () => {
     expect(birthPhaseSource).not.toMatch(/genesisMode[\s\S]*BirthCinematicLayout/);
     expect(birthCommandBarSource).not.toMatch(/mode === "genesis"[\s\S]*BirthControlDock/);
     expect(birthCommandBarSource).not.toContain("headline");
-    expect(birthCommandBarSource).toMatch(
-      /showMilestoneRail\s*=\s*mode === "running" \|\| mode === "finale"/,
-    );
+    expect(birthCommandBarSource).toMatch(/showMilestoneRail\s*=\s*mode === "running"/);
     // Recovery actions live as vault cards in the Recovery tab (not a cramped dock).
     expect(birthGenesisDeckSource).toContain("genesis-recovery-action-grid");
     expect(birthGenesisDeckSource).toContain("BirthLaunchButton");
@@ -557,6 +557,52 @@ describe("onboarding surface contracts", () => {
     expect(onboardingWizardSource).toContain("resolveWizardPhaseHeader");
     expect(birthPhaseSource).toContain("LuminaPhaseHeader");
     expect(cockpitShellSource).toContain("resolveDeckPhaseHeader");
+    expect(cockpitShellSource).toContain('variant="compact"');
+    expect(cockpitShellSource).toContain("evolution-ladder-strip--dense");
+    expect(cockpitShellSource).not.toContain("StatusBar");
+  });
+
+  it("Playground uses the cinematic phase shell, not a deck overlay", () => {
+    const playgroundScreen = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../components/maturity/PlaygroundPhaseScreen.tsx"),
+      "utf8",
+    );
+    const playgroundMission = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../components/maturity/PlaygroundMission.tsx"),
+      "utf8",
+    );
+    const gate = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../components/onboarding/OnboardingGate.tsx"),
+      "utf8",
+    );
+    expect(gate).toContain("PlaygroundPhaseScreen");
+    expect(gate).not.toContain("PlaygroundDeckOverlay");
+    expect(playgroundScreen).toContain("birth-phase-screen--cinematic");
+    expect(playgroundScreen).toContain('variant={running ? "compact" : "strip"}');
+    expect(playgroundScreen).toContain("evolution-ladder-strip--dense");
+    expect(playgroundMission).toContain("LivingPhaseMission");
+    expect(playgroundMission).toContain("Command Deck");
+  });
+
+  it("Command Deck uses the cinematic genesis spine", () => {
+    const commandDeckScreen = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../components/cockpit/CommandDeckScreen.tsx"),
+      "utf8",
+    );
+    const ladderStripSource = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../components/shared/EvolutionLadderStrip.tsx"),
+      "utf8",
+    );
+    expect(cockpitShellSource).toContain("birth-phase-screen--cinematic");
+    expect(cockpitShellSource).not.toContain("CommandHud");
+    expect(cockpitShellSource).toContain("h-dvh");
+    expect(commandDeckScreen).toContain("command-deck-ops");
+    expect(commandDeckScreen).toContain("PhaseHelixStage");
+    expect(commandDeckScreen).toContain("command-deck-ops__chrome");
+    expect(commandDeckScreen).toContain("command-deck-ops__hud");
+    expect(commandDeckScreen).toContain("lumina-glass--overlay");
+    expect(commandDeckScreen).toContain("CommandHud");
+    expect(ladderStripSource).not.toContain("chrome.error");
   });
 
 });

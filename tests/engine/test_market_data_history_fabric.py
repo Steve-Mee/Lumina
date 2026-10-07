@@ -133,6 +133,24 @@ def test_fabric_bars_to_ct_shape_from_unix_ms() -> None:
     assert "T" in shaped[0]["timestamp"]
 
 
+def test_fabric_bars_to_ct_shape_does_not_fill_high_from_last() -> None:
+    h = _Harness()
+    shaped = h._fabric_bars_to_ct_shape(
+        [
+            {
+                "timestamp_unix_ms": 1_700_000_000_000,
+                "last": 10.0,
+                "volume": 1,
+            }
+        ]
+    )
+    assert len(shaped) == 1
+    assert shaped[0]["open"] == 0.0
+    assert shaped[0]["high"] == 0.0
+    assert shaped[0]["low"] == 0.0
+    assert shaped[0]["close"] == 0.0
+
+
 def test_fabric_pagination_walks_backward_windows(monkeypatch: pytest.MonkeyPatch) -> None:
     """Birth SLA needs multi-week coverage — must not stop after one recent barsBack slice."""
     h = _Harness("ninjatrader", fallback=False)

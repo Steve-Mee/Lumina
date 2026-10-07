@@ -449,13 +449,13 @@ def build_pause_ssot_payload(
     prior_phase = str(progress.get("prior_phase") or phase)
     if user_initiated:
         default_message = (
-            "Birth Phase gepauzeerd door gebruiker. "
-            "Kies Hervat checkpoint of Wis birth-data voor schone run."
+            "Birth paused by you. "
+            "Choose Resume checkpoint or Wipe birth data for a clean run."
         )
     else:
         default_message = (
-            "Runner gestopt zonder gebruikersstop — "
-            "kies Hervat checkpoint of Wis birth-data."
+            "Runner stopped without a user stop. "
+            "Choose Resume checkpoint or Wipe birth data."
         )
     payload = dict(progress)
     payload.update(

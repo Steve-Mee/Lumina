@@ -3,12 +3,23 @@
 from __future__ import annotations
 
 import os
-import re
 
+from lumina_core.broker.ninjatrader.account_names import (
+    is_broker_demo_name,
+    paper_orders_allowed,
+)
 from lumina_core.broker.ninjatrader.connection_state import NinjaTraderConnectionState
 from lumina_core.broker.ninjatrader.promotion_gate import NtBridgeAction, action_allowed, normalize_trade_mode
 
-_SIM_ACCOUNT_RE = re.compile(r"^sim", re.IGNORECASE)
+
+def is_broker_demo_account(name: str) -> bool:
+    """NinjaTrader brokerage demo, for example DEMO5042070."""
+    return is_broker_demo_name(name)
+
+
+def paper_account_allowed(name: str, mode: str) -> bool:
+    """Local Sim is paper. A brokerage DEMO name is paper only outside REAL."""
+    return paper_orders_allowed(name, mode)
 
 
 def _sim_real_guard_enabled() -> bool:
@@ -32,7 +43,7 @@ def check_account_match(
     if mode == "sim":
         if configured and connected.lower() != configured.lower():
             return False, f"sim_account_mismatch:expected={configured},actual={connected}"
-        if configured and not _SIM_ACCOUNT_RE.match(configured):
+        if configured and not paper_account_allowed(configured, mode):
             return False, f"sim_account_not_sim_named:{configured}"
         return True, "ok"
 
@@ -41,6 +52,8 @@ def check_account_match(
             return False, "sim_real_guard_disabled"
         if configured and connected.lower() != configured.lower():
             return False, f"sim_real_guard_account_mismatch:expected={configured},actual={connected}"
+        if configured and not paper_account_allowed(configured, mode):
+            return False, f"sim_account_not_sim_named:{configured}"
         return True, "ok"
 
     if mode == "real":
@@ -48,6 +61,8 @@ def check_account_match(
             return False, "real_account_not_configured"
         if connected.lower() != configured.lower():
             return False, f"real_account_mismatch:expected={configured},actual={connected}"
+        if is_broker_demo_account(configured) or is_broker_demo_account(connected):
+            return False, "real_account_blocked_pending_promotion_adr"
         return True, "ok"
 
     return False, f"nt_bridge_not_allowed_in_mode:{mode}"

@@ -153,6 +153,8 @@ class FabricGrpcClient(FabricClientOpsMixin, FabricClientStreamMixin):
         self._hb_seq = 0
         self._owns_channel = channel is None
         self._last_quotes: dict[str, dict[str, Any]] = {}
+        self._last_bars: dict[str, dict[str, Any]] = {}
+        self._bar_queue: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=50_000)
 
     @property
     def is_connected(self) -> bool:
@@ -341,10 +343,11 @@ class FabricGrpcClient(FabricClientOpsMixin, FabricClientStreamMixin):
                     "open": float(getattr(b, "open", 0.0) or 0.0),
                     "high": float(getattr(b, "high", 0.0) or 0.0),
                     "low": float(getattr(b, "low", 0.0) or 0.0),
-                    "close": float(getattr(b, "close", 0.0) or getattr(b, "last", 0.0) or 0.0),
+                    "close": float(getattr(b, "close", 0.0) or 0.0),
                     "volume": int(getattr(b, "volume", 0) or 0),
-                    "last": float(getattr(b, "last", 0.0) or getattr(b, "close", 0.0) or 0.0),
+                    "last": float(getattr(b, "last", 0.0) or 0.0),
                     "is_bar": bool(getattr(b, "is_bar", True)),
+                    "bar_period": str(getattr(b, "bar_period", "") or bar_period or "1m"),
                 }
             )
         ok = code.lower() in {"ok", "success", ""} and len(bars_out) > 0
@@ -360,19 +363,32 @@ class FabricGrpcClient(FabricClientOpsMixin, FabricClientStreamMixin):
             "correlation_id": str(getattr(resp, "correlation_id", "") or corr),
         }
 
-    def subscribe_market_data(self, instruments: list[str], *, include_ticks: bool = True) -> bool:
-        """Request live market data push on TradingStream (native NT; no CrossTrade)."""
+    def subscribe_market_data(
+        self,
+        instruments: list[str],
+        *,
+        include_ticks: bool = True,
+        include_bars: bool = True,
+        bar_period: str = "1m",
+        bar_periods: list[str] | None = None,
+    ) -> bool:
+        """Request live quotes + native NT Last bars (ADR-0053/0054)."""
         if not self.is_connected:
             return False
         symbols = [str(s).strip() for s in (instruments or []) if str(s).strip()]
         if not symbols:
             return False
+        from lumina_core.engine.nt_bar_periods import CANONICAL_LIVE
+
+        periods = [str(p).strip() for p in (bar_periods or list(CANONICAL_LIVE)) if str(p).strip()]
         try:
             msg = fabric_pb2.BrainMessage(
                 subscribe_market_data=fabric_pb2.SubscribeMarketData(
                     instruments=symbols,
                     include_ticks=bool(include_ticks),
-                    include_bars=False,
+                    include_bars=True,
+                    bar_period=str(bar_period or "1m"),
+                    bar_periods=periods,
                 )
             )
             self._outbound.put(msg)
@@ -380,6 +396,28 @@ class FabricGrpcClient(FabricClientOpsMixin, FabricClientStreamMixin):
         except Exception:
             logger.debug("Fabric subscribe_market_data failed", exc_info=True)
             return False
+
+    def take_bar(self) -> dict[str, Any] | None:
+        """Pop one queued native NT bar. None when empty."""
+        try:
+            return self._bar_queue.get_nowait()
+        except queue.Empty:
+            return None
+
+    def get_last_bar(self, instrument: str) -> dict[str, Any] | None:
+        key = str(instrument or "").strip().upper()
+        if not key:
+            return None
+        with self._lock:
+            cache = getattr(self, "_last_bars", None) or {}
+            bar = cache.get(key)
+            if bar is not None:
+                return dict(bar)
+            root = key.split()[0] if key else ""
+            for k, v in cache.items():
+                if k == key or k.startswith(root + " ") or root == k.split()[0]:
+                    return dict(v)
+        return None
 
     def get_last_quote(self, instrument: str) -> dict[str, Any] | None:
         """Latest MarketDataUpdate for instrument (from live stream cache)."""
@@ -397,6 +435,59 @@ class FabricGrpcClient(FabricClientOpsMixin, FabricClientStreamMixin):
                 if k == key or k.startswith(root + " ") or root == k.split()[0]:
                     return dict(v)
         return None
+
+
+def read_account_snapshot_unary(config: FabricConfig | None = None) -> AccountInfo | None:
+    """Account snapshot via unary GetAccountState.
+
+    Does not open a TradingStream. A stream session is what turns the LUMINA
+    Link green; closing it a moment later is the reconnect flap.
+    """
+    cfg = config or FabricConfig(mode_context="sim")
+    try:
+        token = cfg.resolve_token()
+    except Exception:
+        return None
+    if not token:
+        return None
+    channel = None
+    try:
+        try:
+            from lumina_core.mtls_config import build_grpc_channel
+
+            channel = build_grpc_channel(cfg.target)
+        except Exception:
+            channel = grpc.insecure_channel(cfg.target)
+        stub = fabric_pb2_grpc.ExecutionFabricStub(channel)
+        state = stub.GetAccountState(
+            fabric_pb2.GetAccountStateRequest(correlation_id=str(uuid.uuid4())),
+            timeout=min(5.0, float(cfg.command_timeout_seconds or 5.0)),
+            metadata=(("x-lumina-token", token),),
+        )
+        info = mapper.account_state_to_info(state)
+    except Exception:
+        return None
+    finally:
+        if channel is not None:
+            try:
+                channel.close()
+            except Exception:
+                pass
+    return info
+
+
+def read_account_equity_unary(config: FabricConfig | None = None) -> float | None:
+    """Sim equity via unary GetAccountState. Never opens a TradingStream."""
+    info = read_account_snapshot_unary(config)
+    if info is None:
+        return None
+    try:
+        equity = float(info.equity)
+    except (TypeError, ValueError):
+        return None
+    if equity <= 0.0:
+        return None
+    return equity
 
 
 def apply_fabric_message_to_bridge_state(
@@ -436,4 +527,5 @@ __all__ = [
     "FabricGrpcClient",
     "FabricClientStreamMixin",
     "apply_fabric_message_to_bridge_state",
+    "read_account_equity_unary",
 ]

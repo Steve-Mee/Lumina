@@ -17,6 +17,11 @@ describe("startupReadinessSurface", () => {
     expect(cold).toContain("hydrateBirthSession");
     expect(cold).toContain("setFabricStartup");
     expect(cold).toContain("need_birth_retry");
+    // A WebView that already passed Systems Go must leave the cover before
+    // waiting on backend.reachable. A busy eval never answers that fetch.
+    expect(cold).toMatch(
+      /if \(isTauri\(\) && systemsGoAlreadyDone\(\)\) \{[\s\S]*?setNtStartupResolved\(true\);[\s\S]*?if \(!payload\?\.backend\.reachable\)/,
+    );
     // Must NOT resolve solely because NT.exe is running
     expect(cold).not.toMatch(/if \(up\) setNtStartupResolved\(true\)/);
     expect(cold).not.toContain("closeNinjaTrader");

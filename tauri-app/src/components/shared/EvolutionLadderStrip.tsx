@@ -13,6 +13,9 @@ interface EvolutionLadderStripProps {
   hideBadge?: boolean;
   /** Show first blockers under ladder. */
   showBlockers?: boolean;
+  /** Optional exit from Command Deck back to the originating surface. */
+  returnLabel?: string;
+  onReturn?: () => void;
 }
 
 /**
@@ -23,6 +26,8 @@ export function EvolutionLadderStrip({
   activePhase,
   hideBadge: _hideBadge = false,
   showBlockers = false,
+  returnLabel,
+  onReturn,
 }: EvolutionLadderStripProps) {
   const chrome = useMaturationChrome();
   const phase = activePhase ?? chrome.phase;
@@ -36,7 +41,21 @@ export function EvolutionLadderStrip({
       data-phase={phase}
       aria-label="Lumina evolution ladder"
     >
-      <GenesisMaturityLadder activePhase={phase} className="evolution-ladder-strip__ladder" />
+      <div className="flex items-center gap-2">
+        <GenesisMaturityLadder
+          activePhase={phase}
+          className="evolution-ladder-strip__ladder min-w-0 flex-1"
+        />
+        {returnLabel && onReturn ? (
+          <button
+            type="button"
+            className="evolution-ladder-strip__return shrink-0 font-mono text-[9px] tracking-[0.14em] text-cyan-200/80 uppercase underline-offset-2 hover:underline"
+            onClick={onReturn}
+          >
+            {returnLabel}
+          </button>
+        ) : null}
+      </div>
       {showBlockers && !chrome.eligible && chrome.blockers.length > 0 ? (
         <ul className="mt-1 max-h-10 space-y-0.5 overflow-hidden font-mono text-[9px] text-amber-200/75">
           {chrome.blockers.slice(0, 2).map((item) => (
@@ -45,9 +64,6 @@ export function EvolutionLadderStrip({
             </li>
           ))}
         </ul>
-      ) : null}
-      {chrome.error ? (
-        <p className="mt-0.5 truncate font-mono text-[9px] text-white/30">{chrome.error}</p>
       ) : null}
     </div>
   );

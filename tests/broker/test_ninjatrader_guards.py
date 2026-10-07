@@ -38,6 +38,68 @@ def test_sim_allows_submit_when_connected_and_account_matches() -> None:
     assert reason == "ok"
 
 
+def test_sim_allows_broker_demo_when_names_match() -> None:
+    ok, reason = check_account_match(
+        trade_mode="sim",
+        configured_account="DEMO5042070",
+        connected_account="DEMO5042070",
+    )
+    assert ok is True
+    assert reason == "ok"
+
+
+def test_sim_rejects_demo_mismatch_against_sim101() -> None:
+    ok, reason = check_account_match(
+        trade_mode="sim",
+        configured_account="DEMO5042070",
+        connected_account="Sim101",
+    )
+    assert ok is False
+    assert "mismatch" in reason
+
+
+def test_sim_still_rejects_a_live_account_name() -> None:
+    ok, reason = check_account_match(
+        trade_mode="sim",
+        configured_account="LiveAcct",
+        connected_account="LiveAcct",
+    )
+    assert ok is False
+    assert reason == "sim_account_not_sim_named:LiveAcct"
+
+
+def test_real_blocks_broker_demo_even_when_names_match() -> None:
+    ok, reason = check_account_match(
+        trade_mode="real",
+        configured_account="DEMO5042070",
+        connected_account="DEMO5042070",
+    )
+    assert ok is False
+    assert reason == "real_account_blocked_pending_promotion_adr"
+
+
+def test_sim_real_guard_allows_demo_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENABLE_SIM_REAL_GUARD", "true")
+    ok, reason = check_account_match(
+        trade_mode="sim_real_guard",
+        configured_account="DEMO5042070",
+        connected_account="DEMO5042070",
+    )
+    assert ok is True
+    assert reason == "ok"
+
+
+def test_sim_real_guard_rejects_a_live_account_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENABLE_SIM_REAL_GUARD", "true")
+    ok, reason = check_account_match(
+        trade_mode="sim_real_guard",
+        configured_account="LiveAcct",
+        connected_account="LiveAcct",
+    )
+    assert ok is False
+    assert reason == "sim_account_not_sim_named:LiveAcct"
+
+
 def test_sim_rejects_account_mismatch() -> None:
     ok, reason = check_account_match(
         trade_mode="sim",

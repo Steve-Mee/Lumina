@@ -6,9 +6,8 @@ import time
 from datetime import datetime
 from typing import Any, cast
 
-import pandas as pd
-
 from lumina_core.engine.errors import format_error_code
+from lumina_core.engine.nt_ohlc_frames import operator_listing
 from lumina_core.logging_utils import log_event, log_runtime_trace, runtime_trace_enabled
 
 logger = logging.getLogger(__name__)
@@ -98,8 +97,9 @@ class HumanAnalysisLoopMixin:
         vision_obj: dict[str, Any] = {}
         chart_base64 = app.generate_multi_tf_chart()
         if chart_base64:
+            listing = operator_listing(app, self.engine)
             vision_prompt = (
-                f"Analyseer deze chart voor {self.engine.config.instrument}. "
+                f"Analyseer deze chart voor {listing}. "
                 f"Prijs={price:.2f}, Regime={regime}. Geef compact trading-advies."
             )
             try:
@@ -194,25 +194,11 @@ class HumanAnalysisLoopMixin:
                     if len(self.engine.ohlc_1min) < 10:
                         time.sleep(5)
                         continue
-                    df = self.engine.ohlc_1min.copy()
-                    df["timestamp"] = pd.to_datetime(df["timestamp"])
-                    df.set_index("timestamp", inplace=True)
-                    agg_spec = {
-                        "open": "first",
-                        "high": "max",
-                        "low": "min",
-                        "close": "last",
-                        "volume": "sum",
-                    }
-                    five_min = (
-                        df.resample("5min")
-                        .agg(agg_spec)  # type: ignore[arg-type]
-                        .dropna()
-                    )
-                    if len(five_min) == 0:
+                    five_min = self.engine.market_data.copy_ohlc_period("5m", forming=False)
+                    if five_min is None or five_min.empty:
                         time.sleep(5)
                         continue
-                    current_5min_ts = five_min.index[-1]
+                    current_5min_ts = five_min["timestamp"].iloc[-1]
                     current_price = float(five_min["close"].iloc[-1])
                     previous_price = float(five_min["close"].iloc[-2]) if len(five_min) > 1 else current_price
                     regime = app.detect_market_regime(self.engine.ohlc_1min)

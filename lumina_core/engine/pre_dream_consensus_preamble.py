@@ -73,7 +73,7 @@ class PreDreamConsensusPreambleService:
         )
 
         if chart_base64:
-            app.update_live_chart(chart_base64, status_msg="AI Decision & Chart updated")
+            app.update_live_chart(chart_base64, status_msg="NT-grafiek bijgewerkt")
 
         log_structured(
             LuminaError(

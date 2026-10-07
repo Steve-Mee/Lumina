@@ -13,8 +13,8 @@ Maturation is a **capability ladder**, not a single certificate wall.
 |-------|---------------------|----------------------|-----------|
 | **Genesis** | Wiring exists | fabric GREEN, setup complete, charter | Training |
 | **Birth** | Evolvable plant (closed loop → probe) | five `foundation_v2` receipts + fitness vector | Phase-exit: WR≥35% / artifacts-only / OOS 0.48 / Perfect Birth / REAL as exit grades |
-| **Awakening** | Prefer better, perceive regimes | twin/shadow rising, recovery works, evolution proof | REAL capital |
-| **Playground** | Move safely in SIM | first SIM order, deck unlock, skill EdgeScore/hygiene | REAL |
+| **Awakening** | First Watch: the frozen plant's holdout book | n_B≥500, band, STABLE, Birth weights, constitution 0, regimes, Twin-watch. Paired CI is not this exit | REAL capital |
+| **Playground** | School: paper on the Birth archive, then one SIM hand | five green session days, account end strictly above the open. No drawdown stop | REAL capital |
 | **Apprenticeship** | Walk under REAL rules on SIM | 5 green session days, Sharpe≥0.20, DD≤12%, constitution 0 (ADR-0051) | REAL |
 | **Proving Ground** | Prove before capital | cert OOS 48%/Sharpe 0.35/DD 8% + this-run shadow + PromotionGate AND (ADR-0052) | Live capital, human approve-real, Birth JSON |
 | **Real** | Trade money + keep evolving | fail-closed live + offline evolution | — |
@@ -63,8 +63,8 @@ Default `maturity.strict_exit_proofs: true` in `config.yaml`:
 
 | Phase | Hard exit |
 |-------|-----------|
-| Awakening | evolution proof **and** twin samples ≥ N |
-| Playground | ADR-0050 AND: envelope + deck live + orderpath fill + n_P≥150 + WR≥BE + mean R≥0 (not JSON, not Birth tape) |
+| Awakening | First Watch AND in `lumina_core/maturity/awakening/law.py` (2026-10-06). Not the paired-CI evolution exam |
+| Playground | Five green SIM session days of the one hand (account end strictly above the open). No drawdown stop. ADR-0056 school, not n_P or mean R |
 | Apprenticeship | ADR-0051 AND: 5 green `sim_real_guard` session days + Sharpe≥0.20 + DD≤12% + constitution 0 (not backtest JSON, not READY stamp) |
 | Proving Ground | ADR-0052 AND: cert OOS 48%/0.35/8% + this-run shadow + PromotionGate 4/4 (not Birth JSON, not audit scan) |
 | REAL | human `approve-real` + eligibility milestones |

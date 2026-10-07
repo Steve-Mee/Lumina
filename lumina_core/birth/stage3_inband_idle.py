@@ -226,14 +226,24 @@ def plant_tag_for_entry(*, force_open_this_step: bool) -> bool:
     return bool(force_open_this_step)
 
 
-def plant_tag_for_close(*, entry_is_plant: bool, participation_mode: str) -> bool:
-    """Occupancy FORCE_EXIT is airframe, even when the entry was policy.
+def plant_tag_for_close(
+    *,
+    entry_is_plant: bool,
+    participation_mode: str,
+    close_reason: str = "",
+) -> bool:
+    """Occupancy FORCE_EXIT is airframe. Policy-owned geometry time_stop is skill.
 
     Live S3: 2539 FORCE_EXIT closes counted as policy and poisoned skill WR.
-    Volume gate still uses total closes. Edge uses policy-only.
+    Live Awakening: PASSTHROUGH entries closed on the geometry clock were tagged
+    plant because the envelope emits MODE_FORCE_EXIT + time_stop. Those closes
+    belong in n_B. FORCE_OPEN entries stay plant even on time_stop.
     """
     if bool(entry_is_plant):
         return True
+    reason = str(close_reason or "").strip().lower()
+    if reason == "time_stop":
+        return False
     return str(participation_mode or "").strip().upper() == MODE_FORCE_EXIT
 
 

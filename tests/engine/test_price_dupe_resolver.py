@@ -68,6 +68,25 @@ class TestPriceDupeResolver:
         # dan
         assert price == 12345.67
 
+    def test_fetch_locked_price_reads_market_data_when_app_has_none(self):
+        app = SimpleNamespace(
+            live_data_lock=nullcontext(),
+            live_quotes=None,
+            ohlc_1min=None,
+            engine=SimpleNamespace(
+                market_data=SimpleNamespace(
+                    live_data_lock=nullcontext(),
+                    live_quotes=[{"last": 7772.5}],
+                    ohlc_1min=None,
+                ),
+                sim_position_qty=0,
+                sim_entry_price=0.0,
+                config=SimpleNamespace(instrument="MES DEC26"),
+            ),
+            INSTRUMENT="MES",
+        )
+        assert PriceDupeResolver(app=app).fetch_locked_price() == 7772.5
+
     def test_fetch_locked_price_fallback_to_ohlc_and_zero(self, mock_app_with_ohlc, mock_app_empty):
         # gegeven
         resolver_ohlc = PriceDupeResolver(app=mock_app_with_ohlc)

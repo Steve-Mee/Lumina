@@ -49,6 +49,15 @@ def write_sim_envelope_sealed(
     sealed: bool,
     source: str = "operator",
 ) -> None:
+    """Legacy boolean flag for setup. A Playground pass uses ``write_operator_seal``.
+
+    ``sealed=True`` must not replace a numeric Playground seal with a boolean.
+    """
+    if sealed:
+        from lumina_core.maturity.playground.envelope import envelope_sealed_for_pass
+
+        if envelope_sealed_for_pass(workspace_root):
+            return
     path = sim_envelope_sealed_path(workspace_root)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {

@@ -18,8 +18,8 @@ describe("cinematic tier contract sync", () => {
     expect(tierDoc).toContain("Performance annex");
   });
 
-  it("documents StatusBar hud glass and REAL ambient mute", () => {
-    expect(tierDoc).toContain("status-bar--glass");
+  it("documents compact command chrome and REAL ambient mute", () => {
+    expect(tierDoc).toContain("StatusBar is not mounted");
     expect(tierDoc).toContain("REAL ambient mute");
     expect(tierDoc).toContain("0.08");
   });

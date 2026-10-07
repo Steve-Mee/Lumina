@@ -27,6 +27,7 @@ AppSurfaceReason = Literal[
     "birth_complete",
     "maturation_hub",
     "awakening_running",
+    "awakening_pending",
     "awakening_incomplete",
     "playground_running",
     "playground_incomplete",
@@ -165,6 +166,14 @@ def _has_pending_setup_steps(required_steps: list[OnboardingStepId]) -> bool:
     return any(step in setup_steps for step in required_steps)
 
 
+def _awakening_surface_reason(why: str) -> AppSurfaceReason:
+    if why == "awakening_running":
+        return "awakening_running"
+    if why == "awakening_pending":
+        return "awakening_pending"
+    return "awakening_incomplete"
+
+
 def resolve_app_surface(
     *,
     setup_complete: bool,
@@ -205,9 +214,7 @@ def resolve_app_surface(
 
             wanted, why = awakening_cinematic_wanted(workspace_root)
             if wanted:
-                reason: AppSurfaceReason = (
-                    "awakening_running" if why == "awakening_running" else "awakening_incomplete"
-                )
+                reason = _awakening_surface_reason(why)
                 return "awakening", reason
         except Exception:
             pass

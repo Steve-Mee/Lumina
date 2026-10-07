@@ -29,6 +29,8 @@ def _pass_snap(**overrides: object) -> AwakeningSnapshot:
         "n_b": 600,
         "n_plant": 0,
         "occupancy": 0.40,
+        "occupancy_at_nb": 0.40,
+        "occupancy_full_tape": 0.40,
         "wr": 0.44,
         "birth_oos_wr": 0.333,
         "mean_r": -0.20,
@@ -41,11 +43,20 @@ def _pass_snap(**overrides: object) -> AwakeningSnapshot:
         "freeze_ok": True,
         "policy_only": True,
         "child_sha": "aa" * 32,
-        "init_sha": "bb" * 32,
+        "init_sha": "aa" * 32,
+        "child_weight_sha": "ee" * 32,
+        "init_weight_sha": "ee" * 32,
+        "constitution_violations": 0,
+        "constitution_blocks": 0,
         "twin_watch_n": 2,
         "recovery_ok": True,
         "regime_slices": ("trend", "range", "mixed"),
         "regime_observed": ("trend", "range", "mixed"),
+        "paired_ci_low": 0.06,
+        "paired_delta": 0.08,
+        "parent_replay_present": True,
+        "child_median_win_r": 0.40,
+        "parent_median_win_r": 0.50,
     }
     base.update(overrides)
     return AwakeningSnapshot(**base)  # type: ignore[arg-type]
@@ -61,6 +72,8 @@ def _write_pass_workspace(root: Path) -> None:
             "n_b": 600,
             "n_plant": 0,
             "occupancy": 0.40,
+            "occupancy_at_nb": 0.40,
+            "occupancy_full_tape": 0.40,
             "wr": 0.44,
             "birth_oos_wr": 0.333,
             "mean_r": -0.20,
@@ -73,10 +86,19 @@ def _write_pass_workspace(root: Path) -> None:
             "freeze_ok": True,
             "policy_only": True,
             "child_sha": "aa" * 32,
-            "init_sha": "bb" * 32,
+            "init_sha": "aa" * 32,
+            "child_weight_sha": "ee" * 32,
+            "init_weight_sha": "ee" * 32,
+            "constitution_violations": 0,
+            "constitution_blocks": 0,
             "recovery_ok": True,
             "regime_slices": ["trend", "range", "mixed"],
             "regime_observed": ["trend", "range", "mixed"],
+            "paired_ci_low": 0.06,
+            "paired_delta": 0.08,
+            "parent_replay_present": True,
+            "child_median_win_r": 0.40,
+            "parent_median_win_r": 0.50,
             "freeze_fingerprint": snapshot_birth_freeze(root),
         },
     )
@@ -123,7 +145,9 @@ def test_disk_passed_n_133_re_evaluates_false(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_and_requires_occupancy_even_with_lift() -> None:
-    result = evaluate_awakening_pass(_pass_snap(occupancy=None))
+    result = evaluate_awakening_pass(
+        _pass_snap(occupancy=None, occupancy_at_nb=None, occupancy_full_tape=None)
+    )
     assert result.passed is False
     assert any("occupancy" in b for b in result.blockers)
 
@@ -157,15 +181,45 @@ def test_full_and_passes() -> None:
     result = evaluate_awakening_pass(_pass_snap())
     assert result.passed is True
     assert result.blockers == ()
-    assert "evolution_proof_passed" in result.proofs
+    assert "baseline_is_plant" in result.proofs
+    assert "constitution_clear" in result.proofs
     assert "twin_watch" in result.proofs
 
 
 @pytest.mark.unit
-def test_child_sha_equals_init_is_substitution() -> None:
-    result = evaluate_awakening_pass(_pass_snap(child_sha="xx" * 32, init_sha="xx" * 32))
+def test_a_different_weight_is_not_the_baseline() -> None:
+    result = evaluate_awakening_pass(
+        _pass_snap(child_weight_sha="ff" * 32, init_weight_sha="ee" * 32)
+    )
     assert result.passed is False
-    assert "child_sha_equals_init" in result.blockers
+    assert "baseline_not_the_plant" in result.blockers
+
+
+def test_first_watch_does_not_require_the_paired_ci() -> None:
+    result = evaluate_awakening_pass(
+        _pass_snap(paired_ci_low=-0.0478, child_median_win_r=0.4, parent_median_win_r=1.0)
+    )
+    assert result.passed is True
+    assert "paired regret CI" in " ".join(result.detail["evolution_notes"])
+
+
+def test_exam_failure_note_is_first_watch_not_a_kept_child(tmp_path: Path) -> None:
+    from lumina_core.maturity.awakening.cycle_report import exam_failure_note
+
+    note = exam_failure_note(tmp_path)
+    assert "First Watch AND niet gehaald" in note
+    assert "Bevroren Birth-plant intact" in note
+    assert "kind" not in note.lower()
+    assert "Ontbreekt:" in note
+
+
+def test_migrate_does_not_complete_awakening_from_evolution_proof_stamp(tmp_path: Path) -> None:
+    from lumina_core.maturity.continuum_migrate import migrate_from_milestones
+    from lumina_core.maturity.maturation_progress import record_maturation_milestone
+
+    record_maturation_milestone(tmp_path, "evolution_proof_passed")
+    data = migrate_from_milestones(tmp_path)
+    assert "awakening" not in list(data.get("completed_phases") or [])
 
 
 @pytest.mark.unit
@@ -285,9 +339,136 @@ def test_heal_reopens_false_complete_keeps_birth(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_sep22_tail_is_not_the_occupancy_gate() -> None:
+    """Full-tape 0.907 stays on the record. The sample window in band is not a blocker."""
+    result = evaluate_awakening_pass(
+        _pass_snap(
+            n_b=500,
+            occupancy=0.9071950162960518,
+            occupancy_full_tape=0.9071950162960518,
+            occupancy_at_nb=0.2682,
+            wr=0.35,
+            birth_oos_wr=0.346667,
+            mean_r=-0.3484214795755793,
+            birth_mean_r=-0.30727555805420564,
+            edge=0.05407040704070404,
+            median_loss_r=1.0885372494743004,
+            sharpe=-0.3051110431797347,
+            dd_pct=8.83981944435662,
+            child_sha="eb99083a" * 8,
+            init_sha="eb99083a" * 8,
+            child_weight_sha="eb99083a" * 8,
+            init_weight_sha="eb99083a" * 8,
+            twin_watch_n=18,
+            regime_observed=("trend", "range"),
+            parent_replay_present=False,
+            paired_ci_low=None,
+            paired_delta=None,
+            child_median_win_r=None,
+            parent_median_win_r=None,
+        )
+    )
+    assert result.passed is False
+    assert result.blockers == ("baseline_book_missing",)
+    assert result.detail["occupancy_full_tape"] == pytest.approx(0.9071950162960518)
+    assert result.detail["occupancy"] == pytest.approx(0.2682)
+
+
+@pytest.mark.unit
+def test_sample_window_out_of_band_still_blocks() -> None:
+    result = evaluate_awakening_pass(
+        _pass_snap(n_b=500, occupancy=0.4, occupancy_full_tape=0.4, occupancy_at_nb=0.9051)
+    )
+    assert result.passed is False
+    assert "occupancy=0.9051 not in 0.25-0.75" in result.blockers
+
+
+@pytest.mark.unit
+def test_below_500_occupancy_gate_is_the_full_tape() -> None:
+    result = evaluate_awakening_pass(
+        _pass_snap(n_b=200, occupancy=0.9051, occupancy_full_tape=0.9051, occupancy_at_nb=0.4)
+    )
+    assert any(b == "occupancy=0.9051 not in 0.25-0.75" for b in result.blockers)
+
+
+@pytest.mark.unit
+def test_missing_sample_window_at_500_is_fail_closed() -> None:
+    result = evaluate_awakening_pass(
+        _pass_snap(n_b=500, occupancy=0.4, occupancy_full_tape=0.4, occupancy_at_nb=None)
+    )
+    assert "occupancy_missing" in result.blockers
+
+
+@pytest.mark.unit
 def test_workspace_pass_roundtrip(tmp_path: Path) -> None:
     _write_pass_workspace(tmp_path)
     ok, missing, learned = evaluate_awakening_exit(tmp_path)
     assert ok is True
     assert missing == []
     assert learned["pass_now"] is True
+
+
+@pytest.mark.unit
+def test_heal_closes_false_reopen_when_the_ledger_law_passes(tmp_path: Path) -> None:
+    from lumina_core.maturity.continuum import save_continuum
+
+    _write_pass_workspace(tmp_path)
+    mark_phase_completed(tmp_path, "genesis", learned={}, exit_proofs=["setup"])
+    mark_phase_completed(tmp_path, "birth", learned={}, exit_proofs=["foundation_five_receipts_v2"])
+    data = load_continuum(tmp_path)
+    data["phase_records"]["awakening"] = {
+        "status": "incomplete",
+        "healed_from": "completed_without_law",
+        "completed_at": "2026-09-24T21:49:04Z",
+        "error": "awakening_reopened_adr_0049:occupancy",
+    }
+    save_continuum(tmp_path, data)
+    out = heal_awakening_from_law(tmp_path)
+    assert out["reason"] == "false_reopen_closed"
+    restored = load_continuum(tmp_path)
+    assert "awakening" in restored["completed_phases"]
+    assert "birth" in restored["completed_phases"]
+    assert "playground" not in restored["completed_phases"]
+    rec = restored["phase_records"]["awakening"]
+    assert rec["status"] == "completed"
+    assert rec["healed_from"] == "false_reopen_closed"
+    assert rec["completed_at"] == "2026-09-24T21:49:04Z"
+
+
+@pytest.mark.unit
+def test_heal_stays_incomplete_when_the_recompute_fails(tmp_path: Path) -> None:
+    from lumina_core.maturity.continuum import save_continuum
+
+    mark_phase_completed(tmp_path, "genesis", learned={}, exit_proofs=["setup"])
+    mark_phase_completed(tmp_path, "birth", learned={}, exit_proofs=["foundation_five_receipts_v2"])
+    data = load_continuum(tmp_path)
+    data["phase_records"]["awakening"] = {
+        "status": "incomplete",
+        "healed_from": "completed_without_law",
+        "completed_at": "2026-09-24T21:49:04Z",
+    }
+    save_continuum(tmp_path, data)
+    out = heal_awakening_from_law(tmp_path)
+    assert out["reason"] == "recompute_failed"
+    restored = load_continuum(tmp_path)
+    assert "awakening" not in restored["completed_phases"]
+    assert "birth" in restored["completed_phases"]
+    assert restored["phase_records"]["awakening"]["healed_from"] == "completed_without_law"
+
+
+@pytest.mark.unit
+def test_collapsed_median_is_logged_and_does_not_block_first_watch() -> None:
+    result = evaluate_awakening_pass(
+        _pass_snap(
+            n_b=500,
+            wr=0.376,
+            birth_oos_wr=0.327273,
+            paired_ci_low=-0.037057553789429334,
+            child_median_win_r=0.4160622176197756,
+            parent_median_win_r=1.0182800095250593,
+        )
+    )
+    assert result.passed is True
+    notes = " ".join(result.detail["evolution_notes"])
+    assert "median_win_r_collapsed" in notes
+    assert "paired regret CI" in notes

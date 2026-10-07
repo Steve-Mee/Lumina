@@ -40,6 +40,8 @@ describe("phaseHubFormat", () => {
 
   it("labels proofs for operators, not raw ids", () => {
     expect(proofLabel("evolution_proof_passed")).toBe("Evolution proof");
+    expect(proofLabel("adr0026_wr_missing")).toMatch(/holdout WR missing/i);
+    expect(proofLabel("median_loss_r_missing")).toMatch(/Process-R/i);
     expect(proofLabel("twin_samples>=50")).toMatch(/Twin watch of this run/);
     expect(phaseLabel("awakening")).toBe("Awakening");
     expect(startPhaseCtaLabel("awakening")).toBe("Start Awakening");
@@ -50,12 +52,12 @@ describe("phaseHubFormat", () => {
     const hub = {
       runner_active: false,
       focus_status: "failed",
-      last_result: { ok: false, missing: ["evolution_proof_passed"] },
-      exit_eval: { ok: false, missing: ["evolution_proof_passed"] },
+      last_result: { ok: false, missing: ["baseline_not_the_plant"] },
+      exit_eval: { ok: false, missing: ["baseline_not_the_plant"] },
     } as unknown as MaturityHubPayload;
     expect(phaseStartIncomplete(hub)).toBe(true);
     expect(describePhaseStartOutcome(hub, "awakening").ok).toBe(false);
-    expect(describePhaseStartOutcome(hub, "awakening").message).toContain("Evolution proof");
+    expect(describePhaseStartOutcome(hub, "awakening").message).toMatch(/Plant baseline/i);
   });
 
   it("formats Birth OOS vs Awakening shot lift without JSON", () => {
@@ -76,7 +78,7 @@ describe("phaseHubFormat", () => {
       birth_exit_exited: true,
       learned: learnedDump,
       phase_specs: {
-        awakening: { human_goal: "Open eyes: prefer better policies, regime awareness, recovery." },
+        awakening: { human_goal: "First Watch: frozen plant baseline on holdout, STABLE, no constitution event." },
       },
     } as unknown as MaturityHubPayload;
     const tiles = hubCharterTiles(hub);
@@ -86,7 +88,7 @@ describe("phaseHubFormat", () => {
     expect(tiles[1]?.value).toBe("1,145");
   });
 
-  it("Awakening focus shows n_B / STABLE / Twin watch, not Birth WR", () => {
+  it("Awakening focus shows First Watch plant/constitution KPIs, not Birth WR", () => {
     const hub = {
       last_completed: "birth",
       next_phase: "awakening",
@@ -95,28 +97,61 @@ describe("phaseHubFormat", () => {
       learned: learnedDump,
       focus_learned: {
         n_b: 133,
-        lift: 0.103,
         occupancy: 0.28,
-        wr: 0.436,
-        birth_oos_wr: 0.333,
         stable_class: "INCONCLUSIVE",
-        twin_watch_n: 0,
-        note: "Awakening: eyes open — prefer better than frozen π*. STABLE + n_B≥500 AND.",
+        child_weight_sha: "aa",
+        init_weight_sha: "aa",
+        constitution_violations: 0,
+        constitution_blocks: 0,
+        note: "First Watch: frozen plant baseline on holdout B, no learn (ADR-0049)",
       },
     } as unknown as MaturityHubPayload;
     const tiles = resolveHubCharterTiles(hub);
     expect(tiles.map((t) => t.label)).toEqual([
-      "Doel",
+      "Goal",
       "n_B",
-      "Lift vs Birth",
       "Occupancy",
       "STABLE",
-      "Twin watch",
+      "Plant",
+      "Constitution",
     ]);
+    expect(tiles[0]?.value).toBe("First Watch");
     expect(tiles[1]?.value).toContain("133");
     expect(tiles[1]?.value).toContain("500");
+    expect(tiles.find((t) => t.label === "Plant")?.value).toBe("plant");
+    expect(tiles.find((t) => t.label === "Constitution")?.value).toBe("clear");
     expect(tiles.map((t) => t.value).join(" ")).not.toContain("1,145");
-    expect(hubVerdict(hub)).toMatch(/eyes open/i);
+    expect(hubVerdict(hub)).toMatch(/First Watch/i);
+    expect(hubVerdict(hub)).not.toMatch(/eyes open/i);
+  });
+
+  it("ignores a stored eyes-open note so the old 8-cycle exam cannot outvote First Watch", () => {
+    const hub = {
+      focus_phase: "awakening",
+      next_phase: "awakening",
+      focus_learned: {
+        note: "Awakening: eyes open — prefer better than frozen π*. STABLE + n_B≥500 AND.",
+      },
+      phase_specs: {
+        awakening: { human_goal: "Open eyes: prefer better policies, regime awareness, recovery." },
+      },
+    } as unknown as MaturityHubPayload;
+    expect(hubVerdict(hub)).toMatch(/First Watch/i);
+    expect(hubVerdict(hub)).not.toMatch(/eyes open/i);
+    expect(hubVerdict(hub)).not.toMatch(/prefer better/i);
+  });
+
+  it("Awakening n_B missing is em dash, measured zero is 0 / 500", () => {
+    const missing = resolveHubCharterTiles({
+      focus_phase: "awakening",
+      focus_learned: {},
+    } as unknown as MaturityHubPayload);
+    expect(missing.find((t) => t.label === "n_B")?.value).toBe("— / 500");
+    const zero = resolveHubCharterTiles({
+      focus_phase: "awakening",
+      focus_learned: { n_b: 0 },
+    } as unknown as MaturityHubPayload);
+    expect(zero.find((t) => t.label === "n_B")?.value).toBe("0 / 500");
   });
 
   it("Playground focus shows first fill / n_P / WR vs BE, not Birth WR", () => {
@@ -139,14 +174,15 @@ describe("phaseHubFormat", () => {
     const tiles = resolveHubCharterTiles(hub);
     expect(tiles.map((t) => t.label)).toEqual([
       "Doel",
-      "First fill",
-      "n_P",
+      "Groene dagen",
+      "Closes",
       "WR vs BE",
       "Mean R",
       "Envelope",
     ]);
+    expect(tiles[1]?.value).toBe("0 / 5");
     expect(tiles[2]?.value).toContain("12");
-    expect(tiles[2]?.value).toContain("150");
+    expect(tiles[2]?.value).not.toContain("150");
     expect(tiles.map((t) => t.value).join(" ")).not.toContain("1,145");
     expect(proofLabel("n_P=12 < 150")).toContain("12");
     expect(proofLabel("first_honest_fill")).toMatch(/honest SIM fill/i);

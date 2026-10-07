@@ -396,10 +396,10 @@ export function buildStartupReadinessView(opts: {
       : "Birth incomplete — recovery and training live here.";
   } else if (surface === "awakening") {
     headline = "Awakening";
-    subtitle = "Open eyes — prefer better than frozen π*.";
+    subtitle = "First Watch — frozen Birth plant on holdout B. No learn().";
   } else if (surface === "apprenticeship") {
     headline = "Apprenticeship";
-    subtitle = "Walk — 5 green SIM days under REAL rules.";
+    subtitle = "Examen — WR ≥ BE, mean R ≥ 0, Sharpe en DD. Geen echt geld.";
   } else if (surface === "hub") {
     headline = "Phase Hub";
     subtitle = "Organism ready — opening maturation hub.";

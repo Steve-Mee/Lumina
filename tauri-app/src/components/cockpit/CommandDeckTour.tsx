@@ -14,24 +14,24 @@ const TOUR_START_EVENT = "lumina:deck-tour-start";
 
 const STEPS = [
   {
+    target: '[data-tour="command-hud"]',
+    title: "Command bar",
+    body: "SIM/REAL mode, engine start/stop, safety actions, and settings — inner chrome of the ops panel, under the phase header.",
+  },
+  {
     target: '[data-tour="risk-citadel"]',
     title: "Risk Citadel",
-    body: "Left column — live drawdown buffer, fortress integrity, and capital protection metrics.",
+    body: "Fortress strip — drawdown buffer, integrity, and capital protection without crowding the Living Core.",
   },
   {
     target: '[data-tour="evolution-deck"]',
     title: "Evolution Deck",
-    body: "Center — PPO training, evolution arena graph, and SIM readiness before going live.",
+    body: "PPO training, evolution arena, and SIM readiness before going live.",
   },
   {
     target: '[data-tour="intelligence-deck"]',
     title: "Intelligence Brief",
-    body: "Right column — decision theater, performance KPIs, monitor, and live activity.",
-  },
-  {
-    target: '[data-tour="command-hud"]',
-    title: "Command HUD",
-    body: "Top bar — SIM/REAL mode, engine start/stop, safety actions, and settings.",
+    body: "Decision theater, performance KPIs, monitor, and live activity.",
   },
   {
     target: '[data-tour="settings-button"]',

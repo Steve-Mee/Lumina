@@ -1,7 +1,8 @@
-/** After-phase advance preference — not a Start Awakening gate. */
+/** After-phase advance preference — not a Start gate. Genesis cards with consequences on the glass. */
 import { toast } from "sonner";
 
 import { RecoveryActionCard } from "@/components/birth/BirthGenesisDeckPrimitives";
+import { HelpTip } from "@/components/ui/HelpTip";
 import { Button } from "@/components/ui/button";
 import {
   type AdvanceMode,
@@ -34,12 +35,17 @@ export function PhaseHubAdvanceSection({
 }: PhaseHubAdvanceSectionProps) {
   const selected = hub?.advance_mode ?? "manual";
   return (
-    <section className="phase-hub-advance shrink-0">
-      <p className="risk-envelope-field-label">After this phase</p>
-      <p className="mt-0.5 font-mono text-[10px] leading-snug text-muted-foreground">
-        {ADVANCE_MODE_HELP}
-      </p>
-      <div className="genesis-recovery-action-grid genesis-recovery-action-grid--3 mt-2">
+    <section className="phase-hub-advance shrink-0" aria-label="After this phase">
+      <div className="phase-hub-advance__head">
+        <p className="risk-envelope-field-label mb-0">After this phase</p>
+        <HelpTip text={ADVANCE_MODE_HELP} label="After this phase info" />
+        <p className="phase-hub-advance__hint">Not a Start gate</p>
+      </div>
+      <div
+        className="genesis-recovery-action-grid genesis-recovery-action-grid--3"
+        role="radiogroup"
+        aria-label="Advance mode"
+      >
         {ADVANCE_OPTIONS.map((opt) => {
           const on = selected === opt.id;
           return (
@@ -52,6 +58,8 @@ export function PhaseHubAdvanceSection({
             >
               <button
                 type="button"
+                role="radio"
+                aria-checked={on}
                 disabled={busy || on}
                 onClick={() => void onSetMode(opt.id)}
                 className={cn(
@@ -68,7 +76,7 @@ export function PhaseHubAdvanceSection({
         })}
       </div>
       {hub?.pending_advance ? (
-        <div className="mt-2 space-y-1.5">
+        <div className="phase-hub-advance__telegram">
           <p className="font-mono text-[10px] text-amber-200/90">
             Telegram pending: {hub.pending_advance.from} → {hub.pending_advance.to}.
             {hub.pending_advance.expired
@@ -119,7 +127,7 @@ export function PhaseHubAdvanceSection({
           </div>
         </div>
       ) : hub?.telegram_advance?.mode_is_telegram && hub.telegram_advance.reissue_available ? (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
+        <div className="phase-hub-advance__telegram flex flex-wrap items-center gap-2">
           <p className="font-mono text-[10px] text-muted-foreground">
             Telegram mode — issue a token for the next phase.
           </p>

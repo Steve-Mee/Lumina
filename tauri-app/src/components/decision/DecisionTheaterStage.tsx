@@ -1,15 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import {
-  CheckCircle2,
-  PauseCircle,
-  Shield,
-  XCircle,
-} from "lucide-react";
 
+import { StatusChip } from "@/components/birth/BirthGenesisDeckPrimitives";
+import { BirthKpiTile, type BirthKpiTone } from "@/components/birth/BirthKpiTile";
 import { DecisionTheaterDebugOverflow } from "@/components/decision/DecisionTheaterDebugOverflow";
-import { HudSignal } from "@/components/cockpit/HudSignal";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   dispatchApproveLastMutation,
@@ -24,17 +18,30 @@ import {
   resolveDecisionStageHero,
   resolveDecisionTradePreview,
   signalChipClass,
-  verdictToneClass,
+  type StageHeroSignal,
 } from "@/lib/decisionTheaterLayout";
 import type { TradeRecord } from "@/lib/liveTradingTypes";
 import type { LiveTradingSnapshot } from "@/lib/liveTradingTypes";
-import { staggerContainer, staggerItemWith, transitionOrNone } from "@/lib/motionPresets";
+import { transitionOrNone } from "@/lib/motionPresets";
 import { useModeMotion } from "@/hooks/useModeMotion";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { modeApproveButtonClass, modeTitleClass, modeValueClass } from "@/lib/modePresentation";
+import { modeTitleClass, modeValueClass } from "@/lib/modePresentation";
 import { useDeckPanelStore } from "@/store/deckPanelStore";
 import { cn } from "@/lib/utils";
 import type { RiskLevel, TradingMode } from "@/store/coreStore";
+
+function heroTileTone(glow: StageHeroSignal["glow"]): BirthKpiTone {
+  if (glow === "emerald") return "success";
+  if (glow === "amber" || glow === "warn") return "warn";
+  if (glow === "cyan" || glow === "violet" || glow === "gold") return "accent";
+  return "default";
+}
+
+function verdictChipState(tone: "high" | "moderate" | "low"): "ok" | "partial" | "warn" {
+  if (tone === "high") return "ok";
+  if (tone === "moderate") return "partial";
+  return "warn";
+}
 
 type DecisionAction = "approve" | "reject" | "shadow" | "pause";
 
@@ -64,8 +71,7 @@ export function DecisionTheaterStage({
   const reducedMotionPref = usePrefersReducedMotion();
   const reducedMotion = motionReducedProp ?? reducedMotionPref;
   const modeMotion = useModeMotion();
-  const staggerItem = staggerItemWith(modeMotion);
-  const verdictClass = verdictToneClass(verdictTone(brief.verdict));
+  const verdictState = verdictChipState(verdictTone(brief.verdict));
   const [verdictFlash, setVerdictFlash] = useState(false);
   const prevVerdictRef = useRef(brief.verdict);
 
@@ -133,30 +139,26 @@ export function DecisionTheaterStage({
               {brief.headline}
             </motion.p>
           </AnimatePresence>
-          <Badge
-            className={cn(
-              "shrink-0 text-[9px] uppercase",
-              verdictClass,
-              verdictFlash && "decision-verdict-flash",
-            )}
-          >
-            {verdictLabel(brief.verdict)}
-          </Badge>
+          <span className={cn(verdictFlash && "decision-verdict-flash")}>
+            <StatusChip
+              label={verdictLabel(brief.verdict)}
+              state={verdictState}
+              tip="Live decision verdict from the reasoning chain."
+            />
+          </span>
         </header>
 
-        <div className="decision-theater-stage__metrics mt-4 flex gap-4 overflow-x-auto pb-1">
-          <HudSignal
+        <div className="decision-theater-stage__metrics mt-3">
+          <BirthKpiTile
             label={stageHero.primary.label}
             value={stageHero.primary.value}
-            glow={stageHero.primary.glow}
-            intensity={stageHero.primary.intensity}
+            tone={heroTileTone(stageHero.primary.glow)}
           />
           {stageHero.secondary ? (
-            <HudSignal
+            <BirthKpiTile
               label={stageHero.secondary.label}
               value={stageHero.secondary.value}
-              glow={stageHero.secondary.glow}
-              intensity={stageHero.secondary.intensity}
+              tone={heroTileTone(stageHero.secondary.glow)}
             />
           ) : null}
         </div>
@@ -257,68 +259,46 @@ export function DecisionTheaterStage({
             </p>
           ) : null}
         </details>
+        <DecisionTheaterDebugOverflow trading={trading} overflow={stageHero.overflow} />
       </div>
 
-      <footer className="shrink-0 border-t border-white/5 px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <motion.div
-            className="flex flex-wrap gap-1.5"
-            variants={staggerContainer}
-            initial={reducedMotion ? false : "hidden"}
-            animate="visible"
-          >
-            <motion.div variants={staggerItem}>
-              <Button
-                type="button"
-                size="xs"
-                variant="command-primary"
-                className={modeApproveButtonClass(currentMode)}
-                disabled={actionsDisabled}
-                onClick={() => handleAction("approve")}
-              >
-                <CheckCircle2 data-icon="inline-start" />
-                Approve
-                <span className="ml-1 text-[9px] text-emerald-100/70">{mod}+A</span>
-              </Button>
-            </motion.div>
-            <motion.div variants={staggerItem}>
-              <Button
-                size="xs"
-                variant="command-ghost"
-                data-intent="danger"
-                disabled={deckBlocked}
-                onClick={() => handleAction("reject")}
-              >
-                <XCircle data-icon="inline-start" />
-                Reject
-              </Button>
-            </motion.div>
-            <motion.div variants={staggerItem}>
-              <Button
-                size="xs"
-                variant="command-ghost"
-                disabled={actionsDisabled}
-                onClick={() => handleAction("shadow")}
-              >
-                <Shield data-icon="inline-start" />
-                Shadow Deploy
-              </Button>
-            </motion.div>
-            <motion.div variants={staggerItem}>
-              <Button
-                size="xs"
-                variant="command-ghost"
-                disabled={deckBlocked}
-                onClick={() => handleAction("pause")}
-              >
-                <PauseCircle data-icon="inline-start" />
-                Pause
-                <span className="ml-1 text-[9px] text-muted-foreground/80">{mod}+P</span>
-              </Button>
-            </motion.div>
-          </motion.div>
-          <DecisionTheaterDebugOverflow trading={trading} overflow={stageHero.overflow} />
-        </div>
+      <footer className="decision-theater-stage__actions shrink-0">
+        <button
+          type="button"
+          className="genesis-recovery-action-card__btn genesis-recovery-action-card__btn--accent"
+          disabled={actionsDisabled}
+          title={`Approve last mutation (${mod}+A)`}
+          onClick={() => handleAction("approve")}
+        >
+          Approve
+        </button>
+        <button
+          type="button"
+          className="genesis-recovery-action-card__btn genesis-recovery-action-card__btn--danger"
+          disabled={deckBlocked}
+          title="Reject mutation"
+          onClick={() => handleAction("reject")}
+        >
+          Reject
+        </button>
+        <button
+          type="button"
+          className="genesis-recovery-action-card__btn genesis-recovery-action-card__btn--idle"
+          disabled={actionsDisabled}
+          title="Shadow deploy"
+          onClick={() => handleAction("shadow")}
+        >
+          Shadow
+        </button>
+        <button
+          type="button"
+          className="genesis-recovery-action-card__btn genesis-recovery-action-card__btn--warn"
+          disabled={deckBlocked}
+          title={`Pause trading (${mod}+P)`}
+          onClick={() => handleAction("pause")}
+        >
+          Pause
+        </button>
       </footer>
     </section>
   );

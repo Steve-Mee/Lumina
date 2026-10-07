@@ -51,13 +51,13 @@ export function apprenticeshipTilesFromLearned(
       label: "Doel",
       value: "Lopen",
       tip: "REAL rules, SIM capital. Multi-day walk. Not Playground crawl. Not REAL money.",
-      footnote: "5 green days · Sharpe ≥ 0.20 · DD ≤ 12%",
+      footnote: "WR ≥ BE · mean R ≥ 0 · Sharpe ≥ 0.20 · DD ≤ 12%",
     },
     {
-      label: "Groene dagen",
-      value: nD == null ? "0 / 5" : `${Math.round(nD)} / 5`,
-      tip: "Consecutive futures session days with positive expectancy. Backtest JSON is not a day.",
-      footnote: "Fri→Mon counts · weekend is not a gap",
+      label: "Sessiedagen",
+      value: nD == null ? "0" : `${Math.round(nD)}`,
+      tip: "Dagen op deze tape. Vijf dagen groen is de Playground-poort, niet deze.",
+      footnote: "Sharpe bestaat pas vanaf 5 dagen",
     },
     {
       label: "Sharpe",

@@ -21,6 +21,7 @@ namespace Lumina.Execution.Fabric
         private readonly IOrderGateway _gateway;
         private readonly IHistoricalDataProvider _historical;
         private readonly ILiveMarketDataProvider _liveMarket;
+        private readonly ILiveBarProvider _liveBars;
         private readonly Action<string>? _log;
         private Server? _server;
         private SafeModeStateMachine? _safeMode;
@@ -35,12 +36,14 @@ namespace Lumina.Execution.Fabric
             IOrderGateway gateway,
             Action<string>? log = null,
             IHistoricalDataProvider? historical = null,
-            ILiveMarketDataProvider? liveMarket = null)
+            ILiveMarketDataProvider? liveMarket = null,
+            ILiveBarProvider? liveBars = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
             _historical = historical ?? new NullHistoricalDataProvider();
             _liveMarket = liveMarket ?? new NullLiveMarketDataProvider();
+            _liveBars = liveBars ?? new NullLiveBarProvider();
             _log = log;
         }
 
@@ -201,7 +204,8 @@ namespace Lumina.Execution.Fabric
                 _audit,
                 _log,
                 _historical,
-                _liveMarket);
+                _liveMarket,
+                _liveBars);
             serviceRef = _service;
 
             // Live NT Account callbacks → TradingStream (fills/cancels/positions after place ack).
@@ -318,6 +322,8 @@ namespace Lumina.Execution.Fabric
                 if (_metrics != null)
                     _audit?.Record("metrics_snapshot", "host_stop", _metrics.Snapshot());
                 _audit?.Record("host_stop", "fabric_grpc_host_stopping", null);
+                try { _liveBars.UnsubscribeAll(); } catch { /* ignore */ }
+                try { _liveMarket.UnsubscribeAll(); } catch { /* ignore */ }
                 try { _watchdog?.Dispose(); } catch { /* ignore */ }
                 // NEVER block forever on ShutdownAsync().GetResult() — that deadlocks the
                 // NT UI/thread when clients still hold TradingStream, leaving :50051 half-dead

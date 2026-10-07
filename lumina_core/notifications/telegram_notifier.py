@@ -239,6 +239,16 @@ class TelegramNotifier:
                         }
                     )
                     continue
+                playground_result = self._try_playground_command(raw_text)
+                if playground_result is not None:
+                    processed.append(
+                        {
+                            "update_id": update_id,
+                            "action": "playground_command",
+                            "result": playground_result,
+                        }
+                    )
+                    continue
                 # Phase continuum advance: YES / CONFIRM / ADVANCE + token
                 phase_result = self._try_phase_advance_reply(raw_text)
                 if phase_result is not None:
@@ -267,6 +277,21 @@ class TelegramNotifier:
             return try_handle_telegram_freeze_text(root, raw_text, apply=True)
         except Exception as exc:
             logger.debug("Telegram champion freeze handle failed: %s", exc)
+            return None
+
+    def _try_playground_command(self, raw_text: str) -> dict[str, Any] | None:
+        """Playground STATUS / PAUSE / SEAL / … . None when it is not that verb."""
+        try:
+            from pathlib import Path
+
+            from lumina_core.maturity.playground.telegram_commands import (
+                try_handle_playground_command,
+            )
+
+            root = getattr(self, "_workspace_root", None) or Path.cwd()
+            return try_handle_playground_command(root, raw_text)
+        except Exception as exc:
+            logger.debug("Telegram playground command failed: %s", exc)
             return None
 
     def _try_phase_advance_reply(self, raw_text: str) -> dict[str, Any] | None:

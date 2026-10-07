@@ -16,6 +16,10 @@ from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.fabric.link_supervisor")
 
+# Consecutive health misses before a live session is torn down.
+_PORT_MISS_LIMIT = 3
+_NT_MISS_LIMIT = 2
+
 _LOCK = threading.RLock()
 _INSTANCE: "FabricLinkSupervisor | None" = None
 
@@ -60,6 +64,9 @@ class FabricLinkSupervisor:
         self._status = FabricLinkStatus()
         self._gate = threading.RLock()
         self._enabled = False
+        # One failed port probe must not drop a live Brain session.
+        self._tcp_misses = 0
+        self._nt_misses = 0
 
     def configure_from_engine_config(self, engine_config: Any, *, mode_context: str = "sim") -> None:
         from lumina_core.broker.ninjatrader.fabric_client import FabricConfig
@@ -202,16 +209,17 @@ class FabricLinkSupervisor:
                 with self._gate:
                     client = self._client
                 if client is not None and not getattr(client, "is_connected", False):
+                    self._tcp_misses = 0
+                    self._nt_misses = 0
                     self._mark_down("DISCONNECTED", "Fabric session dropped")
-                elif not self._tcp_target_open():
-                    # Host stop hung / port closed while Brain still holds a zombie session.
-                    self._mark_down(
-                        "CONNECTION_REFUSED",
-                        "Fabric port closed — host not listening (reopen New → LUMINA)",
-                    )
                 else:
-                    # Soft liveness: process gone while we still think connected.
-                    if not self._nt_process_alive():
+                    reason = self._drop_reason_for_live_session()
+                    if reason == "CONNECTION_REFUSED":
+                        self._mark_down(
+                            "CONNECTION_REFUSED",
+                            "Fabric port closed — host not listening (reopen New → LUMINA)",
+                        )
+                    elif reason == "NT_PROCESS_GONE":
                         logger.error(
                             "CODE_RED fabric.supervisor.nt_died_while_session_open — "
                             "clearing client (not a Lumina taskkill)"
@@ -272,23 +280,44 @@ class FabricLinkSupervisor:
 
     @staticmethod
     def _nt_process_alive() -> bool:
-        """Lightweight process probe (avoid importing lumina_launcher from core)."""
-        import subprocess
+        """NT host probe. No tasklist: pythonw would open a console every 2s."""
         import sys
 
         if sys.platform != "win32":
             return True
-        try:
-            r = subprocess.run(
-                ["tasklist", "/FI", "IMAGENAME eq NinjaTrader.exe", "/NH"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                check=False,
-            )
-            return "ninjatrader.exe" in (r.stdout or "").lower()
-        except (OSError, subprocess.TimeoutExpired):
+        from lumina_core.process_probe import process_image_running
+
+        seen = process_image_running("NinjaTrader.exe", "ninjatrader")
+        if seen is None:
             return True  # fail-open: keep trying connect
+        return seen
+
+    def _drop_reason_for_live_session(self) -> str | None:
+        """None keeps the session. One blip is not a dead host."""
+        if not self._tcp_target_open():
+            self._tcp_misses += 1
+            self._nt_misses = 0
+            if self._tcp_misses < _PORT_MISS_LIMIT:
+                logger.warning(
+                    "fabric.supervisor.port_blip misses=%s — keeping session",
+                    self._tcp_misses,
+                )
+                return None
+            self._tcp_misses = 0
+            return "CONNECTION_REFUSED"
+        self._tcp_misses = 0
+        if not self._nt_process_alive():
+            self._nt_misses += 1
+            if self._nt_misses < _NT_MISS_LIMIT:
+                logger.warning(
+                    "fabric.supervisor.nt_probe_miss misses=%s — keeping session",
+                    self._nt_misses,
+                )
+                return None
+            self._nt_misses = 0
+            return "NT_PROCESS_GONE"
+        self._nt_misses = 0
+        return None
 
     def _tcp_target_open(self) -> bool:
         """True when host:port from config accepts a TCP connect (fast fail for dead host)."""
@@ -374,6 +403,8 @@ class FabricLinkSupervisor:
             self._status.last_error_code = "OK"
             self._status.last_connect_ok_at = time.time()
             self._status.target = self._config.target
+            self._tcp_misses = 0
+            self._nt_misses = 0
         if old is not None and old is not client:
             try:
                 old.disconnect()

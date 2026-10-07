@@ -459,7 +459,37 @@
 }
 
 .subsystems-drawer-scrim {
+  position: fixed !important;
+  inset: 0;
+  z-index: 2147483000;
   background: color-mix(in srgb, var(--lumina-void) 55%, var(--deck-accent, var(--lumina-cyan)) 12%);
+}
+
+.subsystems-drawer-airlock {
+  position: fixed !important;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: auto;
+  z-index: 2147483001;
+  width: min(24rem, 100vw);
+  max-width: 24rem;
+  height: 100%;
+  pointer-events: auto;
+  background: color-mix(in srgb, var(--lumina-void) 88%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--lumina-cyan) 22%, transparent);
+}
+
+.subsystems-drawer-airlock .genesis-recovery-action-card__btn {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.subsystems-drawer-airlock__close {
+  width: auto !important;
+  min-width: 2.4rem;
+  min-height: 1.85rem;
+  height: 1.85rem;
 }
 
 .deck-overlay-scrim {
@@ -1032,6 +1062,692 @@
 
 .command-hud {
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--lumina-cyan) 8%, transparent);
+}
+
+.command-hud--spine {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  min-height: 0;
+  max-height: 2.85rem;
+  overflow: hidden;
+}
+
+.command-hud--spine .presence-rail {
+  display: none;
+}
+
+.command-hud__row {
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.command-hud--spine .command-hud-metrics {
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.command-hud--spine .command-hud-annex-hint {
+  display: none;
+}
+
+.deck-panel-toolbar {
+  flex-shrink: 0;
+  padding: 0.45rem 0.85rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--lumina-cyan) 12%, transparent);
+  background: color-mix(in srgb, var(--lumina-void) 55%, transparent);
+}
+
+.command-deck-grid--cinematic .deck-title,
+.command-deck-grid--cinematic .deck-header-title {
+  font-size: 0.55rem;
+  letter-spacing: 0.16em;
+}
+
+.cockpit-shell--phase {
+  display: grid !important;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cockpit-shell--phase > .lumina-phase-header {
+  grid-row: 1;
+}
+
+.cockpit-shell--phase > .evolution-ladder-strip {
+  grid-row: 2;
+}
+
+.cockpit-shell--phase > .cockpit-shell__stage {
+  grid-row: 3;
+}
+
+.cockpit-shell__stage {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cockpit-shell__stage > * {
+  min-height: 0;
+  height: 100%;
+}
+
+.command-deck-ops {
+  display: grid;
+  grid-template-columns: minmax(168px, 18%) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0.75rem;
+  height: 100%;
+  min-height: 0;
+  padding: 0.75rem 1rem 1rem;
+  overflow: hidden;
+}
+
+.command-deck-ops > .command-deck-ops__helix,
+.command-deck-ops > .helix-column-host,
+.command-deck-ops > .birth-helix-accent-wrap {
+  display: grid !important;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  align-self: stretch;
+  height: 100%;
+  min-height: 0;
+}
+
+.command-deck-ops > .command-deck-ops__helix > * {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.command-deck-ops > .birth-helix-accent-wrap > *,
+.command-deck-ops > .helix-column-host > * {
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  max-height: none !important;
+  aspect-ratio: auto !important;
+}
+
+.command-deck-ops canvas {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.command-deck-ops__core .birth-activation-stage-inner,
+.command-deck-ops__core .birth-activation-helix-slot,
+.command-deck-ops__core .birth-helix-accent,
+.command-deck-ops__core .living-core-frame--immersive,
+.command-deck-ops__core .living-core-frame--immersive > div {
+  position: absolute;
+  inset: 0;
+  display: block;
+  min-height: 0;
+  max-height: none;
+  aspect-ratio: auto;
+}
+
+.command-deck-ops__core canvas {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.command-deck-ops > .command-deck-ops__panel {
+  display: grid !important;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 0.75rem;
+}
+
+.command-deck-ops > .command-deck-ops__panel > .command-deck-ops__chrome {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  min-height: 2.7rem;
+  padding: 0.25rem 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--lumina-cyan) 12%, transparent);
+  background: color-mix(in srgb, var(--lumina-void) 55%, transparent);
+}
+
+.command-deck-ops__identity {
+  min-width: 0;
+}
+
+.command-deck-ops__identity-sub {
+  margin-top: 0.15rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.5rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, white 30%, transparent);
+}
+
+.command-deck-ops__chrome-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.command-deck-ops__report {
+  height: 1.85rem;
+  width: auto;
+  padding-inline: 0.55rem;
+  font-size: 0.58rem;
+  white-space: nowrap;
+}
+
+.command-deck-ops__return {
+  height: 1.85rem;
+  min-width: 7.5rem;
+  width: auto;
+  padding-inline: 0.7rem;
+  font-size: 0.62rem;
+}
+
+.command-deck-ops__hud {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-width: 0;
+  overflow: visible;
+}
+
+.command-deck-ops__hud > :not(.command-hud) {
+  position: absolute;
+  inset: auto;
+  width: 0;
+  height: 0;
+  overflow: visible;
+}
+
+.command-deck-ops__hud > .command-hud {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: none;
+  box-shadow: none;
+}
+
+.command-deck-ops__panel .command-hud::before,
+.command-deck-ops__panel .command-hud::after {
+  display: none;
+}
+
+.command-deck-ops__hud .command-hud__row {
+  min-height: 0;
+  width: auto;
+  height: auto;
+  justify-content: flex-end;
+  padding-block: 0;
+  padding-inline: 0.3rem;
+}
+
+.command-deck-ops__hud .command-hud-metrics {
+  display: none;
+}
+
+.command-deck-ops__hud .command-hud__row > div:last-child {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.command-deck-ops__hud .hud-organism-center {
+  min-height: 0;
+  min-width: 0;
+  flex-direction: row;
+  gap: 0.4rem;
+}
+
+.command-deck-ops__hud .hud-organism-center__pulse {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.command-deck-ops__hud .hud-organism-center__readout {
+  opacity: 1;
+}
+
+.command-deck-ops .command-hud__nt-pill {
+  display: none;
+}
+
+.command-deck-ops .hud-nerve-tap {
+  width: 1.85rem;
+  height: 1.85rem;
+}
+
+.command-deck-ops .mode-switch {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.command-deck-ops .mode-switch__hint {
+  display: none;
+}
+
+.command-deck-ops .mode-switch__shell {
+  gap: 0.35rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  filter: none;
+}
+
+.command-deck-ops .mode-switch__shell .command-btn {
+  width: auto;
+  min-width: 4.25rem;
+  height: 1.85rem;
+  min-height: 1.85rem;
+  border-radius: 0.45rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+}
+
+.command-deck-ops .mode-switch__shell .command-btn .absolute {
+  display: none;
+}
+
+.command-deck-ops .mode-switch__shell .command-btn[aria-pressed="true"] {
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 42%, transparent);
+  background: color-mix(in srgb, var(--lumina-cyan) 14%, transparent);
+  color: color-mix(in srgb, var(--lumina-cyan) 88%, white);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--lumina-cyan) 12%, transparent);
+}
+
+.command-deck-ops .mode-switch__shell .command-btn[aria-pressed="false"] {
+  border: 1px solid color-mix(in srgb, white 14%, transparent);
+  background: color-mix(in srgb, white 4%, transparent);
+  color: color-mix(in srgb, var(--foreground) 82%, transparent);
+}
+
+.cockpit-shell[data-mode="REAL"] .command-deck-ops .mode-switch__shell .command-btn[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--real-chrome-accent) 42%, transparent);
+  background: color-mix(in srgb, var(--real-chrome-accent) 14%, transparent);
+  color: color-mix(in srgb, var(--real-chrome-accent) 88%, white);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--real-chrome-accent) 12%, transparent);
+}
+
+.command-deck-ops__risk {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.45rem;
+  min-height: 0;
+  padding: 0.45rem 0.7rem 0.35rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--lumina-cyan) 10%, transparent);
+}
+
+.command-deck-ops__risk .birth-kpi-tile {
+  min-height: 3.35rem;
+}
+
+.command-deck-ops__risk .birth-kpi-tile__value {
+  font-size: 1.05rem;
+}
+
+.command-deck-ops__boards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0.45rem;
+  min-height: 0;
+  padding: 0.45rem;
+  overflow: hidden;
+}
+
+.command-deck-ops__board,
+.command-deck-ops__boards > * {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 14%, transparent);
+  background: color-mix(in srgb, var(--lumina-void) 58%, transparent);
+}
+
+.command-deck-ops__board .lumina-surface-muted {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+.cockpit-shell--phase .living-core-frame--immersive {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+}
+
+.command-deck-ops__core.birth-helix-accent-wrap .birth-helix-accent {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  max-height: none;
+  min-height: 0;
+  aspect-ratio: auto;
+}
+
+.command-deck-ops__core .living-core-frame--immersive,
+.command-deck-ops__core .living-core-frame--immersive > div {
+  position: absolute !important;
+  inset: 0 !important;
+  display: block;
+  width: auto !important;
+  height: auto !important;
+  min-height: 0;
+}
+
+.command-deck-ops .living-core-frame--immersive > span {
+  display: none;
+}
+
+.command-deck-ops .birth-activation-helix-arena {
+  grid-row: auto;
+  height: 100%;
+}
+
+.command-deck-ops .birth-activation-helix-slot {
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.command-deck-ops .living-core-shell {
+  position: absolute;
+  inset: 0;
+  min-height: 0 !important;
+  height: 100% !important;
+  width: 100% !important;
+}
+
+.command-deck-ops .decision-theater-shell,
+.command-deck-ops .evolution-arena-shell {
+  min-height: 0 !important;
+  flex: 1 1 0;
+  height: 100%;
+  max-height: 100%;
+}
+
+.command-deck-ops .evolution-arena-shell {
+  display: flex;
+  flex-direction: column;
+}
+
+.command-deck-ops .evolution-arena-shell canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.command-deck-ops .min-h-\[120px\],
+.command-deck-ops .min-h-\[160px\],
+.command-deck-ops .min-h-\[180px\],
+.command-deck-ops .min-h-\[220px\],
+.command-deck-ops .min-h-\[280px\],
+.command-deck-ops .min-h-\[320px\] {
+  min-height: 0 !important;
+}
+
+.command-deck-ops .overflow-y-auto {
+  overflow-y: auto;
+}
+
+.command-deck-ops [data-slot="tabs"] {
+  gap: 0;
+}
+
+.command-deck-ops__nav,
+.command-deck-ops [data-slot="tabs-list"] {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 0 !important;
+  gap: 0.3rem;
+}
+
+.command-deck-ops [data-slot="tabs-trigger"] {
+  height: 1.85rem;
+  min-height: 1.85rem;
+  padding: 0 0.7rem;
+  border-radius: 0.45rem;
+  border: 1px solid color-mix(in srgb, white 14%, transparent);
+  background: color-mix(in srgb, white 4%, transparent);
+  color: color-mix(in srgb, var(--foreground) 82%, transparent);
+  box-shadow: none;
+}
+
+.command-deck-ops [data-slot="tabs-trigger"][data-state="active"] {
+  border-color: color-mix(in srgb, var(--lumina-cyan) 42%, transparent);
+  background: color-mix(in srgb, var(--lumina-cyan) 14%, transparent);
+  color: color-mix(in srgb, var(--lumina-cyan) 88%, white);
+}
+
+.cockpit-shell[data-mode="REAL"] .command-deck-ops [data-slot="tabs-trigger"][data-state="active"] {
+  border-color: color-mix(in srgb, var(--real-chrome-accent) 42%, transparent);
+  background: color-mix(in srgb, var(--real-chrome-accent) 14%, transparent);
+  color: color-mix(in srgb, var(--real-chrome-accent) 88%, white);
+}
+
+.command-deck-ops__organ-btn {
+  width: auto !important;
+  min-width: 6.25rem;
+  min-height: 1.85rem !important;
+  height: 1.85rem;
+  padding-inline: 0.65rem;
+}
+
+.command-deck-ops .decision-theater-shell--immersive {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.command-deck-ops .decision-theater-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  height: 100%;
+}
+
+.command-deck-ops .reasoning-spine {
+  padding: 0.45rem 0.75rem 0.2rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--lumina-cyan) 10%, transparent);
+}
+
+.command-deck-ops .decision-theater-stage {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.command-deck-ops .decision-theater-stage__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem;
+  overflow: visible;
+}
+
+.command-deck-ops .decision-theater-stage__actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+  padding: 0.4rem 0.5rem;
+  border-top: 1px solid color-mix(in srgb, var(--lumina-cyan) 10%, transparent);
+}
+
+.command-deck-ops .decision-theater-stage__actions .genesis-recovery-action-card__btn {
+  width: 100%;
+  min-height: 1.85rem;
+  height: 1.85rem;
+  font-size: 0.58rem;
+  padding-inline: 0.35rem;
+}
+
+.command-deck-ops [data-tour="evolution-deck"] .deck-panel-toolbar,
+.command-deck-ops [data-tour="intelligence-deck"] .deck-panel-toolbar {
+  display: flex;
+  width: 100%;
+  z-index: 2;
+  padding: 0.28rem 0.5rem;
+}
+
+.command-deck-ops [data-tour="evolution-deck"] .risk-envelope-panel__toolbar-title,
+.command-deck-ops [data-tour="intelligence-deck"] .risk-envelope-panel__toolbar-title {
+  letter-spacing: 0.16em;
+}
+
+.command-deck-ops__board-chrome-row {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.command-deck-ops__board-identity {
+  min-width: 0;
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+.command-deck-ops__board-nav {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.command-deck-ops__arena-idle {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  padding: 1rem 1.1rem 1.15rem;
+  text-align: center;
+}
+
+.command-deck-ops__arena-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.command-deck-ops__arena-kpis {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+  padding: 0.4rem 0.5rem 0.55rem;
+}
+
+.command-deck-ops__arena-kpis .birth-kpi-tile {
+  min-height: 3.1rem;
+}
+
+.command-deck-ops__performance {
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+  gap: 0.55rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0.5rem 0.6rem 0.7rem;
+  scrollbar-width: thin;
+}
+
+.command-deck-ops__performance > .command-deck-ops__organ-btn {
+  align-self: flex-start;
+  min-width: 9.5rem;
+}
+
+.command-deck-ops__perf-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.command-deck-ops__perf-kpis--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.command-deck-ops__perf-kpis .birth-kpi-tile {
+  min-height: 3.2rem;
+}
+
+.command-deck-ops__perf-charts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.4rem;
+}
+
+.command-deck-ops__perf-chart {
+  min-height: 8.5rem;
+  padding: 0.55rem 0.65rem 0.6rem;
+}
+
+@media (min-width: 1100px) {
+  .command-deck-ops__perf-charts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+html:has(.cockpit-shell--phase),
+body:has(.cockpit-shell--phase),
+#root:has(.cockpit-shell--phase) {
+  height: 100%;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+@media (min-width: 1280px) {
+  .command-deck-grid--cinematic {
+    grid-template-columns: minmax(220px, 0.85fr) minmax(380px, 1.55fr) minmax(280px, 1fr);
+  }
 }
 
 .command-hud::before {
@@ -2116,7 +2832,26 @@
 }
 
 .decision-theater-stage__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem;
   scrollbar-width: thin;
+}
+
+.decision-theater-stage__actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+  padding: 0.4rem 0.5rem;
+  border-top: 1px solid color-mix(in srgb, var(--lumina-cyan) 10%, transparent);
+}
+
+.decision-theater-stage__actions .genesis-recovery-action-card__btn {
+  width: 100%;
+  min-height: 1.85rem;
+  height: 1.85rem;
+  font-size: 0.58rem;
+  padding-inline: 0.35rem;
 }
 
 .decision-theater-stage[data-mode="REAL"] .hud-signal:not([data-flash]) .hud-signal__glow {
@@ -2601,6 +3336,71 @@
 
 .deck-header--annex .deck-header-title {
   color: oklch(0.62 0.015 260 / 85%);
+}
+
+/* Phase reset — named wipes stay above the fold in the Intelligence board */
+.command-deck-ops .phase-reset-admin {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  gap: 0.4rem;
+}
+
+.command-deck-ops .phase-reset-admin__tools {
+  display: grid;
+  gap: 0.35rem;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.command-deck-ops .phase-reset-admin__fold {
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 12%, transparent);
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--lumina-void) 45%, transparent);
+  padding: 0.28rem 0.45rem;
+}
+
+.command-deck-ops .phase-reset-admin__fold > summary {
+  cursor: pointer;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--foreground) 72%, transparent);
+}
+
+.command-deck-ops .phase-reset-panel {
+  flex: 0 0 auto;
+}
+
+.command-deck-ops .phase-reset-panel .genesis-recovery-action-grid--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.command-deck-ops .phase-reset-panel .genesis-recovery-action-card {
+  min-height: 0;
+  padding: 0.28rem 0.4rem 0.3rem;
+}
+
+.command-deck-ops .phase-reset-panel .genesis-recovery-action-card .mb-2 {
+  margin-bottom: 0.12rem;
+}
+
+.command-deck-ops .phase-reset-panel .genesis-recovery-action-card .pt-2 {
+  padding-top: 0.18rem;
+}
+
+.command-deck-ops .phase-reset-panel .genesis-recovery-action-card__btn {
+  min-height: 1.85rem;
+  white-space: normal;
+}
+
+.command-deck-ops .phase-reset-panel .risk-envelope-field-hint {
+  font-size: 0.55rem;
+  line-height: 1.2;
 }
 
 /* ── Deck typography & chrome utilities ── */

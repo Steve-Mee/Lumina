@@ -84,50 +84,44 @@ def detect_candle_patterns(df: pd.DataFrame, tf: str = "1min") -> dict[str, str]
     return {"pattern": "none", "description": "geen duidelijk patroon"}
 
 
-def generate_price_action_summary(df: pd.DataFrame, timeframes: dict[str, int]) -> str:
-    if len(df) < 120:
+def generate_price_action_summary(
+    df: pd.DataFrame,
+    timeframes: dict[str, int],
+    native_frames: dict[str, pd.DataFrame] | None = None,
+) -> str:
+    if df is None or len(df) < 120:
         return "INSUFFICIENT_DATA"
 
     summary_parts: list[str] = []
     df = df.copy()
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+    frames = native_frames or {}
 
-    for tf_name, seconds in list(timeframes.items())[:4]:
-        res = (
-            df.set_index("timestamp")
-            .resample(f"{seconds // 60}min")
-            .agg({"high": "max", "low": "min"})
-            .dropna()
-            .iloc[-3:]
-        )
-        if len(res) >= 2:
-            prev_h, curr_h = res["high"].iloc[-2], res["high"].iloc[-1]
-            prev_l, curr_l = res["low"].iloc[-2], res["low"].iloc[-1]
-            if curr_h > prev_h and curr_l > prev_l:
-                summary_parts.append(f"Higher High + Higher Low op {tf_name}")
-            elif curr_h < prev_h and curr_l < prev_l:
-                summary_parts.append(f"Lower High + Lower Low op {tf_name}")
+    for tf_name, seconds in list((timeframes or {}).items())[:4]:
+        from lumina_core.engine.nt_bar_periods import timeframe_to_period
+
+        period = timeframe_to_period(str(tf_name), int(seconds))
+        res = None
+        if period is not None:
+            res = frames.get(period)
+        if res is None or len(res) < 2:
+            continue
+        prev_h, curr_h = float(res["high"].iloc[-2]), float(res["high"].iloc[-1])
+        prev_l, curr_l = float(res["low"].iloc[-2]), float(res["low"].iloc[-1])
+        if curr_h > prev_h and curr_l > prev_l:
+            summary_parts.append(f"Higher High + Higher Low op {tf_name}")
+        elif curr_h < prev_h and curr_l < prev_l:
+            summary_parts.append(f"Lower High + Lower Low op {tf_name}")
 
     recent_vol = float(df["volume"].iloc[-20:].mean())
     last_vol = float(df["volume"].iloc[-1])
     if recent_vol > 0 and last_vol > recent_vol * 2.5:
         summary_parts.append(f"Volume spike {last_vol / recent_vol:.1f}x gemiddeld")
 
-    df_5 = (
-        df.set_index("timestamp")
-        .resample("5min")
-        .agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"})
-        .dropna()
-    )
-    df_15 = (
-        df.set_index("timestamp")
-        .resample("15min")
-        .agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"})
-        .dropna()
-    )
-
-    pat5 = detect_candle_patterns(df_5, "5min")
-    pat15 = detect_candle_patterns(df_15, "15min")
+    df_5 = frames.get("5m")
+    df_15 = frames.get("15m")
+    pat5 = detect_candle_patterns(df_5, "5min") if df_5 is not None and len(df_5) >= 3 else {"pattern": "none"}
+    pat15 = detect_candle_patterns(df_15, "15min") if df_15 is not None and len(df_15) >= 3 else {"pattern": "none"}
     if pat5["pattern"] != "none":
         summary_parts.append(pat5["description"])
     if pat15["pattern"] != "none":

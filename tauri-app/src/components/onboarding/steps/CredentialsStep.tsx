@@ -279,14 +279,8 @@ export function CredentialsStep({
         setLiveMeaning(link.meaning || link.reason || null);
         setHostReady(Boolean(link.host_ready || link.green));
         setGateBirthOk(Boolean(link.gate_birth_ok));
-        const proofOk = Boolean(
-          link.proof?.certified ||
-            link.proof?.badge_ok ||
-            (link.certificate && link.gate_birth_ok),
-        );
-        if (proofOk || link.green) {
-          setFabricCertified(true);
-        }
+        const proofOk = Boolean(link.proof?.certified || link.proof?.badge_ok);
+        setFabricCertified(proofOk);
         // Host hard-down / no proof: clear sticky certified (backend may invalidate cert).
         if (
           String(link.level || "").toUpperCase() === "RED" &&
@@ -367,6 +361,14 @@ export function CredentialsStep({
         if (watch.action === "certified") {
           setFabricCertified(true);
           return;
+        }
+        if (watch.action === "healed_waiting_nt" || watch.action === "healed") {
+          setDeployNote(
+            "Lumina repaired the NinjaTrader addon. Start NinjaTrader — no editor or F5 needed.",
+          );
+          toast.message(
+            "Lumina repaired the NinjaTrader addon. Start NinjaTrader to continue.",
+          );
         }
         if (watch.action === "halt") {
           // NEVER auto-kill NT on halt. User must click Repair (opt-in restart).

@@ -17,6 +17,7 @@ import {
   type BirthHelixPalette,
 } from "@/lib/birthHelixTheme";
 import type { VisualQuality } from "@/lib/visualQualityPresets";
+import type { TradingMode } from "@/store/coreStore";
 
 export interface CeremonyHelixSceneProps {
   activating: boolean;
@@ -26,6 +27,11 @@ export interface CeremonyHelixSceneProps {
   emissiveBoost: number;
   visualQuality: VisualQuality;
   tubeSegments: number;
+  strandRadius?: number;
+  strandTube?: number;
+  intensityScale?: number;
+  bloomMode?: TradingMode;
+  ringOpacity?: number;
 }
 
 function clampPulse(value: number): number {
@@ -173,6 +179,8 @@ function CeremonyHelixStrands({
   primed,
   emissiveBoost,
   tubeSegments,
+  strandRadius,
+  strandTube,
 }: {
   palette: BirthHelixPalette;
   agitation: number;
@@ -181,6 +189,8 @@ function CeremonyHelixStrands({
   primed: boolean;
   emissiveBoost: number;
   tubeSegments: number;
+  strandRadius: number;
+  strandTube: number;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const emissive = (0.32 + agitation * 0.42) * emissiveBoost;
@@ -202,8 +212,8 @@ function CeremonyHelixStrands({
       primaryHex={palette.primary}
       secondaryHex={palette.secondary}
       emissiveIntensity={emissive}
-      radius={0.56}
-      tubeRadius={0.052}
+      radius={strandRadius}
+      tubeRadius={strandTube}
       segments={tubeSegments}
     />
   );
@@ -319,18 +329,23 @@ export function CeremonyHelixScene({
   emissiveBoost,
   visualQuality,
   tubeSegments,
+  strandRadius = 0.56,
+  strandTube = 0.052,
+  intensityScale = 1,
+  bloomMode = "SIM",
+  ringOpacity = 1,
 }: CeremonyHelixSceneProps) {
   const palette = birthHelixPalette(activating, primed);
   const agitation = birthHelixAgitation(activating, primed);
-  const lightIntensity = 0.65 + agitation * 0.55;
+  const lightIntensity = (0.65 + agitation * 0.55) * intensityScale;
 
   return (
     <>
-      <ambientLight intensity={0.24 + agitation * 0.12} />
+      <ambientLight intensity={(0.24 + agitation * 0.12) * intensityScale} />
       <pointLight position={[3, 4, 5]} intensity={lightIntensity} color={palette.primary} />
       <pointLight position={[-4, -2, 3]} intensity={lightIntensity * 0.5} color={palette.secondary} />
 
-      <CeremonyOrbitalRings reducedMotion={reducedMotion} />
+      {ringOpacity > 0.08 ? <CeremonyOrbitalRings reducedMotion={reducedMotion} /> : null}
       <CeremonyAuraHalo
         palette={palette}
         reducedMotion={reducedMotion}
@@ -352,6 +367,8 @@ export function CeremonyHelixScene({
         primed={primed}
         emissiveBoost={emissiveBoost}
         tubeSegments={tubeSegments}
+        strandRadius={strandRadius}
+        strandTube={strandTube}
       />
       <CeremonyParticleField
         key={particleCount}
@@ -364,7 +381,7 @@ export function CeremonyHelixScene({
         visualQuality={visualQuality}
       />
       <CinematicBloom
-        mode="SIM"
+        mode={bloomMode}
         reducedMotion={reducedMotion}
         visualQuality={visualQuality}
         intensity={0.28}

@@ -74,6 +74,40 @@ def test_regime_scalar_maps_trend_up() -> None:
 
 
 @pytest.mark.unit
+def test_null_confidence_uses_confluence_and_null_fib_uses_price() -> None:
+    engine = SimpleNamespace(
+        detect_market_regime=lambda _df: "NEUTRAL",
+        market_data=SimpleNamespace(get_tape_snapshot=lambda: {"volume_delta": None}),
+        get_current_dream_snapshot=lambda: {
+            "confidence": None,
+            "confluence_score": 0.8,
+            "stop": None,
+            "target": None,
+            "fib_levels": {"0.382": None, "0.5": None, "0.618": None},
+        },
+        AI_DRAWN_FIBS={},
+        world_model={"macro": {"vix": None}},
+    )
+    row = {"last": 5000.0, "close": 5000.0, "bible_confluence": None}
+    obs = build_observation_vector(
+        row=row,
+        engine=engine,
+        data=[row],
+        idx=0,
+        position=0,
+        qty=0,
+        entry_price=0.0,
+        equity=100_000.0,
+        drawdown=0.0,
+        rolling_sharpe=0.0,
+    )
+    assert obs.shape == (OBSERVATION_DIM,)
+    assert obs[6] == pytest.approx(0.8)
+    assert obs[10] == pytest.approx(5000.0)
+    assert obs[2] == pytest.approx(0.0)
+
+
+@pytest.mark.unit
 def test_bible_slots_populated_from_tick() -> None:
     engine = SimpleNamespace(
         detect_market_regime=lambda _df: "NEUTRAL",

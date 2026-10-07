@@ -24,6 +24,7 @@ NT_BRIDGE_REQUIRED_MARKERS: tuple[str, ...] = (
     "NtAccountOrderGateway",
     "NtHistoricalDataProvider",
     "NtLiveMarketDataProvider",
+    "NtLiveBarProvider",
 )
 
 

@@ -9,10 +9,13 @@ const stageSource = readFileSync(
 );
 
 describe("decisionTheaterActions", () => {
-  it("approve uses modeApproveButtonClass not hardcoded emerald", () => {
-    expect(stageSource).toContain("modeApproveButtonClass");
+  it("approve uses Genesis translucent action buttons", () => {
+    expect(stageSource).toContain("genesis-recovery-action-card__btn--accent");
+    expect(stageSource).toContain("genesis-recovery-action-card__btn--danger");
+    expect(stageSource).not.toContain("modeApproveButtonClass");
     expect(stageSource).not.toContain("border-emerald-500");
     expect(stageSource).not.toContain("bg-emerald-600");
+    expect(stageSource).not.toContain("CheckCircle2");
   });
 
   it("caps trade preview rows", () => {

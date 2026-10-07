@@ -52,13 +52,20 @@ export function computeBirthApplyStatusPatch(
   let uiPhase: BirthUiPhase = current.uiPhase;
   let runPinned = current.runPinned;
   const genesisPinned = current.genesisPinned;
+  const exitClosed = payload.birth_exit_ok === false;
+
+  // Wipe Birth / Full wipe closes the exit. A sticky finale would keep Phase
+  // Hub mounted and hide the Genesis Activate Birth charter.
+  if (uiPhase === "finale" && (genesisPinned || exitClosed)) {
+    uiPhase = "idle";
+  }
 
   const freezeUnresolved = isUnresolvedTerminalFreeze(payload);
   const engineActive =
     !freezeUnresolved && (payload.live === true || isBirthEngineActive(payload));
 
-  if (current.uiPhase === "finale") {
-    /* keep finale until parent transitions */
+  if (uiPhase === "finale") {
+    /* keep finale until the birth-exit handoff */
   } else if (freezeUnresolved && !genesisPinned) {
     // Sacred freeze: never paint running from a live leftover or start-then-freeze flash.
     uiPhase = "stage_stalled";
@@ -88,7 +95,7 @@ export function computeBirthApplyStatusPatch(
     uiPhase = "running";
   } else if (isBirthCertificateFailed(payload)) {
     uiPhase = genesisPinned ? "idle" : "certificate_failed";
-  } else if (isBirthComplete(payload)) {
+  } else if (isBirthComplete(payload) && !genesisPinned) {
     uiPhase = "finale";
   } else if (isBirthStageStalled(payload)) {
     uiPhase = genesisPinned ? "idle" : "stage_stalled";

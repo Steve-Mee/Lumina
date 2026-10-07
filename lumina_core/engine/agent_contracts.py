@@ -107,15 +107,22 @@ class ExecutionDecisionOutputSchema(ContractOutputBase):
 
 def _append_immutable_decision_log(payload: dict[str, Any]) -> None:
     global _LAST_ENTRY_HASH
+    mode = str(os.getenv("LUMINA_MODE", "sim")).strip().lower()
     with _DECISION_LOG_LOCK:
-        appended = get_audit_logger().append(
-            stream="agent_thought",
-            payload=payload,
-            path=_DECISION_LOG_PATH,
-            mode=str(os.getenv("LUMINA_MODE", "sim")).strip().lower(),
-            actor_id=str(payload.get("agent", "unknown")),
-            severity="info",
-        )
+        try:
+            appended = get_audit_logger().append(
+                stream="agent_thought",
+                payload=payload,
+                path=_DECISION_LOG_PATH,
+                mode=mode,
+                actor_id=str(payload.get("agent", "unknown")),
+                severity="info",
+            )
+        except OSError as exc:
+            if mode == "real":
+                raise
+            logger.warning("decision log append skipped: %s", exc)
+            return
         _LAST_ENTRY_HASH = str(appended.get("entry_hash", ""))
 
     # Mirror every contract decision into the immutable agent decision log.

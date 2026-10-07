@@ -103,14 +103,19 @@ class PPOTrainerEvalMixin:
         risk_cfg = getattr(getattr(self.engine, "config", None), "risk_controller", {})
         risk_cfg = risk_cfg if isinstance(risk_cfg, dict) else {}
         trade_mode = str(getattr(getattr(self.engine, "config", None), "trade_mode", "sim") or "sim").strip().lower()
+        from lumina_core.market.nt_fees import fee_components
+
+        listed = str(getattr(getattr(self.engine, "config", None), "instrument", "MES") or "MES")
+        root = "MES" if trade_mode == "birth" else listed
+        commission, exchange_fee, clearing_fee, nfa_fee = fee_components(root)
         return RLConfig(
             slippage_points=float(risk_cfg.get("slippage_base_points", 0.125) or 0.125),
             slippage_sigma=float(risk_cfg.get("slippage_sigma", 0.5) or 0.5),
             slippage_volatility_factor=float(risk_cfg.get("slippage_volatility_factor", 1.0) or 1.0),
-            commission_per_side_usd=float(risk_cfg.get("commission_per_side_usd", 1.29) or 1.29),
-            exchange_fee_per_side_usd=float(risk_cfg.get("exchange_fee_per_side_usd", 0.35) or 0.35),
-            clearing_fee_per_side_usd=float(risk_cfg.get("clearing_fee_per_side_usd", 0.10) or 0.10),
-            nfa_fee_per_side_usd=float(risk_cfg.get("nfa_fee_per_side_usd", 0.02) or 0.02),
+            commission_per_side_usd=commission,
+            exchange_fee_per_side_usd=exchange_fee,
+            clearing_fee_per_side_usd=clearing_fee,
+            nfa_fee_per_side_usd=nfa_fee,
             real_safety_threshold_usd=float(risk_cfg.get("real_capital_safety_threshold_usd", 1000.0) or 1000.0),
             real_safety_threshold_ratio=float(risk_cfg.get("real_capital_safety_threshold_ratio", 0.90) or 0.90),
             sim_var_penalty_coeff=float(risk_cfg.get("sim_var_penalty_coeff", 0.04) or 0.04),

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import secrets
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -19,6 +20,11 @@ from lumina_core.maturity.maturation_progress import (
 
 logger = get_logger("lumina.maturity.continuum")
 _SAVE_LOCK = threading.Lock()
+
+
+class ContinuumUnreadable(RuntimeError):
+    """Existing continuum file could not be read. Callers must not replace it."""
+
 
 CONTINUUM_REL = Path("state") / "lumina_phase_continuum.json"
 SCHEMA_VERSION = 1
@@ -61,10 +67,16 @@ def load_continuum(workspace_root: Path | str) -> dict[str, Any]:
     path = continuum_path(workspace_root)
     if not path.is_file():
         return migrate_from_milestones(workspace_root)
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+    last_error: Exception | None = None
+    for attempt in range(5):
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            last_error = exc
+            time.sleep(0.02 * (attempt + 1))
+            continue
         if not isinstance(raw, dict):
-            return migrate_from_milestones(workspace_root)
+            raise ContinuumUnreadable(f"continuum_not_object:{path}")
         data = _empty_continuum()
         data.update(raw)
         data["schema_version"] = SCHEMA_VERSION
@@ -75,9 +87,8 @@ def load_continuum(workspace_root: Path | str) -> dict[str, Any]:
         if not isinstance(data.get("phase_records"), dict):
             data["phase_records"] = {}
         return data
-    except Exception as exc:
-        logger.warning("maturity.continuum.load_failed: %s", exc)
-        return migrate_from_milestones(workspace_root)
+    logger.warning("maturity.continuum.load_failed: %s", last_error)
+    raise ContinuumUnreadable(f"continuum_unreadable:{path}") from last_error
 
 
 def save_continuum(workspace_root: Path | str, data: dict[str, Any]) -> None:
@@ -140,6 +151,7 @@ def mark_phase_running(
     phase: str,
     *,
     learned: dict[str, Any] | None = None,
+    telegram: bool = True,
 ) -> dict[str, Any]:
     data = load_continuum(workspace_root)
     data["active_phase"] = phase
@@ -150,6 +162,14 @@ def mark_phase_running(
         rec["learned"] = {**(rec.get("learned") or {}), **learned}
     data["phase_records"][phase] = rec
     save_continuum(workspace_root, data)
+    if telegram:
+        _telegram_phase(
+            workspace_root,
+            phase,
+            kind="started",
+            message=f"{phase} is gestart.",
+            learned=rec.get("learned") if isinstance(rec.get("learned"), dict) else None,
+        )
     return data
 
 
@@ -180,11 +200,42 @@ def mark_phase_completed(
     return data
 
 
+def mark_phase_stopped(
+    workspace_root: Path | str,
+    phase: str,
+    *,
+    message: str,
+    telegram: bool = True,
+) -> dict[str, Any]:
+    """Operator halt. Not a law failure and not a pass."""
+    data = load_continuum(workspace_root)
+    if data.get("active_phase") == phase:
+        data["active_phase"] = None
+    rec = dict(data["phase_records"].get(phase) or {})
+    rec["status"] = "stopped"
+    rec["error"] = None
+    rec["message"] = str(message)[:500]
+    rec["stopped_at"] = _utcnow()
+    data["phase_records"][phase] = rec
+    save_continuum(workspace_root, data)
+    if telegram:
+        _telegram_phase(
+            workspace_root,
+            phase,
+            kind="stopped",
+            message=str(message),
+            learned=rec.get("learned") if isinstance(rec.get("learned"), dict) else None,
+        )
+    return data
+
+
 def mark_phase_failed(
     workspace_root: Path | str,
     phase: str,
     *,
     error: str,
+    telegram: bool = True,
+    message: str | None = None,
 ) -> dict[str, Any]:
     data = load_continuum(workspace_root)
     if data.get("active_phase") == phase:
@@ -192,11 +243,51 @@ def mark_phase_failed(
     rec = dict(data["phase_records"].get(phase) or {})
     rec["status"] = "failed"
     rec["error"] = str(error)[:500]
-    rec["message"] = f"Failed: {str(error)[:220]}"
+    rec["message"] = str(message)[:500] if message else f"Failed: {str(error)[:220]}"
     rec["failed_at"] = _utcnow()
     data["phase_records"][phase] = rec
     save_continuum(workspace_root, data)
+    if telegram:
+        _telegram_phase(
+            workspace_root,
+            phase,
+            kind="failed",
+            message=f"Failed: {str(error)[:220]}",
+            error=str(error)[:500],
+            learned=rec.get("learned") if isinstance(rec.get("learned"), dict) else None,
+        )
     return data
+
+
+def _telegram_phase(
+    workspace_root: Path | str,
+    phase: str,
+    *,
+    kind: str,
+    message: str | None = None,
+    learned: dict[str, Any] | None = None,
+    missing: list[str] | None = None,
+    error: str | None = None,
+    stop_reason: str | None = None,
+    next_step: str | None = None,
+) -> None:
+    # Local import: continuum is the lifecycle store and must load even if Telegram config fails.
+    try:
+        from lumina_core.notifications.phase_status_notify import notify_phase_status
+
+        notify_phase_status(
+            workspace_root,
+            phase,
+            kind=kind,
+            message=message,
+            learned=learned,
+            missing=missing,
+            error=error,
+            stop_reason=stop_reason,
+            next_step=next_step,
+        )
+    except Exception as exc:
+        logger.warning("continuum.phase_telegram_failed phase=%s kind=%s err=%s", phase, kind, exc)
 
 
 def set_advance_mode(workspace_root: Path | str, mode: AdvanceMode) -> dict[str, Any]:

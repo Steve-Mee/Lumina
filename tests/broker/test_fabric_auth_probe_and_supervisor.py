@@ -224,3 +224,24 @@ def test_supervisor_auth_fail_marks_down(monkeypatch: pytest.MonkeyPatch) -> Non
     assert sup._try_connect_once() is False
     assert sup.get_client() is None
     assert sup.status().last_error_code == "AUTH_FAILED"
+
+
+@pytest.mark.unit
+def test_one_port_blip_keeps_the_live_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    sup = FabricLinkSupervisor()
+    monkeypatch.setattr(sup, "_tcp_target_open", lambda: False)
+    monkeypatch.setattr(sup, "_nt_process_alive", lambda: True)
+    assert sup._drop_reason_for_live_session() is None
+    assert sup._drop_reason_for_live_session() is None
+    assert sup._drop_reason_for_live_session() == "CONNECTION_REFUSED"
+    assert sup._tcp_misses == 0
+
+
+@pytest.mark.unit
+def test_two_nt_probe_misses_drop_the_live_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    sup = FabricLinkSupervisor()
+    monkeypatch.setattr(sup, "_tcp_target_open", lambda: True)
+    monkeypatch.setattr(sup, "_nt_process_alive", lambda: False)
+    assert sup._drop_reason_for_live_session() is None
+    assert sup._drop_reason_for_live_session() == "NT_PROCESS_GONE"
+    assert sup._nt_misses == 0

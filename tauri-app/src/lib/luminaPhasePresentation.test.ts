@@ -18,7 +18,6 @@ describe("luminaPhasePresentation", () => {
       resolveBirthScreenPhaseHeader({
         genesisMode: true,
         missionMode: false,
-        awakening: false,
         activating: false,
         interrupted: false,
         certificateFailed: false,
@@ -32,7 +31,6 @@ describe("luminaPhasePresentation", () => {
       resolveBirthScreenPhaseHeader({
         genesisMode: false,
         missionMode: true,
-        awakening: false,
         activating: false,
         interrupted: false,
         certificateFailed: false,
@@ -47,7 +45,6 @@ describe("luminaPhasePresentation", () => {
     const header = resolveBirthScreenPhaseHeader({
       genesisMode: true,
       missionMode: false,
-      awakening: false,
       activating: true,
       launching: true,
       decisionMode: true,
@@ -65,7 +62,6 @@ describe("luminaPhasePresentation", () => {
     const header = resolveBirthScreenPhaseHeader({
       genesisMode: true,
       missionMode: false,
-      awakening: false,
       activating: false,
       decisionMode: true,
       interrupted: true,
@@ -81,7 +77,6 @@ describe("luminaPhasePresentation", () => {
     const header = resolveBirthScreenPhaseHeader({
       genesisMode: true,
       missionMode: false,
-      awakening: false,
       activating: false,
       decisionMode: true,
       interrupted: false,

@@ -185,8 +185,8 @@ def mark_user_stopped_progress(svc: Any) -> None:
     payload = build_pause_ssot_payload(
         progress=merged,
         message=(
-            "Birth Phase gestopt door gebruiker. "
-            "Kies Hervat checkpoint of Wis birth-data voor schone run."
+            "Birth stopped by you. "
+            "Choose Resume checkpoint or Wipe birth data for a clean run."
         ),
     )
     write_pause_ssot(svc.workspace_root, payload)
@@ -242,6 +242,12 @@ def reconcile_orphaned_birth_progress(svc: Any) -> bool:
             return False
     except Exception:
         logger.debug("birth.reconcile_orphaned freeze_check_failed", exc_info=True)
+    if stage == "holdout_capacity_refused" or phase == "holdout_capacity_refused":
+        logger.info("birth.reconcile_orphaned skip holdout_capacity_refused")
+        return False
+    if str(progress.get("attention_reason_code") or "") == "holdout_capacity_below_n_b_min":
+        logger.info("birth.reconcile_orphaned skip holdout_capacity_attention")
+        return False
     # Starship: also reconcile plateau/stall death-modes (where birth most often dies).
     orphan_recovery_phases = {
         "plateau_evolution",
@@ -278,8 +284,8 @@ def reconcile_orphaned_birth_progress(svc: Any) -> bool:
     payload = build_pause_ssot_payload(
         progress=merged,
         message=(
-            "Runner gestopt zonder gebruikersstop — "
-            "kies Hervat checkpoint of Wis birth-data."
+            "Runner stopped without a user stop. "
+            "Choose Resume checkpoint or Wipe birth data."
         ),
         user_initiated=False,
     )

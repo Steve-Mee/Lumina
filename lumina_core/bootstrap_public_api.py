@@ -111,6 +111,9 @@ def attach_runtime_app_to_module(container: ApplicationContainer, runtime_module
     runtime_module.meta_reasoning_and_counterfactuals = container.reasoning_service.meta_reasoning_and_counterfactuals
     runtime_module.update_world_model = container.memory_service.update_world_model
     runtime_module.generate_multi_tf_chart = container.visualization_service.generate_multi_tf_chart
+    runtime_module.publish_screen_share_snapshot = (
+        container.visualization_service.publish_screen_share_snapshot
+    )
 
     cfg = container.config
     runtime_module.container = container

@@ -2,6 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_LUMINA_API_KEY_LS_KEY } from "@/lib/monitoringClient";
 import { isBirthStartSuccessful } from "@/lib/birthClient";
+import { classifyProbeFailure } from "@/lib/setupClient";
+
+describe("classifyProbeFailure", () => {
+  it("treats the deck abort and the Tauri cancel as a stall", () => {
+    const aborted = new Error("The operation was aborted");
+    aborted.name = "AbortError";
+    expect(classifyProbeFailure(aborted)).toBe("timeout");
+    expect(classifyProbeFailure(new Error("Request cancelled"))).toBe("timeout");
+  });
+
+  it("treats a refused socket as down", () => {
+    expect(classifyProbeFailure(new TypeError("Failed to fetch"))).toBe("down");
+  });
+});
 
 describe("isBirthStartSuccessful", () => {
   it("accepts started and already_running", () => {

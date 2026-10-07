@@ -16,7 +16,7 @@ const GATES: readonly { id: string; label: string }[] = [
   { id: "deck_live", label: "Command Deck live" },
   { id: "mode_sim_real_guard", label: "sim_real_guard" },
   { id: "n_A>=150", label: "n_A ≥ 150" },
-  { id: "n_D>=5", label: "5 green session days" },
+  { id: "economic_viability", label: "WR ≥ BE · mean R ≥ 0" },
   { id: "occupancy_in_band", label: "Occupancy exam band" },
   { id: "process_r", label: "Process-R" },
   { id: "risk_discipline", label: "Sharpe ≥ 0.20 · DD ≤ 12%" },
@@ -79,10 +79,10 @@ function currentFor(id: string, learned: Record<string, unknown>): { current: st
         current: `${Math.round(asNumber(learned.n_a) ?? 0).toLocaleString("en-US")}`,
         need: "≥ 150 policy closes",
       };
-    case "n_D>=5":
+    case "economic_viability":
       return {
-        current: `${Math.round(asNumber(learned.n_d) ?? 0)}`,
-        need: "≥ 5 consecutive green days",
+        current: `${pct(learned.skill_wr)} / BE ${pct(learned.breakeven_wr)} · R ${asNumber(learned.mean_r)?.toFixed(2) ?? "—"}`,
+        need: "WR ≥ live BE and mean R ≥ 0",
       };
     case "occupancy_in_band":
       return { current: pct(learned.occupancy), need: "25–75%" };
@@ -116,14 +116,6 @@ function toneFor(id: string, met: boolean, learned: Record<string, unknown>): Co
       target: 150,
       direction: "higher",
       criticalGap: 100,
-    });
-  }
-  if (id === "n_D>=5") {
-    return resolveConditionTone({
-      value: asNumber(learned.n_d),
-      target: 5,
-      direction: "higher",
-      criticalGap: 4,
     });
   }
   return resolveBooleanConditionTone(false);
@@ -161,7 +153,7 @@ export function buildApprenticeshipChecklist(
     stageIndex: null,
     stageTotal: null,
     passCriteriaId: "apprenticeship_and_adr_0051",
-    mission: "Multi-day SIM under REAL rules. Sharpe ≥ 0.20, DD ≤ 12%, 5 green days. Not REAL.",
+    mission: "Examen op SIM onder REAL-regels. n≥150, WR≥BE, mean R≥0, Sharpe≥0.20, DD≤12%. Niet de school. Geen REAL.",
     requirements,
     metCount,
     totalCount: requirements.length,

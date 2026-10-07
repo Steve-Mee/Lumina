@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Lumina runtime entrypoint.
 
 Routing:
@@ -17,7 +18,14 @@ import argparse
 import logging
 import os
 import sys
+from pathlib import Path
 from typing import Sequence
+
+# Direct `python lumina_core/engine/runtime_entrypoint.py` puts this folder
+# on sys.path, not the repo root. The package is not otherwise importable.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from dotenv import load_dotenv
 

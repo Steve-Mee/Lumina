@@ -64,6 +64,9 @@ def record_orderpath_fill(
     win: bool | None = None,
     pnl: float | None = None,
     session_date: str | None = None,
+    entry_px: float | None = None,
+    stop_px: float | None = None,
+    target_px: float | None = None,
     risk_event: bool = False,
     var_breach: bool = False,
     daily_kill: bool = False,
@@ -105,8 +108,53 @@ def record_orderpath_fill(
     }
     if session_date:
         row["session_date"] = str(session_date)[:10]
+    if entry_px is not None:
+        row["entry_px"] = float(entry_px)
+    if stop_px is not None:
+        row["stop_px"] = float(stop_px)
+    if target_px is not None:
+        row["target_px"] = float(target_px)
     append_tape_row(workspace_root, row)
     return {"ok": True, "row": row}
+
+
+def tape_breakeven_wr(workspace_root: Path | str) -> tuple[float | None, str]:
+    """BE from the stops and targets on this tape. No fallback and no Playground tape."""
+    from lumina_core.birth.birth_trade_geometry import economics_after_cost
+
+    closes = [r for r in load_tape_rows(workspace_root) if _is_policy_close(r)]
+    if not closes:
+        return None, "no_closes"
+    geos: list[tuple[float, float, float]] = []
+    for row in closes:
+        entry = _f(row.get("entry_px"))
+        stop = _f(row.get("stop_px"))
+        target = _f(row.get("target_px"))
+        if entry is None or stop is None or target is None or entry <= 0.0:
+            return None, "geometry_incomplete"
+        geos.append((abs(entry - stop) / entry, abs(target - entry) / entry, entry))
+    stop_pct = float(median(item[0] for item in geos))
+    target_pct = float(median(item[1] for item in geos))
+    price = float(median(item[2] for item in geos))
+    if stop_pct <= 0.0 or target_pct <= 0.0:
+        return None, "geometry_incomplete"
+    from lumina_core.market.nt_fees import CostCardError, contract_root
+
+    roots: set[str] = set()
+    for row in closes:
+        try:
+            roots.add(contract_root(str(row.get("instrument") or "")))
+        except CostCardError:
+            return None, "cost_root_unknown"
+    if len(roots) != 1:
+        return None, "cost_root_unknown"
+    _win, _loss, _rr, be_wr, _cost = economics_after_cost(
+        stop_pct,
+        target_pct,
+        price=price,
+        instrument=next(iter(roots)),
+    )
+    return float(be_wr), "tape"
 
 
 def tape_skill_metrics(workspace_root: Path | str) -> dict[str, Any]:

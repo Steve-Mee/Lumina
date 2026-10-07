@@ -10,6 +10,7 @@ from lumina_core.birth.foundation_history import (
     FOUNDATION_HISTORY_MIN_RATIO,
     foundation_history_start_days,
 )
+from lumina_core.birth.holdout_capacity_refusal import explicit_manifest_capacity_reason
 
 
 def manifest_train_hash_matches(
@@ -77,7 +78,7 @@ def classify_cache_resume_tier(
         return ResumeCacheDecision(
             tier=ResumeCacheTier.T4,
             reason="missing_cache_files",
-            resume_message="Checkpoint hervat — data opnieuw voorbereid (curriculum gaat verder, geen wipe).",
+            resume_message="Resuming checkpoint — data prepared again. Curriculum continues. Nothing was wiped.",
         )
 
     manifest = dict(cache_manifest or {})
@@ -87,8 +88,8 @@ def classify_cache_resume_tier(
             tier=ResumeCacheTier.T4,
             reason="holdout_pct_changed",
             resume_message=(
-                "Checkpoint hervat — holdout-config gewijzigd; data opnieuw voorbereid "
-                "(curriculum gaat verder, geen wipe)."
+                "Resuming checkpoint — holdout config changed. Data prepared again. "
+                "Curriculum continues. Nothing was wiped."
             ),
         )
 
@@ -96,13 +97,24 @@ def classify_cache_resume_tier(
         cached_requested = int(manifest.get("requested_days") or 0)
     except (TypeError, ValueError):
         cached_requested = 0
+    capacity_reason = explicit_manifest_capacity_reason(manifest)
+    if capacity_reason:
+        return ResumeCacheDecision(
+            tier=ResumeCacheTier.T4,
+            reason="holdout_capacity_below_n_b",
+            resume_message=(
+                "Resuming checkpoint — holdout cannot host Awakening n_B≥500. "
+                "Reloading the 365-day tape. Stage receipts from the short tape are not frozen."
+            ),
+        )
+
     if cached_requested < foundation_history_start_days():
         return ResumeCacheDecision(
             tier=ResumeCacheTier.T4,
             reason="requested_days_mismatch",
             resume_message=(
-                "Checkpoint hervat — history-venster te dun of verouderd; data opnieuw geladen "
-                "(curriculum gaat verder, geen wipe)."
+                "Resuming checkpoint — history window is thinner than the 365-day sport. "
+                "Reloading data. Curriculum continues. Nothing was wiped."
             ),
         )
 
@@ -116,8 +128,8 @@ def classify_cache_resume_tier(
             tier=ResumeCacheTier.T4,
             reason="history_depth_thin",
             resume_message=(
-                "Checkpoint hervat — cached tape dunner dan de Foundation-sport; data opnieuw geladen "
-                "(curriculum gaat verder, geen wipe)."
+                "Resuming checkpoint — cached tape is thinner than the Foundation sport. "
+                "Reloading data. Curriculum continues. Nothing was wiped."
             ),
         )
 
@@ -131,8 +143,8 @@ def classify_cache_resume_tier(
             tier=ResumeCacheTier.T4,
             reason="instrument_chain_mismatch",
             resume_message=(
-                "Checkpoint hervat — instrument-keten wijkt af van de huidige front month; "
-                "data opnieuw geladen (curriculum gaat verder, geen wipe)."
+                "Resuming checkpoint — instrument chain does not match the current front month. "
+                "Reloading data. Curriculum continues. Nothing was wiped."
             ),
         )
 
@@ -154,7 +166,7 @@ def classify_cache_resume_tier(
             skip_load=True,
             skip_split=True,
             skip_enrich=True,
-            resume_message="Checkpoint hervat — cached data geladen (curriculum gaat verder).",
+            resume_message="Resuming checkpoint — cached data loaded. Curriculum continues.",
         )
 
     if hash_matches_cache_file and not hash_matches_checkpoint:
@@ -165,7 +177,7 @@ def classify_cache_resume_tier(
             skip_split=True,
             skip_enrich=True,
             repair_manifest=True,
-            resume_message="Checkpoint hervat — cache hersteld (curriculum gaat verder).",
+            resume_message="Resuming checkpoint — cache repaired. Curriculum continues.",
         )
 
     if hash_matches_checkpoint and not enrich_version_match:
@@ -176,8 +188,8 @@ def classify_cache_resume_tier(
             skip_split=True,
             skip_enrich=False,
             resume_message=(
-                "Checkpoint hervat — regime-map herberekend (algo update); "
-                "curriculum gaat verder."
+                "Resuming checkpoint — regime map recomputed after an algorithm update. "
+                "Curriculum continues."
             ),
         )
 
@@ -186,7 +198,7 @@ def classify_cache_resume_tier(
             tier=ResumeCacheTier.T3,
             reason="partial_cache_inconsistency",
             resume_message=(
-                "Checkpoint hervat — data opnieuw voorbereid (curriculum gaat verder, geen wipe)."
+                "Resuming checkpoint — data prepared again. Curriculum continues. Nothing was wiped."
             ),
         )
 
@@ -197,8 +209,8 @@ def classify_cache_resume_tier(
             tier=ResumeCacheTier.T4,
             reason="train_cardinality_changed",
             resume_message=(
-                "Checkpoint hervat — nieuwe marktdata gedetecteerd; holdout opnieuw berekend "
-                "(curriculum gaat verder, geen wipe)."
+                "Resuming checkpoint — new market data detected. Holdout recomputed. "
+                "Curriculum continues. Nothing was wiped."
             ),
         )
 
@@ -206,7 +218,7 @@ def classify_cache_resume_tier(
         tier=ResumeCacheTier.T4,
         reason="train_hash_mismatch",
         resume_message=(
-            "Checkpoint hervat — nieuwe marktdata gedetecteerd; holdout opnieuw berekend "
-            "(curriculum gaat verder, geen wipe)."
+            "Resuming checkpoint — new market data detected. Holdout recomputed. "
+            "Curriculum continues. Nothing was wiped."
         ),
     )

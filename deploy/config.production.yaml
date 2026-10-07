@@ -35,5 +35,5 @@ models:
   grok_trader_1b: "qwen3.5-35b"
 
 trading:
-  instrument: "MES JUN26"
+  instrument: "MES"
   risk_profile: "Balanced"

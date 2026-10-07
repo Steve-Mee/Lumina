@@ -68,6 +68,19 @@ def clamp_expansion_steps(
     return clamped
 
 
+def same_tape_covers_rung(
+    *,
+    loaded_days: int,
+    requested_days: int,
+    has_train_ticks: bool,
+) -> bool:
+    """True when a refetch would redraw the tape the exam is already on.
+
+    A longer rung (90 → 180 → 365) is a real expansion. The same rung is not.
+    """
+    return bool(has_train_ticks) and int(requested_days) > 0 and int(loaded_days) >= int(requested_days)
+
+
 def expansion_ladder_at_max(
     current_step: int,
     expansion_steps: list[int] | None = None,

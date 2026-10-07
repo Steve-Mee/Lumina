@@ -20,6 +20,7 @@ export interface MaturationChromeState {
  */
 export function useMaturationChrome(): MaturationChromeState {
   const appPhase = useOnboardingStore((s) => s.phase);
+  const appSurface = useOnboardingStore((s) => s.payload?.app_surface);
   const birthSurface = useBirthStore((s) => s.birthSurface);
   const birthUiPhase = useBirthStore((s) => s.uiPhase);
 
@@ -70,8 +71,9 @@ export function useMaturationChrome(): MaturationChromeState {
         birthSurface,
         birthUiPhase,
         apiPhase,
+        appSurface,
       }),
-    [appPhase, birthSurface, birthUiPhase, apiPhase],
+    [appPhase, birthSurface, birthUiPhase, apiPhase, appSurface],
   );
 
   return {

@@ -86,7 +86,7 @@ export function CorePanelSlot({
         className,
       )}
     >
-      <div className="relative border-b border-white/5 px-4 py-3">
+      <div className="deck-panel-toolbar relative">
         <motion.div
           className="deck-panel-accent absolute inset-x-4 top-0 h-px origin-left"
           initial={reducedMotion ? { scaleX: 1 } : { scaleX: 0 }}

@@ -3,7 +3,8 @@ import { toast } from "sonner";
 
 import type { OnboardingPayload, OnboardingStepId } from "@/lib/onboardingSteps";
 import type { MutationDepth, OperationsMode } from "@/lib/botConfigDraft";
-import { mapAppPhase, resolvePhaseOnRefreshError, markPayloadBackendUnreachable, type AppPhase } from "@/lib/onboardingPhase";
+import { phaseHubWhenAwakeningNotStarted } from "@/lib/awakening/awakeningStartHandoff";
+import { mapAppPhase, resolvePhaseOnRefreshError, markPayloadBackendUnreachable, SETUP_REVIEW_STEPS, type AppPhase } from "@/lib/onboardingPhase";
 import { hydrateBotConfigDraftFromPayload } from "@/lib/botConfigDraft";
 import {
   fetchAndHydrateDeckApiKey,
@@ -350,7 +351,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
 
   refresh: async () => {
     try {
-      const payload = await fetchOnboardingStatus();
+      const payload = phaseHubWhenAwakeningNotStarted(await fetchOnboardingStatus());
       get().hydrateDraftFromPayload(payload);
       void get().importCredentialsFromEnv();
       const priorPhase = get().phase;
@@ -361,6 +362,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
         payload,
         error: activating ? preservedError : null,
         smartSetupRunning: payload.smart_setup_running,
+        birthPhaseCommitted: payload.birth.birth_exit_ok === true ? false : get().birthPhaseCommitted,
         currentStepIndex: priorPhase === "loading" ? 0 : get().currentStepIndex,
         phase: activating
           ? priorPhase === "loading"
@@ -608,10 +610,17 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
           }
         }
         if (!ready) {
+          const why = String(link.gate_reason || link.reason || "").trim();
           const message =
-            "Connecting to NinjaTrader Fabric failed or host/proof not ready. " +
-            "Start NinjaTrader (datafeed Connected), open New → LUMINA, then Setup → Test connection. " +
-            `(live=${link.level || "?"} ${link.meaning || link.reason || ""})`;
+            why === "FABRIC_LINK_STALE"
+              ? "De datalijn is groen, maar het bewijs is ouder dan 2 uur. " +
+                "Setup → Test connection. Een dichte beurs is geen reden om te wachten."
+              : why === "FABRIC_LINK_NOT_GREEN"
+                ? "De verbinding met NinjaTrader leeft, maar de historische-barproef is niet geslaagd. " +
+                  "Setup → Test connection. Birth leest oude bars, ook als de beurs dicht is."
+                : "Connecting to NinjaTrader Fabric failed or host/proof not ready. " +
+                  "Start NinjaTrader (datafeed Connected), open New → LUMINA, then Setup → Test connection. " +
+                  `(live=${link.level || "?"} ${link.meaning || link.reason || ""}${why ? ` · ${why}` : ""})`;
           startupSafeToastError(message);
           await failActivation(message, { setupReview: true });
           return false;
@@ -680,8 +689,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
         const artifactsOk = get().payload?.birth.artifacts_ok ?? false;
         if (artifactsOk) {
           toast.info(message);
-          get().completeBirthTransition();
-          set({ activating: false, activationStep: "done" });
+          set({ phase: "awakening", activating: false, activationStep: "done", birthPhaseCommitted: false });
           return true;
         }
         toast.info(message);
@@ -731,15 +739,3 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
     }
   },
 }));
-
-/** Steps shown when operator reopens setup from Birth (post-install connection & config). */
-export const SETUP_REVIEW_STEPS: OnboardingStepId[] = ["credentials", "configuration"];
-
-export function selectActiveSteps(payload: OnboardingPayload | null): OnboardingStepId[] {
-  if (useOnboardingStore.getState().setupReviewActive) {
-    return SETUP_REVIEW_STEPS;
-  }
-  if (!payload) return ["backend"];
-  if (payload.wizard_steps.length > 0) return payload.wizard_steps;
-  return payload.required_steps;
-}

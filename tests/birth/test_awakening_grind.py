@@ -109,6 +109,7 @@ def test_b_evaluator_cannot_train(tmp_path: Path) -> None:
             "close_reason": "stop",
             "gap": False,
             "plant_entry": False,
+            "entry_bar_index": index,
             "entry_price": 20000.0,
             "risk_usd": 50.0,
             "trade_r": -0.2,
@@ -116,7 +117,7 @@ def test_b_evaluator_cannot_train(tmp_path: Path) -> None:
             "regime": "NEUTRAL",
             "reward_on_close": -0.2,
         }
-        for _ in range(3)
+        for index in range(3)
     ]
 
     def _stub_rollout(**kwargs: object) -> SimpleNamespace:

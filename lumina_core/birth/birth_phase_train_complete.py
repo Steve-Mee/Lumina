@@ -131,11 +131,30 @@ def run_curriculum_and_complete(
                 "training_mode": training_mode,
             }
 
+    from lumina_core.birth.foundation_history import foundation_history_start_days
+    from lumina_core.birth.holdout_capacity_refusal import (
+        refuse_thin_holdout,
+        void_receipts_for_grown_tape,
+    )
+
+    void_receipts_for_grown_tape(host)
+    # Short fixtures omit requested_days. The live sport is 365; only that
+    # tape is refused before the stage loop. Freeze still refuses a thin holdout.
+    manifest = dict(getattr(host, "_data_manifest", None) or {})
+    try:
+        requested_days = int(manifest.get("requested_days") or 0)
+    except (TypeError, ValueError):
+        requested_days = 0
+    if requested_days >= foundation_history_start_days():
+        thin = refuse_thin_holdout(host, split, target_trades=int(cfg.trade_budget_cap))
+        if thin is not None:
+            return thin
+
     write_birth_progress(
         host.workspace_root,
         stage="training_running",
         phase="curriculum_stage",
-        message="Curriculum training starten…",
+        message="Starting curriculum training…",
         progress_pct=27.0,
         cumulative_trades=int(getattr(host, "cumulative_trades", 0) or 0),
         target_trades=cfg.trade_budget_cap,

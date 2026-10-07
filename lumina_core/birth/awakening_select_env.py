@@ -6,6 +6,9 @@ PPO.learn() hits process-R, MES $5, clip, qty=1, envelope, refractory.
 
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -13,6 +16,16 @@ import gymnasium as gym
 import numpy as np
 
 from lumina_core.birth.awakening_grind_run import occupancy_seed_kwargs, s5_envelope_kwargs
+from lumina_core.birth.awakening_train_reward import (
+    LIFT_WIN_BONUS_MIN_CLOSES,
+    PARENT_WR_PROBE_CLOSES,
+    day_mean_residual,
+    median_win_r,
+    resolve_entry_day,
+    train_winrate,
+)
+from lumina_core.birth.control_plane_yield import release_control_plane
+from lumina_core.logging_utils import get_logger
 from lumina_core.birth.bible_observation import bible_features_for_tick
 from lumina_core.birth.birth_constitution_guard import BirthConstitutionGuard
 from lumina_core.birth.birth_trade_geometry import calibrate_birth_stops
@@ -43,6 +56,15 @@ from lumina_core.rl.gym_stop_fill import birth_force_qty_one
 S5_STAGE = CurriculumStage.STAGE5_PROBE_HANDOFF
 POLICY_PARTICIPATION_BONUS_R = 0.05
 OVERHOLD_TAX_R = 0.01
+TAPE_A_MIN_START = 60
+PARENT_TAPE_A_WR_NAME = "awakening_parent_tape_a_wr.json"
+PARENT_TAPE_A_WR_SCHEMA = "awakening_parent_tape_a_wr_v1"
+BIRTH_TAPE_A_BOOK_NAME = "awakening_birth_tape_a_book.json"
+BIRTH_TAPE_A_BOOK_SCHEMA = "awakening_birth_tape_a_book_v1"
+BIRTH_TAPE_A_DAYS_NAME = "awakening_birth_tape_a_days.json"
+BIRTH_TAPE_A_DAYS_SCHEMA = "awakening_birth_tape_a_days_v1"
+
+logger = get_logger("lumina.birth.awakening_select_env")
 
 
 def select_runtime() -> SimpleNamespace:
@@ -103,6 +125,14 @@ class SelectPhysicsEnv(gym.Env):
         self.occupancy_in_band_seen = bool(envelope.get("occupancy_in_band_seen"))
         self.entry_is_plant = False
         self.policy_trades = 0
+        self.parent_tape_a_wr: float | None = None
+        self.birth_median_win_r: float | None = None
+        self.birth_day_means: dict[str, float] | None = None
+        self._entry_day: str | None = None
+        self._policy_rs: list[float] = []
+        self._policy_day_closes: list[tuple[str, float]] = []
+        self._policy_pnl_usd: list[float] = []
+        self.record_policy_days = False
         seed_win = envelope.get("occupancy_control_window")
         self._occ_win: list[int] = list(seed_win) if isinstance(seed_win, list) else []
 
@@ -112,6 +142,7 @@ class SelectPhysicsEnv(gym.Env):
         self.force_open_step = 0
         self.bars_in_position = 0
         self.entry_is_plant = False
+        self._entry_day = None
         return self.env.reset(**kwargs)
 
     def render(self) -> None:
@@ -218,9 +249,16 @@ class SelectPhysicsEnv(gym.Env):
         env.config.force_time_stop_this_step = False
         env.config.soft_prior_stops = True
         pos_after = int(getattr(env, "_position", 0) or 0)
-        if pos_before == 0 and pos_after != 0:
-            self.entry_is_plant = plant_tag_for_entry(force_open_this_step=force_open_this_step)
         closed = bool(info.get("trade_closed"))
+        opened = pos_after != 0 or closed
+        if pos_before == 0 and opened:
+            self.entry_is_plant = plant_tag_for_entry(force_open_this_step=force_open_this_step)
+        self._entry_day = resolve_entry_day(
+            self._entry_day,
+            row_sel,
+            flat_before=(pos_before == 0),
+            opened=opened,
+        )
         if closed:
             reason = str(info.get("close_reason") or "")
             regime = str(info.get("regime") or row_sel.get("regime") or "NEUTRAL")
@@ -234,8 +272,22 @@ class SelectPhysicsEnv(gym.Env):
 
                 reward = apply_hole_tax(process_r, reason, regime)
             plant_close = bool(self.entry_is_plant)
+            entry_day = self._entry_day
+            trade_r = _optional_float(info.get("trade_r"))
             if not plant_close:
+                parent_mean = _parent_day_mean(self.birth_day_means, entry_day)
+                residual = (
+                    day_mean_residual(trade_r, parent_mean)
+                    if trade_r is not None
+                    else None
+                )
+                if residual is not None:
+                    reward = residual
                 reward = float(reward) + policy_participation_bonus(envelope_flat_ratio)
+                if self.record_policy_days and trade_r is not None and entry_day:
+                    self._policy_day_closes.append((entry_day, float(trade_r)))
+                self._policy_rs.append(process_r)
+            self._entry_day = None
             info["select_step_r"] = float(reward)
         hold_cap = max(20, int(getattr(self.geometry, "hold_bars", 90) or 90))
         if not bool(self.entry_is_plant):
@@ -284,6 +336,434 @@ def policy_participation_bonus(occupancy: float | None) -> float:
     return 0.0
 
 
+def _optional_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parent_day_mean(book: dict[str, float] | None, day: str | None) -> float | None:
+    """Unknown book or unknown day stays unknown. A stored mean of 0 is real."""
+    if book is None or not day:
+        return None
+    if day not in book:
+        return None
+    return float(book[day])
+
+
+def parent_tape_a_wr_path(reports_dir: Path | str) -> Path:
+    return Path(reports_dir) / PARENT_TAPE_A_WR_NAME
+
+
+def birth_tape_a_book_path(reports_dir: Path | str) -> Path:
+    return Path(reports_dir) / BIRTH_TAPE_A_BOOK_NAME
+
+
+def birth_tape_a_days_path(reports_dir: Path | str) -> Path:
+    return Path(reports_dir) / BIRTH_TAPE_A_DAYS_NAME
+
+
+def bind_parent_tape_a_wr(
+    env: Any,
+    model: Any,
+    *,
+    parent_path: Path,
+    reports_dir: Path,
+    should_stop: Callable[[], bool] | None = None,
+    on_step: Callable[[int], None] | None = None,
+) -> tuple[float | None, bool]:
+    """Freeze the parent's tape-A winrate onto ``env``. Holdout is not an argument.
+
+    One measurement per parent sha. A cache hit does not step. ``stopped`` means
+    the caller asked to halt before the probe finished; that result is not cached.
+    """
+    from lumina_core.birth.birth_exit_policy_export import file_sha256
+
+    sha = file_sha256(Path(parent_path)) if Path(parent_path).is_file() else ""
+    cached = _read_parent_wr_cache(parent_tape_a_wr_path(reports_dir), sha)
+    if cached is not None:
+        env.parent_tape_a_wr = cached[0]
+        logger.info(
+            "awakening.parent_tape_a_wr cache wr=%s n=%s sha=%s",
+            cached[0],
+            cached[1],
+            sha[:12],
+        )
+        return cached[0], False
+    series, _days, stopped = _probe_parent_tape_a_series(
+        env,
+        model,
+        should_stop=should_stop,
+        on_step=on_step,
+    )
+    if stopped:
+        env.parent_tape_a_wr = None
+        return None, True
+    n_closes = len(series)
+    wr = train_winrate(series) if n_closes >= int(LIFT_WIN_BONUS_MIN_CLOSES) else None
+    _write_parent_wr_cache(
+        parent_tape_a_wr_path(reports_dir),
+        sha=sha,
+        wr=wr,
+        n_closes=n_closes,
+    )
+    env.parent_tape_a_wr = wr
+    logger.info(
+        "awakening.parent_tape_a_wr probed wr=%s n=%s sha=%s",
+        wr,
+        n_closes,
+        sha[:12],
+    )
+    return wr, False
+
+
+def bind_birth_tape_a_median(
+    env: Any,
+    model: Any,
+    *,
+    parent_path: Path,
+    reports_dir: Path,
+    should_stop: Callable[[], bool] | None = None,
+    on_step: Callable[[int], None] | None = None,
+) -> tuple[float | None, bool]:
+    """Predict-only median win of frozen Birth on tape A. Does not call ``learn``.
+
+    Cached by the pin zip sha. A missing or short book leaves the median unknown
+    and the train tax off. Holdout B is not an argument.
+    """
+    from lumina_core.birth.birth_exit_policy_export import file_sha256
+
+    sha = file_sha256(Path(parent_path)) if Path(parent_path).is_file() else ""
+    cached = _read_birth_book_cache(birth_tape_a_book_path(reports_dir), sha)
+    if cached is not None:
+        env.birth_median_win_r = cached[0]
+        logger.info(
+            "awakening.birth_tape_a_median cache median=%s sha=%s",
+            cached[0],
+            sha[:12],
+        )
+        return cached[0], False
+    series, _days, stopped = _probe_parent_tape_a_series(
+        env,
+        model,
+        should_stop=should_stop,
+        on_step=on_step,
+    )
+    if stopped:
+        env.birth_median_win_r = None
+        return None, True
+    median = _median_if_known(series)
+    _write_birth_book_cache(
+        birth_tape_a_book_path(reports_dir),
+        sha=sha,
+        median_win_r=median,
+        n_closes=len(series),
+        n_wins=sum(1 for r in series if float(r) > 0.0),
+    )
+    env.birth_median_win_r = median
+    logger.info(
+        "awakening.birth_tape_a_median probed median=%s n=%s sha=%s",
+        median,
+        len(series),
+        sha[:12],
+    )
+    return median, False
+
+
+def bind_birth_tape_a_days(
+    env: Any,
+    model: Any,
+    *,
+    parent_path: Path,
+    reports_dir: Path,
+    should_stop: Callable[[], bool] | None = None,
+    on_step: Callable[[int], None] | None = None,
+    step_cap: int | None = None,
+) -> tuple[dict[str, float] | None, bool]:
+    """Predict-only Birth trade_R by session day on tape A. Does not call ``learn``.
+
+    Cached by the pin zip sha. A stopped walk is not cached. A day with no
+    parent close stays absent. Holdout B is not an argument.
+    """
+    from lumina_core.birth.birth_exit_policy_export import file_sha256
+
+    sha = file_sha256(Path(parent_path)) if Path(parent_path).is_file() else ""
+    cached = _read_birth_days_cache(birth_tape_a_days_path(reports_dir), sha)
+    if cached is not None:
+        env.birth_day_means = cached
+        logger.info(
+            "awakening.birth_tape_a_days cache days=%s sha=%s",
+            len(cached),
+            sha[:12],
+        )
+        return cached, False
+    # PPO learns `step_cap` bars from the reset. Day means outside that window
+    # never meet a child close. None still walks the whole tape.
+    _series, closes, stopped = _probe_parent_tape_a_series(
+        env,
+        model,
+        should_stop=should_stop,
+        on_step=on_step,
+        close_cap=0,
+        step_cap=0 if step_cap is None else int(step_cap),
+        start_index=0,
+    )
+    if stopped:
+        env.birth_day_means = None
+        return None, True
+    means = _day_means(closes)
+    _write_birth_days_cache(
+        birth_tape_a_days_path(reports_dir),
+        sha=sha,
+        means=means,
+        n_closes=len(closes),
+    )
+    env.birth_day_means = means
+    logger.info(
+        "awakening.birth_tape_a_days probed days=%s closes=%s sha=%s",
+        len(means),
+        len(closes),
+        sha[:12],
+    )
+    return means, False
+
+
+def _day_means(closes: list[tuple[str, float]]) -> dict[str, float]:
+    buckets: dict[str, list[float]] = {}
+    for day, trade_r in closes:
+        if not day:
+            continue
+        buckets.setdefault(str(day), []).append(float(trade_r))
+    return {day: sum(values) / len(values) for day, values in buckets.items() if values}
+
+
+def _median_if_known(series: list[float]) -> float | None:
+    from lumina_core.birth.awakening_train_reward import MEDIAN_WIN_TAX_MIN_CLOSES, MEDIAN_WIN_TAX_MIN_WINS
+
+    if len(series) < int(MEDIAN_WIN_TAX_MIN_CLOSES):
+        return None
+    if sum(1 for r in series if float(r) > 0.0) < int(MEDIAN_WIN_TAX_MIN_WINS):
+        return None
+    return median_win_r(series)
+
+
+def _read_parent_wr_cache(path: Path, sha: str) -> tuple[float | None, int] | None:
+    if not sha or not path.is_file():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    if not isinstance(raw, dict) or str(raw.get("parent_sha256") or "") != sha:
+        return None
+    if raw.get("schema") != PARENT_TAPE_A_WR_SCHEMA or "wr" not in raw:
+        return None
+    n_closes = int(raw.get("n_closes") or 0)
+    wr_raw = raw.get("wr")
+    if wr_raw is None:
+        return None, n_closes
+    try:
+        return float(wr_raw), n_closes
+    except (TypeError, ValueError):
+        return None
+
+
+def _write_parent_wr_cache(
+    path: Path,
+    *,
+    sha: str,
+    wr: float | None,
+    n_closes: int,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema": PARENT_TAPE_A_WR_SCHEMA,
+        "parent_sha256": sha,
+        "wr": wr,
+        "n_closes": int(n_closes),
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def _read_birth_days_cache(path: Path, sha: str) -> dict[str, float] | None:
+    """``None`` is a miss. An empty dict is a probed book with no dated closes."""
+    if not sha or not path.is_file():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    if not isinstance(raw, dict) or str(raw.get("parent_sha256") or "") != sha:
+        return None
+    if raw.get("schema") != BIRTH_TAPE_A_DAYS_SCHEMA or not isinstance(raw.get("days"), dict):
+        return None
+    means: dict[str, float] = {}
+    for day, value in raw["days"].items():
+        if not isinstance(day, str) or len(day) < 10:
+            continue
+        try:
+            means[day[:10]] = float(value)
+        except (TypeError, ValueError):
+            return None
+    return means
+
+
+def _write_birth_days_cache(
+    path: Path,
+    *,
+    sha: str,
+    means: dict[str, float],
+    n_closes: int,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema": BIRTH_TAPE_A_DAYS_SCHEMA,
+        "parent_sha256": sha,
+        "n_closes": int(n_closes),
+        "days": {day: float(mean) for day, mean in sorted(means.items())},
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def _read_birth_book_cache(path: Path, sha: str) -> tuple[float | None] | None:
+    """``None`` is a miss. A tuple holds the cached median, which may itself be unknown."""
+    if not sha or not path.is_file():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    if not isinstance(raw, dict) or str(raw.get("parent_sha256") or "") != sha:
+        return None
+    if raw.get("schema") != BIRTH_TAPE_A_BOOK_SCHEMA or "median_win_r" not in raw:
+        return None
+    median_raw = raw.get("median_win_r")
+    if median_raw is None:
+        return (None,)
+    try:
+        return (float(median_raw),)
+    except (TypeError, ValueError):
+        return None
+
+
+def _write_birth_book_cache(
+    path: Path,
+    *,
+    sha: str,
+    median_win_r: float | None,
+    n_closes: int,
+    n_wins: int,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema": BIRTH_TAPE_A_BOOK_SCHEMA,
+        "parent_sha256": sha,
+        "median_win_r": median_win_r,
+        "n_closes": int(n_closes),
+        "n_wins": int(n_wins),
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def _capture_train_counters(env: Any) -> dict[str, Any]:
+    snap: dict[str, Any] = {}
+    for name in (
+        "policy_trades",
+        "range_flat_bars",
+        "range_total_signals",
+        "occupancy_in_band_seen",
+    ):
+        if hasattr(env, name):
+            snap[name] = getattr(env, name)
+    if hasattr(env, "_occ_win"):
+        snap["_occ_win"] = list(env._occ_win)
+    if hasattr(env, "_policy_rs"):
+        snap["_policy_rs"] = list(env._policy_rs)
+    if hasattr(env, "_policy_day_closes"):
+        snap["_policy_day_closes"] = list(env._policy_day_closes)
+    if hasattr(env, "_policy_pnl_usd"):
+        snap["_policy_pnl_usd"] = list(env._policy_pnl_usd)
+    if hasattr(env, "record_policy_days"):
+        snap["record_policy_days"] = bool(env.record_policy_days)
+    if hasattr(env, "_entry_day"):
+        snap["_entry_day"] = env._entry_day
+    return snap
+
+
+def _restore_train_counters(env: Any, snap: dict[str, Any]) -> None:
+    for name, value in snap.items():
+        if name in {"_occ_win", "_policy_rs", "_policy_pnl_usd", "_policy_day_closes"}:
+            setattr(env, name, list(value))
+        else:
+            setattr(env, name, value)
+
+
+def _probe_parent_tape_a_series(
+    env: Any,
+    model: Any,
+    *,
+    should_stop: Callable[[], bool] | None,
+    on_step: Callable[[int], None] | None,
+    close_cap: int | None = None,
+    step_cap: int = 0,
+    start_index: int | None = None,
+) -> tuple[list[float], list[tuple[str, float]], bool]:
+    """Predict-only walk on the train env. Does not call ``learn``.
+
+    The second list is ``(session_day, trade_r)`` when the env records it.
+    A shaped gym reward is not that trade_R.
+    """
+    snap = _capture_train_counters(env)
+    stopped = False
+    if hasattr(env, "record_policy_days"):
+        env.record_policy_days = True
+    try:
+        reset_out = env.reset()
+        if hasattr(env, "_policy_day_closes"):
+            env._policy_day_closes = []
+        obs = reset_out[0] if isinstance(reset_out, tuple) else reset_out
+        enriched = getattr(env, "enriched", None)
+        n_bars = len(enriched) if isinstance(enriched, list) else 0
+        inner = getattr(env, "env", None)
+        if inner is not None and hasattr(inner, "_idx") and n_bars > 0:
+            start = TAPE_A_MIN_START if start_index is None else int(start_index)
+            inner._idx = min(max(0, start), n_bars - 1)
+        limit = max(1, n_bars)
+        cap = int(PARENT_WR_PROBE_CLOSES if close_cap is None else close_cap)
+        bar_cap = int(step_cap)
+        steps = 0
+        while (
+            steps < limit
+            and (cap <= 0 or len(getattr(env, "_policy_rs", [])) < cap)
+            and (bar_cap <= 0 or steps < bar_cap)
+        ):
+            if should_stop is not None and should_stop():
+                stopped = True
+                break
+            predicted = model.predict(obs, deterministic=True)
+            action = predicted[0] if isinstance(predicted, tuple) else predicted
+            stepped = env.step(action)
+            obs = stepped[0]
+            terminated = bool(stepped[2]) if len(stepped) > 2 else False
+            truncated = bool(stepped[3]) if len(stepped) > 3 else False
+            steps += 1
+            release_control_plane(steps)
+            if on_step is not None and (steps == 1 or steps % 1024 == 0):
+                on_step(steps)
+            if terminated or truncated:
+                break
+        closes = list(getattr(env, "_policy_day_closes", []))
+        return list(getattr(env, "_policy_rs", [])), closes, stopped
+    finally:
+        _restore_train_counters(env, snap)
+        reset = getattr(env, "reset", None)
+        if callable(reset):
+            reset()
+
+
 def make_select_train_env(
     data: list[dict[str, Any]],
     *,
@@ -328,6 +808,9 @@ __all__ = [
     "OVERHOLD_TAX_R",
     "POLICY_PARTICIPATION_BONUS_R",
     "SelectPhysicsEnv",
+    "bind_birth_tape_a_days",
+    "bind_birth_tape_a_median",
+    "bind_parent_tape_a_wr",
     "make_select_train_env",
     "overhold_train_tax",
     "policy_participation_bonus",

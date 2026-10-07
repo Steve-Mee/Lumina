@@ -53,8 +53,7 @@ SEGMENT_ID_KEY = "_segment_id"
 # Cost model defaults (MES SIM — truthful friction, not a loophole).
 MES_POINT_VALUE_USD = 5.0
 MES_TICK_SIZE = 0.25
-DEFAULT_FEE_RT_USD = 2.50
-DEFAULT_SLIP_TICKS_PER_SIDE = 1.0
+
 # After costs: net_win / |net_loss| must be ≥ this (still lose more often if WR low).
 MIN_NET_RR_AFTER_COST = 0.80
 # Target gross RR when lifting for cost viability (still ≥ 1.25 clamp).
@@ -194,19 +193,20 @@ def median_tick_price(ticks: list[dict[str, Any]] | None) -> float:
 
 def estimate_round_trip_cost_usd(
     *,
-    price: float = 7500.0,
-    point_value: float = MES_POINT_VALUE_USD,
-    tick_size: float = MES_TICK_SIZE,
-    fee_rt_usd: float = DEFAULT_FEE_RT_USD,
-    slip_ticks_per_side: float = DEFAULT_SLIP_TICKS_PER_SIDE,
+    price: float = 0.0,
+    instrument: str = "MES",
+    qty: int = 1,
+    plan: str | None = None,
 ) -> float:
-    """Truthful MES-like round-trip friction (entry+exit slip + fees)."""
-    px = max(1.0, float(price))
-    tick_val = max(1e-9, float(point_value) * float(tick_size))
-    slip = 2.0 * max(0.0, float(slip_ticks_per_side)) * tick_val
-    fees = max(0.0, float(fee_rt_usd))
-    _ = px  # price reserved for future % fee models
-    return float(slip + fees)
+    """Round-trip NinjaTrader all-in for ``qty`` contracts. No modeled slippage tick.
+
+    ``price`` is accepted so older callers keep working. The card is per contract,
+    not a percent of price.
+    """
+    from lumina_core.market.nt_fees import round_turn_fee_usd
+
+    _ = price
+    return float(round_turn_fee_usd(instrument, qty, plan=plan))
 
 
 def economics_after_cost(
@@ -215,12 +215,21 @@ def economics_after_cost(
     *,
     price: float,
     cost_usd: float | None = None,
-    point_value: float = MES_POINT_VALUE_USD,
+    point_value: float | None = None,
+    instrument: str = "MES",
+    qty: int = 1,
 ) -> tuple[float, float, float, float, float]:
     """Return (net_win, net_loss_abs, net_rr, breakeven_wr, cost_usd)."""
+    from lumina_core.market.nt_fees import point_value_usd
+
     px = max(1.0, float(price))
-    pv = max(1e-9, float(point_value))
-    cost = float(cost_usd) if cost_usd is not None else estimate_round_trip_cost_usd(price=px)
+    pv = float(point_value) if point_value is not None else float(point_value_usd(instrument))
+    pv = max(1e-9, pv)
+    cost = (
+        float(cost_usd)
+        if cost_usd is not None
+        else estimate_round_trip_cost_usd(instrument=instrument, qty=qty)
+    )
     risk_usd = max(0.0, float(stop_pct) * px * pv)
     tgt_usd = max(0.0, float(target_pct) * px * pv)
     net_win = tgt_usd - cost

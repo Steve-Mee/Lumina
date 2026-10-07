@@ -20,7 +20,7 @@ Playground exit is fail-closed AND. Soft-complete may warn on the hub. It must n
 
 | Invariant | Law |
 |-----------|-----|
-| Entry | Awakening completed per ADR-0049. Birth freeze intact. Policy = awakening child SHA, not frozen Birth π* |
+| Entry | Awakening completed per the current-law box in ADR-0049 (First Watch). Birth freeze intact. The loaded zip is the sealed baseline. That zip may be the Birth plant. A seal whose zip or ledgers no longer match their hashes is not an entry |
 | Habitat | Command Deck + NT SIM. Mode ∈ {`sim`, `sim_real_guard`}. REAL = halt |
 | Envelope | Operator-sealed SIM risk envelope. Missing file is **unsealed** (fail-closed). Legacy “missing ⇒ sealed” does not pass Playground |
 | Deck live | Operator opened the deck. Runner start is not `deck_unlocked` |
@@ -60,6 +60,47 @@ SSOT: `lumina_core/maturity/playground/law.py`. Progress: `state/lumina_playgrou
 3. Pass on envelope + one fill — rejected; crawl is a skill sample, 150 is already law.
 4. Soft-complete lab stamp — rejected in production (same as ADR-0049).
 5. Pull Sharpe/DD or cert OOS into Playground — rejected; those walls have homes.
+
+## Amendment (2026-09-25) — clock, seal, remote operator
+
+The AND above does not move.
+
+- A stall is three sustained windows of 30 minutes (NT/fabric explicitly down, occupancy under 0.25 only after 500 bars, or a 500-bar run of orders with no venue fill). A flat `n_P` and a short outage are not a stall. A healthy window clears the count. `HOLD` skips one window. Three windows halt incomplete.
+- `deck_live` is set by the Command Deck POST or by Telegram `DECK` from the configured chat. The runner still must not set it.
+- The seal stores `daily_loss_cap` (negative floor) and `max_total_open_risk`. A boolean without those numbers is unsealed. Breach is engine telemetry (`daily_pnl` / open risk), latched. Missing telemetry while bars flow, or while `n_P > 0` and the file is absent, blocks the pass.
+- Breakeven for the gate is the median stop and target on policy closes, through `economics_after_cost`. No closes, or a close without that geometry, leaves BE missing.
+- The crawler zip must match `awakening_live_pi_star.json` `sha256`.
+- At `n_P` 150, 300, 450, … if economics still fail, Telegram asks `CONTINUE` or `STOP`. Silence for one window halts incomplete. `CONTINUE` is not a pass.
+- Operator verbs on the one Telegram poller: `STATUS`, `PAUSE`, `RESUME`, `STOP`, `DECK`, `CAP`, `SEAL`, `CONTINUE`, `HOLD`. While this clock is running the poll interval is 20s. It stays 300s otherwise.
+
+## Amendment (2026-09-28) — open chart and portfolio floor
+
+The AND above does not move. REAL is unchanged.
+
+- The crawl instrument is the contract selected on an open NinjaTrader chart whose root matches the configured instrument. `MES SEP26` in config with a chart on `MES DEC26` follows the chart. No open chart for that root means no order on a guessed month. Calendar roll is only the fallback when the chart selector cannot be read.
+- In SIM, the daily floor is 2% of measured Sim equity (`source=portfolio_fraction`). The dollar amount moves when equity moves by 5% or more. Unreadable equity stays unsealed. The operator does not type the floor. The SIM hard-risk cap follows that budget and never raises open risk above it. REAL caps are not written.
+
+## Amendment (2026-10-02) — Playground is the school
+
+The operator corrected the role. The economic AND (n_P ≥ 150, WR ≥ BE, mean R ≥ 0) moves to Apprenticeship. It is not deleted.
+
+Playground exit is five consecutive green session days of the **living** SIM policy. A day is green only from venue policy closes on this tape: at least one close, expectancy above 0, no constitution event. Friday to Monday counts. A weekend is not a gap. A SIM cash refill is not a day and does not delete the tape.
+
+Learning runs in the shadow book. A shadow row has no order id and cannot enter the tape. Promotion into the living policy requires 150 resolved shadow trades, mean R above 0, above the living book, and above first-touch, on a pre-registered method. Promotion resets the green-day streak. It is not a pass. Proving Ground and REAL refuse promotion.
+
+Flat remains a legal lesson. The decoder is not flipped to manufacture a fill.
+
+## Amendment (2026-10-04) — a green day is net of the NinjaTrader card
+
+The five-day count does not move. A day is green only when the net sum of the closed trades that are allowed to color it is above zero and the session has no constitution event. Net is the fill result minus the round-trip fee in ADR-0055. A win that does not clear that fee is not green. A SIM cash refill is still not a day. Slippage is not subtracted a second time: it is already in the fill.
+
+## Amendment (2026-10-04) — ADR-0056 replaces the living-policy hand and the 150-trade exam
+
+ADR-0056 is the text that is built. On the points below, this ADR yields.
+
+- The five green days are the venue fills of the one promoted name, not of the Birth or Awakening policy. The clock starts when that name is allowed to send orders. Before that, Playground sends no SIM order. The frozen policy does not trade.
+- Promotion is that name's own forward bar, at least 30 resolved forward attempts across as many sessions as it takes, under ADR-0056. The requirement of 150 resolved shadows inside one Chicago date is buried. So is the wipe of the only evidence list.
+- H1, H2, and Null B are not the search. The net-of-fee rule in the amendment above stays. Its subject is the promoted name's fills.
 
 ## Links
 

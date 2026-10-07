@@ -11,10 +11,10 @@ from lumina_core.birth.foundation_metrics import (
     S3_OCCUPANCY_MAX,
     S3_OCCUPANCY_MIN,
 )
-from lumina_core.maturity.apprenticeship.days import N_D_MIN
 from lumina_core.maturity.post_birth_skill_gates import (
     RISK_DD_MAX_PCT,
     RISK_SHARPE_MIN,
+    economic_viability,
     risk_discipline,
 )
 
@@ -28,6 +28,9 @@ class ApprenticeshipSnapshot:
     n_plant: int = 0
     n_d: int = 0
     occupancy: float | None = None
+    skill_wr: float | None = None
+    breakeven_wr: float | None = None
+    mean_r: float | None = None
     median_loss_r: float | None = None
     sharpe: float | None = None
     dd_pct: float | None = None
@@ -69,7 +72,7 @@ def evaluate_apprenticeship_pass(snap: ApprenticeshipSnapshot) -> Apprenticeship
     proofs: list[str] = []
     n_a = int(snap.n_a)
     n_d = int(snap.n_d)
-    clock_open = n_a < N_A_MIN or n_d < N_D_MIN
+    clock_open = n_a < N_A_MIN
 
     if not snap.playground_completed:
         blockers.append("playground_not_completed")
@@ -117,10 +120,15 @@ def evaluate_apprenticeship_pass(snap: ApprenticeshipSnapshot) -> Apprenticeship
     else:
         proofs.append("n_A>=150")
 
-    if n_d < N_D_MIN:
-        blockers.append(f"n_D={n_d} < {N_D_MIN}")
+    econ = economic_viability(
+        mean_r=snap.mean_r,
+        skill_wr=snap.skill_wr,
+        breakeven_wr=snap.breakeven_wr,
+    )
+    if not econ.passed:
+        blockers.extend(econ.blockers or ["economic_viability"])
     else:
-        proofs.append("n_D>=5")
+        proofs.append("economic_viability")
 
     occ = snap.occupancy
     if occ is None:
@@ -185,8 +193,12 @@ def evaluate_apprenticeship_pass(snap: ApprenticeshipSnapshot) -> Apprenticeship
         "risk_events": int(snap.risk_events),
         "var_breach_count": int(snap.var_breach_count),
         "daily_kill": bool(snap.daily_kill),
+        "skill_wr": snap.skill_wr,
+        "breakeven_wr": snap.breakeven_wr,
+        "mean_r": snap.mean_r,
+        "economic_viability": econ.to_dict(),
         "risk_discipline": risk.to_dict(),
-        "note": "Apprenticeship: walk — multi-day SIM under REAL rules (ADR-0051)",
+        "note": "Apprenticeship exam: own tape, WR≥BE, mean R≥0, Sharpe and DD (ADR-0051)",
     }
     return ApprenticeshipPassResult(
         passed=passed,
@@ -214,6 +226,9 @@ def snapshot_from_workspace(workspace_root: Path | str) -> ApprenticeshipSnapsho
         n_plant=int(metrics.get("n_plant") or 0),
         n_d=int(days.get("n_d") or 0),
         occupancy=_f(prog.get("occupancy")),
+        skill_wr=_f(metrics.get("skill_wr")),
+        breakeven_wr=_apprenticeship_be(root),
+        mean_r=_f(metrics.get("mean_r")),
         median_loss_r=_f(metrics.get("median_loss_r")),
         sharpe=_f(days.get("sharpe")),
         dd_pct=_f(days.get("dd_pct")),
@@ -252,6 +267,15 @@ def _playground_child_loaded(snap: ApprenticeshipSnapshot) -> bool:
     if child != play:
         return False
     return child != birth
+
+
+def _apprenticeship_be(root: Path) -> float | None:
+    from lumina_core.maturity.apprenticeship.tape import tape_breakeven_wr
+
+    be, source = tape_breakeven_wr(root)
+    if source != "tape":
+        return None
+    return be
 
 
 def _f(value: Any) -> float | None:

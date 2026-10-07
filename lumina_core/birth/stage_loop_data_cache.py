@@ -13,6 +13,7 @@ from lumina_core.birth.foundation_stages import refresh_fail_closed_ticks_after_
 from lumina_core.birth.data_expansion import (
     clamp_expansion_steps,
     expansion_ladder_at_max,
+    same_tape_covers_rung,
 )
 from lumina_core.birth.news_enricher import enrich_ticks_with_news
 from lumina_core.birth.stall_remediation import curate_buffer_top_quartile
@@ -197,6 +198,12 @@ class StageLoopDataCacheMixin(StageLoopMixinBase):
                 min_net = 0.01
         else:
             min_net = 0.01
+        def _oracle_progress(phase: str, done: int, total: int) -> None:
+            self._write_progress(
+                phase="oracle_mining",
+                message=f"Oracle pattern scan… {phase} {done:,}/{total:,}",
+            )
+
         mine_result = _mine_winning_patterns(
             ticks=pool,
             stage=self.stage,
@@ -211,6 +218,7 @@ class StageLoopDataCacheMixin(StageLoopMixinBase):
             net_of_cost=True,
             min_net_pnl_usd=min_net,
             min_pnl_usd=min_net,
+            on_progress=_oracle_progress,
         )
         found = len(mine_result.patterns)
         self.patterns_mined += found
@@ -289,8 +297,25 @@ class StageLoopDataCacheMixin(StageLoopMixinBase):
             validation_pct=pct,
         )
 
+    def _loaded_tape_days(self) -> int:
+        manifest = getattr(self.host, "_data_manifest", None) or {}
+        loaded = 0
+        if isinstance(manifest, dict):
+            for key in ("actual_calendar_days", "days_loaded"):
+                try:
+                    loaded = max(loaded, int(manifest.get(key) or 0))
+                except (TypeError, ValueError):
+                    continue
+        try:
+            loaded = max(loaded, int(getattr(self, "data_days_loaded", 0) or 0))
+        except (TypeError, ValueError):
+            pass
+        return loaded
+
     def _maybe_expand_data(self) -> bool:
         if self.data_exhausted or getattr(self, "_foundation_eval_only", False):
+            return False
+        if getattr(self, "_same_tape_locked", False):
             return False
         max_days = int(self.host.birth_config.max_real_days)
         steps = clamp_expansion_steps(
@@ -299,6 +324,30 @@ class StageLoopDataCacheMixin(StageLoopMixinBase):
         )
         prior_train = list(self.active_train) if self.active_train else []
         prior_count = len(prior_train)
+        if steps and prior_train:
+            step_index = min(max(0, int(self.expansion_step)), len(steps) - 1)
+            requested_days = int(steps[step_index])
+            loaded_days = self._loaded_tape_days()
+            if same_tape_covers_rung(
+                loaded_days=loaded_days,
+                requested_days=requested_days,
+                has_train_ticks=True,
+            ):
+                self._same_tape_locked = True
+                logger.info(
+                    "birth.data_expansion.same_tape loaded_days=%s requested_days=%s train_ticks=%s",
+                    loaded_days,
+                    requested_days,
+                    prior_count,
+                )
+                self._write_progress(
+                    phase="curriculum_learning",
+                    message=(
+                        f"Same data line ({loaded_days} days, {prior_count:,} train ticks). "
+                        "No second download. Checking the stage gate."
+                    ),
+                )
+                return False
         if expansion_ladder_at_max(
             self.expansion_step,
             steps,

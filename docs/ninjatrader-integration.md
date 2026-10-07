@@ -42,7 +42,7 @@ The Add-on connects **only to The Core**, never to the Tauri Command Deck direct
 | Component | Role | Location |
 |-----------|------|----------|
 | **Execution Fabric (C#)** | gRPC host + safety + audit inside NT8 or SimHost | `integrations/ninjatrader8/Lumina.Execution.Fabric/` |
-| **NT product bridge** | `NtAccountOrderGateway` + historical/live MD (product build only) | `LuminaNt8AddOn` → `Lumina.Fabric.NtBridge.dll` |
+| **NT product bridge** | `NtAccountOrderGateway` + historical `BarsRequest` + live quotes + live native Last `BarsRequest.Update` (`NtLiveBarProvider`, ADR-0053/0054, periods 1/5/15/30/60/240) | `LuminaNt8AddOn` → `Lumina.Fabric.NtBridge.dll` |
 | **Source AddOn entry** | `AddOnBase` lifecycle via reflection → `FabricNtHost` | `deploy/AddOns/@LuminaFabricHost.cs` (compiled into NinjaTrader.Custom) |
 | **Python Brain client** | `FabricGrpcClient` + supervisor + dual-plane diagnostics | `lumina_core/broker/ninjatrader/` |
 | **Product config** | `broker.live_provider=ninjatrader`, Sim101, localhost `:50051` | `config.yaml` + `%APPDATA%\LUMINA\fabric.json` |

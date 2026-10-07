@@ -1,5 +1,4 @@
 """ensure_fabric_token_aligned_and_live unit tests."""
-
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -147,3 +146,16 @@ def test_ensure_auth_failed_needs_nt_restart(monkeypatch: pytest.MonkeyPatch) ->
     assert out["code"] == "AUTH_FAILED"
     assert out["needs_nt_restart"] is True
     assert inv.called
+
+
+@pytest.mark.unit
+def test_status_poll_does_not_force_align_while_still_connecting() -> None:
+    from lumina_os.backend.setup_endpoints_fabric import _status_should_force_align
+
+    assert _status_should_force_align({}) is False
+    assert _status_should_force_align({"last_error_code": ""}) is False
+    assert _status_should_force_align({"last_error_code": "CONNECTION_REFUSED"}) is False
+    assert _status_should_force_align({"auth_ok": True, "last_error_code": "AUTH_FAILED"}) is False
+    assert _status_should_force_align({"last_error_code": "AUTH_FAILED"}) is True
+    assert _status_should_force_align({"last_error_code": "token_empty"}) is True
+    assert _status_should_force_align({"last_error_code": "AUTH_TIMEOUT"}) is True

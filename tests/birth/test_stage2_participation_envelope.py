@@ -857,6 +857,24 @@ def test_s3_cumulative_over_band_still_force_open() -> None:
 
 
 @pytest.mark.unit
+def test_awakening_eval_forbids_force_open_after_skill_floor() -> None:
+    d = decide_stage2_participation(
+        enabled=True,
+        range_flat_ratio=0.80,
+        range_total_signals=500,
+        position=0,
+        bars_in_position=0,
+        band_lo=0.25,
+        band_hi=0.75,
+        hysteresis=0.0,
+        min_signals=50,
+        allow_force_open=False,
+    )
+    assert d.mode == MODE_PASSTHROUGH
+    assert d.reason == "over_flat_force_open_forbidden"
+
+
+@pytest.mark.unit
 def test_participation_telemetry_dumps_passthrough() -> None:
     telem = participation_telemetry(
         {

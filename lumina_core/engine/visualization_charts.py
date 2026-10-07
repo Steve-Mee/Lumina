@@ -6,12 +6,11 @@ import json
 import queue
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from PIL import Image
@@ -30,7 +29,7 @@ def _live_feed_throttled(logger: Any, key: str, msg: str) -> None:
     logger.info(msg)
 
 class VisualizationChartsMixin:
-    def _create_photo_image(pil_img: Image.Image) -> Any:
+    def _create_photo_image(self, pil_img: Image.Image) -> Any:
         from PIL import ImageTk
 
         return ImageTk.PhotoImage(pil_img)
@@ -39,7 +38,7 @@ class VisualizationChartsMixin:
         path = Path(self.engine.config.live_jsonl)
         line = json.dumps(
             {
-                "ts": datetime.now().isoformat(timespec="seconds"),
+                "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "event": "chart_frame",
                 "b64_chars": int(base64_char_len),
             },
@@ -67,25 +66,35 @@ class VisualizationChartsMixin:
         bars = len(self.engine.ohlc_1min)
         app.logger.info("LIVE_FEED_CHART_GEN_ENTER,ohlc_bars=%s", bars)
 
+        from lumina_core.engine.nt_ohlc_frames import chart_frames, operator_listing
+
         with self.engine.live_data_lock:
-            if len(self.engine.ohlc_1min) < 200:
+            closed_n = len(self.engine.ohlc_1min)
+            if closed_n < 200:
                 app.logger.info(
                     "LIVE_FEED_CHART_GEN_ABORT,stage=ohlc_gate,reason=insufficient_data,bars=%s,min_required=200",
-                    len(self.engine.ohlc_1min),
+                    closed_n,
                 )
                 app.logger.info("CHART_GEN_SKIPPED,reason=insufficient_data")
+                self._note_screen_status(
+                    f"Nog {closed_n}/200 gesloten NT 1m-bars voor de grafiek"
+                )
                 return None
-            df = self.engine.ohlc_1min.copy()
-            df["timestamp"] = pd.to_datetime(df["timestamp"])
-            df.set_index("timestamp", inplace=True)
+            closed_1m = self.engine.ohlc_1min.copy()
+            recent_closed = closed_1m.iloc[-60:]
+        frames = chart_frames(self.engine.market_data)
+        df = frames.get("1min")
+        if df is None or df.empty:
+            self._note_screen_status("Geen native NT 1m bars voor de grafiek")
+            return None
 
         tfs = [
-            ("1min", "1min"),
-            ("5min", "5min"),
-            ("15min", "15min"),
-            ("30min", "30min"),
-            ("60min", "60min"),
-            ("240min", "240min"),
+            ("1min", "1m"),
+            ("5min", "5m"),
+            ("15min", "15m"),
+            ("30min", "30m"),
+            ("60min", "60m"),
+            ("240min", "240m"),
         ]
         fig = make_subplots(
             rows=3,
@@ -96,27 +105,34 @@ class VisualizationChartsMixin:
         )
 
         row_col = [(1, 1), (1, 2), (2, 1), (2, 2), (3, 1), (3, 2)]
-        recent = self.engine.ohlc_1min.iloc[-60:]
-        swing_low = float(recent["low"].min())
-        swing_high = float(recent["high"].max())
+        swing_low = float(recent_closed["low"].min()) if not recent_closed.empty else 0.0
+        swing_high = float(recent_closed["high"].max()) if not recent_closed.empty else 0.0
         diff = swing_high - swing_low
         fib_levels: dict[str, float] = {}
-        for ratio in [0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0]:
-            fib_levels[str(ratio)] = round(swing_high - diff * ratio, 2)
+        if diff > 0:
+            for ratio in [0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0]:
+                fib_levels[str(ratio)] = round(swing_high - diff * ratio, 2)
 
-        structure = self.engine.detect_market_structure(self.engine.ohlc_1min)
+        structure = self.engine.detect_market_structure(closed_1m)
 
-        for i, (tf_name, freq) in enumerate(tfs):
-            res = (
-                df.resample(freq)
-                .agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"})
-                .dropna()
-            )
-            if len(res) < 20:
-                continue
+        for i, (tf_name, _period) in enumerate(tfs):
             row, col = row_col[i]
             subplot_row: Any = row
             subplot_col: Any = col
+            res = frames.get(tf_name)
+            if res is None or res.empty:
+                fig.add_annotation(
+                    text="geen NT bars",
+                    xref="x domain",
+                    yref="y domain",
+                    x=0.5,
+                    y=0.5,
+                    showarrow=False,
+                    font=dict(color="#c8c8c8", size=12),
+                    row=row,
+                    col=col,
+                )
+                continue
 
             fig.add_trace(
                 go.Candlestick(
@@ -138,7 +154,7 @@ class VisualizationChartsMixin:
                 col=col,
             )
 
-            if tf_name in ["1min", "15min"]:
+            if tf_name == "1min":
                 for ratio, price in fib_levels.items():
                     if str(ratio) in {"0.382", "0.618", "0.786"}:
                         fig.add_hline(
@@ -150,7 +166,7 @@ class VisualizationChartsMixin:
                             col=subplot_col,
                         )
 
-            if ai_fibs and tf_name in ["1min", "15min"]:
+            if ai_fibs and tf_name == "1min":
                 for ratio, price in ai_fibs.items():
                     fig.add_hline(
                         y=float(price),
@@ -161,7 +177,7 @@ class VisualizationChartsMixin:
                         col=subplot_col,
                     )
 
-            if structure.get("bos"):
+            if tf_name == "1min" and structure.get("bos"):
                 fig.add_hline(
                     y=swing_high if "bullish" in str(structure["bos"]) else swing_low,
                     line_color="#00ffff",
@@ -170,7 +186,7 @@ class VisualizationChartsMixin:
                     row=subplot_row,
                     col=subplot_col,
                 )
-            if structure.get("choch"):
+            if tf_name == "1min" and structure.get("choch"):
                 fig.add_hline(
                     y=swing_high,
                     line_color="#ff00ff",
@@ -181,7 +197,7 @@ class VisualizationChartsMixin:
                 )
 
             order_blocks = structure.get("order_blocks", [])
-            if len(order_blocks) >= 2:
+            if tf_name == "1min" and len(order_blocks) >= 2:
                 fig.add_hline(
                     y=order_blocks[0]["price"],
                     line_color="#ff8800",
@@ -200,10 +216,10 @@ class VisualizationChartsMixin:
                 )
 
         current_price = float(df["close"].iloc[-1])
-        regime = self.engine.detect_market_regime(df.reset_index())
-        instrument = getattr(app, "INSTRUMENT", self.engine.config.instrument)
+        regime = self.engine.detect_market_regime(closed_1m)
+        listing = operator_listing(app, self.engine)
         fig.update_layout(
-            title=f"LUMINA v24 – MES {instrument} | Prijs {current_price:.2f} | Regime: {regime} | AI Fibs getekend | {datetime.now().strftime('%d %b %H:%M')}",
+            title=f"LUMINA · {listing} | {current_price:.2f} | Regime {regime} | {datetime.now(timezone.utc).strftime('%d %b %H:%M')} UTC",
             height=900,
             width=1400,
             showlegend=False,
@@ -213,17 +229,32 @@ class VisualizationChartsMixin:
 
         img_bytes = BytesIO()
         app.logger.info("LIVE_FEED_CHART_GEN_STEP,stage=plotly_write_image,format=png,scale=2")
+        png: bytes | None = None
         try:
             fig.write_image(img_bytes, format="png", scale=2)
+            png = img_bytes.getvalue()
         except Exception as exc:
             app.logger.warning("CHART_GEN_EXPORT_SKIPPED,reason=%s", exc)
             app.logger.warning(
-                "LIVE_FEED_CHART_GEN_ABORT,stage=export_png,reason=kaleido_or_static_image_failed,detail=%s",
+                "LIVE_FEED_CHART_GEN_FALLBACK,stage=matplotlib,reason=kaleido_or_static_image_failed,detail=%s",
                 exc,
             )
-            return None
-        img_bytes.seek(0)
-        base64_img = base64.b64encode(img_bytes.read()).decode("utf-8")
+        if not png:
+            try:
+                from lumina_core.engine.chart_png import render_live_chart_png
+
+                png = render_live_chart_png(
+                    df, title=str(fig.layout.title.text or "LUMINA"), frames_by_tf=frames
+                )
+                app.logger.info("LIVE_FEED_CHART_GEN_STEP,stage=matplotlib_png,bytes=%s", len(png))
+            except Exception as exc:
+                app.logger.warning(
+                    "LIVE_FEED_CHART_GEN_ABORT,stage=matplotlib_png,reason=%s",
+                    exc,
+                )
+                self._note_screen_status("Grafiek kon niet worden gemaakt")
+                return None
+        base64_img = base64.b64encode(png).decode("utf-8")
         app.logger.info(
             "LIVE_FEED_CHART_GEN_STEP,stage=base64_ready,b64_chars=%s",
             len(base64_img),
@@ -253,134 +284,69 @@ class VisualizationChartsMixin:
             datetime.now().strftime("%H:%M:%S"),
         )
         return base64_img
-    def start_screen_share_window(self) -> None:
+
+    def publish_screen_share_snapshot(self) -> str | None:
+        """Draw the screen-share from NT bars. No LLM call and no Kaleido.
+
+        The fast path skips the vision branch, but the window is already open.
+        This paints that window from the candles that are already loaded.
+        """
         app = self._app()
-        if not bool(getattr(app, "SCREEN_SHARE_ENABLED", self.engine.config.screen_share_enabled)):
-            app.logger.info("LIVE_FEED_BOOT_SKIP,component=tk_screen_share,reason=screen_share_disabled_in_config")
+        screen_on = bool(getattr(app, "SCREEN_SHARE_ENABLED", self.engine.config.screen_share_enabled))
+        if not screen_on:
+            return None
+        from lumina_core.engine.nt_ohlc_frames import chart_frames, operator_listing
+
+        with self.engine.live_data_lock:
+            bars = len(self.engine.ohlc_1min)
+            if bars < 200:
+                self._note_screen_status(f"Nog {bars}/200 gesloten NT 1m-bars voor de grafiek")
+                return None
+        frames = chart_frames(self.engine.market_data)
+        df = frames.get("1min")
+        if df is None or df.empty:
+            self._note_screen_status("Geen native NT 1m bars voor de grafiek")
+            return None
+        listing = operator_listing(app, self.engine)
+        price = float(df["close"].iloc[-1])
+        title = (
+            f"LUMINA · {listing} | {price:.2f} | {datetime.now(timezone.utc).strftime('%d %b %H:%M')} UTC"
+        )
+        try:
+            from lumina_core.engine.chart_png import render_live_chart_png
+
+            png = render_live_chart_png(df, title=title, frames_by_tf=frames)
+        except Exception as exc:
+            app.logger.warning("LIVE_FEED_CHART_GEN_ABORT,stage=matplotlib_png,reason=%s", exc)
+            self._note_screen_status("Grafiek kon niet worden gemaakt")
+            return None
+        if not png:
+            self._note_screen_status("Grafiek kon niet worden gemaakt")
+            return None
+        base64_img = base64.b64encode(png).decode("utf-8")
+        app.logger.info(
+            "LIVE_FEED_CHART_GEN_STEP,stage=matplotlib_png,bytes=%s,path=screen_share_snapshot",
+            len(png),
+        )
+        self.update_live_chart(base64_img, status_msg="NT-grafiek bijgewerkt")
+        return base64_img
+
+    def _note_screen_status(self, message: str) -> None:
+        app = self._app()
+        screen_on = bool(getattr(app, "SCREEN_SHARE_ENABLED", self.engine.config.screen_share_enabled))
+        if not screen_on:
             return
+        try:
+            self._tk_chart_queue.put_nowait(("status", message))
+        except queue.Full:
+            pass
 
-        app.logger.info("LIVE_FEED_BOOT_STEP,component=tk_screen_share,action=spawn_daemon_thread")
+    def start_screen_share_window(self) -> None:
+        from lumina_core.engine.visualization_charts_window import spawn_screen_share_window
 
-        def create_window() -> None:
-            try:
-                import tkinter as tk
-            except Exception as exc:
-                app.logger.warning(
-                    "LIVE_FEED_BOOT_ABORT,component=tk_screen_share,reason=tkinter_import_failed,detail=%s",
-                    exc,
-                )
-                app.logger.warning("Screen-share window disabled: tkinter unavailable (%s)", exc)
-                return
+        spawn_screen_share_window(self)
 
-            root = tk.Tk()
-            root.title("LUMINA Live Trader Screen Share – Clean Professional View")
-            root.attributes("-topmost", True)
-            root.geometry("1480x920")
-            root.configure(bg="#0a0a0a")
-
-            title = tk.Label(
-                root,
-                text="LUMINA Live Trader Screen Share",
-                font=("Consolas", 18, "bold"),
-                fg="#00ff88",
-                bg="#0a0a0a",
-            )
-            title.pack(pady=8)
-
-            chart_label = tk.Label(root, bg="#0a0a0a")
-            chart_label.pack(padx=20, pady=10, fill="both", expand=True)
-            root_any: Any = root
-            root_any.chart_label = chart_label
-
-            status_frame = tk.Frame(root, bg="#0a0a0a")
-            status_frame.pack(fill="x", padx=20, pady=10)
-
-            status_dot = tk.Label(status_frame, text="●", font=("Consolas", 22), fg="#00ff88", bg="#0a0a0a")
-            status_dot.pack(side="left")
-            root_any.status_dot = status_dot
-
-            status_text = tk.Label(
-                status_frame,
-                text="AI Decision & Chart updated",
-                font=("Consolas", 14),
-                fg="#00ff88",
-                bg="#0a0a0a",
-            )
-            status_text.pack(side="left", padx=12)
-            root_any.status_text = status_text
-
-            last_update = tk.Label(
-                status_frame,
-                text="Laatste update: —",
-                font=("Consolas", 11),
-                fg="#888888",
-                bg="#0a0a0a",
-            )
-            last_update.pack(side="right")
-            root_any.last_update = last_update
-
-            def pump_chart_updates() -> None:
-                had_work = False
-                try:
-                    while True:
-                        try:
-                            item = self._tk_chart_queue.get_nowait()
-                        except queue.Empty:
-                            break
-                        had_work = True
-                        if not item or item[0] != "frame" or len(item) < 3:
-                            continue
-                        _, chart_b64, smsg = item[0], item[1], item[2]
-                        try:
-                            app.logger.info(
-                                "LIVE_FEED_TK_STEP,stage=decode_resize_apply,b64_chars=%s",
-                                len(chart_b64),
-                            )
-                            img_data = base64.b64decode(chart_b64)
-                            pil_img = Image.open(BytesIO(img_data)).resize(
-                                (1400, 800), Image.Resampling.LANCZOS
-                            )
-                            with self.chart_update_lock:
-                                photo = self._create_photo_image(pil_img)
-                                self.latest_chart_image = photo
-                                setattr(app, "latest_chart_image", photo)
-                                chart_label.config(image=photo)
-                                chart_label.image = photo
-                                status_dot.config(fg="#00ff88")
-                                status_text.config(text=smsg, fg="#00ff88")
-                                last_update.config(
-                                    text=f"Laatste update: {datetime.now().strftime('%H:%M:%S')}"
-                                )
-                            app.logger.info("LIVE_FEED_TK_OK,stage=label_updated")
-                        except Exception as exc:
-                            app.logger.error("LIVE_FEED_TK_ABORT,stage=apply_image,reason=%s", exc)
-                            app.logger.error("Screen-share update error: %s", exc)
-                            try:
-                                status_dot.config(fg="#ff4444")
-                                status_text.config(text="ERROR – zie log", fg="#ff4444")
-                            except Exception:
-                                pass
-                finally:
-                    try:
-                        root.after(50 if had_work else 150, pump_chart_updates)
-                    except Exception:
-                        pass
-
-            self.live_chart_window = root
-            setattr(app, "live_chart_window", root)
-            app.logger.info(
-                "LIVE_FEED_BOOT_OK,component=tk_screen_share,stage=window_ready,title=%s",
-                root.title(),
-            )
-            app.logger.info(
-                "[%s] Clean readable screen-share opened",
-                datetime.now().strftime("%H:%M:%S"),
-            )
-            root.after(50, pump_chart_updates)
-            root.mainloop()
-
-        threading.Thread(target=create_window, daemon=True).start()
-    def update_live_chart(self, chart_base64: str, status_msg: str = "AI Decision & Chart updated") -> None:
+    def update_live_chart(self, chart_base64: str, status_msg: str = "NT-grafiek bijgewerkt") -> None:
         app = self._app()
         screen_on = bool(getattr(app, "SCREEN_SHARE_ENABLED", self.engine.config.screen_share_enabled))
         if not screen_on:

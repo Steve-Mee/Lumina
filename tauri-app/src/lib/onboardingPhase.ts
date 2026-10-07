@@ -2,7 +2,7 @@ import { preferAwakeningHub } from "@/lib/awakening/awakeningSurfacePref";
 import { preferApprenticeshipHub } from "@/lib/apprenticeship/apprenticeshipSurfacePref";
 import { preferPlaygroundHub } from "@/lib/playground/playgroundSurfacePref";
 import { preferProvingGroundHub } from "@/lib/provingGround/provingGroundSurfacePref";
-import type { AppSurface, OnboardingPayload } from "@/lib/onboardingSteps";
+import type { AppSurface, OnboardingPayload, OnboardingStepId } from "@/lib/onboardingSteps";
 
 export type AppPhase = "loading" | "wizard" | "birth" | "hub" | "cockpit" | "awakening" | "playground" | "apprenticeship" | "proving_ground";
 
@@ -14,6 +14,18 @@ export interface MapAppPhaseContext {
   setupReviewActive?: boolean;
   /** Operator opened Command Deck from Phase Hub (session override). */
   operatorDeckActive?: boolean;
+}
+
+const DECK_ELIGIBLE_PHASES: ReadonlySet<AppPhase> = new Set([
+  "hub",
+  "playground",
+  "awakening",
+  "apprenticeship",
+  "proving_ground",
+]);
+
+function isDeckEligibleSurface(phase: AppPhase): boolean {
+  return DECK_ELIGIBLE_PHASES.has(phase);
 }
 
 function surfaceToPhase(surface: AppSurface): AppPhase {
@@ -77,19 +89,33 @@ export function mapAppPhase(
     return context.priorPhase === "loading" ? "wizard" : context.priorPhase;
   }
 
-  if (context.priorPhase === "birth" && context.birthPhaseCommitted) {
+  // Live Birth stays on the Birth screen. Once Birth has exited, the pin must
+  // release — otherwise the old finale window keeps painting itself as Awakening.
+  if (
+    context.priorPhase === "birth" &&
+    context.birthPhaseCommitted &&
+    payload.birth.birth_exit_ok !== true
+  ) {
     return "birth";
   }
 
   if (payload.app_surface) {
     const mapped = surfaceToPhase(payload.app_surface);
     // Session: operator entered deck from hub — stay until they return
-    if (
-      mapped === "hub" &&
-      context.operatorDeckActive &&
-      (context.priorPhase === "cockpit" || context.operatorDeckActive)
-    ) {
+    if (context.operatorDeckActive && isDeckEligibleSurface(mapped)) {
       return "cockpit";
+    }
+    // A live clock is the living screen. Prefer-hub is only for an idle charter.
+    if (payload.app_surface_reason === `${mapped}_running`) {
+      return mapped;
+    }
+    // Birth exit with Awakening not started is Phase Hub. Pending is not a fail.
+    if (
+      mapped === "awakening" &&
+      payload.app_surface_reason === "awakening_pending" &&
+      payload.birth.birth_exit_ok === true
+    ) {
+      return "hub";
     }
     if (mapped === "awakening" && preferAwakeningHub()) {
       return "hub";
@@ -169,26 +195,31 @@ export function resolvePhaseOnRefreshError(
     }
     return "wizard";
   }
-  if (priorPhase === "cockpit" || lastPayload?.app_surface === "deck") {
-    return "cockpit";
-  }
-  if (priorPhase === "hub" || lastPayload?.app_surface === "hub") {
-    return "hub";
-  }
-  if (priorPhase === "birth" || lastPayload?.app_surface === "birth") {
-    return "birth";
-  }
-  if (priorPhase === "awakening" || lastPayload?.app_surface === "awakening") {
-    return "awakening";
-  }
-  if (priorPhase === "playground" || lastPayload?.app_surface === "playground") {
-    return "playground";
-  }
-  if (priorPhase === "apprenticeship" || lastPayload?.app_surface === "apprenticeship") {
-    return "apprenticeship";
-  }
-  if (priorPhase === "proving_ground" || lastPayload?.app_surface === "proving_ground") {
-    return "proving_ground";
+  // The screen the operator is on wins. A stale hub payload must not demote a
+  // living phase when the onboarding fetch fails (eval holds the API).
+  if (
+    priorPhase === "cockpit" ||
+    priorPhase === "hub" ||
+    priorPhase === "birth" ||
+    priorPhase === "awakening" ||
+    priorPhase === "playground" ||
+    priorPhase === "apprenticeship" ||
+    priorPhase === "proving_ground" ||
+    priorPhase === "wizard"
+  ) {
+    return priorPhase;
   }
   return "wizard";
+}
+
+export const SETUP_REVIEW_STEPS: OnboardingStepId[] = ["credentials", "configuration"];
+
+export function selectActiveSteps(
+  payload: OnboardingPayload | null,
+  setupReviewActive = false,
+): OnboardingStepId[] {
+  if (setupReviewActive) return SETUP_REVIEW_STEPS;
+  if (!payload) return ["backend"];
+  if (payload.wizard_steps.length > 0) return payload.wizard_steps;
+  return payload.required_steps;
 }

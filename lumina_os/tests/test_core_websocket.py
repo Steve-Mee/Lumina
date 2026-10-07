@@ -36,6 +36,15 @@ def reset_operator_mode_override() -> None:
     core_ws_module._operator_mode_override = None
 
 
+@pytest.fixture(autouse=True)
+def no_live_nt_equity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """This PC's DEMO account must not replace the fixture file equity."""
+    monkeypatch.setattr(
+        "lumina_core.maturity.playground.portfolio_seal.cached_sim_account",
+        lambda: None,
+    )
+
+
 @pytest.fixture()
 def state_dir(tmp_path: Path) -> Path:
     sd = tmp_path / "state"
@@ -199,12 +208,14 @@ def test_core_live_telemetry_reader_builds_snapshot(state_dir: Path) -> None:
     assert payload["active_mutations"][0]["challenger_count"] == 2
 
 
-def test_get_core_live_returns_telemetry(state_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "backend.core_websocket.resolve_state_directory",
-        lambda: state_dir,
-    )
+def _bind_state(monkeypatch: pytest.MonkeyPatch, state_dir: Path) -> None:
+    """The reader resolves state from the env, not from the websocket module."""
+    monkeypatch.setenv("LUMINA_STATE_DIR", str(state_dir))
     monkeypatch.setenv("EVOLUTION_LOG_PATH", str(state_dir / "evolution_log.jsonl"))
+
+
+def test_get_core_live_returns_telemetry(state_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _bind_state(monkeypatch, state_dir)
 
     client = TestClient(app)
     response = client.get("/api/core/live")
@@ -218,11 +229,7 @@ def test_get_core_live_returns_telemetry(state_dir: Path, monkeypatch: pytest.Mo
 
 
 def test_ws_core_live_streams_telemetry(state_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "backend.core_websocket.resolve_state_directory",
-        lambda: state_dir,
-    )
-    monkeypatch.setenv("EVOLUTION_LOG_PATH", str(state_dir / "evolution_log.jsonl"))
+    _bind_state(monkeypatch, state_dir)
 
     client = TestClient(app)
     with client.websocket_connect("/ws/core/live") as ws:
@@ -239,11 +246,7 @@ def test_ws_core_live_streams_telemetry(state_dir: Path, monkeypatch: pytest.Mon
 
 
 def test_ws_core_live_responds_to_ping(state_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "backend.core_websocket.resolve_state_directory",
-        lambda: state_dir,
-    )
-    monkeypatch.setenv("EVOLUTION_LOG_PATH", str(state_dir / "evolution_log.jsonl"))
+    _bind_state(monkeypatch, state_dir)
 
     client = TestClient(app)
     with client.websocket_connect("/ws/core/live") as ws:
@@ -257,16 +260,18 @@ def test_ws_core_live_responds_to_ping(state_dir: Path, monkeypatch: pytest.Monk
 def test_post_core_mode_updates_live_telemetry(
     state_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(
-        "backend.core_websocket.resolve_state_directory",
-        lambda: state_dir,
-    )
-    monkeypatch.setenv("EVOLUTION_LOG_PATH", str(state_dir / "evolution_log.jsonl"))
+    _bind_state(monkeypatch, state_dir)
 
     client = TestClient(app)
-    with patch(
-        "lumina_core.maturity.maturation_progress.maturation_eligible_for_real",
-        return_value=(True, []),
+    with (
+        patch(
+            "lumina_core.risk.real_multi_gate.real_mode_switch_allowed",
+            return_value=(True, []),
+        ),
+        patch(
+            "lumina_core.maturity.milestone_hooks.hook_real_trading_live",
+            lambda *_args, **_kwargs: None,
+        ),
     ):
         response = client.post("/api/core/mode", json={"mode": "real"})
     assert response.status_code == 200
@@ -343,6 +348,35 @@ def test_core_live_telemetry_reader_includes_fortress(state_dir: Path) -> None:
     assert payload["fortress"]["kill_switch_active"] is True
     assert payload["fortress"]["mc_drawdown_pct"] == 4.2
     assert payload["fortress"]["pending_reconciliations"] == 1
+
+
+def test_core_live_telemetry_bar_book_missing_is_unknown(state_dir: Path) -> None:
+    reader = CoreLiveTelemetryReader(state_dir=state_dir)
+    payload = reader.build_snapshot(obs=None)
+    assert payload["bar_book"] is None
+
+
+def test_core_live_telemetry_bar_book_lock(state_dir: Path) -> None:
+    (state_dir / "lumina_bar_integrity.json").write_text(
+        json.dumps(
+            {
+                "complete": False,
+                "lock_new_entries": True,
+                "reason": "unexplained",
+                "missing_count": 3,
+                "message": "3 missing NT 1m bars",
+            }
+        ),
+        encoding="utf-8",
+    )
+    reader = CoreLiveTelemetryReader(state_dir=state_dir)
+    payload = reader.build_snapshot(obs=None)
+    book = payload["bar_book"]
+    assert book is not None
+    assert book["lock_new_entries"] is True
+    assert book["complete"] is False
+    assert book["missing_count"] == 3
+    assert book["reason"] == "unexplained"
 
 
 def test_core_live_telemetry_reader_null_fortress_when_no_state(tmp_path: Path) -> None:

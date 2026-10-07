@@ -1,131 +1,57 @@
 import { AlertTriangle, Loader2 } from "lucide-react";
-import { useEffect, useRef, type MouseEvent, type PointerEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 
 import { BirthPortaledDialog } from "@/components/birth/BirthPortaledDialog";
 import type { HubWipeKind } from "@/components/maturity/phaseHubFormat";
+import { WIPE_CONFIRM_COPY, WIPE_CONFIRM_PHRASES, wipePhraseMatches } from "@/components/maturity/phaseWipeCopy";
 import { Button } from "@/components/ui/button";
 import { luminaInteractiveClass } from "@/lib/glassGlowTaxonomy";
 import { cn } from "@/lib/utils";
 
 export interface PhaseHubWipeConfirmProps {
   kind: HubWipeKind | null;
-  step: 1 | 2;
   wiping: boolean;
   error: string | null;
   onCancel: () => void;
-  onContinue: () => void;
-  onConfirm: () => void;
+  onConfirm: (phrase: string) => void;
 }
-
-const COPY: Record<
-  HubWipeKind,
-  {
-    title1: string;
-    keep: string;
-    remove: string[];
-    title2: string;
-    body2: string;
-    confirmLabel: string;
-  }
-> = {
-  playground: {
-    title1: "Wipe Playground data?",
-    keep: "Genesis, Birth, Awakening, and frozen π* stay.",
-    remove: [
-      "Playground SIM tape and first-fill ledger",
-      "Playground progress heartbeat",
-      "Later ladder progress (Apprenticeship and after)",
-    ],
-    title2: "Final confirmation",
-    body2: "Confirm wipe of Playground crawl data. Awakening is not re-run. You stay on Phase Hub and can Start Playground again.",
-    confirmLabel: "Wipe Playground",
-  },
-  awakening: {
-    title1: "Wipe Awakening data?",
-    keep: "Birth plant, frozen π*, tick cache, and Smart Setup stay.",
-    remove: [
-      "Awakening live shot (child policy, holdout ledger)",
-      "Evolution-proof stamp written by Awakening",
-      "Later ladder progress (Playground and after)",
-    ],
-    title2: "Final confirmation",
-    body2: "Confirm wipe of generated Awakening data. Birth is not re-run. You stay on Phase Hub and can Start Awakening again.",
-    confirmLabel: "Wipe Awakening",
-  },
-  apprenticeship: {
-    title1: "Wipe Apprenticeship data?",
-    keep: "Genesis, Birth, Awakening, Playground, and frozen π* stay.",
-    remove: [
-      "Apprenticeship tape and session-day ledger",
-      "Apprenticeship progress heartbeat",
-      "Later ladder progress (Proving Ground and REAL)",
-    ],
-    title2: "Final confirmation",
-    body2: "Confirm wipe of Apprenticeship walking data. Playground crawl is not re-run. You stay on Phase Hub and can Start Apprenticeship again.",
-    confirmLabel: "Wipe Apprenticeship",
-  },
-  proving_ground: {
-    title1: "Wipe Proving Ground data?",
-    keep: "Genesis through Apprenticeship, Birth freeze, and frozen π* stay.",
-    remove: [
-      "Proving Ground tape and exam heartbeat",
-      "This-run shadow / PromotionGate evidence",
-      "Later ladder progress (REAL)",
-    ],
-    title2: "Final confirmation",
-    body2: "Confirm wipe of the driving-test tape. Apprenticeship walk is not re-run. You stay on Phase Hub and can Start Proving Ground again.",
-    confirmLabel: "Wipe Proving Ground",
-  },
-  birth: {
-    title1: "Wipe Birth and Awakening?",
-    keep: "Tick cache, split cache, enrichment, and Smart Setup stay.",
-    remove: [
-      "Birth curriculum, checkpoints, and PPO plant",
-      "Awakening shot and later ladder progress",
-    ],
-    title2: "Final confirmation",
-    body2: "Confirm Birth reset (history kept). You return to a blank Genesis deck and Activate Birth again.",
-    confirmLabel: "Wipe Birth",
-  },
-  full: {
-    title1: "Permanently wipe Birth and history?",
-    keep: "Smart Setup stays — credentials, NT paths, and config.yaml are not wiped.",
-    remove: [
-      "Birth plant, checkpoints, and PPO policies",
-      "Awakening shot and later ladder progress",
-      "Tick cache, split cache, and enrichment cache",
-    ],
-    title2: "Final confirmation",
-    body2: "Confirm full wipe. You restart from a blank Genesis deck. History must be loaded again. Setup is not wiped.",
-    confirmLabel: "Wipe everything permanently",
-  },
-};
 
 export function PhaseHubWipeConfirm({
   kind,
-  step,
   wiping,
   error,
   onCancel,
-  onContinue,
   onConfirm,
 }: PhaseHubWipeConfirmProps) {
-  const copy = kind ? COPY[kind] : null;
+  const copy = kind ? WIPE_CONFIRM_COPY[kind] : null;
   const open = kind != null && copy != null;
   const confirmOnce = useRef(false);
+  const phraseRef = useRef<HTMLInputElement>(null);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [typed, setTyped] = useState("");
+  const requiredPhrase = kind ? WIPE_CONFIRM_PHRASES[kind] : "";
 
   useEffect(() => {
     confirmOnce.current = false;
-  }, [kind, step]);
+    setStep(1);
+    setTyped("");
+  }, [kind]);
 
   useEffect(() => {
     if (!wiping) confirmOnce.current = false;
   }, [wiping]);
 
+  useEffect(() => {
+    if (step !== 3) return;
+    phraseRef.current?.focus();
+  }, [step, kind]);
+
+  const phraseOk = kind != null && wipePhraseMatches(kind, typed);
+
   const fireConfirm = () => {
-    if (wiping || confirmOnce.current) return;
+    if (!kind || wiping || confirmOnce.current || !phraseOk) return;
     confirmOnce.current = true;
-    onConfirm();
+    onConfirm(typed.trim());
   };
 
   const confirmPointer = {
@@ -143,12 +69,15 @@ export function PhaseHubWipeConfirm({
     },
   };
 
+  const title =
+    step === 1 ? copy?.title1 : step === 2 ? copy?.title2 : copy?.title3;
+
   const description: ReactNode = copy ? (
     <div className="space-y-3 pt-1 text-sm text-muted-foreground">
       {step === 1 ? (
         <>
           <p className="rounded-lg border border-red-500/40 bg-red-950/30 px-3 py-2 font-medium text-red-100">
-            Warning: this cannot be undone.
+            Warning 1 of 3: this cannot be undone.
           </p>
           <p>Will be removed:</p>
           <ul className="list-inside list-disc space-y-1 text-foreground/85">
@@ -158,11 +87,42 @@ export function PhaseHubWipeConfirm({
           </ul>
           <p className="text-xs text-emerald-200/90">{copy.keep}</p>
         </>
-      ) : (
+      ) : null}
+      {step === 2 ? (
+        <p className="rounded-lg border border-red-500/40 bg-red-950/30 px-3 py-2 text-red-100">
+          Warning 2 of 3: {copy.body2}
+        </p>
+      ) : null}
+      {step === 3 ? (
         <>
           <p className="rounded-lg border border-red-500/40 bg-red-950/30 px-3 py-2 text-red-100">
-            {copy.body2}
+            Warning 3 of 3: {copy.body3}
           </p>
+          <label className="block text-xs text-red-100/90">
+            Type this phrase in the box
+            <span className="mt-1 block font-mono text-sm tracking-wide text-[var(--status-warn-fg)]">
+              {requiredPhrase}
+            </span>
+            <input
+              ref={phraseRef}
+              type="text"
+              className="birth-portaled-dialog__phrase"
+              value={typed}
+              placeholder={requiredPhrase}
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              disabled={wiping}
+              aria-label="Wipe confirmation phrase"
+              onChange={(e) => setTyped(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  fireConfirm();
+                }
+              }}
+            />
+          </label>
           {wiping ? (
             <p
               className="flex items-center gap-2 font-mono text-xs text-cyan-200/90"
@@ -182,7 +142,7 @@ export function PhaseHubWipeConfirm({
             </p>
           ) : null}
         </>
-      )}
+      ) : null}
     </div>
   ) : null;
 
@@ -196,7 +156,7 @@ export function PhaseHubWipeConfirm({
       title={
         <span className="flex items-center gap-2 text-red-200">
           <AlertTriangle className="size-5 shrink-0 text-red-400" aria-hidden />
-          {step === 1 ? copy?.title1 : copy?.title2}
+          {title}
         </span>
       }
       description={description}
@@ -215,7 +175,7 @@ export function PhaseHubWipeConfirm({
           >
             Cancel
           </Button>
-          {step === 1 ? (
+          {step < 3 ? (
             <Button
               type="button"
               variant="destructive"
@@ -228,17 +188,17 @@ export function PhaseHubWipeConfirm({
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                onContinue();
+                setStep((current) => (current === 1 ? 2 : 3));
               }}
             >
-              I understand — continue
+              {step === 1 ? "I understand — continue" : "I accept the loss — continue"}
             </Button>
           ) : (
             <Button
               type="button"
               variant="destructive"
               size="sm"
-              disabled={wiping}
+              disabled={wiping || !phraseOk}
               className={cn(
                 luminaInteractiveClass("danger"),
                 "birth-portaled-dialog__danger pointer-events-auto font-mono text-[10px] tracking-wide uppercase",

@@ -23,6 +23,24 @@ describe("decision theater density contracts", () => {
     expect(stageSource).toContain("<summary");
   });
 
+  it("overflow telemetry stays collapsed behind details", () => {
+    const overflowSource = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../components/decision/DecisionTheaterDebugOverflow.tsx"),
+      "utf8",
+    );
+    expect(overflowSource).toContain("decision-theater-stage__telemetry");
+    expect(overflowSource).toContain("<details");
+    expect(overflowSource).toContain("Telemetry");
+  });
+
+  it("command actions sit in a four-column Genesis footer", () => {
+    expect(stageSource).toContain("decision-theater-stage__actions");
+    expect(stageSource).toContain("genesis-recovery-action-card__btn--accent");
+    expect(cockpitCss).toMatch(
+      /\.command-deck-ops \.decision-theater-stage__actions[\s\S]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/,
+    );
+  });
+
   it("active signal uses compact chip row", () => {
     expect(stageSource).toContain("CF {Math.round(signal.confluence * 100)}%");
     expect(stageSource).toContain("line-clamp-1");

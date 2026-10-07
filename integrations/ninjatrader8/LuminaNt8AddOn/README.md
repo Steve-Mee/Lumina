@@ -18,12 +18,16 @@ cd integrations\ninjatrader8
 dotnet build Lumina.Execution.Fabric.sln -c Release
 ```
 
-Optional NT8 reference (live AddOn against real `NinjaTrader.Core`):
+Optional NT8 reference (live AddOn against real `NinjaTrader.Core` **8.1.8.3+**):
 
 ```powershell
 $env:NINJATRADER8_BIN = "C:\Program Files\NinjaTrader 8\bin"
 dotnet build LuminaNt8AddOn\LuminaNt8AddOn.csproj -c Release
 ```
+
+Do not copy `Google.Protobuf.dll` / `System.Text.Json.dll` into `bin\Custom` when NT already ships them (8.1.8 binding-redirects Protobuf → 3.34.0 and System.Text.Json → 10.0.0.3). `deploy_fabric_addons` quarantines those overlays.
+
+The 8.1.8 installer omits `Newtonsoft.Json` from `Config.xml` `<References>` (NinjaScript compiler SSOT). Heal/watch copy `Newtonsoft.Json.dll` into `bin\Custom` if missing, replace a netstandard build with NT’s net45 copy (CS0012), copy `netstandard.dll` into Custom, retarget csproj HintPaths, and add both to Config.xml while NT is closed. A Program Files HintPath alone does not satisfy the NinjaScript editor.
 
 Without `NINJATRADER8_BIN`, the AddOn compiles with `FABRIC_STANDALONE` (lifecycle stub). Use **SimHost** for gRPC E2E.
 

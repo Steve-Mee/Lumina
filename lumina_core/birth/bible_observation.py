@@ -6,14 +6,24 @@ from typing import Any
 
 from lumina_bible.bible_engine import BibleEngine, DEFAULT_BIBLE
 
+# One layer per workspace for this process. A year tape used to build a
+# BibleEngine on every tick and froze Birth status for the whole oracle scan.
+_LAYER_CACHE: dict[str, dict[str, Any]] = {}
+
 
 def _load_bible_layer(workspace_root: Any = None) -> dict[str, Any]:
+    key = "" if workspace_root is None else str(workspace_root)
+    cached = _LAYER_CACHE.get(key)
+    if cached is not None:
+        return cached
     try:
         engine = BibleEngine(workspace_root=workspace_root)
         layer = engine.evolvable_layer
-        return layer if isinstance(layer, dict) else dict(DEFAULT_BIBLE.get("evolvable_layer", {}))
+        loaded = layer if isinstance(layer, dict) else dict(DEFAULT_BIBLE.get("evolvable_layer", {}))
     except Exception:
-        return dict(DEFAULT_BIBLE.get("evolvable_layer", {}))
+        loaded = dict(DEFAULT_BIBLE.get("evolvable_layer", {}))
+    _LAYER_CACHE[key] = loaded
+    return loaded
 
 
 def bible_features_for_tick(

@@ -10,8 +10,8 @@ from lumina_core.birth.remediation import ResumeCacheTier, classify_cache_resume
 from lumina_core.rl.trend_features import ENRICH_VERSION
 
 _REQ = {
-    "requested_days": 90,
-    "actual_calendar_days": 90,
+    "requested_days": 365,
+    "actual_calendar_days": 365,
     "instruments": ["MES SEP26"],
 }
 
@@ -153,7 +153,7 @@ def test_classify_t4_thin_actual_calendar_days() -> None:
             "train_hash": "abc123",
             "holdout_pct": 0.2,
             "enrich_version": ENRICH_VERSION,
-            "requested_days": 90,
+            "requested_days": 365,
             "actual_calendar_days": 57,
             "instruments": ["MES SEP26"],
         },
@@ -184,8 +184,8 @@ def test_classify_t4_instrument_chain_mismatch() -> None:
             "train_hash": "abc123",
             "holdout_pct": 0.2,
             "enrich_version": ENRICH_VERSION,
-            "requested_days": 90,
-            "actual_calendar_days": 90,
+            "requested_days": 365,
+            "actual_calendar_days": 365,
         },
         current_instrument="MES SEP26",
         **kwargs,
@@ -197,8 +197,8 @@ def test_classify_t4_instrument_chain_mismatch() -> None:
             "train_hash": "abc123",
             "holdout_pct": 0.2,
             "enrich_version": ENRICH_VERSION,
-            "requested_days": 90,
-            "actual_calendar_days": 90,
+            "requested_days": 365,
+            "actual_calendar_days": 365,
             "instruments": ["MES JUN26", "MES MAR26"],
         },
         current_instrument="MES SEP26",
@@ -217,8 +217,8 @@ def test_classify_t0_when_front_month_in_stitched_chain() -> None:
             "train_hash": "abc123",
             "holdout_pct": 0.2,
             "enrich_version": ENRICH_VERSION,
-            "requested_days": 90,
-            "actual_calendar_days": 90,
+            "requested_days": 365,
+            "actual_calendar_days": 365,
             "instruments": ["MES SEP26", "MES JUN26"],
         },
         cached_ticks=ticks,
@@ -230,3 +230,29 @@ def test_classify_t0_when_front_month_in_stitched_chain() -> None:
     )
     assert decision.tier == ResumeCacheTier.T0
     assert decision.skip_load is True
+
+
+@pytest.mark.unit
+def test_classify_t4_when_explicit_holdout_cannot_host_awakening() -> None:
+    ticks = [{"timestamp": "2026-01-01T00:00:00Z", "last": 5000.0}]
+    decision = classify_cache_resume_tier(
+        checkpoint_manifest={"train_hash": "abc123", "holdout_pct": 0.2},
+        cache_manifest={
+            "train_hash": "abc123",
+            "holdout_pct": 0.2,
+            "enrich_version": ENRICH_VERSION,
+            "requested_days": 90,
+            "actual_calendar_days": 89,
+            "holdout_tick_count": 76804,
+            "instruments": ["MES DEC26", "MES SEP26"],
+        },
+        cached_ticks=ticks,
+        cached_split=_split(),
+        cached_train_hash="abc123",
+        holdout_pct=0.2,
+        enrich_version=ENRICH_VERSION,
+        current_instrument="MES DEC26",
+    )
+    assert decision.tier == ResumeCacheTier.T4
+    assert decision.reason == "holdout_capacity_below_n_b"
+    assert decision.skip_load is False

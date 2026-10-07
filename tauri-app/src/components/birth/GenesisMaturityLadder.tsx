@@ -22,13 +22,13 @@ export const MATURATION_STEPS: MaturationStep[] = [
   { id: "setup", label: "Setup", short: "Vault · envelope · fabric" },
   { id: "genesis", label: "Genesis", short: "Maturity contract" },
   { id: "birth", label: "Birth", short: "Historical curriculum" },
-  { id: "awakening", label: "Awakening", short: "Prefer better policies" },
-  { id: "playground", label: "Playground", short: "NT SIM — crawl · WR≥BE" },
+  { id: "awakening", label: "Awakening", short: "First Watch · plant baseline" },
+  { id: "playground", label: "Playground", short: "School · 5 groene dagen" },
   {
     id: "apprenticeship",
     label: "Apprenticeship",
     compactLabel: "Apprentice",
-    short: "Walk · Sharpe ≥ 0.20 · 5 green days",
+    short: "Examen · WR ≥ BE · mean R ≥ 0",
   },
   {
     id: "proving_ground",
@@ -134,20 +134,20 @@ const MATURITY_GOALS: readonly MaturityGoal[] = [
     phase: "Awakening",
     gate: "STABLE · n≥500",
     detail:
-      "Awakening: prefer-better AND — STABLE, n_B≥500 policy-only, occupancy, process-R, Twin-watch of this run. Lift ≥5pp or OOS ≥45% is necessary, not sufficient.",
+      "Awakening is First Watch: one holdout eval of the frozen Birth plant, no learn(). STABLE, n_B≥500, occupancy, process-R, plant weight sha, constitution 0, baseline book, Twin-watch. Paired CI is not this exit.",
   },
   {
     id: "playground",
     phase: "Playground",
-    gate: "WR ≥ BE",
-    detail: "Playground: skill WR ≥ geometry BE and mean R ≥ 0 + first SIM order",
+    gate: "5 groene dagen",
+    detail: "Playground: leerschool in SIM. Poort: 5 groene sessiedagen. WR en mean R zijn het examen daarna.",
   },
   {
     id: "apprenticeship",
     phase: "Apprentice",
     gate: "Sharpe · 0 viol",
     detail:
-      "Apprenticeship: walk — 5 green sim_real_guard days, Sharpe ≥ 0.20, DD ≤ 12%, constitution 0",
+      "Apprenticeship: examen — n≥150, WR≥BE, mean R≥0, Sharpe ≥ 0.20, DD ≤ 12%",
   },
   {
     id: "proving_ground",

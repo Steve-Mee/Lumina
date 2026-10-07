@@ -5,6 +5,7 @@ import { VisibilityCanvas } from "@/components/cockpit/VisibilityCanvas";
 import { BirthHelixScene } from "@/components/birth/BirthHelixScenes";
 import { BirthOrganismVisual } from "@/components/birth/BirthOrganismVisual";
 import { helixTubeSegments } from "@/components/three/helixPrimitives";
+import { useOrganismVisualPhase } from "@/hooks/useOrganismVisualPhase";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import {
   birthEmissiveFromTrades,
@@ -33,6 +34,7 @@ export function BirthHelixVisual({
   className,
 }: BirthHelixVisualProps) {
   const prefersReducedMotion = usePrefersReducedMotion();
+  const { morph, tradingMode } = useOrganismVisualPhase();
   const renderConfig = useVisualSettingsStore(selectRenderConfig);
   const visualQuality = useVisualSettingsStore(selectVisualQuality);
   const tubeSegments = helixTubeSegments(visualQuality);
@@ -48,8 +50,8 @@ export function BirthHelixVisual({
   const ceremonyCssFallback = ceremonyMode && (prefersReducedMotion || visualQuality === "low");
   const legacyCssFallback = !ceremonyMode && (prefersReducedMotion || visualQuality === "low");
 
-  const minHeightClass = ceremonyMode ? "min-h-0 h-full" : "min-h-[280px]";
-  const ceremonyCamera = { position: [0, 0, 4.0] as [number, number, number], fov: 34 };
+  const minHeightClass = ceremonyMode ? "min-h-0 h-full w-full" : "min-h-[280px]";
+  const ceremonyCamera = { position: [0, 0, 6.4] as [number, number, number], fov: 34 };
 
   if (ceremonyCssFallback) {
     return (
@@ -91,7 +93,7 @@ export function BirthHelixVisual({
         <VisibilityCanvas
           panelName="Birth Helix"
           idleLabel="Birth helix paused — scroll into view"
-          minHeight={minHeightClass}
+          minHeight="min-h-0"
           camera={ceremonyMode ? ceremonyCamera : { position: [0, 0.5, 5.5], fov: 42 }}
         >
           <BirthHelixScene
@@ -103,6 +105,8 @@ export function BirthHelixVisual({
             emissiveBoost={emissiveBoost}
             visualQuality={visualQuality}
             tubeSegments={tubeSegments}
+            morph={morph}
+            tradingMode={tradingMode}
           />
         </VisibilityCanvas>
       </Suspense>

@@ -71,11 +71,15 @@ const REQUIRED_COMPANIONS: Record<string, number> = {
   "components/maturity/phaseHubPlayground.ts": 400,
   "components/maturity/phaseHubApprenticeship.ts": 400,
   "components/maturity/phaseHubTiles.ts": 400,
+  "components/maturity/phaseHubChecklist.ts": 400,
   "components/maturity/phaseHubStart.ts": 400,
   "components/maturity/PhaseHubHonestyBoard.tsx": 400,
   "components/maturity/PhaseHubAdvanceSection.tsx": 400,
   "components/maturity/PhaseHubDeck.tsx": 400,
   "components/maturity/PhaseHubWipeConfirm.tsx": 400,
+  "components/maturity/phaseWipeCopy.ts": 400,
+  "components/operations/AdminPanel.tsx": 400,
+  "components/operations/PhaseResetPanel.tsx": 400,
   "components/maturity/AwakeningMission.tsx": 400,
   "components/maturity/AwakeningLifePulse.tsx": 400,
   "components/maturity/ApprenticeshipMission.tsx": 400,
@@ -103,6 +107,13 @@ const REQUIRED_COMPANIONS: Record<string, number> = {
   "lib/twinClientFormat.ts": 400,
   "lib/luminaMetricsTypes.ts": 400,
   "lib/luminaMetricsNormalize.ts": 400,
+  "lib/organism/phaseMorphology.ts": 400,
+  "lib/organism/organismCameraFit.ts": 400,
+  "hooks/useOrganismVisualPhase.ts": 400,
+  "components/organism/OrganismStageCamera.tsx": 400,
+  "components/organism/OrganismVanes.tsx": 400,
+  "components/organism/OrganismAnatomy.tsx": 400,
+  "components/organism/OrganismGlass.tsx": 400,
 };
 
 describe("Tauri UI god-surface guards", () => {
@@ -140,15 +151,19 @@ describe("Tauri UI god-surface guards", () => {
   });
 
   it("PhaseHubScreen façade embeds honesty + advance sections", () => {
-    const text = readFileSync(
+    const screen = readFileSync(
       join(root, "components/maturity/PhaseHubScreen.tsx"),
       "utf8",
     );
-    expect(text).toContain("PhaseHubHonestyBoard");
-    expect(text).toContain("PhaseHubAdvanceSection");
-    expect(text).toContain("PhaseHubDeck");
-    expect(text).toContain("PhaseHubWipeConfirm");
-    expect(text).toContain("followPhaseStart");
-    expect(text).not.toContain("window.confirm");
+    const deck = readFileSync(
+      join(root, "components/maturity/PhaseHubDeck.tsx"),
+      "utf8",
+    );
+    expect(deck).toContain("PhaseHubHonestyBoard");
+    expect(screen).toContain("PhaseHubAdvanceSection");
+    expect(screen).toContain("PhaseHubDeck");
+    expect(screen).toContain("PhaseHubWipeConfirm");
+    expect(screen).toContain("followPhaseStart");
+    expect(screen).not.toContain("window.confirm");
   });
 });

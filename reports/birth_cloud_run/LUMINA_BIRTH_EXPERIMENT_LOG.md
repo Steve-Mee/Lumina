@@ -437,3 +437,21 @@ First-touch gate 0.10 then train-only +1.21/−1.04 close reward on a NEW SCALE-
 **Floors:** unchanged (S1–S5 pins above). No MES $5 move. No REAL door. No Evolution Proof stamp.
 **Shipped:** `organs_truth_v1`; Windows blocks vLLM; physics installer refuses `--with-vllm`; provider default `ollama,grok_remote` on Windows; three-card Setup; NewsAgent fail-closed when Voice=off (neutral, multiplier 1.0, `order_path_coupled=false`).
 **Verdict:** `ORGANS_CLOSED` pending test green on this branch. Fitness `707b5ab9d6b9af96` untouched. π* zips untouched.
+
+---
+
+## 2026-10-03 — live NT Birth, 89-day tape, stage gates passed, Awakening did not open
+
+**Tape:** NinjaTrader MES, requested 90, loaded 89, stitched MES DEC26 + MES SEP26. Holdout 76,804 ticks. Geometry hold 120. Real data. Not the synthetic cloud fixture.
+**Stage gates (checkpoint `foundation_v2`, 2026-10-02 23:52–23:59 UTC):** S1 150/29.3% PnL −$2,743; S2 250 occ 0.489 (16 plant) PnL +$657; S3 400 edge −1.0pp occ 0.278 PnL −$6,627; S4 172 edge +11.4pp mean_r −0.133 vs e_mech−slack −0.471 PnL −$441; S5 173 policy, edge +7.6pp, WR 37.0% vs breakeven 44.6%, trade IR −0.18, DD 2.4% of $50k, PnL −$1,016. Floors not moved. Passes are gate passes, not a profitable book. The +11% on screen is S4 edge vs first-touch, not progress and not win rate.
+**Why Awakening did not start:** worst-case slots = floor(0.25 × 76804 / 120) = 160 < 500. `complete_foundation_birth` returned `foundation_incomplete` before fitness, freeze, and continuum. The return wrote no progress. The thread ended. Orphan reconcile painted "Runner stopped without a user stop". Continue was a T0 cache hit on the same 89 days and died the same way (~9s).
+**Not repeated:** lowering n_B, stacking the holdout, freezing the 89-day receipts, treating Continue as a crash retry.
+**Landed:** history sport starts at 365 (only ladder rung that can host 500). Explicit thin `holdout_tick_count` is a cache miss, not T0. A grown tape voids receipts. A thin foundation sport writes `holdout_capacity_refused` instead of an orphan pause. Operator copy on this path is English.
+
+---
+
+## 2026-10-03 — synthetic tape cannot be a truthful Birth
+
+**Checked:** cache manifest for the 89-day NT run was `source=real`, `real_data_pct=100`, MES DEC26+SEP26, 357840 ticks. That stamp is the history loader's label for NinjaTrader Fabric bars. `generate_synthetic_ticks` uses `source=synthetic` and a clock of "now", which that tape did not. State files were removed after the read, so the jsonl was not re-sampled.
+**Hole:** empty history, practice mode, and `allow_minimal_synthetic` could invent ticks and still finish a certified Birth. Birth exit did not read the tape source.
+**Landed:** empty history refuses. Curriculum refuses any tick outside `real|real_nt|real_fabric|nt8|ninja`. Foundation complete refuses a non-100 stamp. A non-real cache manifest blocks Birth exit. `real_historical` and `synthetic_cloud_fixture` stay non-real.

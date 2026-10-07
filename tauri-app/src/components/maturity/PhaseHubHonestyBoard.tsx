@@ -1,4 +1,4 @@
-/** Continuum honesty strip for Phase Hub (M6/M7). */
+/** Continuum honesty strip for Phase Hub (M6/M7). Birth exit ≠ READY_FOR_REAL ≠ REAL. */
 import { StatusChip } from "@/components/birth/BirthGenesisDeckPrimitives";
 import type { MaturityHubPayload } from "@/lib/maturationClient";
 import type { TwinReadiness } from "@/lib/twinClient";
@@ -12,8 +12,12 @@ export function PhaseHubHonestyBoard({
 }) {
   const warning = hub.conflation_warnings?.[0] ?? null;
   return (
-    <div className="phase-hub-honesty-strip shrink-0 px-1">
-      <div className="flex flex-wrap items-center gap-1.5">
+    <div
+      className="birth-mission-status-strip risk-envelope-status-strip phase-hub-honesty-strip"
+      role="status"
+      aria-label="Continuum honesty"
+    >
+      <div className="phase-hub-honesty-strip__chips">
         {twinReady ? (
           <StatusChip
             label={
@@ -33,7 +37,7 @@ export function PhaseHubHonestyBoard({
         <StatusChip
           label={`READY_FOR_REAL ${hub.ready_for_real ? "yes" : "no"}`}
           state={hub.ready_for_real ? "ok" : "idle"}
-          tip="Apprenticeship multi-day SIM green streak — not Birth exit."
+          tip="Apprenticeship exam green — not Birth exit, not REAL capital."
         />
         <StatusChip
           label={`REAL ${hub.real_eligible ? "yes" : "no"}`}
@@ -42,7 +46,7 @@ export function PhaseHubHonestyBoard({
         />
       </div>
       {warning ? (
-        <p className="mt-1 truncate font-mono text-[10px] text-amber-200/80" title={warning}>
+        <p className="phase-hub-honesty-strip__warn" title={warning}>
           {warning}
         </p>
       ) : null}

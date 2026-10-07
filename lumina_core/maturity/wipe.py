@@ -34,6 +34,7 @@ _PHASE_MILESTONES: dict[str, tuple[str, ...]] = {
     ),
     MaturationPhase.AWAKENING.value: (
         "evolution_proof_passed",
+        "first_watch_passed",
         "perfect_birth_autonomy_proven",
     ),
     MaturationPhase.PLAYGROUND.value: (
@@ -65,7 +66,9 @@ _LATER_THAN_PLAYGROUND: tuple[str, ...] = (
 # Generated Awakening output — never frozen birth_exit_pi_star.*.
 _AWAKENING_STATE_TARGETS: tuple[str, ...] = (
     "state/lumina_evolution_proof.json",
+    "state/lumina_first_watch_baseline.json",
     "state/lumina_awakening_progress.json",
+    "state/lumina_awakening_heartbeat.json",
     "state/awakening_twin_watch.jsonl",
     "state/perfect_birth_complete.flag",
     "state/perfect_birth_complete.json",
@@ -75,6 +78,7 @@ _AWAKENING_STATE_TARGETS: tuple[str, ...] = (
 _PLAYGROUND_STATE_TARGETS: tuple[str, ...] = (
     "state/lumina_playground_progress.json",
     "state/lumina_playground_tape.jsonl",
+    "state/lumina_playground_sense.json",
     "state/first_sim_order.json",
 )
 
@@ -128,11 +132,35 @@ def wipe_awakening_generated(workspace_root: Path | str) -> list[str]:
             live_ledger_path,
         )
 
+        from lumina_core.birth.awakening_select_env import (
+            BIRTH_TAPE_A_BOOK_NAME,
+            BIRTH_TAPE_A_DAYS_NAME,
+            PARENT_TAPE_A_WR_NAME,
+        )
+        from lumina_core.maturity.awakening.keep_best import STUDENT_ZIP_NAME
+        from lumina_core.maturity.phase_runners.awakening_shot import (
+            INCUMBENT_LEDGER_NAME,
+            INCUMBENT_PARENT_LEDGER_NAME,
+        )
+
+        art = artifacts_dir(root)
         live_paths = [
             live_child_zip(root),
-            artifacts_dir(root) / CHILD_META_NAME,
+            art / CHILD_META_NAME,
             live_ledger_path(root),
-            artifacts_dir(root) / "awakening_incumbent_pi_star.zip",
+            live_ledger_path(root).with_suffix(".sha256"),
+            art / "awakening_incumbent_pi_star.zip",
+            art / STUDENT_ZIP_NAME,
+            art / INCUMBENT_LEDGER_NAME,
+            art / INCUMBENT_LEDGER_NAME.replace(".jsonl", ".sha256"),
+            art / INCUMBENT_PARENT_LEDGER_NAME,
+            art / INCUMBENT_PARENT_LEDGER_NAME.replace(".jsonl", ".sha256"),
+            art / "awakening_parent_holdout.jsonl",
+            art / "awakening_parent_holdout.frozen_sha",
+            art / "awakening_parent_holdout.sha256",
+            art / BIRTH_TAPE_A_DAYS_NAME,
+            art / BIRTH_TAPE_A_BOOK_NAME,
+            art / PARENT_TAPE_A_WR_NAME,
         ]
     except Exception:
         art = root / "reports" / "birth_cloud_run" / "artifacts"
@@ -141,6 +169,14 @@ def wipe_awakening_generated(workspace_root: Path | str) -> list[str]:
             art / "awakening_live_pi_star.json",
             art / "awakening_live_holdout.jsonl",
             art / "awakening_incumbent_pi_star.zip",
+            art / "awakening_student_pi_star.zip",
+            art / "awakening_incumbent_holdout.jsonl",
+            art / "awakening_incumbent_parent_holdout.jsonl",
+            art / "awakening_parent_holdout.jsonl",
+            art / "awakening_parent_holdout.frozen_sha",
+            art / "awakening_birth_tape_a_days.json",
+            art / "awakening_birth_tape_a_book.json",
+            art / "awakening_parent_tape_a_wr.json",
         ]
     frozen = {"birth_exit_pi_star.zip", "birth_exit_pi_star.json"}
     for path in live_paths:
@@ -154,6 +190,10 @@ def wipe_awakening_generated(workspace_root: Path | str) -> list[str]:
         rel = _unlink(root / relative, root)
         if rel:
             removed.append(rel)
+    # Rule exams are scored against this baseline. The Playground journal stays.
+    rel = _unlink(root / "reports" / "playground_rule_exams", root)
+    if rel:
+        removed.append(rel)
     removed.extend(wipe_playground_generated(root))
     return removed
 

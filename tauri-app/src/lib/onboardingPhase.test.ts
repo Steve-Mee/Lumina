@@ -77,6 +77,53 @@ describe("awakening cinematic surface", () => {
     setPreferAwakeningHub(false);
   });
 
+  it("releases the birth pin after birth exit when the awakening clock is the surface", () => {
+    const p = payload(
+      {
+        setup_complete: true,
+        birth: { status: "completed", artifacts_ok: true, birth_exit_ok: true },
+      },
+      "awakening",
+    );
+    expect(
+      mapAppPhase(p, {
+        priorPhase: "birth",
+        birthPhaseCommitted: true,
+        activating: false,
+      }),
+    ).toBe("awakening");
+  });
+
+  it("keeps the birth pin while birth has not exited", () => {
+    const p = payload(
+      {
+        setup_complete: true,
+        birth: { status: "running", artifacts_ok: false, birth_exit_ok: false },
+      },
+      "hub",
+    );
+    expect(
+      mapAppPhase(p, {
+        priorPhase: "birth",
+        birthPhaseCommitted: true,
+        activating: false,
+      }),
+    ).toBe("birth");
+  });
+
+  it("lands a not-started Awakening on Phase Hub", () => {
+    const p = payload(
+      {
+        setup_complete: true,
+        skip_wizard: true,
+        birth: { status: "completed", artifacts_ok: true, birth_exit_ok: true },
+        app_surface_reason: "awakening_pending",
+      },
+      "awakening",
+    );
+    expect(coldStart(p)).toBe("hub");
+  });
+
   it("maps app_surface awakening to awakening phase", () => {
     const p = payload({ setup_complete: true, skip_wizard: true }, "awakening");
     expect(coldStart(p)).toBe("awakening");
@@ -86,6 +133,20 @@ describe("awakening cinematic surface", () => {
     setPreferAwakeningHub(true);
     const p = payload({ setup_complete: true, skip_wizard: true }, "awakening");
     expect(coldStart(p)).toBe("hub");
+  });
+
+  it("keeps a running awakening clock on the living screen", () => {
+    setPreferAwakeningHub(true);
+    const p = payload(
+      { setup_complete: true, skip_wizard: true, app_surface_reason: "awakening_running" },
+      "awakening",
+    );
+    expect(coldStart(p)).toBe("awakening");
+  });
+
+  it("does not demote awakening to a stale hub payload when refresh fails", () => {
+    const staleHub = payload({ setup_complete: true }, "hub");
+    expect(resolvePhaseOnRefreshError("awakening", staleHub)).toBe("awakening");
   });
 
   it("preserves awakening on refresh error", () => {
@@ -276,6 +337,18 @@ describe("onboardingPhase cold-start matrix (T1–T8)", () => {
       },
       "hub",
     );
+    expect(
+      mapAppPhase(p, {
+        priorPhase: "cockpit",
+        birthPhaseCommitted: false,
+        activating: false,
+        operatorDeckActive: true,
+      }),
+    ).toBe("cockpit");
+  });
+
+  it("operator deck override keeps cockpit while playground SSOT", () => {
+    const p = payload({ setup_complete: true, skip_wizard: true }, "playground");
     expect(
       mapAppPhase(p, {
         priorPhase: "cockpit",

@@ -8,6 +8,7 @@ export {
 export type {
   ActiveMutation,
   AdaptiveIntelligenceWsBlock,
+  BarBookTelemetry,
   CoreLiveTelemetry,
   FortressSnapshot,
   NinjaTraderTelemetry,
@@ -17,6 +18,7 @@ export type {
 } from "@/lib/coreLiveTelemetry";
 
 export {
+  parseBarBookTelemetry,
   parseTelemetryFrame,
   parseTelemetryPayload,
   resolveCoreLiveHttpUrl,

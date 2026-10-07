@@ -1,4 +1,7 @@
-"""Living Playground runner — SIM crawl clock, heartbeat, no learn(), no deck stamp."""
+"""Living Playground runner — SIM crawl clock, heartbeat, no learn(), no deck stamp.
+
+A flat n_P on a 2s poll is not a stall. A stall is three 30-minute windows.
+"""
 from __future__ import annotations
 
 import time
@@ -7,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from lumina_core.logging_utils import get_logger
+from lumina_core.market.archive_repair import repair_next_hole
 from lumina_core.maturity.continuum import mark_phase_failed, mark_phase_running
 from lumina_core.maturity.phase_runners.awakening_shot import (
     AwakeningShotError,
@@ -15,16 +19,25 @@ from lumina_core.maturity.phase_runners.awakening_shot import (
 )
 from lumina_core.maturity.phase_runners.common import finish_from_exit_eval, write_phase_progress
 from lumina_core.maturity.playground.clock import clock_keeps_running
+from lumina_core.maturity.playground.crawl import unfilled_edge_seq, watch_crawl
 from lumina_core.maturity.playground.envelope import envelope_sealed_for_pass
 from lumina_core.maturity.playground.habitat import habitat_snapshot
+from lumina_core.maturity.playground.journal import append_heartbeat
 from lumina_core.maturity.playground.law import evaluate_playground_exit
-from lumina_core.maturity.playground.progress import merge_playground_progress
+from lumina_core.maturity.playground.portfolio_seal import ensure_portfolio_seal
+from lumina_core.maturity.playground.progress import load_playground_progress, merge_playground_progress
+from lumina_core.maturity.playground.sense_audit import ensure_sense_audit
+from lumina_core.maturity.playground.sense_clock import (
+    playground_flat_line,
+    recognize_existing_flat_book,
+)
 from lumina_core.maturity.playground.recovery import (
-    MAX_STALL_RETRIES,
-    is_stall,
-    occupancy_crashed,
-    recovery_proven,
-    should_stop_retries,
+    WINDOW_SEC,
+    ConclusiveState,
+    StallState,
+    active_fault,
+    step_conclusive,
+    step_stall,
 )
 from lumina_core.maturity.playground.select import load_policy_identities
 
@@ -38,7 +51,7 @@ def run_playground_live(
     *,
     should_stop: StopFn | None = None,
     poll_sec: float = 2.0,
-    max_stall_retries: int = MAX_STALL_RETRIES,
+    stall_window_sec: float = WINDOW_SEC,
     sleep_fn: Callable[[float], None] | None = None,
 ) -> dict[str, Any]:
     root = Path(workspace_root).resolve()
@@ -46,20 +59,28 @@ def run_playground_live(
     write_phase_progress(root, "playground", progress_pct=5.0, message="Opening Playground clock")
     sleeper = sleep_fn or time.sleep
     freeze = snapshot_birth_freeze(root)
+    missing: list[str] = []
+    learned: dict[str, Any] = {}
     try:
         _seed_progress(root, freeze=freeze)
+        try:
+            ensure_sense_audit(root)
+            from lumina_core.maturity.playground.globex_gap import note_globex_once, on_clock
+
+            note_globex_once(root)
+            on_clock(root)
+            recognize_existing_flat_book(root)
+        except Exception:
+            logger.warning("playground.sense_audit_failed", exc_info=True)
         ok, missing, learned = evaluate_playground_exit(root)
         if ok:
             return _complete(root, learned)
-        stall_retries = 0
-        prev_n_p = int(learned.get("n_p") or 0)
-        cycles = 0
+        stall = _stall_from_progress(root)
+        conclusive = _conclusive_from_progress(root)
+        seen_seq = unfilled_edge_seq(root)
+        last_sig = ""
         last_error: str | None = None
-        while clock_keeps_running(
-            passed=False,
-            stall_retries=stall_retries,
-            max_stall_retries=max_stall_retries,
-        ):
+        while clock_keeps_running(passed=False, stall_windows=stall.windows):
             if should_stop is not None and should_stop():
                 last_error = "stop_requested"
                 break
@@ -70,49 +91,93 @@ def run_playground_live(
                 merge_playground_progress(root, {"freeze_ok": False})
                 break
             _seed_progress(root, freeze=freeze)
+            seal_note = _refresh_seal(root)
             hab = habitat_snapshot(root)
             if hab.get("mode") == "real":
                 last_error = "mode_not_sim=real"
                 break
-            merge_playground_progress(
-                root,
-                {
-                    "activity": "session_watch",
-                    "recovery_ok": recovery_proven(
-                        freeze_ok=True,
-                        cycles_completed=max(1, cycles),
-                        stall_retries=stall_retries,
-                    ),
-                },
-            )
+            status, seen_seq = watch_crawl(root, seen_seq=seen_seq)
+            try:
+                from lumina_core.maturity.playground.globex_gap import on_clock
+                from lumina_core.maturity.playground.research_kit import on_school_clock
+
+                repair_next_hole(root)
+                on_school_clock(root)
+                on_clock(root)
+                from lumina_core.maturity.playground.session_flat import note_stale_open_feed
+
+                note_stale_open_feed(root)
+            except Exception:
+                logger.warning("playground.shadow_promote_failed", exc_info=True)
             ok, missing, learned = evaluate_playground_exit(root)
             n_p = int(learned.get("n_p") or 0)
+            now = time.time()
+            fault = active_fault(
+                nt_health=str(hab.get("nt_health") or "unknown"),
+                occupancy=_as_float(learned.get("occupancy")),
+                total_bars=int(status.get("total_bars") or 0),
+            )
+            stepped = step_stall(
+                stall,
+                now=now,
+                active=fault,
+                unfilled_edge=bool(status.get("orders_unfilled")),
+                frozen=bool(hab.get("waiting_operator")),
+                window_sec=float(stall_window_sec),
+            )
+            stall = stepped.state
+            conclusive, ask = step_conclusive(
+                conclusive,
+                now=now,
+                n_p=n_p,
+                blockers=missing,
+                window_sec=float(stall_window_sec),
+            )
+            waiting = bool(hab.get("waiting_operator"))
+            green_days = int(learned.get("green_days") or 0)
+            message = _clock_message(
+                n_p=n_p,
+                green_days=green_days,
+                waiting=waiting,
+                sealed=bool(hab.get("envelope_sealed")),
+                seal_note=seal_note,
+            )
+            if not waiting:
+                message = playground_flat_line(root, n_p=n_p) or message
+            from lumina_core.maturity.playground.demo_cash import note_refill_needed_once
+
+            refill = note_refill_needed_once(root)
+            if refill:
+                message = refill
             write_phase_progress(
                 root,
                 "playground",
-                progress_pct=min(95.0, 10.0 + float(n_p) * 0.5),
-                message=f"Crawling · n_P {n_p}/150",
+                progress_pct=min(100.0, float(green_days) / 5.0 * 100.0),
+                message=message,
                 learned=learned,
             )
-            merge_playground_progress(root, {"activity": "session_watch", "n_p": n_p})
+            _store_clock(root, stall=stall, conclusive=conclusive, n_p=n_p, seal_note=seal_note)
+            sig = f"{n_p}|{stall.windows}|{status.get('reason')}|{ask}|{','.join(missing[:6])}"
+            if sig != last_sig:
+                append_heartbeat(
+                    root,
+                    {
+                        "n_p": n_p,
+                        "stall_windows": stall.windows,
+                        "stop_reason": ask or str(status.get("reason") or ""),
+                        "blockers": list(missing[:8]),
+                        "waiting_operator": bool(hab.get("waiting_operator")),
+                    },
+                )
+                last_sig = sig
             if ok:
                 return _complete(root, learned)
-            crash = occupancy_crashed(learned.get("occupancy") if learned else None)
-            waiting = bool(hab.get("waiting_operator"))
-            if is_stall(
-                prev_n_p=prev_n_p,
-                n_p=n_p,
-                occupancy_crash=crash,
-                habitat_error=bool(hab.get("habitat_error")),
-                waiting_operator=waiting,
-            ) and cycles > 0:
-                stall_retries += 1
-                last_error = "stall"
-                if should_stop_retries(stall_retries, max_retries=max_stall_retries):
-                    last_error = "stall_retries_exhausted"
-                    break
-            prev_n_p = n_p
-            cycles += 1
+            if stepped.stop:
+                last_error = "stall_windows_exhausted"
+                break
+            if ask == "expire":
+                last_error = "conclusive_silence"
+                break
             sleeper(max(0.0, float(poll_sec)))
         sealed = envelope_sealed_for_pass(root)
         write_phase_progress(
@@ -123,7 +188,7 @@ def run_playground_live(
         )
         next_step = "Open Command Deck and crawl in NT SIM (JSON stamps do not count)"
         if not sealed:
-            next_step = "Seal the SIM risk envelope (PlaygroundEnvelopeSeal UI)"
+            next_step = "Seal the SIM risk envelope from the live account cash"
         if last_error == "mode_not_sim=real":
             next_step = "Playground is SIM only. REAL is locked."
         return {
@@ -170,3 +235,73 @@ def _seed_progress(root: Path, *, freeze: dict[str, str]) -> None:
     if hab.get("breakeven_wr") is not None:
         patch["breakeven_wr"] = hab.get("breakeven_wr")
     merge_playground_progress(root, patch)
+
+
+def _refresh_seal(root: Path) -> str:
+    try:
+        return str(ensure_portfolio_seal(root) or "")
+    except Exception:
+        logger.debug("playground.seal_refresh_failed", exc_info=True)
+        return ""
+
+
+def _clock_message(*, n_p: int, green_days: int, waiting: bool, sealed: bool, seal_note: str) -> str:
+    if waiting and not sealed:
+        return seal_note or "Sim-cash nog niet gelezen. Dagvloer opent bij een gelezen cash-saldo."
+    if waiting:
+        return "Nodig: DECK. Daarmee bevestig je dat jij de operator bent."
+    return f"School · groen {int(green_days)}/5 · closes {int(n_p)}"
+
+
+def _store_clock(
+    root: Path,
+    *,
+    stall: StallState,
+    conclusive: ConclusiveState,
+    n_p: int,
+    seal_note: str,
+) -> None:
+    patch: dict[str, Any] = {
+        "activity": "session_watch",
+        "n_p": n_p,
+        "stall_windows": stall.windows,
+        "stall_fault": stall.fault,
+        "stall_fault_since": stall.fault_since,
+        "stall_healthy_since": stall.healthy_since,
+        "stall_hold_fault": stall.hold_fault,
+        "conclusive_bracket": conclusive.bracket,
+        "conclusive_asked_at": conclusive.asked_at,
+        "conclusive_continued_through": conclusive.continued_through,
+    }
+    if seal_note:
+        patch["seal_note"] = seal_note
+    merge_playground_progress(root, patch)
+
+
+def _stall_from_progress(root: Path) -> StallState:
+    prog = load_playground_progress(root)
+    return StallState(
+        windows=int(prog.get("stall_windows") or 0),
+        fault=str(prog.get("stall_fault") or ""),
+        fault_since=_as_float(prog.get("stall_fault_since")),
+        healthy_since=_as_float(prog.get("stall_healthy_since")),
+        hold_fault=str(prog.get("stall_hold_fault") or ""),
+    )
+
+
+def _conclusive_from_progress(root: Path) -> ConclusiveState:
+    prog = load_playground_progress(root)
+    return ConclusiveState(
+        bracket=int(prog.get("conclusive_bracket") or 0),
+        asked_at=_as_float(prog.get("conclusive_asked_at")),
+        continued_through=int(prog.get("conclusive_continued_through") or 0),
+    )
+
+
+def _as_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

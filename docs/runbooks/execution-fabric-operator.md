@@ -32,9 +32,11 @@ APIs:
 - `POST /api/setup/fabric-heal` — **full repair** (close NT, redeploy, launch, test)
 - `POST /api/setup/fabric-connection-test` — diagnostic only (GREEN certificate)
 - `GET /api/setup/fabric-link-status`
-- `POST /api/setup/fabric-nt-watch` — NT binary change → re-probe; failure sets halt + **needs_repair**
+- `POST /api/setup/fabric-nt-watch` — keep Custom.csproj compilable (Newtonsoft.Json + Lumina include); on NT binary change re-probe. Halt + **needs_repair** only if the link is still red **and** NT is running (Repair is the only NT-kill path). Never ask the operator to F5.
 
-On NinjaTrader update/reinstall: open Setup and click **Repair NinjaTrader connection** (or let auto-heal run after halt). Do **not** ask users to rename `.dll.new` files.
+On NinjaTrader update/reinstall: Lumina auto-injects the host, retargets installer ProjectReferences, and adds well-known NT-bin refs so NT's own compiler succeeds. If NinjaTrader is closed, Lumina also rebuilds `NinjaTrader.Custom.dll`. If NinjaTrader is running and the compile still fails, click **Repair NinjaTrader connection**. Do **not** ask users to rename `.dll.new` files or open the NinjaScript editor.
+
+**NinjaTrader 8.1.8.3:** the installer rewrites `NinjaTrader.Custom.csproj` to an internal source template (ProjectReference to `NinjaTrader.Core.csproj`), drops the Lumina Compile include, and omits `Newtonsoft.Json` from **Config.xml `<References>`** (the NinjaScript editor SSOT). Third-party NinjaScripts (`using Newtonsoft.Json`) then fail CS0246; NT restores the previous Custom.dll and shows “Unable to compile custom assembly”. A csproj HintPath to `Program Files\NinjaTrader 8\bin` is **ignored** by NT’s compiler — refs must be a Custom-folder DLL listed in Config.xml (`*MyDocuments*\NinjaTrader 8\bin\Custom\Newtonsoft.Json.dll`). A *netstandard* Newtonsoft in Custom then fails CS0012 (`Object` / `netstandard, Version=2.0.0.0`). Heal replaces that copy with NT’s net45 `Newtonsoft.Json.dll` while NT is closed, copies `netstandard.dll` from the .NETFramework Facades into Custom, and adds both to Config.xml. If a third-party script still fails, heal isolates that Compile include so Lumina still builds. Repair retargets Core/Gui refs to `C:\Program Files\NinjaTrader 8\bin\*.dll` and re-injects `@LuminaFabricHost.cs`. NT 8.1.8 also binding-redirects `Google.Protobuf` → 3.34.0 and `System.Text.Json` → 10.0.0.3; Repair must not overlay older copies of those assemblies into `bin\Custom`.
 
 ## Dual-plane health (Execution + Market Data) — mandatory
 
@@ -44,7 +46,7 @@ Startup / Test connection / Repair **must not** submit, flatten, or cancel NT or
 | Plane | What is checked | Host required |
 |-------|-----------------|---------------|
 | **Execution** | token, port, auth, auth_reject (wrong token) | SimHost **or** NT8 AddOn |
-| **Market data** | `historical_bars` via Fabric `RequestHistoricalData` (≥10 real bars) | **NT8 AddOn only** (native BarsRequest) |
+| **Market data** | `historical_bars` via Fabric `RequestHistoricalData` (≥10 real bars) **and** live 1m Last via `BarsRequest.Update` (`NtLiveBarProvider`) | **NT8 AddOn only** (native BarsRequest) |
 
 Critical check IDs: `token_present`, `port_listen`, `auth_ok`, `auth_reject`, `historical_bars`.
 `place_order` / `flatten` / `SAFE_MODE` probes are **disabled** (skip). Failures:
@@ -61,8 +63,9 @@ Critical check IDs: `token_present`, `port_listen`, `auth_ok`, `auth_reject`, `h
 NinjaScript Output must show:
 
 ```
-[FabricHost] Host started successfully … historical=nt
+[FabricHost] Host started successfully … historical=nt live=nt liveBars=nt BarsRequest.Update 1m Last
 [FabricData] hist … code=ok bars=…
+[FabricLiveBars] subscribed live 1m bars …
 ```
 
 When `broker.live_provider=ninjatrader`, Brain historical load uses Fabric only (no CrossTrade). `CROSSTRADE_TOKEN` may be empty.

@@ -148,6 +148,36 @@ def is_stale_contract_symbol(symbol: str, *, now_utc: datetime | None = None) ->
     return now > expiry_utc
 
 
+_KNOWN_ROOTS = frozenset({"MES", "ES", "MNQ", "NQ", "MYM", "YM", "M2K", "RTY", "CL", "GC"})
+
+
+def front_month_symbol(root: str, *, now_utc: datetime | None = None) -> str:
+    """Liquid quarterly listing for a bare root. ``MES`` on 28 Sep 2026 is ``MES DEC26``."""
+    token = str(root or "").strip().upper().split()[0]
+    if not token:
+        return ""
+    now = now_utc or datetime.now(timezone.utc)
+    seed = f"{token} MAR{now.year % 100:02d}"
+    return roll_to_liquid_front_month(seed, now_utc=now)
+
+
+def live_listing(symbol: str, *, now_utc: datetime | None = None) -> str:
+    """Contract NT can actually serve. Rolls past the volume roll. A bare root becomes the front month.
+
+    An open chart on the liquid month is the book. A configured expired month is not.
+    """
+    raw = str(symbol or "").strip().upper()
+    if not raw:
+        return ""
+    root, month, year = parse_contract_symbol(raw)
+    if root and month is not None and year is not None:
+        return roll_to_liquid_front_month(raw, now_utc=now_utc)
+    token = raw.split()[0]
+    if token in _KNOWN_ROOTS:
+        return front_month_symbol(token, now_utc=now_utc)
+    return raw
+
+
 def roll_stale_contract_symbol(symbol: str, *, now_utc: datetime | None = None) -> str:
     """Return the next quarterly contract when *symbol* is stale; otherwise unchanged."""
     normalized = str(symbol or "").strip().upper()

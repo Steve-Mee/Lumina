@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -12,6 +13,28 @@ from lumina_launcher.runtime.spawn import SpawnResult, build_runtime_command, sa
 
 
 @pytest.mark.unit
+def test_gui_runtime_uses_pythonw_on_windows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    if os.name != "nt":
+        pytest.skip("pythonw is the Windows console fix")
+    py = tmp_path / "python.exe"
+    pyw = tmp_path / "pythonw.exe"
+    py.write_text("x", encoding="utf-8")
+    pyw.write_text("x", encoding="utf-8")
+    monkeypatch.setattr(
+        "lumina_launcher.runtime.spawn.resolve_runtime_python",
+        lambda _root: str(py),
+    )
+    gui = build_runtime_command(tmp_path, Path("runtime_entrypoint.py"), "sim")
+    headless = build_runtime_command(
+        tmp_path,
+        Path("runtime_entrypoint.py"),
+        "sim",
+        headless=True,
+    )
+    assert Path(gui[0]).name.lower() == "pythonw.exe"
+    assert Path(headless[0]).name.lower() == "python.exe"
+
+
 def test_build_runtime_command_includes_mode() -> None:
     root = Path(__file__).resolve().parents[1]
     cmd = build_runtime_command(root, Path("lumina_core/engine/runtime_entrypoint.py"), "paper")

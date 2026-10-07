@@ -1,3 +1,4 @@
+import { luminaFetch, readHttpErrorDetail } from "@/lib/httpClient";
 import { resolveBackendBaseUrl } from "@/lib/setupClient";
 
 export type AdvanceMode = "manual" | "telegram" | "auto_evolve";
@@ -93,13 +94,12 @@ export interface MaturityHubPayload {
 
 async function maturityJson<T>(path: string, init?: RequestInit): Promise<T> {
   const base = resolveBackendBaseUrl();
-  const response = await fetch(`${base}${path}`, {
+  const response = await luminaFetch(`${base}${path}`, {
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     ...init,
   });
   if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(detail || `Maturity HTTP ${response.status}`);
+    throw new Error(await readHttpErrorDetail(response));
   }
   return response.json() as Promise<T>;
 }
@@ -130,6 +130,18 @@ export async function fetchPlaygroundProgress(): Promise<{
   learned: Record<string, unknown>;
   runner_active?: boolean;
   progress?: Record<string, unknown>;
+  sense?: {
+    pass_now?: boolean;
+    headline?: string;
+    waiting?: string;
+    clock?: string;
+    market?: string;
+    paper?: string;
+    venue?: string;
+    alerts?: string[];
+    tone?: "live" | "wait" | "alert" | "idle";
+    lines?: string[];
+  };
 }> {
   return maturityJson("/api/maturity/playground/progress");
 }
@@ -141,6 +153,18 @@ export async function postPlaygroundDeckLive(): Promise<{
   learned: Record<string, unknown>;
   runner_active?: boolean;
   progress?: Record<string, unknown>;
+  sense?: {
+    pass_now?: boolean;
+    headline?: string;
+    waiting?: string;
+    clock?: string;
+    market?: string;
+    paper?: string;
+    venue?: string;
+    alerts?: string[];
+    tone?: "live" | "wait" | "alert" | "idle";
+    lines?: string[];
+  };
 }> {
   return maturityJson("/api/maturity/playground/deck-live", { method: "POST" });
 }
@@ -198,17 +222,20 @@ export async function postAdvanceNextPhase(opts?: {
   });
 }
 
-export async function postWipeMaturityPhase(phase: string): Promise<{ ok: boolean }> {
+export async function postWipeMaturityPhase(
+  phase: string,
+  confirmPhrase: string,
+): Promise<{ ok: boolean }> {
   return maturityJson("/api/maturity/wipe-phase", {
     method: "POST",
-    body: JSON.stringify({ phase, confirm: true }),
+    body: JSON.stringify({ phase, confirm: true, confirm_phrase: confirmPhrase }),
   });
 }
 
-export async function postWipeAllMaturation(): Promise<{ ok: boolean }> {
+export async function postWipeAllMaturation(confirmPhrase: string): Promise<{ ok: boolean }> {
   return maturityJson("/api/maturity/wipe-all", {
     method: "POST",
-    body: JSON.stringify({ confirm: true }),
+    body: JSON.stringify({ confirm: true, confirm_phrase: confirmPhrase }),
   });
 }
 

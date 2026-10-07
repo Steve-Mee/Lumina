@@ -1,4 +1,4 @@
-"""Awakening cinematic surface — hub until started, cinematic while live/incomplete."""
+"""Awakening surface — Phase Hub until started, cinematic while live or halted."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,7 +24,7 @@ def _birth_ready_kwargs(tmp_path: Path) -> dict[str, object]:
 
 
 @pytest.mark.unit
-def test_never_started_stays_hub(tmp_path: Path) -> None:
+def test_never_started_stays_on_phase_hub(tmp_path: Path) -> None:
     wanted, why = awakening_cinematic_wanted(tmp_path)
     assert wanted is False
     assert why == "awakening_pending"

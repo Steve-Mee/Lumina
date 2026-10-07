@@ -34,13 +34,13 @@ export function useDeckLifecycleGuard(): void {
       operatorDeckActive,
     });
 
-    // Allow hub → deck session override; only kick if SSOT is setup/birth.
+    // Session override keeps the operator on the deck; otherwise honor SSOT.
     if (expected === "wizard" || expected === "birth") {
       setPhase(expected);
       return;
     }
-    if (expected === "hub" && !operatorDeckActive) {
-      setPhase("hub");
+    if (expected !== "cockpit") {
+      setPhase(expected);
     }
   }, [payload, setPhase]);
 }

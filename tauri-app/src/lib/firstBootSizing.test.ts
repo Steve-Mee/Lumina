@@ -37,9 +37,10 @@ describe("firstBootSizing", () => {
     expect(resolveDefaultMaxRealDays(100_000)).toBe(365);
   });
 
-  it("25k trades still start at 90d; clamp refuses 56 as Birth start", () => {
-    expect(FOUNDATION_HISTORY_START_DAYS).toBe(90);
-    expect(clampMaxRealDays(56)).toBe(90);
+  it("25k trades still start at 365d; clamp refuses a thinner sport", () => {
+    expect(FOUNDATION_HISTORY_START_DAYS).toBe(365);
+    expect(clampMaxRealDays(56)).toBe(365);
+    expect(clampMaxRealDays(90)).toBe(365);
     expect(clampMaxRealDays(365)).toBe(365);
   });
 

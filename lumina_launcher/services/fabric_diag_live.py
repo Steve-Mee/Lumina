@@ -235,14 +235,19 @@ def run_live_checks(
 
         def _do_hist() -> dict[str, Any]:
             # Wider window + more bars — NT BarsRequest is more reliable with barsBack/lookback.
-            end_ms = int(time.time() * 1000)
+            from datetime import datetime, timezone
+
+            from lumina_core.market.globex_hours import history_request_end
+
+            end = history_request_end(datetime.now(timezone.utc))
+            end_ms = int(end.timestamp() * 1000)
             start_ms = end_ms - (14 * 24 * 60 * 60 * 1000)
             return client.request_historical_data(
                 instrument=instrument,
                 bar_period="1m",
                 start_unix_ms=start_ms,
                 end_unix_ms=end_ms,
-                max_bars=max(min_bars, 200),
+                max_bars=20_000,
                 timeout_seconds=90.0,
             )
 

@@ -33,6 +33,60 @@ def test_write_fabric_json_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert "AuthToken" not in data
 
 
+def test_write_fabric_json_account_argument_wins_over_sim101(tmp_path: Path) -> None:
+    target = tmp_path / "fabric.json"
+    target.write_text(
+        json.dumps({"AccountName": "Sim101", "AuthToken": "keep-if-present"}),
+        encoding="utf-8",
+    )
+    sp.write_fabric_json_defaults(path=target, account_name="DEMO5042070")
+    data = json.loads(target.read_text(encoding="utf-8"))
+    assert data["AccountName"] == "DEMO5042070"
+    assert data.get("AuthToken") == "keep-if-present"
+
+
+def test_write_fabric_json_preserves_real_account_name(tmp_path: Path) -> None:
+    target = tmp_path / "fabric.json"
+    target.write_text(
+        json.dumps(
+            {
+                "AccountName": "DEMO5042070",
+                "RealAccountName": "APEX12345",
+                "AuthToken": "keep-if-present",
+            }
+        ),
+        encoding="utf-8",
+    )
+    sp.write_fabric_json_defaults(path=target, account_name="DEMO5042070")
+    data = json.loads(target.read_text(encoding="utf-8"))
+    assert data["AccountName"] == "DEMO5042070"
+    assert data["RealAccountName"] == "APEX12345"
+    assert data.get("AuthToken") == "keep-if-present"
+
+
+def test_write_fabric_json_preserves_account_when_argument_omitted(tmp_path: Path) -> None:
+    target = tmp_path / "fabric.json"
+    target.write_text(
+        json.dumps({"AccountName": "DEMO5042070", "AuthToken": "keep-if-present"}),
+        encoding="utf-8",
+    )
+    sp.write_fabric_json_defaults(path=target)
+    data = json.loads(target.read_text(encoding="utf-8"))
+    assert data["AccountName"] == "DEMO5042070"
+    assert data.get("AuthToken") == "keep-if-present"
+
+
+def test_account_name_from_config_reads_operator_account(tmp_path: Path) -> None:
+    from lumina_launcher.services.fabric_bootstrap import account_name_from_config
+
+    (tmp_path / "config.yaml").write_text(
+        "broker:\n  ninjatrader:\n    account_name: DEMO5042070\n",
+        encoding="utf-8",
+    )
+    assert account_name_from_config(tmp_path) == "DEMO5042070"
+    assert account_name_from_config(tmp_path / "missing") == ""
+
+
 def test_write_fabric_json_preserves_gateway_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     target = tmp_path / "fabric.json"
     # Operator-chosen mode must survive re-write of defaults.
@@ -45,9 +99,7 @@ def test_write_fabric_json_preserves_gateway_mode(tmp_path: Path, monkeypatch: p
     assert data.get("AuthToken") == "keep-if-present"
 
 
-def test_persist_credentials_writes_fabric_token(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_persist_credentials_writes_fabric_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     env_path = tmp_path / ".env"
     env_path.write_text("LUMINA_JWT_SECRET_KEY=jwt\nCROSSTRADE_TOKEN=t\nCROSSTRADE_ACCOUNT=a\n", encoding="utf-8")
 

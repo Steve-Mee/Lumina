@@ -32,10 +32,6 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function fetchOnboardingStatus(): Promise<OnboardingPayload> {
-  return apiFetch<OnboardingPayload>("/api/setup/onboarding");
-}
-
 export interface FabricConnectionCheck {
   id: string;
   title: string;
@@ -283,6 +279,9 @@ export async function postBotConfig(
   success: boolean;
   defaults: OnboardingPayload["defaults"];
   sim_envelope_sealed?: boolean | null;
+  playground_envelope_sealed?: boolean;
+  daily_loss_cap?: number | null;
+  max_total_open_risk?: number;
 }> {
   return apiFetch("/api/config/bot", {
     method: "POST",
@@ -331,15 +330,59 @@ export type {
 } from "@/lib/birthClient";
 export { fetchBirthStatusTyped as fetchBirthStatus } from "@/lib/birthClient";
 
-export async function probeBackendHealth(): Promise<boolean> {
+export type BackendProbeVerdict = "up" | "timeout" | "down";
+
+/**
+ * A 4s abort means the process was too busy to answer, not that it is gone.
+ * Tauri plugin-http reports that abort as "Request cancelled".
+ */
+export function classifyProbeFailure(error: unknown): Exclude<BackendProbeVerdict, "up"> {
+  const name = error instanceof Error ? error.name : "";
+  if (name === "TimeoutError" || name === "AbortError") {
+    return "timeout";
+  }
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  if (/timeout|timed out|aborted|abort|cancel/i.test(message)) {
+    return "timeout";
+  }
+  return "down";
+}
+
+export async function probeBackendReachability(): Promise<BackendProbeVerdict> {
   try {
     const base = resolveBackendBaseUrl();
     const response = await luminaFetch(`${base}/api/monitoring/health`, {
       signal: AbortSignal.timeout(4000),
     });
-    return response.ok;
-  } catch {
-    return false;
+    return response.ok ? "up" : "down";
+  } catch (error) {
+    return classifyProbeFailure(error);
+  }
+}
+
+export async function probeBackendHealth(): Promise<boolean> {
+  return (await probeBackendReachability()) === "up";
+}
+
+/**
+ * Bound the cold-start fetch. A living eval can hold the interpreter longer
+ * than a health probe; an unbounded wait leaves Systems Go on "Contacting…".
+ * Timeout is a busy control plane, not a dead backend.
+ */
+const ONBOARDING_FETCH_TIMEOUT_MS = 8_000;
+
+export async function fetchOnboardingStatus(): Promise<OnboardingPayload> {
+  try {
+    return await apiFetch<OnboardingPayload>("/api/setup/onboarding", {
+      signal: AbortSignal.timeout(ONBOARDING_FETCH_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (classifyProbeFailure(error) === "timeout") {
+      throw new Error(
+        "Control plane is busy. A living exam keeps running — retry in a moment.",
+      );
+    }
+    throw error;
   }
 }
 
@@ -361,6 +404,36 @@ export async function fetchDeckCredentialsPrefill(): Promise<
 }
 
 /** Sync admin key from backend .env into deck localStorage when not already set. */
+export interface NtAccountsResponse {
+  demo_account: string;
+  demo_config: string;
+  demo_fabric: string;
+  real_account: string;
+  names_aligned: boolean;
+  pair_complete: boolean;
+  pair_error: string;
+  bind_account: string;
+  real_field: string;
+  real_bound: boolean;
+  restart_to_bind: boolean;
+  demo_help: string;
+  real_help: string;
+  fabric_path: string;
+  saved?: boolean;
+  bind_note?: string;
+}
+
+export async function fetchNtAccounts(): Promise<NtAccountsResponse> {
+  return apiFetch<NtAccountsResponse>("/api/setup/nt-accounts");
+}
+
+export async function saveNtAccounts(demo: string, real: string): Promise<NtAccountsResponse> {
+  return apiFetch<NtAccountsResponse>("/api/setup/nt-accounts", {
+    method: "POST",
+    body: JSON.stringify({ demo_account: demo, real_account: real }),
+  });
+}
+
 export async function fetchAndHydrateDeckApiKey(): Promise<boolean> {
   if (resolveMonitoringApiKey()) {
     return true;

@@ -8,7 +8,7 @@ import threading
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from lumina_launcher.services.setup_persist import (
     build_credentials_env_snapshot,
@@ -122,9 +122,7 @@ async def start_smart_setup(body: SmartSetupRequest | None = None) -> dict[str, 
             )
             if opts.selected_model_key and result.success:
                 selected = model_service.get_model(opts.selected_model_key)
-                recommended_key = str(
-                    smart.get_setup_status().get("recommended_model_key", "")
-                )
+                recommended_key = str(smart.get_setup_status().get("recommended_model_key", ""))
                 if selected and selected.key != recommended_key:
                     snapshot = hardware.get_snapshot()
                     pull_step = setup.pull_model(selected)
@@ -213,6 +211,9 @@ async def ready_for_birth() -> dict[str, Any]:
                 status_code=400,
                 detail=f"Vault incomplete — missing: {', '.join(missing)}",
             )
+        account_error = _first_seal_accounts_error(setup)
+        if account_error:
+            raise HTTPException(status_code=400, detail=account_error)
         snapshot = hardware.get_snapshot(refresh=True)
         steps = seed_sim_runtime_and_mark_setup(
             workspace_root=_workspace_root(),
@@ -247,6 +248,9 @@ async def save_credentials(body: ConfigureCredentials) -> dict[str, Any]:
     )
     seed_steps: list[dict[str, Any]] = []
     if not still_missing:
+        account_error = _first_seal_accounts_error(setup)
+        if account_error:
+            raise HTTPException(status_code=400, detail=account_error)
         snapshot = hardware.get_snapshot(refresh=True)
         seed_steps = seed_sim_runtime_and_mark_setup(
             workspace_root=_workspace_root(),
@@ -265,6 +269,45 @@ async def save_credentials(body: ConfigureCredentials) -> dict[str, Any]:
     }
 
 
+class NtAccountsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    demo_account: str = ""
+    real_account: str = ""
+
+
+def _first_seal_accounts_error(setup: Any) -> str:
+    """First seal needs both stored names. A finished setup may reseal without them."""
+    from lumina_launcher.services.nt_account_store import first_seal_account_block
+
+    try:
+        complete = bool(setup.is_setup_complete())
+    except Exception:
+        logger.warning("setup completeness unreadable; account pair stays required", exc_info=True)
+        complete = False
+    return first_seal_account_block(_workspace_root(), setup_complete=complete)
+
+
+@router.get("/nt-accounts")
+async def get_nt_accounts() -> dict[str, Any]:
+    from lumina_launcher.services.nt_account_store import read_nt_accounts
+
+    return await asyncio.to_thread(read_nt_accounts, _workspace_root())
+
+
+@router.post("/nt-accounts")
+async def post_nt_accounts(body: NtAccountsBody) -> dict[str, Any]:
+    from lumina_core.broker.ninjatrader.account_names import NtAccountRejected
+    from lumina_launcher.services.nt_account_store import write_nt_accounts
+
+    try:
+        return await asyncio.to_thread(
+            write_nt_accounts,
+            _workspace_root(),
+            body.demo_account,
+            body.real_account,
+        )
+    except NtAccountRejected as exc:
+        raise HTTPException(status_code=400, detail=" ".join(exc.errors)) from exc
 
 
 from lumina_os.backend.setup_endpoints_fabric import (  # noqa: E402

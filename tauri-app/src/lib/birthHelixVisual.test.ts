@@ -19,4 +19,10 @@ describe("BirthHelixVisual motion contract", () => {
     expect(birthHelixSource).toContain("reducedMotion={prefersReducedMotion}");
     expect(birthHelixSource).not.toContain("reducedMotion={false}");
   });
+
+  it("feeds visual-only organism morph into the helix scene", () => {
+    expect(birthHelixSource).toContain("useOrganismVisualPhase");
+    expect(birthHelixSource).toContain("morph={morph}");
+    expect(birthHelixSource).toContain("tradingMode={tradingMode}");
+  });
 });

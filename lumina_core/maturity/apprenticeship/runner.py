@@ -17,7 +17,11 @@ from lumina_core.maturity.apprenticeship.recovery import (
     should_stop_retries,
 )
 from lumina_core.maturity.continuum import mark_phase_failed, mark_phase_running
-from lumina_core.maturity.phase_runners.common import finish_from_exit_eval, write_phase_progress
+from lumina_core.maturity.phase_runners.common import (
+    finish_from_exit_eval,
+    notify_clock_halt,
+    write_phase_progress,
+)
 
 logger = get_logger("lumina.maturity.apprenticeship.runner")
 
@@ -96,11 +100,26 @@ def run_apprenticeship_live(
             prev_n_a = n_a
             cycles += 1
             sleeper(max(0.0, float(poll_sec)))
+        halt_message = "Clock halted — fail-closed, Birth + Playground intact"
+        next_step = (
+            "Need five consecutive NT SIM session days under sim_real_guard "
+            "with Sharpe ≥ 0.20, DD ≤ 12%, n_A ≥ 150, constitution 0."
+        )
         write_phase_progress(
             root,
             "apprenticeship",
-            message="Clock halted — fail-closed, Birth + Playground intact",
+            message=halt_message,
             learned={"status": "incomplete", "stop_reason": last_error, "missing": missing},
+            telegram=False,
+        )
+        notify_clock_halt(
+            root,
+            "apprenticeship",
+            message=halt_message,
+            learned=learned if isinstance(learned, dict) else None,
+            missing=list(missing or []),
+            stop_reason=last_error,
+            next_step=next_step,
         )
         return {
             "ok": False,
@@ -109,10 +128,7 @@ def run_apprenticeship_live(
             "missing": missing,
             "learned": learned,
             "stop_reason": last_error,
-            "next_step": (
-                "Need five consecutive NT SIM session days under sim_real_guard "
-                "with Sharpe ≥ 0.20, DD ≤ 12%, n_A ≥ 150, constitution 0."
-            ),
+            "next_step": next_step,
         }
     except Exception as exc:
         logger.exception("apprenticeship.live_failed")
@@ -137,7 +153,13 @@ def _complete(root: Path, learned: dict[str, Any]) -> dict[str, Any]:
         default_proofs=list(learned.get("exit_proofs") or []),
     )
     if result.get("ok"):
-        write_phase_progress(root, "apprenticeship", progress_pct=100.0, message="Apprenticeship complete")
+        write_phase_progress(
+            root,
+            "apprenticeship",
+            progress_pct=100.0,
+            message="Apprenticeship complete",
+            telegram=False,
+        )
     return result
 
 

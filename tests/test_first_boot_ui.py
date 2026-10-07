@@ -43,7 +43,7 @@ def test_estimate_first_boot_real_days_matches_engine_ssot() -> None:
 
 @pytest.mark.unit
 def test_resolve_default_max_real_days_is_foundation_ceiling() -> None:
-    assert FIRST_BOOT_MIN_REAL_DAYS == 90
+    assert FIRST_BOOT_MIN_REAL_DAYS == 365
     assert FIRST_BOOT_DEFAULT_MAX_REAL_DAYS == 365
     assert resolve_default_max_real_days(25_000) == 365
     assert resolve_default_max_real_days(5_000) == 365

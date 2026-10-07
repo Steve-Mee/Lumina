@@ -2,6 +2,7 @@
 import { toast } from "sonner";
 
 import { CredentialsVaultNtBlock } from "@/components/onboarding/steps/CredentialsVaultChrome";
+import { NtAccountPanel } from "@/components/onboarding/steps/NtAccountPanel";
 import { CredentialsVaultDiagnosticResults } from "@/components/onboarding/steps/CredentialsVaultDiagnosticResults";
 import { VaultField } from "@/components/onboarding/steps/CredentialsVaultPrimitives";
 import { TwinBaseTrainingWizard } from "@/components/operations/TwinBaseTrainingWizard";
@@ -270,6 +271,8 @@ export function CredentialsVaultDetailPanel({
             />
           </VaultField>
         ) : null}
+
+        {focus === "nt_accounts" ? <NtAccountPanel /> : null}
 
         {focus === "diagnostic" ? (
           <CredentialsVaultDiagnosticResults

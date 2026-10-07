@@ -60,10 +60,14 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0045 | Champion/Challenger self-evolution ladder (overlay, venue, council, cutover) | Accepted | 2026-08-14 | [0045-champion-challenger-evolution-ladder.md](./0045-champion-challenger-evolution-ladder.md) |
 | 0046 | Birth Foundation: evolvable plant, sequential 1/5–5/5, process-R + first-touch (WR 20/35/40 pass retired) | Accepted | 2026-08-14 | [0046-birth-foundation-evolvable-plant.md](./0046-birth-foundation-evolvable-plant.md) |
 | 0048 | Lungs vs Voice organ SSOT (training engine ≠ talking assistant; news never orders) | Accepted | 2026-09-09 | [0048-lungs-voice-organs-ssot.md](./0048-lungs-voice-organs-ssot.md) |
-| 0049 | Awakening eyes-open: prefer-better AND, n_B≥500 hard, no Twin-dump, no effective_min | Accepted | 2026-09-18 | [0049-awakening-eyes-open.md](./0049-awakening-eyes-open.md) |
+| 0049 | Awakening exit is First Watch (2026-10-06). Paired CI is the Playground rule exam, not this door | Accepted | 2026-09-18 | [0049-awakening-eyes-open.md](./0049-awakening-eyes-open.md) |
 | 0050 | Playground first contact: NT SIM crawl, n_P≥150, WR≥BE, mean R≥0, no JSON stamps | Accepted | 2026-09-19 | [0050-playground-first-contact.md](./0050-playground-first-contact.md) |
 | 0051 | Apprenticeship walk: 5 green sim_real_guard days, Sharpe≥0.20, DD≤12%, no backtest | Accepted | 2026-09-19 | [0051-apprenticeship-walk.md](./0051-apprenticeship-walk.md) |
 | 0052 | Proving Ground exam: cert OOS 48%/0.35/8% + this-run shadow + PromotionGate AND, no Birth JSON | Accepted | 2026-09-19 | [0052-proving-ground-exam.md](./0052-proving-ground-exam.md) |
+| 0053 | NT 1-minute Last bars are the OHLC SSOT; tape never writes candles; UTC-aware | Accepted | 2026-10-02 | [0053-nt-one-minute-bar-ssot.md](./0053-nt-one-minute-bar-ssot.md) |
+| 0054 | Native NT 5/15/30/60/240 session bars; bar integrity; open-chart listing SSOT | Accepted | 2026-10-02 | [0054-native-nt-htf-and-bar-integrity.md](./0054-native-nt-htf-and-bar-integrity.md) |
+| 0055 | One NinjaTrader all-in fee card for every phase; Free plan until a paid plan is on file | Accepted | 2026-10-04 | [0055-nt-execution-cost.md](./0055-nt-execution-cost.md) |
+| 0056 | Playground rewrite: her research, one hand, budget and first sentences closed. Supersedes 0050 on the policy hand and the 150-trade exam. Not implemented | Accepted | 2026-10-04 | [0056-playground-learning-book.md](./0056-playground-learning-book.md) |
 
 ## Legacy notitie
 

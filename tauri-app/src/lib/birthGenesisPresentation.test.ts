@@ -21,6 +21,14 @@ describe("isBenignBirthStatusMessage", () => {
       ),
     ).toBe(true);
     expect(isBenignBirthStatusMessage("")).toBe(true);
+    expect(
+      isBenignBirthStatusMessage("Birth Foundation complete — next is Awakening."),
+    ).toBe(true);
+    expect(
+      isBenignBirthStatusMessage(
+        "Birth Foundation complete — evolvable plant. Certificate OOS is Proving Ground.",
+      ),
+    ).toBe(true);
   });
 
   it("does not swallow real failures", () => {

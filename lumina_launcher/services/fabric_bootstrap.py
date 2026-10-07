@@ -52,6 +52,23 @@ FABRIC_DLL_NAMES = (
     "System.Text.Encodings.Web.dll",
 )
 
+# NT 8.1.8+ ships these in Program Files\NinjaTrader 8\bin and binding-redirects
+# them (Google.Protobuf → 3.34.0, System.Text.Json → 10.0.0.3, …). Overlaying
+# older copies from our net48 build into Custom is a dual-load hazard.
+NT_BIN_OWNED_ASSEMBLIES = frozenset(
+    {
+        "Google.Protobuf.dll",
+        "Microsoft.Bcl.AsyncInterfaces.dll",
+        "System.Buffers.dll",
+        "System.Memory.dll",
+        "System.Numerics.Vectors.dll",
+        "System.Runtime.CompilerServices.Unsafe.dll",
+        "System.Text.Encodings.Web.dll",
+        "System.Text.Json.dll",
+        "System.Threading.Tasks.Extensions.dll",
+    }
+)
+
 # Never deploy these as active vendor assemblies when NtBridge is present.
 _LEGACY_BRIDGE_ALIASES = ("LuminaNt8AddOn.dll",)
 
@@ -118,8 +135,7 @@ def resolve_fabric_source_dir(workspace_root: Path) -> Path | None:
     for rel in FABRIC_DEPLOY_CANDIDATES:
         candidate = workspace_root / rel
         if candidate.is_dir() and (
-            (candidate / "Lumina.Fabric.NtBridge.dll").is_file()
-            or (candidate / "LuminaNt8AddOn.dll").is_file()
+            (candidate / "Lumina.Fabric.NtBridge.dll").is_file() or (candidate / "LuminaNt8AddOn.dll").is_file()
         ):
             return candidate
         # SimHost folder may have Fabric.dll without AddOn — still useful partial
@@ -128,7 +144,51 @@ def resolve_fabric_source_dir(workspace_root: Path) -> Path | None:
     return None
 
 
-def deploy_fabric_addons(workspace_root: Path) -> dict[str, Any]:
+def nt_bin_owned_present(nt_bin: Path | None) -> frozenset[str]:
+    """Subset of NT_BIN_OWNED_ASSEMBLIES that the installed NT bin actually ships."""
+    if nt_bin is None or not nt_bin.is_dir():
+        return frozenset()
+    return frozenset(n for n in NT_BIN_OWNED_ASSEMBLIES if (nt_bin / n).is_file())
+
+
+def reconcile_nt_owned_overlay(dest_dir: Path, name: str, nt_owned: frozenset[str]) -> str | None:
+    """Quarantine/skip a Custom overlay when NT bin already owns that assembly.
+
+    Returns an action tag, or None when the caller should copy our build output.
+    """
+    if name not in nt_owned:
+        return None
+    dest = dest_dir / name
+    if dest.is_file():
+        q = dest_dir / f"{name}.NT_BIN_OWNED"
+        try:
+            if q.is_file():
+                q.unlink()
+            dest.replace(q)
+            return f"quarantined_nt_owned:{name}"
+        except OSError:
+            logger.warning("Fabric could not quarantine NT-owned overlay %s", dest, exc_info=True)
+            return f"skip_nt_owned:{name}"
+    return f"skip_nt_owned:{name}"
+
+
+def _copy_if_bytes_differ(src: Path, dest: Path) -> bool:
+    """Copy only when bytes differ. Returns True when a copy happened.
+
+    Identical NinjaScript files keep their mtime so NinjaTrader does not recompile.
+    """
+    try:
+        if dest.is_file() and src.read_bytes() == dest.read_bytes():
+            return False
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+        return True
+    except OSError:
+        logger.warning("Fabric script copy skipped %s -> %s", src, dest, exc_info=True)
+        return False
+
+
+def deploy_fabric_addons(workspace_root: Path, *, touch_scripts: bool = True) -> dict[str, Any]:
     """Deploy Fabric DLLs where NT actually loads 3rd-party assemblies.
 
     NinjaTrader loads vendor/3rd-party AddOns from ``bin\\Custom\\`` (root),
@@ -150,6 +210,7 @@ def deploy_fabric_addons(workspace_root: Path) -> dict[str, Any]:
         "destinations": [],
         "copied": [],
         "missing": [],
+        "skipped_nt_owned": [],
         "error": None,
         "integrity": {},
         "drift": {},
@@ -207,6 +268,17 @@ def deploy_fabric_addons(workspace_root: Path) -> dict[str, Any]:
     primary = targets[0] if targets else customs[0]
     result["destination"] = str(primary)
 
+    nt_bin: Path | None = None
+    try:
+        from lumina_launcher.services.ninjatrader_watch import resolve_nt_exe
+
+        exe = resolve_nt_exe()
+        if exe is not None:
+            nt_bin = exe.parent
+    except Exception:
+        logger.debug("fabric.deploy.nt_bin_resolve_failed", exc_info=True)
+    nt_owned = nt_bin_owned_present(nt_bin)
+
     any_ok = False
     for custom in targets:
         addons = custom / "AddOns"
@@ -217,7 +289,13 @@ def deploy_fabric_addons(workspace_root: Path) -> dict[str, Any]:
             logger.warning("Fabric deploy cannot create %s: %s", custom, exc)
             continue
 
-        dest_info: dict[str, Any] = {"custom": str(custom), "copied": [], "missing": [], "quarantined": []}
+        dest_info: dict[str, Any] = {
+            "custom": str(custom),
+            "copied": [],
+            "missing": [],
+            "quarantined": [],
+            "skipped_nt_owned": [],
+        }
 
         # Code Red: never dual-load bridge under two names (NT vendor log showed both).
         for alias in _LEGACY_BRIDGE_ALIASES:
@@ -274,9 +352,7 @@ def deploy_fabric_addons(workspace_root: Path) -> dict[str, Any]:
                         continue
                     if final_path.is_file():
                         final_rep = verify_nt_bridge_dll(final_path)
-                        if final_rep.get("ok") and int(final_rep.get("size") or 0) >= int(
-                            stage_rep.get("size") or 0
-                        ):
+                        if final_rep.get("ok") and int(final_rep.get("size") or 0) >= int(stage_rep.get("size") or 0):
                             try:
                                 stage_path.unlink()
                             except OSError:
@@ -306,6 +382,12 @@ def deploy_fabric_addons(workspace_root: Path) -> dict[str, Any]:
                     result["missing"].append(name)
                 continue
             for dest_dir in (custom, addons):
+                owned_action = reconcile_nt_owned_overlay(dest_dir, name, nt_owned)
+                if owned_action is not None:
+                    dest_info["skipped_nt_owned"].append(owned_action)
+                    if owned_action not in result.setdefault("skipped_nt_owned", []):
+                        result["skipped_nt_owned"].append(owned_action)
+                    continue
                 dest_path = dest_dir / name
                 stage_path = dest_dir / (name + ".new")
                 try:
@@ -385,52 +467,37 @@ def deploy_fabric_addons(workspace_root: Path) -> dict[str, Any]:
             result["error"] = dest_info["error"]
             any_ok = False
 
-        # CrossTrade-style stub so NinjaScript Editor stays happy if present
-        stub_src = workspace_root / "integrations/ninjatrader8/deploy/LuminaNt8AddOn.stub.cs"
-        stub_dst = custom / "LuminaNt8AddOn.cs"
-        if stub_src.is_file():
-            try:
-                shutil.copy2(stub_src, stub_dst)
+        # Touching a .cs file makes NinjaTrader compile on the next start.
+        # Callers that already have a compiled host pass touch_scripts=False.
+        if touch_scripts:
+            stub_src = workspace_root / "integrations/ninjatrader8/deploy/LuminaNt8AddOn.stub.cs"
+            stub_dst = custom / "LuminaNt8AddOn.cs"
+            if stub_src.is_file() and _copy_if_bytes_differ(stub_src, stub_dst):
                 dest_info["copied"].append("Custom/LuminaNt8AddOn.cs")
-            except OSError:
-                pass
 
-        # Authoritative source AddOn (heal/build injects into NinjaTrader.Custom — zero-IT)
-        source_addon = (
-            workspace_root / "integrations/ninjatrader8/deploy/AddOns/@LuminaFabricHost.cs"
-        )
-        if source_addon.is_file():
-            try:
-                shutil.copy2(source_addon, addons / "@LuminaFabricHost.cs")
+            source_addon = workspace_root / "integrations/ninjatrader8/deploy/AddOns/@LuminaFabricHost.cs"
+            host_dst = addons / "@LuminaFabricHost.cs"
+            if source_addon.is_file() and _copy_if_bytes_differ(source_addon, host_dst):
                 dest_info["copied"].append("AddOns/@LuminaFabricHost.cs")
-            except OSError:
-                pass
 
         result["destinations"].append(dest_info)
 
     # Drift report across all Custom trees (Documents vs OneDrive).
     try:
-        result["drift"] = dual_tree_bridge_drift(
-            [c for c in ninjatrader_custom_candidates() if c.is_dir()]
-        )
+        result["drift"] = dual_tree_bridge_drift([c for c in ninjatrader_custom_candidates() if c.is_dir()])
         if result["drift"].get("any_stub"):
-            logger.warning(
-                "Fabric dual-tree has stub/incomplete NtBridge — Repair required on all trees"
-            )
+            logger.warning("Fabric dual-tree has stub/incomplete NtBridge — Repair required on all trees")
     except Exception:
         logger.debug("fabric.deploy.drift_check_failed", exc_info=True)
 
     result["deployed"] = any_ok and (
-        any("Lumina.Fabric.NtBridge.dll" in c for c in result["copied"])
-        and result.get("error") is None
+        any("Lumina.Fabric.NtBridge.dll" in c for c in result["copied"]) and result.get("error") is None
     )
     if not result["deployed"] and result["error"] is None:
         result["error"] = "No DLLs copied to any NinjaTrader Custom folder"
     # Surface Fabric core integrity for observability.
     try:
-        core_src = _resolve_dll_source(
-            workspace_root, source, "Lumina.Execution.Fabric.dll"
-        )
+        core_src = _resolve_dll_source(workspace_root, source, "Lumina.Execution.Fabric.dll")
         if core_src is not None:
             result["integrity"]["fabric_core"] = verify_fabric_core_dll(core_src)
     except Exception:
@@ -479,12 +546,8 @@ def _write_deploy_manifest(deploy_result: dict[str, Any]) -> Path | None:
 def _resolve_dll_source(workspace_root: Path, source: Path, name: str) -> Path | None:
     candidates = [
         source / name,
-        workspace_root
-        / "integrations/ninjatrader8/LuminaNt8AddOn/bin/Release/net48"
-        / name,
-        workspace_root
-        / "integrations/ninjatrader8/Lumina.Execution.Fabric/bin/Release/net48"
-        / name,
+        workspace_root / "integrations/ninjatrader8/LuminaNt8AddOn/bin/Release/net48" / name,
+        workspace_root / "integrations/ninjatrader8/Lumina.Execution.Fabric/bin/Release/net48" / name,
         workspace_root / "integrations/ninjatrader8/deploy/AddOns" / name,
     ]
     for c in candidates:
@@ -510,11 +573,38 @@ def ensure_fabric_token_in_env(config_manager: Any) -> str:
     return token
 
 
+def account_name_from_config(workspace_root: Path) -> str:
+    """Operator account in config.yaml. Empty when the file names none."""
+    path = Path(workspace_root) / "config.yaml"
+    if not path.is_file():
+        return ""
+    try:
+        import yaml
+
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+    if not isinstance(raw, dict):
+        return ""
+    broker = raw.get("broker")
+    if not isinstance(broker, dict):
+        return ""
+    nt = broker.get("ninjatrader")
+    if not isinstance(nt, dict):
+        return ""
+    return str(nt.get("account_name") or "").strip()
+
+
 def run_fabric_bootstrap(workspace_root: Path, config_manager: Any) -> dict[str, Any]:
     """Idempotent bootstrap for Operator Vault mount / seal."""
     token = ensure_fabric_token_in_env(config_manager)
     # Keep AuthToken in fabric.json (ensure already dual-wrote it).
-    fabric_json = write_fabric_json_defaults(auth_token=token)
+    # The operator account in config.yaml wins over a stale Sim101 in fabric.json.
+    wanted = account_name_from_config(workspace_root)
+    fabric_json = write_fabric_json_defaults(
+        auth_token=token,
+        account_name=wanted or None,
+    )
     deploy = deploy_fabric_addons(workspace_root)
     simhost: dict[str, Any] = {"ok": False, "status": "skipped"}
     try:

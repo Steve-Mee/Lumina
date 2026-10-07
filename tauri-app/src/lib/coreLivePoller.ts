@@ -1,3 +1,4 @@
+import { luminaFetch } from "@/lib/httpClient";
 import { useCoreStore } from "@/store/coreStore";
 
 import {
@@ -37,7 +38,7 @@ export function stopPolling(): void {
 
 export async function fetchTelemetryFrame(): Promise<TelemetryFrame | null> {
   try {
-    const response = await fetch(resolveCoreLiveHttpUrl());
+    const response = await luminaFetch(resolveCoreLiveHttpUrl());
     if (!response.ok) {
       useCoreStore
         .getState()

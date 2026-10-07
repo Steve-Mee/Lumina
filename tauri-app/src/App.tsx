@@ -1,16 +1,9 @@
-import { Suspense, lazy, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { CommandDeckTour } from "@/components/cockpit/CommandDeckTour";
 import { CockpitShell } from "@/components/cockpit/CockpitShell";
-import { CorePanelSlot } from "@/components/cockpit/CorePanelSlot";
-import { EvolutionDeckPanel } from "@/components/cockpit/EvolutionDeckPanel";
-import { FadeInView } from "@/components/cockpit/FadeInView";
-import { PanelErrorBoundary } from "@/components/cockpit/PanelErrorBoundary";
-import { DECK_LOADING_COPY } from "@/lib/deckLoadingCopy";
-import { PanelLoader } from "@/components/cockpit/PanelLoader";
+import { CommandDeckScreen } from "@/components/cockpit/CommandDeckScreen";
 import { OnboardingGate } from "@/components/onboarding/OnboardingGate";
-import { IntelligenceDeckPanel } from "@/components/cockpit/IntelligenceDeckPanel";
-import { RiskCitadel } from "@/components/RiskCitadel";
 import { useTauriGlobalShortcuts } from "@/hooks/useTauriGlobalShortcuts";
 import {
   selectConnectionStatus,
@@ -26,12 +19,6 @@ import { Toaster } from "sonner";
 
 import { BirthConfirmHost } from "@/components/birth/BirthConfirmHost";
 import { TwinEscalationModal } from "@/components/operations/TwinEscalationModal";
-
-const LivingCore = lazy(() =>
-  import("@/components/LivingCore").then((module) => ({
-    default: module.LivingCore,
-  })),
-);
 
 function CoreDebugPanel() {
   const [expanded, setExpanded] = useState(false);
@@ -123,70 +110,6 @@ function CoreDebugPanel() {
   );
 }
 
-function ThreeDPanelFallback() {
-  return <PanelLoader label={DECK_LOADING_COPY.generic3d} className="min-h-[220px]" />;
-}
-
-function CommandDeckGrid() {
-  const connectionStatus = useCoreStore(selectConnectionStatus);
-  const liveMetrics = useCoreStore(selectLiveMetrics);
-  const operatorMode = useCoreStore(selectCurrentMode);
-  const telemetryPending =
-    connectionStatus === "connecting" && liveMetrics.equity === null;
-
-  return (
-    <main className="command-deck-grid grid h-full min-h-0 gap-3">
-      <FadeInView delay={0} className="command-deck-area-left flex min-h-0 flex-col gap-3">
-        <div
-          className="flex min-h-0 flex-col gap-3"
-          data-mode={operatorMode}
-          data-tour="risk-citadel"
-        >
-        <CorePanelSlot
-          title="Risk Monitor"
-          subtitle="Fortress integrity & drawdown buffer"
-          className="min-h-[220px] overflow-hidden"
-          frameVariant="muted"
-          loading={telemetryPending}
-          loadingLabel={DECK_LOADING_COPY.riskCitadel}
-        >
-          <PanelErrorBoundary panelName="Risk Monitor">
-            <RiskCitadel key={operatorMode} className="h-full w-full" />
-          </PanelErrorBoundary>
-        </CorePanelSlot>
-
-        <CorePanelSlot
-          title="Neural Core"
-          immersive
-          frameless
-          className="min-h-[280px] flex-1 overflow-hidden border-none"
-          loading={telemetryPending}
-          loadingLabel={DECK_LOADING_COPY.neuralCore}
-        >
-          <PanelErrorBoundary panelName="Neural Core">
-            <Suspense fallback={<ThreeDPanelFallback />}>
-              <LivingCore className="h-full w-full" />
-            </Suspense>
-          </PanelErrorBoundary>
-        </CorePanelSlot>
-        </div>
-      </FadeInView>
-
-      <FadeInView delay={0.08} layout className="command-deck-area-center min-h-[360px]">
-        <PanelErrorBoundary panelName="Evolution Deck">
-          <EvolutionDeckPanel className="h-full min-h-[360px]" frameVariant="muted" />
-        </PanelErrorBoundary>
-      </FadeInView>
-
-      <FadeInView delay={0.16} className="command-deck-area-right min-h-[360px]">
-        <PanelErrorBoundary panelName="Intelligence Deck">
-          <IntelligenceDeckPanel className="h-full min-h-[360px]" frameVariant="glass" />
-        </PanelErrorBoundary>
-      </FadeInView>
-    </main>
-  );
-}
-
 function GlobalShortcutsProvider() {
   useTauriGlobalShortcuts();
   return null;
@@ -218,7 +141,7 @@ export default function App() {
           <>
             <GlobalShortcutsProvider />
             <CockpitShell>
-              <CommandDeckGrid />
+              <CommandDeckScreen />
             </CockpitShell>
             <CommandDeckTour />
             {import.meta.env.DEV && localStorage.getItem("lumina.debugPanel") === "1" ? (

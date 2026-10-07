@@ -21,14 +21,31 @@ describe("awakeningFailCopy", () => {
     expect(awakeningMissionMessage(input)).not.toContain("Loading frozen");
   });
 
+  it("does not treat a not-started Awakening as a failed exam", () => {
+    const input = {
+      running: false,
+      passNow: false,
+      focusStatus: "pending",
+      error: null,
+      progressMessage: null,
+    };
+    expect(isAwakeningFailed(input)).toBe(false);
+    expect(awakeningHeaderStatus(input)).toBe("Not started — start Awakening from Phase Hub");
+    expect(awakeningMissionMessage(input)).not.toMatch(/failed/i);
+    expect(awakeningMissionMessage(input)).toMatch(/First Watch/i);
+    expect(awakeningMissionMessage(input)).not.toMatch(/8 train/i);
+    expect(awakeningMissionMessage(input)).not.toMatch(/keep-best/i);
+  });
+
   it("keeps the live progress line while the clock is running", () => {
     const input = {
       running: true,
-      progressMessage: "Awakening cycle 1/8 — train A, eval B",
+      progressMessage: "First Watch — eval frozen plant on holdout B (no learn)",
       error: null,
       focusStatus: "running",
     };
-    expect(awakeningHeaderStatus(input)).toContain("cycle 1/8");
-    expect(awakeningMissionMessage(input)).toContain("train A");
+    expect(awakeningHeaderStatus(input)).toContain("First Watch");
+    expect(awakeningMissionMessage(input)).toContain("no learn");
+    expect(awakeningMissionMessage(input)).not.toMatch(/cycle 1\/8/i);
   });
 });

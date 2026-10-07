@@ -24,7 +24,6 @@ export function ApprenticeshipPhaseScreen() {
   const [progress, setProgress] = useState<ApprenticeshipProgressView | null>(null);
   const [busy, setBusy] = useState(false);
   const [wiping, setWiping] = useState(false);
-  const [wipeStep, setWipeStep] = useState<1 | 2>(1);
   const [wipeOpen, setWipeOpen] = useState(false);
   const [wipeError, setWipeError] = useState<string | null>(null);
   const refreshOnboarding = useOnboardingStore((s) => s.refresh);
@@ -108,15 +107,14 @@ export function ApprenticeshipPhaseScreen() {
       return;
     }
     setWipeError(null);
-    setWipeStep(1);
     setWipeOpen(true);
   };
 
-  const confirmWipe = async () => {
+  const confirmWipe = async (phrase: string) => {
     setWiping(true);
     setWipeError(null);
     try {
-      await postWipeMaturityPhase("apprenticeship");
+      await postWipeMaturityPhase("apprenticeship", phrase);
       setWipeOpen(false);
       toast.success("Apprenticeship wiped — Playground kept");
       setPreferApprenticeshipHub(true);
@@ -136,10 +134,17 @@ export function ApprenticeshipPhaseScreen() {
           title="Walk"
           status={status}
           tone={passNow ? "emerald" : running ? "cyan" : "amber"}
-          variant="compact"
+          variant={running ? "compact" : "strip"}
           className="lumina-phase-header relative z-20"
         />
-        <EvolutionLadderStrip activePhase="apprenticeship" className="relative z-20 evolution-ladder-strip--dense !py-1" />
+        <EvolutionLadderStrip
+          activePhase="apprenticeship"
+          className={
+            running
+              ? "relative z-20 evolution-ladder-strip--dense !py-1"
+              : "relative z-20"
+          }
+        />
         <ApprenticeshipMission
           hub={hub}
           progress={progress}
@@ -151,16 +156,13 @@ export function ApprenticeshipPhaseScreen() {
         />
         <PhaseHubWipeConfirm
           kind={wipeOpen ? "apprenticeship" : null}
-          step={wipeStep}
           wiping={wiping}
           error={wipeError}
           onCancel={() => {
             setWipeOpen(false);
-            setWipeStep(1);
             setWipeError(null);
           }}
-          onContinue={() => setWipeStep(2)}
-          onConfirm={() => void confirmWipe()}
+          onConfirm={(phrase) => void confirmWipe(phrase)}
         />
       </div>
     </OnboardingShell>

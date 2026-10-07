@@ -7,6 +7,7 @@ export interface AwakeningLifeInput {
   cycle?: unknown;
   activity?: unknown;
   trainTimesteps?: unknown;
+  probeBars?: unknown;
   nB?: unknown;
   updatedAt?: unknown;
   nowMs: number;
@@ -47,20 +48,25 @@ export function resolveAwakeningLifeState(input: AwakeningLifeInput): AwakeningL
   return "live";
 }
 
+function activityLabel(activity: unknown, running: boolean): string {
+  if (activity === "train_A") return "train A";
+  if (activity === "probe_A") return "day book";
+  if (activity === "eval_B") return "eval B";
+  if (running) return "eval B";
+  return "idle";
+}
+
 export function awakeningLifeLine(input: AwakeningLifeInput): string {
-  const cycle = asNumber(input.cycle);
   const steps = asNumber(input.trainTimesteps);
+  const probeBars = asNumber(input.probeBars);
   const nB = asNumber(input.nB) ?? 0;
-  const activity =
-    input.activity === "train_A"
-      ? "train A"
-      : input.activity === "eval_B"
-        ? "eval B"
-        : input.running
-          ? "select"
-          : "idle";
+  const activity = activityLabel(input.activity, input.running);
   const age = formatHeartbeatAge(heartbeatAgeMs(input.updatedAt, input.nowMs));
-  const cycleBit = cycle != null ? `Cycle ${Math.round(cycle)}` : "Cycle —";
-  const stepBit = steps != null && steps > 0 ? ` · ${Math.round(steps).toLocaleString("en-US")} steps` : "";
-  return `${cycleBit} · ${activity}${stepBit} · n_B ${Math.round(nB).toLocaleString("en-US")}/500 · ${age}`;
+  const stepBit =
+    input.activity === "probe_A" && probeBars != null
+      ? ` · bar ${Math.round(probeBars).toLocaleString("en-US")}`
+      : steps != null && steps > 0
+        ? ` · ${Math.round(steps).toLocaleString("en-US")} steps`
+        : "";
+  return `First Watch · ${activity}${stepBit} · n_B ${Math.round(nB).toLocaleString("en-US")}/500 · ${age}`;
 }

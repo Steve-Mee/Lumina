@@ -344,8 +344,8 @@ export function utilityInputClass(mode: TradingMode): string {
 
 export function utilityFieldInputClass(): string {
   return cn(
-    "mt-1 w-full rounded border border-white/10 px-2 py-1 font-mono text-xs",
-    "bg-[color-mix(in_srgb,var(--lumina-void)_40%,transparent)]",
+    "mt-1 w-full min-h-9 rounded border border-white/30 bg-[color-mix(in_srgb,var(--lumina-void)_88%,black)] px-2.5 py-1.5 font-mono text-xs text-foreground outline-none",
+    "placeholder:text-white/35 focus:border-cyan-400/55",
   );
 }
 

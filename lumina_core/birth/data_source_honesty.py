@@ -110,6 +110,39 @@ def assert_pct_matches_ticks(pct: float, ticks: list[dict[str, Any]] | None) -> 
         )
 
 
+def real_historical_tape_reason(
+    ticks: list[dict[str, Any]] | None = None,
+    *,
+    real_data_pct: Any | None = None,
+    source: str | None = None,
+) -> str | None:
+    """None only when every examined tick is allowlisted historical market data.
+
+    Ticks win over a manifest stamp. No ticks and no stamp is "no evidence"
+    (receipt-only unit hosts). A present stamp below 100% real is a refusal.
+    """
+    if ticks is not None:
+        if not ticks:
+            return "real_historical_tape_empty"
+        reasons = synthetic_source_reasons(ticks)
+        if reasons:
+            return reasons[0]
+        pct = real_data_percentage(ticks)
+        if pct < 100.0 - 1e-6:
+            return f"real_data_pct={pct:.2f}<100"
+        return None
+    if source is not None and str(source).strip() and not source_is_real(str(source)):
+        return f"synthetic_tape:{source}"
+    if real_data_pct is not None:
+        try:
+            pct = float(real_data_pct)
+        except (TypeError, ValueError):
+            return "real_data_pct_unreadable"
+        if pct < 100.0 - 1e-6:
+            return f"real_data_pct={pct:.2f}<100"
+    return None
+
+
 def synthetic_source_reasons(ticks: list[dict[str, Any]] | None) -> list[str]:
     reasons: list[str] = []
     seen: set[str] = set()
@@ -134,6 +167,7 @@ __all__ = [
     "bind_host_real_data_pct",
     "host_real_data_pct",
     "real_data_percentage",
+    "real_historical_tape_reason",
     "resolved_tick_source",
     "source_is_real",
     "synthetic_source_reasons",

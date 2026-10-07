@@ -7,7 +7,7 @@ import {
   type AdaptiveIntelligenceStatus,
   type AdaptiveTransitionSummary,
 } from "@/lib/adaptiveIntelligenceTypes";
-import type { TelemetryFrame, NinjaTraderTelemetry } from "@/lib/websocket";
+import type { TelemetryFrame, NinjaTraderTelemetry, BarBookTelemetry } from "@/lib/websocket";
 import {
   deriveWinrateFromTrades,
   type LiveTradingSnapshot,
@@ -83,6 +83,7 @@ interface CoreStoreState {
   performanceLive: PerformanceSnapshot | null;
   realOpsLive: RealOpsSnapshot | null;
   ninjatraderStatus: NinjaTraderTelemetry | null;
+  barBook: BarBookTelemetry | null;
 }
 
 interface CoreStoreActions {
@@ -142,6 +143,7 @@ const INITIAL_STATE: CoreStoreState = {
   performanceLive: null,
   realOpsLive: null,
   ninjatraderStatus: null,
+  barBook: null,
 };
 
 const RISK_LEVELS: RiskLevel[] = [
@@ -298,6 +300,7 @@ export const useCoreStore = create<CoreStore>((set, get) => ({
         performanceLive,
         realOpsLive,
         ninjatraderStatus: payload.ninjatrader ?? null,
+        barBook: payload.bar_book ?? null,
         lastSeq: frame.seq,
         lastError: null,
       };
@@ -326,3 +329,4 @@ export const selectFortress = (state: CoreStore) => state.fortress;
 export const selectPerformanceLive = (state: CoreStore) => state.performanceLive;
 export const selectRealOpsLive = (state: CoreStore) => state.realOpsLive;
 export const selectNinjaTraderStatus = (state: CoreStore) => state.ninjatraderStatus;
+export const selectBarBook = (state: CoreStore) => state.barBook;

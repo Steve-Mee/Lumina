@@ -22,6 +22,9 @@ DEFAULT_BYPASS_KINDS: tuple[str, ...] = (
     "freeze",
     "real_safety",
     "birth_milestones",
+    # Phase pass/fail must not be dropped by the hourly diary cap.
+    # Progress sends are fingerprinted upstream, so this is not a tick feed.
+    "phase_status",
 )
 DEFAULT_MIN_INTERVAL_SEC = 20.0
 DEFAULT_MAX_PER_HOUR = 12

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,8 @@ class MaturityService:
         self._last_result: dict[str, Any] | None = None
         self._error: str | None = None
         self._stop_requested = threading.Event()
+        self._hub_cache: dict[str, Any] | None = None
+        self._hub_cache_at = 0.0
 
     @classmethod
     def instance(cls) -> MaturityService:
@@ -59,6 +62,13 @@ class MaturityService:
             return {"ok": False, "error": str(exc)}
 
     def get_hub(self) -> dict[str, Any]:
+        now = time.monotonic()
+        if self._hub_cache is not None and now - self._hub_cache_at < 1.5:
+            cached = dict(self._hub_cache)
+            cached["runner_active"] = self.is_running()
+            cached["last_result"] = self._last_result
+            cached["error"] = self._error
+            return cached
         self.heal_continuum_from_birth_exit()
         try:
             from lumina_core.maturity.awakening.heal import heal_awakening_from_law
@@ -88,6 +98,8 @@ class MaturityService:
         hub["runner_active"] = self.is_running()
         hub["last_result"] = self._last_result
         hub["error"] = self._error
+        self._hub_cache = dict(hub)
+        self._hub_cache_at = time.monotonic()
         return hub
 
     def set_preferences(self, *, advance_mode: str) -> dict[str, Any]:
@@ -128,8 +140,14 @@ class MaturityService:
                     learned={"status": "starting"},
                 )
 
+            self._hub_cache = None
+
             def _run() -> None:
                 try:
+                    if phase == "playground":
+                        from lumina_core.maturity.playground.live_hand import ensure_sim_runtime
+
+                        ensure_sim_runtime(self.workspace_root)
                     result = run_phase(self.workspace_root, phase)
                     if self._stop_requested.is_set():
                         result = {**result, "stopped": True}
@@ -194,13 +212,17 @@ class MaturityService:
         from lumina_core.maturity.playground.progress import load_playground_progress
 
         ok, missing, learned = evaluate_playground_exit(self.workspace_root)
+        from lumina_core.maturity.playground.sense_brief import build_sense_brief
+
+        running = self.is_running()
         return {
             "ok": True,
             "pass_now": ok,
             "missing": missing,
             "learned": learned,
             "progress": load_playground_progress(self.workspace_root),
-            "runner_active": self.is_running(),
+            "sense": build_sense_brief(self.workspace_root, running=running),
+            "runner_active": running,
         }
 
     def mark_playground_deck_live(self) -> dict[str, Any]:

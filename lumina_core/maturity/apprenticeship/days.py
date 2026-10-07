@@ -48,15 +48,9 @@ def row_session_date(row: dict[str, Any]) -> date | None:
         return None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    try:
-        from zoneinfo import ZoneInfo
+    from lumina_core.market.globex_hours import globex_session_date
 
-        local = parsed.astimezone(ZoneInfo("America/Chicago"))
-    except Exception:
-        local = parsed.astimezone(timezone.utc)
-    if local.hour >= 17:
-        return (local + timedelta(days=1)).date()
-    return local.date()
+    return globex_session_date(parsed)
 
 
 def _clip_pnl(row: dict[str, Any]) -> float | None:
@@ -72,10 +66,19 @@ def _clip_pnl(row: dict[str, Any]) -> float | None:
         entry = float(px) if px not in (None, "") else 0.0
     except (TypeError, ValueError):
         entry = 0.0
-    qty = int(row.get("qty") or 1)
+    qty = int(row.get("qty") or 0)
+    if qty <= 0:
+        return None
+    gross = pnl
     if entry > 0.0:
-        return clip_birth_exam_pnl(pnl, entry_price=entry, qty=max(1, qty), equity=S5_DD_EQUITY_USD)
-    return pnl
+        gross = clip_birth_exam_pnl(pnl, entry_price=entry, qty=qty, equity=S5_DD_EQUITY_USD)
+    from lumina_core.market.nt_fees import round_turn_fee_usd, CostCardError
+
+    try:
+        fee = round_turn_fee_usd(str(row.get("instrument") or ""), qty)
+    except CostCardError:
+        return None
+    return float(gross) - float(fee)
 
 
 def _is_policy_close(row: dict[str, Any]) -> bool:

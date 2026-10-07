@@ -42,7 +42,7 @@ def _ready_for_real_status(workspace_root: Path) -> dict[str, Any]:
         "sharpe": learned.get("sharpe"),
         "dd_pct": learned.get("dd_pct"),
         "note": (
-            "READY_FOR_REAL is apprenticeship AND (5 green SIM days, Sharpe≥0.20, DD≤12%) — "
+            "READY_FOR_REAL is the apprenticeship exam (n≥150, WR≥BE, mean R≥0, Sharpe≥0.20, DD≤12%) — "
             "not a stability-report stamp and not automatic REAL capital arm."
         ),
     }

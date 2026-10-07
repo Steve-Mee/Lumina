@@ -22,12 +22,14 @@ from lumina_core.order_gatekeeper.contract_symbols import (
 
 logger = get_logger("lumina.birth.foundation_history")
 
-FOUNDATION_HISTORY_START_DAYS = 90
-FOUNDATION_HISTORY_EXPAND_STEPS: tuple[int, ...] = (90, 180, 365)
+# 365 is the only sport whose 20% holdout can host Awakening n_B≥500
+# at worst legal occupancy and a 120-bar geometry hold. 90 and 180 cannot.
+FOUNDATION_HISTORY_START_DAYS = 365
+FOUNDATION_HISTORY_EXPAND_STEPS: tuple[int, ...] = (365,)
 FOUNDATION_HISTORY_MAX_DAYS = 365
 FOUNDATION_HISTORY_HARD_CAP_DAYS = 3650
 FOUNDATION_HISTORY_MIN_RATIO = 0.95
-FOUNDATION_HISTORY_MAX_PRIOR_CONTRACTS = 3
+FOUNDATION_HISTORY_MAX_PRIOR_CONTRACTS = 5
 
 LoadTicksFn = Callable[..., list[dict[str, Any]]]
 
@@ -219,8 +221,10 @@ def load_foundation_history_ticks(
     now = now_utc or datetime.now(timezone.utc)
     liquid = roll_to_liquid_front_month(front, now_utc=now) if front else front
     rolled = bool(front and liquid and liquid != front)
+    raw = _fetch(liquid or None)
+    raw_days = actual_calendar_days_from_ticks(raw)
     ticks = filter_ticks_to_front_tenure(
-        _fetch(liquid or None),
+        raw,
         liquid,
         now_utc=now,
         current_front=True,
@@ -229,14 +233,40 @@ def load_foundation_history_ticks(
     stitched_from: list[str] = []
     actual = actual_calendar_days_from_ticks(ticks)
     stitch_root = liquid or front
+    # One Fabric walk already asks for the liquid contract of each chunk's date
+    # and returns the whole window (live: 354849 bars, span 366d). Cutting that
+    # down to the front-month tenure and calling _fetch again reloads the same
+    # 365 days (SEP26 was rolled back to DEC26 and chunk 1/79 restarted).
+    # Slice older tenures out of the bars already in hand. Fetch a prior only
+    # when that window is absent.
+    if actual < need and raw_days >= need:
+        logger.info(
+            "birth.history.reuse_loaded_window raw_days=%s tenure_days=%s requested=%s",
+            raw_days,
+            actual,
+            requested,
+        )
     if actual < need and stitch_root:
         for prior in prior_quarterly_contracts(stitch_root):
             extra = filter_ticks_to_front_tenure(
-                _fetch(prior),
+                raw,
                 prior,
                 now_utc=now,
                 current_front=False,
             )
+            if extra:
+                logger.info(
+                    "birth.history.stitch_from_loaded_window prior=%s rows=%s",
+                    prior,
+                    len(extra),
+                )
+            else:
+                extra = filter_ticks_to_front_tenure(
+                    _fetch(prior),
+                    prior,
+                    now_utc=now,
+                    current_front=False,
+                )
             if not extra:
                 logger.info("birth.history.stitch_empty instrument=%s", prior)
                 continue
@@ -296,7 +326,7 @@ def resolve_reload_history_days(
     *,
     ceiling: int | None = None,
 ) -> int:
-    """Cold-reload sport: keep 180/365 if already there; never shrink below start 90."""
+    """Cold-reload sport: keep a legal rung; never shrink below the 365-day start."""
     cap = clamp_foundation_history_ceiling(ceiling)
     requested = sla_requested_days(manifest)
     return max(FOUNDATION_HISTORY_START_DAYS, min(cap, requested))

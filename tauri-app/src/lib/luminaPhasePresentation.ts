@@ -73,7 +73,6 @@ export function resolveWizardPhaseHeader(
 export interface BirthScreenPhaseInput {
   genesisMode: boolean;
   missionMode: boolean;
-  awakening: boolean;
   activating: boolean;
   /** Full launch shell (intent sticky). */
   launching?: boolean;
@@ -102,15 +101,6 @@ export function resolveBirthScreenPhaseHeader(
       title: "Starting Birth",
       status: "Verifying systems — stay on this screen",
       tone: "cyan",
-    };
-  }
-
-  if (input.awakening) {
-    return {
-      eyebrow: "Birth Phase",
-      title: "Awakening",
-      status: "Birth complete — organism ready for command deck",
-      tone: "emerald",
     };
   }
 

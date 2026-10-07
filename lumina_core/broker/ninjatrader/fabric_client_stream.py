@@ -203,13 +203,45 @@ class FabricClientStreamMixin:
             inst = str(getattr(md, "instrument", "") or "").strip().upper()
             if not inst:
                 return
+            is_bar = bool(getattr(md, "is_bar", False))
+            ts_ms = int(getattr(md, "timestamp_unix_ms", 0) or 0)
+            if is_bar:
+                period = str(getattr(md, "bar_period", "") or "1m").strip() or "1m"
+                bar = {
+                    "instrument": inst,
+                    "timestamp_unix_ms": ts_ms,
+                    "open": float(getattr(md, "open", 0.0) or 0.0),
+                    "high": float(getattr(md, "high", 0.0) or 0.0),
+                    "low": float(getattr(md, "low", 0.0) or 0.0),
+                    "close": float(getattr(md, "close", 0.0) or 0.0),
+                    "volume": int(getattr(md, "volume", 0) or 0),
+                    "last": float(getattr(md, "last", 0.0) or 0.0),
+                    "is_bar": True,
+                    "bar_period": period,
+                }
+                with self._lock:
+                    bars = getattr(self, "_last_bars", None)
+                    if bars is None:
+                        self._last_bars = {}  # type: ignore[attr-defined]
+                        bars = self._last_bars  # type: ignore[attr-defined]
+                    bars[f"{inst}|{period}"] = bar
+                    if period == "1m":
+                        bars[inst] = bar
+                q = getattr(self, "_bar_queue", None)
+                if q is not None:
+                    try:
+                        q.put_nowait(bar)
+                    except Exception:
+                        logger.warning("fabric.bar_queue_full instrument=%s", inst)
+                return
             quote = {
                 "instrument": inst,
                 "last": float(getattr(md, "last", 0.0) or 0.0),
                 "bid": float(getattr(md, "bid", 0.0) or 0.0),
                 "ask": float(getattr(md, "ask", 0.0) or 0.0),
                 "volume": int(getattr(md, "volume", 0) or 0),
-                "timestamp_unix_ms": int(getattr(md, "timestamp_unix_ms", 0) or 0),
+                "timestamp_unix_ms": ts_ms,
+                "is_bar": False,
             }
             with self._lock:
                 cache = getattr(self, "_last_quotes", None)

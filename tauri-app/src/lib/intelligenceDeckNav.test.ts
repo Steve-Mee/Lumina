@@ -25,6 +25,7 @@ describe("intelligenceDeckNav", () => {
     expect(opsTabLabel("liveActivity")).toBe("Activity");
     expect(opsTabLabel("evolutionApprovals")).toBe("Approvals");
     expect(opsTabLabel("realOps")).toBe("REAL Ops");
+    expect(opsTabLabel("admin")).toBe("Phase reset");
   });
 
   it("resolveOpsSections includes Capital in REAL mode", () => {

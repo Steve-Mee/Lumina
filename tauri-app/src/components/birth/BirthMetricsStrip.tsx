@@ -442,7 +442,7 @@ export function BirthMetricsStrip({
       ) : null}
       {message ? (
         <BirthFieldCard label="Status" className="birth-intel-field-span birth-status-line">
-          <p className="truncate font-mono text-sm text-cyan-100" title={message}>
+          <p className="font-mono text-sm leading-snug text-cyan-100" title={message}>
             {message}
           </p>
         </BirthFieldCard>

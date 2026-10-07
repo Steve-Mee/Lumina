@@ -60,6 +60,27 @@ def test_fast_path_no_llm_should_continue(monkeypatch):
 
 
 @pytest.mark.unit
+def test_fast_path_paints_screen_share_without_llm(monkeypatch):
+    app = _base_app(used_llm=False)
+    app.SCREEN_SHARE_ENABLED = True
+    paints: list[str] = []
+    app.publish_screen_share_snapshot = lambda: paints.append("frame")
+
+    monkeypatch.setattr(
+        "lumina_core.engine.pre_dream_market_tick.PriceDupeResolver.fetch_locked_price_and_ohlc",
+        lambda self: (5000.0, pd.DataFrame({"close": [5000.0] * 3})),
+    )
+    monkeypatch.setattr(
+        "lumina_core.engine.pre_dream_market_tick.RlBiasApplier.predict_cycle_signal",
+        lambda self: ("HOLD", None),
+    )
+
+    result = PreDreamMarketTickService(app=app).run_tick()
+    assert result.should_continue is True
+    assert paints == ["frame"]
+
+
+@pytest.mark.unit
 def test_rl_buy_forces_llm_branch(monkeypatch):
     app = _base_app(used_llm=False)
 

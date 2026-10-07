@@ -7,6 +7,14 @@ const appSource = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "../App.tsx"),
   "utf8",
 );
+const cockpitShellSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../components/cockpit/CockpitShell.tsx"),
+  "utf8",
+);
+const commandDeckScreenSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../components/cockpit/CommandDeckScreen.tsx"),
+  "utf8",
+);
 const statusBarSource = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "../components/cockpit/StatusBar.tsx"),
   "utf8",
@@ -37,11 +45,34 @@ const cockpitCss = readFileSync(
 );
 
 describe("glass stack budget", () => {
-  it("StatusBar uses hud glass tint without panel glass", () => {
+  it("default cockpit viewport does not mount StatusBar", () => {
+    expect(cockpitShellSource).not.toContain("StatusBar");
+    expect(cockpitShellSource).not.toContain("CommandHud");
+    expect(cockpitShellSource).toContain('variant="compact"');
+    expect(commandDeckScreenSource).toContain("CommandHud");
     expect(statusBarSource).toContain("lumina-glass--hud");
     expect(statusBarSource).toContain("status-bar--glass");
-    expect(statusBarSource).not.toContain("lumina-glass--panel");
-    expect(statusBarSource).not.toContain("toLocaleTimeString");
+  });
+
+  it("Command Deck uses genesis helix + one overlay ops panel", () => {
+    expect(appSource).toContain("CommandDeckScreen");
+    expect(commandDeckScreenSource).toContain("command-deck-ops");
+    expect(commandDeckScreenSource).toContain("PhaseHelixStage");
+    expect(commandDeckScreenSource).toContain("lumina-glass--overlay");
+    expect(commandDeckScreenSource).toContain("command-deck-ops__chrome");
+    expect(commandDeckScreenSource).toContain('frameVariant="muted"');
+    expect(cockpitCss).toContain(".command-deck-ops__hud > .command-hud");
+    expect(cockpitCss).toContain("min-height: 0 !important");
+    expect(cockpitCss).toContain(".command-deck-ops__board .lumina-surface-muted");
+  });
+
+  it("Command Deck locks to one dvh viewport without page scroll", () => {
+    expect(cockpitShellSource).toContain("h-dvh");
+    expect(cockpitShellSource).toContain("max-h-dvh");
+    expect(cockpitShellSource).toContain("overflow-hidden");
+    expect(cockpitCss).toContain("html:has(.cockpit-shell--phase)");
+    expect(cockpitCss).toContain(".cockpit-shell__stage");
+    expect(cockpitCss).toContain("minmax(0, 1fr)");
   });
 
   it("Intelligence deck defaults to glass frame", () => {
@@ -66,8 +97,9 @@ describe("glass stack budget", () => {
     expect(coreSlotSource).not.toContain("bg-black/40");
   });
 
-  it("Living Core uses frameless immersive slot", () => {
-    expect(appSource).toContain("frameless");
+  it("Living Core uses the shared phase helix stage", () => {
+    expect(commandDeckScreenSource).toContain("PhaseHelixStage");
+    expect(commandDeckScreenSource).toContain('variant="mission"');
     expect(coreSlotSource).toContain("living-core-frame--immersive");
   });
 

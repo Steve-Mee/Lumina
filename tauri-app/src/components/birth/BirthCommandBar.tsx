@@ -11,7 +11,7 @@ import { buildHudMilestones } from "@/lib/birthPhaseModel";
 import { luminaInteractiveClass } from "@/lib/glassGlowTaxonomy";
 import { cn } from "@/lib/utils";
 
-type BirthCommandBarMode = "running" | "genesis" | "finale";
+type BirthCommandBarMode = "running" | "genesis";
 
 interface BirthCommandBarProps {
   mode: BirthCommandBarMode;
@@ -26,8 +26,6 @@ interface BirthCommandBarProps {
   onStart?: () => void;
   onWipe?: () => void;
   onResumeCheckpoint?: () => void;
-  onEnterDeck?: () => void;
-  onExtraTraining?: () => void;
   className?: string;
 }
 
@@ -110,12 +108,10 @@ export function BirthCommandBar({
   onStart: _onStart,
   onWipe: _onWipe,
   onResumeCheckpoint: _onResumeCheckpoint,
-  onEnterDeck,
-  onExtraTraining,
   className,
 }: BirthCommandBarProps) {
   const hudMilestones = buildHudMilestones(progress, status);
-  const showMilestoneRail = mode === "running" || mode === "finale";
+  const showMilestoneRail = mode === "running";
 
   return (
     <header
@@ -145,30 +141,6 @@ export function BirthCommandBar({
             advancedOpen={advancedOpen}
             onToggleAdvanced={onToggleAdvanced}
           />
-        ) : null}
-
-        {mode === "finale" ? (
-          <div className="birth-command-bar__actions">
-            <Button
-              type="button"
-              className="onboarding-cta h-7 min-w-[132px] px-3 py-1 font-mono text-[10px] tracking-wide uppercase"
-              onClick={onEnterDeck}
-            >
-              Enter command deck
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className={cn(
-                luminaInteractiveClass("ghost"),
-                "h-7 font-mono text-[10px] tracking-wide uppercase text-muted-foreground",
-              )}
-              onClick={onExtraTraining}
-            >
-              Extra training
-            </Button>
-          </div>
         ) : null}
       </div>
     </header>

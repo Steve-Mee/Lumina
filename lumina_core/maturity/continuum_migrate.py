@@ -62,9 +62,30 @@ def migrate_from_milestones(workspace_root: Path | str) -> dict[str, Any]:
         }
         data["active_phase"] = MaturationPhase.BIRTH.value
 
+    if birth_done:
+        try:
+            from lumina_core.maturity.awakening.law import evaluate_awakening_exit
+
+            awake_ok, _awake_missing, awake_learned = evaluate_awakening_exit(workspace_root)
+        except Exception:
+            awake_ok = False
+            awake_learned = {}
+        if awake_ok:
+            completed.append(MaturationPhase.AWAKENING.value)
+            data["phase_records"][MaturationPhase.AWAKENING.value] = {
+                "status": "completed",
+                "learned": awake_learned,
+                "exit_proofs": list(awake_learned.get("exit_proofs") or []),
+            }
+        elif "first_watch_passed" in reached:
+            data["phase_records"][MaturationPhase.AWAKENING.value] = {
+                "status": "pending",
+                "learned": {"note": "First Watch AND not cleared"},
+                "exit_proofs": [],
+            }
+
     # Later phases from milestones
     mapping = [
-        (MaturationPhase.AWAKENING.value, ("evolution_proof_passed", "perfect_birth_autonomy_proven")),
         (MaturationPhase.PLAYGROUND.value, ("deck_unlocked", "first_sim_order_placed", "sim_mirror_api_ok")),
         (MaturationPhase.APPRENTICESHIP.value, ("sim_real_guard_stable",)),
         (MaturationPhase.PROVING_GROUND.value, ("shadow_validation_passed", "promotion_gate_passed")),
@@ -80,15 +101,6 @@ def migrate_from_milestones(workspace_root: Path | str) -> dict[str, Any]:
                 continue
             if MaturationPhase.BIRTH.value not in completed:
                 completed.append(MaturationPhase.BIRTH.value)
-        # Awakening needs at least evolution proof for full complete; deck alone is playground
-        if phase_id == MaturationPhase.AWAKENING.value and "evolution_proof_passed" not in hit:
-            if "birth_certificate_issued" in reached:
-                data["phase_records"][phase_id] = {
-                    "status": "pending",
-                    "learned": {},
-                    "exit_proofs": hit,
-                }
-            continue
         if phase_id == MaturationPhase.PLAYGROUND.value:
             # deck_unlocked alone enough for MVP complete if birth artifacts ok
             if "deck_unlocked" in hit or "first_sim_order_placed" in hit:

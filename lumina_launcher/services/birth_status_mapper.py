@@ -58,11 +58,18 @@ def resolve_terminal_birth_status(progress: Dict[str, Any] | None) -> tuple[str,
     }:
         message = str(
             progress.get("message")
-            or "Birth Phase gestopt door gebruiker. Hervat checkpoint of wis birth-data."
+            or "Birth stopped by you. Resume checkpoint or wipe birth data."
         )
         return ("interrupted", message)
     if stage_name == "paused" and phase == "paused":
-        message = str(progress.get("message") or "Birth Phase gepauzeerd.")
+        message = str(progress.get("message") or "Birth paused.")
+        return ("paused", message)
+
+    if phase == "holdout_capacity_refused" or stage_name == "holdout_capacity_refused":
+        message = str(
+            progress.get("message")
+            or "This tape cannot host Awakening. Continue loads 365 days and retrains from stage 1."
+        )
         return ("paused", message)
 
     if phase == "stage_stalled" or stage_name == "stage_stalled":
@@ -93,7 +100,7 @@ def resolve_terminal_birth_status(progress: Dict[str, Any] | None) -> tuple[str,
         message = str(
             progress.get("last_error")
             or progress.get("message")
-            or "Birth Phase gefaald"
+            or "Birth failed"
         )
         return ("error", message)
 

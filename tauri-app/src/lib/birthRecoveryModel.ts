@@ -205,8 +205,7 @@ export function shouldAutoResumeBirth(
   }
   if (
     (terminal === "plateau_evolution_exhausted" || terminal === "stall_remediation_exhausted") &&
-    status.progress?.retryable === true &&
-    status.progress?.needs_attention !== true
+    status.progress?.retryable === true
   ) {
     return true;
   }

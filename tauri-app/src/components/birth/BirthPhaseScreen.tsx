@@ -38,8 +38,6 @@ export function BirthPhaseScreen() {
     handleStartBirth,
     handleWipeBirthData,
     handleResumeCheckpoint,
-    handleExtraTraining,
-    enterCommandDeck,
     onRealPreviewComplete,
     completeDeckEntry,
     handleResumeBirth,
@@ -71,6 +69,11 @@ export function BirthPhaseScreen() {
     }
     void restoreDeckWindowSize();
   }, [launchingMode, paintSurface]);
+
+  // Birth finale is not the Awakening mission. OnboardingGate opens Phase Hub.
+  if (derived.awakening) {
+    return null;
+  }
 
   return (
     <OnboardingShell className="birth-phase-screen birth-phase-screen--cinematic onboarding-shell--form">
@@ -130,8 +133,6 @@ export function BirthPhaseScreen() {
             advancedOpen={advancedOpen}
             onToggleAdvanced={setAdvancedOpen}
             onStop={handleStopBirth}
-            onEnterDeck={enterCommandDeck}
-            onExtraTraining={handleExtraTraining}
           />
         )}
 

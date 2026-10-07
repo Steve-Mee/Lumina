@@ -128,7 +128,8 @@ def test_select_physics_env_tax_r_zero_unchanged() -> None:
     row = {"last": 21150.0, "close": 21150.0, "regime": "NEUTRAL", "high": 21151.0, "low": 21149.0}
     env = SelectPhysicsEnv(inner, geometry=geo, envelope=_envelope(), enriched=[row], tax_r=0.0)
     _obs, reward, _term, _trunc, info = env.step(np.array([1.0, 0.2, 0.002, 0.003], dtype=np.float32))
-    assert reward == pytest.approx(-1.038 + POLICY_PARTICIPATION_BONUS_R)
+    # Living clock (tax_r=0): in-band policy close keeps process-R. No +0.05 volume bonus.
+    assert reward == pytest.approx(-1.038)
     assert info["regime"] == "NEUTRAL"
     assert info["close_reason"] == "stop"
 

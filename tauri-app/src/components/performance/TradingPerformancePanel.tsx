@@ -13,15 +13,12 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { TrendingUp } from "lucide-react";
 
-import { AnimatedMetric } from "@/components/cockpit/AnimatedMetric";
-import { Badge } from "@/components/ui/badge";
+import { BirthKpiTile, type BirthKpiTone } from "@/components/birth/BirthKpiTile";
+import { StatusChip } from "@/components/birth/BirthGenesisDeckPrimitives";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useTradingPerformance } from "@/hooks/useTradingPerformance";
-import {
-  chartThemeForMode,
-} from "@/lib/ppoEvolutionChartTheme";
+import { chartThemeForMode } from "@/lib/ppoEvolutionChartTheme";
 import {
   formatMaxDrawdownPct,
   formatProfitFactor,
@@ -29,7 +26,6 @@ import {
   formatUsd,
   formatWinrate,
   kpiToneClass,
-  pnlToneClass,
 } from "@/lib/tradingPerformanceModel";
 import { selectCurrentMode, selectFortress, useCoreStore } from "@/store/coreStore";
 import { cn } from "@/lib/utils";
@@ -38,71 +34,19 @@ interface TradingPerformancePanelProps {
   className?: string;
 }
 
-function ConnectionBadge({ connected, source }: { connected: boolean; source: string }) {
-  return (
-    <Badge
-      variant="outline"
-      className={cn(
-        "font-mono text-[10px] tracking-wider uppercase",
-        connected
-          ? "border-emerald-500/40 bg-emerald-950/40 text-emerald-300 lumina-glow-edge"
-          : "border-red-500/40 bg-red-950/30 text-red-300",
-      )}
-    >
-      <span
-        className={cn(
-          "mr-1.5 inline-block size-1.5 rounded-full",
-          connected ? "bg-emerald-400 animate-pulse" : "bg-red-400",
-        )}
-        aria-hidden
-      />
-      {connected ? `Live · ${source}` : "Offline"}
-    </Badge>
-  );
+function kpiTileTone(kind: "sharpe" | "drawdown", value: number, killPct?: number): BirthKpiTone {
+  const cls = kpiToneClass(kind, value, killPct);
+  if (cls.includes("emerald")) return "success";
+  if (cls.includes("amber")) return "warn";
+  return "accent";
 }
 
-function KpiTile({
-  label,
-  value,
-  toneClass,
-}: {
-  label: string;
-  value: string;
-  toneClass?: string;
-}) {
-  return (
-    <div className="analytics-annex__metric">
-      <p className="font-mono text-[9px] tracking-[0.14em] text-muted-foreground uppercase">
-        {label}
-      </p>
-      <AnimatedMetric value={value} className={cn("analytics-annex__metric-value text-sm", toneClass)} />
-    </div>
-  );
+function pnlTileTone(amount: number | null): BirthKpiTone {
+  if (amount == null || amount === 0) return "default";
+  return amount > 0 ? "success" : "warn";
 }
 
-function PnlStripTile({
-  label,
-  value,
-  amount,
-}: {
-  label: string;
-  value: string;
-  amount: number | null;
-}) {
-  return (
-    <div className="analytics-annex__metric px-4 py-3">
-      <p className="font-mono text-[9px] tracking-[0.16em] text-muted-foreground uppercase">
-        {label}
-      </p>
-      <AnimatedMetric
-        value={value}
-        className={cn("text-lg font-medium", pnlToneClass(amount))}
-      />
-    </div>
-  );
-}
-
-function ChartShell({
+function ChartCard({
   title,
   children,
   height = 160,
@@ -112,15 +56,20 @@ function ChartShell({
   height?: number;
 }) {
   return (
-    <section className="analytics-annex__metric p-3">
-      <div className="mb-2 flex items-center gap-2">
-        <TrendingUp className="size-3.5 text-muted-foreground/70" />
-        <h4 className="analytics-annex__section-title">
-          {title}
-        </h4>
+    <section className="risk-envelope-field-card command-deck-ops__perf-chart flex min-h-0 flex-col">
+      <p className="risk-envelope-field-label">{title}</p>
+      <div className="mt-2 min-h-0 flex-1" style={{ height }}>
+        {children}
       </div>
-      <div style={{ height }}>{children}</div>
     </section>
+  );
+}
+
+function ChartEmpty({ copy }: { copy: string }) {
+  return (
+    <p className="flex h-full items-center justify-center font-mono text-[11px] tracking-wide text-white/40">
+      {copy}
+    </p>
   );
 }
 
@@ -130,11 +79,9 @@ export function TradingPerformancePanel({ className }: TradingPerformancePanelPr
   const mode = useCoreStore(selectCurrentMode);
   const chartTheme = chartThemeForMode(mode);
   const equityStroke = chartTheme.colors.equity;
-  const equityFill = "url(#equityGradient)";
   const { view, connected, tradesError } = useTradingPerformance();
   const fortress = useCoreStore(selectFortress);
   const drawdownKillPct = fortress?.drawdown_kill_pct ?? 8;
-
   const animationActive = !reducedMotion;
   const equityData = view.equityChart.map((point) => ({
     t: point.t,
@@ -142,66 +89,86 @@ export function TradingPerformancePanel({ className }: TradingPerformancePanelPr
   }));
 
   return (
-    <div
-      className={cn(
-        "deck-annex-inset flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto [scrollbar-width:thin]",
-        className,
-      )}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-        <ConnectionBadge connected={connected} source={view.source} />
+    <div className={cn("command-deck-ops__performance", className)}>
+      <div
+        className="command-deck-ops__arena-strip"
+        role="status"
+        aria-label="Performance telemetry"
+      >
+        <StatusChip
+          label={connected ? "LIVE" : "OFFLINE"}
+          state={connected ? "ok" : "warn"}
+          tip={connected ? `Telemetry source ${view.source}.` : "Live stream is not connected."}
+        />
+        <StatusChip
+          label={view.source.toUpperCase()}
+          state={view.hasLiveData ? "partial" : "idle"}
+          tip="Where session KPIs are read from."
+        />
+        <StatusChip
+          label={view.hasLiveData ? "SESSION" : "STANDBY"}
+          state={view.hasLiveData ? "ok" : "idle"}
+          tip="Live session occupancy. Standby until the engine publishes equity."
+        />
       </div>
 
       {!view.hasLiveData ? (
-        <p className="analytics-annex__metric px-3 py-2 text-xs text-muted-foreground">
-          Awaiting live session data. KPIs will populate from the last run summary when the engine
-          is offline.
+        <p className="font-mono text-[11px] leading-relaxed tracking-wide text-white/45">
+          Awaiting live session data. KPIs fill from the last run summary when the engine is
+          offline.
         </p>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        <KpiTile label="Winrate" value={formatWinrate(view.kpis.winrate)} />
-        <KpiTile
-          label="Sharpe (ann.)"
+      <div className="command-deck-ops__perf-kpis">
+        <BirthKpiTile label="Winrate" value={formatWinrate(view.kpis.winrate)} tone="accent" />
+        <BirthKpiTile
+          label="Sharpe"
           value={formatSharpe(view.kpis.sharpeAnnualized)}
-          toneClass={kpiToneClass("sharpe", view.kpis.sharpeAnnualized)}
+          detail="annualized"
+          tone={kpiTileTone("sharpe", view.kpis.sharpeAnnualized)}
         />
-        <KpiTile
+        <BirthKpiTile
           label="Max DD"
           value={formatMaxDrawdownPct(view.kpis.maxDrawdownPct)}
-          toneClass={kpiToneClass("drawdown", view.kpis.maxDrawdownPct, drawdownKillPct)}
+          detail={`kill ${drawdownKillPct}%`}
+          tone={kpiTileTone("drawdown", view.kpis.maxDrawdownPct, drawdownKillPct)}
         />
-        <KpiTile label="Profit Factor" value={formatProfitFactor(view.kpis.profitFactor)} />
+        <BirthKpiTile
+          label="Profit factor"
+          value={formatProfitFactor(view.kpis.profitFactor)}
+          tone={view.kpis.profitFactor >= 1 ? "success" : "default"}
+        />
       </div>
 
       <button
         type="button"
-        className="rounded-md border border-white/10 px-3 py-2 text-left font-mono text-[10px] tracking-wide text-muted-foreground uppercase transition-colors hover:border-white/20 hover:text-foreground"
+        className="genesis-recovery-action-card__btn genesis-recovery-action-card__btn--idle command-deck-ops__organ-btn"
+        aria-expanded={pnlExpanded}
         onClick={() => setPnlExpanded((open) => !open)}
       >
-        {pnlExpanded ? "Hide session P&L" : "Show session P&L"}
+        {pnlExpanded ? "Hide session P&L" : "Session P&L"}
       </button>
       {pnlExpanded ? (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <PnlStripTile
+        <div className="command-deck-ops__perf-kpis command-deck-ops__perf-kpis--three">
+          <BirthKpiTile
             label="Daily P&L"
             value={formatUsd(view.dailyPnl)}
-            amount={view.dailyPnl}
+            tone={pnlTileTone(view.dailyPnl)}
           />
-          <PnlStripTile
+          <BirthKpiTile
             label="Open P&L"
             value={formatUsd(view.openPnl)}
-            amount={view.openPnl}
+            tone={pnlTileTone(view.openPnl)}
           />
-          <PnlStripTile
-            label="Session Realized"
+          <BirthKpiTile
+            label="Realized"
             value={formatUsd(view.sessionRealizedPnl)}
-            amount={view.sessionRealizedPnl}
+            tone={pnlTileTone(view.sessionRealizedPnl)}
           />
         </div>
       ) : null}
 
-      <ChartShell title="Live Equity Curve" height={200}>
+      <ChartCard title="Live equity" height={168}>
         {equityData.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={equityData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -234,7 +201,7 @@ export function TradingPerformancePanel({ className }: TradingPerformancePanelPr
                 dataKey="equity"
                 stroke={equityStroke}
                 strokeWidth={2}
-                fill={equityFill}
+                fill="url(#equityGradient)"
                 dot={false}
                 activeDot={{ r: 4, fill: equityStroke, stroke: "#fff", strokeWidth: 1 }}
                 isAnimationActive={animationActive}
@@ -243,14 +210,12 @@ export function TradingPerformancePanel({ className }: TradingPerformancePanelPr
             </AreaChart>
           </ResponsiveContainer>
         ) : (
-          <p className="flex h-full items-center justify-center text-xs text-muted-foreground">
-            No equity points yet
-          </p>
+          <ChartEmpty copy="No equity points yet" />
         )}
-      </ChartShell>
+      </ChartCard>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <ChartShell title="Daily P&L History" height={150}>
+      <div className="command-deck-ops__perf-charts">
+        <ChartCard title="Daily P&L" height={132}>
           {view.dailyPnlChart.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={view.dailyPnlChart} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
@@ -272,13 +237,11 @@ export function TradingPerformancePanel({ className }: TradingPerformancePanelPr
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <p className="flex h-full items-center justify-center text-xs text-muted-foreground">
-              Daily history populates after runtime snapshots
-            </p>
+            <ChartEmpty copy="Daily history after runtime snapshots" />
           )}
-        </ChartShell>
+        </ChartCard>
 
-        <ChartShell title="Cumulative P&L (Trades)" height={150}>
+        <ChartCard title="Cumulative P&L" height={132}>
           {view.cumulativePnlChart.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
@@ -304,11 +267,11 @@ export function TradingPerformancePanel({ className }: TradingPerformancePanelPr
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <p className="flex h-full items-center justify-center text-xs text-muted-foreground">
-              {tradesError ? "Unable to load trade history" : "No closed trades yet"}
-            </p>
+            <ChartEmpty
+              copy={tradesError ? "Unable to load trade history" : "No closed trades yet"}
+            />
           )}
-        </ChartShell>
+        </ChartCard>
       </div>
     </div>
   );

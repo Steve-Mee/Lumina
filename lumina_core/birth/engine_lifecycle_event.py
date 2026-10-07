@@ -20,7 +20,7 @@ class EngineLifecycleEventMixin:
             self.workspace_root,
             stage="paused",
             phase="paused",
-            message="Birth Phase gepauzeerd door gebruiker.",
+            message="Birth paused by you.",
             progress_pct=min(
                 99.0,
                 float(self.cumulative_trades) / max(1.0, float(self.birth_config.trade_budget_cap)) * 100.0,
@@ -37,7 +37,7 @@ class EngineLifecycleEventMixin:
             self.workspace_root,
             build_pause_ssot_payload(
                 progress=current,
-                message="Birth Phase gepauzeerd door gebruiker.",
+                message="Birth paused by you.",
             ),
         )
         return {"status": "paused", "total_trades": self.cumulative_trades, "ppo_steps": self.ppo_steps}

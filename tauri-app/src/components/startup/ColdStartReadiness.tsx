@@ -11,6 +11,12 @@ import {
   type SystemsProgress,
 } from "@/lib/startupSystemsOrchestrator";
 import {
+  markSystemsGoDone,
+  readOperatorPhase,
+  rememberOperatorPhase,
+  systemsGoAlreadyDone,
+} from "@/lib/systemsGoSession";
+import {
   releaseStartupCoverWindow,
   restoreDeckWindowSize,
   retainStartupCoverWindow,
@@ -33,6 +39,7 @@ export function ColdStartReadiness() {
   const refresh = useOnboardingStore((s) => s.refresh);
   const ntLinkDeferred = useOnboardingStore((s) => s.ntLinkDeferred);
   const setNtStartupResolved = useOnboardingStore((s) => s.setNtStartupResolved);
+  const setPhase = useOnboardingStore((s) => s.setPhase);
   const setNtLinkDeferred = useOnboardingStore((s) => s.setNtLinkDeferred);
   const setFabricStartup = useOnboardingStore((s) => s.setFabricStartup);
   const targetTrades = useOnboardingStore((s) => s.draft.training.training_trades);
@@ -49,11 +56,16 @@ export function ColdStartReadiness() {
 
   useEffect(() => {
     mountedRef.current = true;
-    retainStartupCoverWindow();
+    // A WebView reload mid-run must not shrink the window back to Systems Go.
+    if (!systemsGoAlreadyDone()) {
+      retainStartupCoverWindow();
+    }
     return () => {
       mountedRef.current = false;
       genRef.current += 1;
-      releaseStartupCoverWindow();
+      if (!systemsGoAlreadyDone()) {
+        releaseStartupCoverWindow();
+      }
     };
   }, []);
 
@@ -104,6 +116,7 @@ export function ColdStartReadiness() {
       }
       // Expand to deck size first, then leave cover so Genesis lands full-window.
       await restoreDeckWindowSize();
+      markSystemsGoDone();
       setNtStartupResolved(true);
     },
     [setFabricStartup, setNtLinkDeferred, setNtStartupResolved],
@@ -157,12 +170,30 @@ export function ColdStartReadiness() {
 
   // Auto-run once backend is reachable.
   useEffect(() => {
+    // Same WebView already passed Systems Go. A busy eval must not replay the
+    // cover: the onboarding fetch can sit unanswered while the clock runs.
+    if (isTauri() && systemsGoAlreadyDone()) {
+      const phaseNow = useOnboardingStore.getState().phase;
+      if (phaseNow === "loading") {
+        const saved = readOperatorPhase();
+        if (saved) setPhase(saved);
+      } else {
+        rememberOperatorPhase(phaseNow);
+      }
+      void restoreDeckWindowSize();
+      setNtStartupResolved(true);
+      return;
+    }
+
     if (!payload?.backend.reachable) {
+      const busyPlane = Boolean(
+        error && /busy|timeout|timed out|abort|cancel/i.test(error),
+      );
       setProgress({
         steps: [
           {
             id: "backend",
-            state: error ? "blocked" : "running",
+            state: error && !busyPlane ? "blocked" : "running",
             detail: error?.trim() || "Contacting Lumina backend…",
           },
           { id: "nt_process", state: "pending", detail: "Waiting for backend" },
@@ -170,9 +201,15 @@ export function ColdStartReadiness() {
           { id: "birth_session", state: "pending", detail: "Waiting for backend" },
           { id: "route", state: "pending", detail: "Waiting for backend" },
         ],
-        headline: error ? "Backend unreachable" : "Systems Go",
+        headline: error
+          ? busyPlane
+            ? "Control plane busy"
+            : "Backend unreachable"
+          : "Systems Go",
         subtitle: error
-          ? "Cannot reach the control plane. Retry when the backend is up."
+          ? busyPlane
+            ? "The exam keeps running. Retry when the control plane answers."
+            : "Cannot reach the control plane. Retry when the backend is up."
           : "Contacting control plane…",
         needNtDialog: false,
         ntWaiting: false,
@@ -204,7 +241,7 @@ export function ColdStartReadiness() {
     void runPipeline();
     // Intentionally not depending on runPipeline identity — gate by payload key.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one Systems Go run per payload key
-  }, [payload?.backend.reachable, payload?.app_surface, error]);
+  }, [payload?.backend.reachable, payload?.app_surface, error, setNtStartupResolved, setPhase]);
 
   const handleStartNt = () => {
     const gen = ++genRef.current;

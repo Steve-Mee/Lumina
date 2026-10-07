@@ -1,7 +1,7 @@
 /** Mirrors lumina_core.first_boot_ui + foundation_history SSOT (keep in sync with Python). */
 
 export const FIRST_BOOT_EST_TRADES_PER_REAL_DAY = 450;
-export const FOUNDATION_HISTORY_START_DAYS = 90;
+export const FOUNDATION_HISTORY_START_DAYS = 365;
 export const FOUNDATION_HISTORY_MAX_DAYS = 365;
 export const FIRST_BOOT_MIN_REAL_DAYS = FOUNDATION_HISTORY_START_DAYS;
 export const FIRST_BOOT_DEFAULT_MAX_REAL_DAYS = FOUNDATION_HISTORY_MAX_DAYS;

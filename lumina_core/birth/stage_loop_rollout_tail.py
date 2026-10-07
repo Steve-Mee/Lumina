@@ -40,6 +40,8 @@ class StageLoopRolloutTailMixin(StageLoopMixinBase):
         self._foundation_epoch_count = count
         if not epoch_cap_exceeded(self.stage, count):
             return
+        if getattr(self, "_same_tape_locked", False):
+            return
         logger.info(
             "birth.foundation.epoch_cap stage=%s epochs=%s",
             self.stage.value,
@@ -49,6 +51,13 @@ class StageLoopRolloutTailMixin(StageLoopMixinBase):
         if expanded:
             self._foundation_epoch_count = 0
             self._foundation_epoch_hash = ""
+            return
+        if getattr(self, "_same_tape_locked", False):
+            logger.info(
+                "birth.foundation.epoch_cap.same_tape stage=%s epochs=%s",
+                self.stage.value,
+                count,
+            )
             return
         self.data_exhausted = True
         logger.warning(

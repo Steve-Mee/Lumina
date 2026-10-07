@@ -12,7 +12,7 @@ from typing import Any
 import requests
 import websockets
 from websockets.exceptions import ConnectionClosed
-from datetime import datetime
+from datetime import datetime, timezone
 from .errors import ErrorSeverity, LuminaError, log_structured
 from .tape_reading_agent import TapeReadingAgent
 from lumina_core.sla_config import market_data_latency_sla_ms
@@ -160,17 +160,247 @@ class MarketDataIngestCore:
             return "crosstrade"
         return "fabric"
 
+    @staticmethod
+    def _quote_ts(quote: dict[str, Any]) -> datetime:
+        from lumina_core.engine.ohlc_clock import utc_from_any, utc_from_unix_ms
+
+        ts = utc_from_unix_ms(quote.get("timestamp_unix_ms"))
+        if ts is not None:
+            return ts
+        ts = utc_from_any(quote.get("timestamp"))
+        if ts is not None:
+            return ts
+        return datetime.now(timezone.utc)
+
+    def _drain_nt_bars(self, app: Any, client: Any, workspace: Any) -> None:
+        """Apply queued native NT Last bars. Quotes never close candles."""
+        take = getattr(client, "take_bar", None)
+        if take is None:
+            return
+        from lumina_core.engine.nt_bar_periods import canonicalize_period
+        from lumina_core.engine.nt_bar_ssot import BarRejected, is_recent_closed_bar
+        from lumina_core.engine.ohlc_clock import iso_z
+
+        swarm_manager = getattr(app, "swarm_manager", None)
+        for _ in range(20_000):
+            bar = take()
+            if not bar:
+                break
+            inst = str(bar.get("instrument") or "").strip().upper()
+            period = canonicalize_period(bar.get("bar_period") or "1m") or "1m"
+            bar["bar_period"] = period
+            closed = None
+            try:
+                if swarm_manager is not None and hasattr(swarm_manager, "apply_nt_bar"):
+                    swarm_manager.apply_nt_bar(inst, bar)
+                closed = self.engine.market_data.apply_nt_bar(bar)
+            except BarRejected as exc:
+                app.logger.warning(
+                    "nt.bar.rejected code=%s inst=%s period=%s",
+                    getattr(exc, "code", ""),
+                    inst,
+                    period,
+                )
+                continue
+            if closed is None:
+                continue
+            if period != "1m":
+                continue
+            ts = closed.get("timestamp")
+            try:
+                live = is_recent_closed_bar(ts)
+            except (TypeError, ValueError):
+                live = False
+            if not live:
+                continue
+            try:
+                from lumina_core.maturity.playground.live_hand import on_closed_candle
+
+                on_closed_candle(
+                    workspace,
+                    self.engine,
+                    app,
+                    closed,
+                    mode=str(getattr(self.engine.config, "trade_mode", "sim")),
+                )
+            except Exception:
+                app.logger.debug("playground.candle_hand_failed", exc_info=True)
+            try:
+                stamp = iso_z(ts) if ts is not None else ""
+            except Exception:
+                stamp = str(ts)
+            log_structured(
+                LuminaError(
+                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                    code="INFO_PRINT_LEGACY",
+                    message=(
+                        f"[{stamp}] NT {period} bar closed -> "
+                        f"O={closed['open']:.2f} H={closed['high']:.2f} "
+                        f"L={closed['low']:.2f} C={closed['close']:.2f} "
+                        f"V={closed['volume']}"
+                    ),
+                    context={"source": "nt_bars_request"},
+                )
+            )
+
+    def _hydrate_native_periods(self, app: Any, client: Any, instrument: str) -> None:
+        """Closed history for every native TF. Live Update still owns the forming bar."""
+        fetch = getattr(client, "request_historical_data", None)
+        if fetch is None or not instrument:
+            return
+        from lumina_core.engine.nt_bar_periods import CANONICAL_LIVE, live_bars_back
+        from lumina_core.engine.nt_bar_ssot import BarRejected
+
+        for period in CANONICAL_LIVE:
+            try:
+                resp = fetch(
+                    instrument=instrument,
+                    bar_period=period,
+                    max_bars=live_bars_back(period),
+                )
+            except Exception:
+                app.logger.debug("fabric.live.hydrate_rpc_failed period=%s", period, exc_info=True)
+                continue
+            code = str((resp or {}).get("code") or "").lower()
+            if code not in {"ok", "success"}:
+                app.logger.warning(
+                    "fabric.live.hydrate_rejected period=%s code=%s",
+                    period,
+                    (resp or {}).get("code"),
+                )
+                continue
+            for raw in (resp or {}).get("bars") or []:
+                raw = dict(raw)
+                raw["bar_period"] = period
+                try:
+                    self.engine.market_data.apply_nt_bar(raw)
+                except BarRejected:
+                    continue
+
+    def _reconcile_nt_book(self, app: Any, client: Any, instrument: str) -> None:
+        from datetime import datetime, timezone
+
+        from lumina_core.engine.bar_integrity import reconcile_against_nt, tape_is_live
+        from lumina_core.engine.nt_bar_ssot import BarRejected
+
+        md = self.engine.market_data
+        closed = md.copy_ohlc()
+        local_ts = []
+        if closed is not None and not closed.empty:
+            local_ts = list(closed["timestamp"])
+        last_ms = 0
+        if local_ts:
+            from lumina_core.engine.ohlc_clock import utc_from_any as _utc
+
+            parsed = _utc(local_ts[-1])
+            if parsed is not None:
+                last_ms = int(parsed.timestamp() * 1000)
+        now = datetime.now(timezone.utc)
+        quotes_live = tape_is_live(md.live_quotes, now)
+        fetch = getattr(client, "request_historical_data", None)
+        nt_ok = False
+        rows: list[dict[str, Any]] = []
+        if fetch is not None and instrument:
+            try:
+                from lumina_core.engine.nt_bar_periods import live_bars_back
+
+                resp = fetch(
+                    instrument=instrument,
+                    bar_period="1m",
+                    start_unix_ms=last_ms,
+                    end_unix_ms=int(now.timestamp() * 1000),
+                    max_bars=live_bars_back("1m") if last_ms <= 0 else 180,
+                )
+                code = str((resp or {}).get("code") or "").lower()
+                nt_ok = code in {"ok", "success"}
+                rows = list((resp or {}).get("bars") or [])
+            except Exception:
+                nt_ok = False
+                rows = []
+        status, missing = reconcile_against_nt(
+            local_closed=list(local_ts),
+            nt_rows=rows,
+            nt_ok=nt_ok,
+            now=now,
+            quotes_live=quotes_live,
+        )
+        filled = 0
+        for raw in missing:
+            raw = dict(raw)
+            raw["bar_period"] = "1m"
+            try:
+                md.apply_nt_bar(raw)
+                filled += 1
+            except BarRejected:
+                continue
+        if filled:
+            closed = md.copy_ohlc()
+            local_ts = list(closed["timestamp"]) if closed is not None and not closed.empty else []
+            status, _ = reconcile_against_nt(
+                local_closed=list(local_ts),
+                nt_rows=rows,
+                nt_ok=nt_ok,
+                now=now,
+                quotes_live=quotes_live,
+                filled_count=filled,
+            )
+        md.integrity = status
+        app.BAR_BOOK_COMPLETE = bool(status.complete)
+        app.BAR_BOOK_LOCK_ENTRIES = bool(status.lock_new_entries)
+        self._publish_bar_integrity(status)
+
+    def _publish_bar_integrity(self, status: Any) -> None:
+        blackboard = getattr(self.engine, "blackboard", None)
+        if blackboard is None or not hasattr(blackboard, "publish_sync"):
+            return
+        try:
+            blackboard.publish_sync(
+                topic="market.bar_integrity",
+                producer="market_data_service",
+                payload=status.as_payload(),
+                confidence=1.0 if status.complete else 0.0,
+            )
+        except Exception:
+            logging.exception("bar_integrity.publish_failed")
+        try:
+            from lumina_core.io.atomic_fs import atomic_write_text
+            from pathlib import Path
+            import json
+
+            root = getattr(getattr(self.engine, "config", None), "workspace_root", None)
+            if root is None:
+                return
+            path = Path(root) / "state" / "lumina_bar_integrity.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write_text(path, json.dumps(status.as_payload(), ensure_ascii=True, indent=2) + "\n")
+        except Exception:
+            logging.debug("bar_integrity.state_write_failed", exc_info=True)
+
     async def _fabric_live_listener(self) -> None:
         """Poll Fabric live quote cache (NT MarketDataUpdate stream). No CrossTrade."""
+        from pathlib import Path
+
+        from lumina_core.broker.ninjatrader.open_charts import subscription_plan
+
         app = self._app()
-        instrument = self._normalize_symbol(getattr(app, "INSTRUMENT", self.engine.config.instrument))
+        configured = self._normalize_symbol(
+            getattr(app, "INSTRUMENT", self.engine.config.instrument)
+        )
         configured_swarm = [
-            self._normalize_symbol(s) for s in getattr(app, "SWARM_SYMBOLS", self.engine.config.swarm_symbols)
+            self._normalize_symbol(s)
+            for s in getattr(app, "SWARM_SYMBOLS", self.engine.config.swarm_symbols)
         ]
-        if instrument not in configured_swarm:
-            configured_swarm.insert(0, instrument)
-        subscribed_symbols = [s for s in configured_swarm if s]
+        workspace = getattr(getattr(self.engine, "config", None), "workspace_root", None) or getattr(
+            app, "workspace_root", None
+        )
+        if workspace is None:
+            workspace = Path(__file__).resolve().parents[2]
+        instrument, subscribed_symbols, chart_source = subscription_plan(
+            configured, configured_swarm, []
+        )
         last_tick_print = 0.0
+        next_chart_scan = 0.0
+        subscribed_key: tuple[str, ...] = ()
 
         client = None
         try:
@@ -201,8 +431,81 @@ class MarketDataIngestCore:
                 app.logger.error("Fabric live market data unavailable: %s", exc)
                 return
 
+        def _sync_charts(force: bool) -> None:
+            nonlocal instrument, subscribed_symbols, chart_source, subscribed_key, next_chart_scan
+            now_scan = time.time()
+            if not force and now_scan < next_chart_scan:
+                return
+            next_chart_scan = now_scan + 30.0
+            try:
+                from lumina_core.broker.ninjatrader.open_charts import read_open_charts
+
+                observed = read_open_charts()
+            except Exception:
+                app.logger.debug("fabric.live.charts_unread", exc_info=True)
+                observed = []
+            instrument, symbols, chart_source = subscription_plan(
+                configured, configured_swarm, observed
+            )
+            if symbols and tuple(symbols) != subscribed_key:
+                try:
+                    from lumina_core.engine.nt_bar_periods import CANONICAL_LIVE
+
+                    client.subscribe_market_data(
+                        symbols,
+                        include_ticks=True,
+                        include_bars=True,
+                        bar_period="1m",
+                        bar_periods=list(CANONICAL_LIVE),
+                    )
+                except Exception:
+                    app.logger.debug("fabric.live.subscribe_failed", exc_info=True)
+                    return
+                subscribed_symbols = symbols
+                subscribed_key = tuple(symbols)
+                if instrument:
+                    app.INSTRUMENT = instrument
+                    try:
+                        self.engine.config.instrument = instrument
+                    except Exception:
+                        pass
+                    self.last_resolved_instrument = instrument
+                app.logger.info(
+                    "fabric.live.charts source=%s primary=%s symbols=%s",
+                    chart_source,
+                    instrument,
+                    ",".join(symbols),
+                )
+                try:
+                    self._hydrate_native_periods(app, client, instrument)
+                except Exception:
+                    app.logger.debug("fabric.live.htf_hydrate_failed", exc_info=True)
+            try:
+                from lumina_core.maturity.playground.portfolio_seal import maintain_sim_floor
+
+                sentence = maintain_sim_floor(self.engine, workspace)
+                from lumina_core.maturity.playground.live_hand import note_market_view
+
+                last_px = None
+                quotes = getattr(self.engine, "live_quotes", None)
+                if quotes:
+                    try:
+                        last_px = float(quotes[-1].get("last") or 0.0)
+                    except (AttributeError, TypeError, ValueError):
+                        last_px = None
+                note_market_view(
+                    workspace,
+                    charts=list(observed),
+                    listing=str(instrument or ""),
+                    source=str(chart_source or ""),
+                    seal_note=str(sentence or ""),
+                    last_px=last_px,
+                )
+            except Exception:
+                app.logger.debug("fabric.live.portfolio_floor_failed", exc_info=True)
+
         try:
-            client.subscribe_market_data(subscribed_symbols, include_ticks=True)
+            _sync_charts(True)
         except Exception:
             app.logger.debug("fabric.live.subscribe_failed", exc_info=True)
 
@@ -218,6 +521,15 @@ class MarketDataIngestCore:
         while True:
             tick_start = time.perf_counter()
             try:
+                _sync_charts(False)
+                self._drain_nt_bars(app, client, workspace)
+                now_loop = time.time()
+                if now_loop >= float(getattr(self, "_next_bar_reconcile", 0.0) or 0.0):
+                    self._next_bar_reconcile = now_loop + 30.0
+                    try:
+                        self._reconcile_nt_book(app, client, instrument)
+                    except Exception:
+                        app.logger.debug("fabric.live.bar_reconcile_failed", exc_info=True)
                 for quote_symbol in subscribed_symbols:
                     q = client.get_last_quote(quote_symbol) if hasattr(client, "get_last_quote") else None
                     if not q:
@@ -228,7 +540,7 @@ class MarketDataIngestCore:
                     bid = float(q.get("bid") or price)
                     ask = float(q.get("ask") or price)
                     vol_cum = int(q.get("volume") or 0)
-                    ts = datetime.now()
+                    ts = self._quote_ts(q)
 
                     swarm_manager = getattr(app, "swarm_manager", None)
                     if swarm_manager is not None and hasattr(swarm_manager, "process_quote_tick"):
@@ -244,7 +556,6 @@ class MarketDataIngestCore:
                     if quote_symbol != instrument and not quote_symbol.startswith(
                         instrument.split()[0] if instrument else ""
                     ):
-                        # Allow root match for MES vs MES 09-26
                         root = instrument.split()[0] if instrument else ""
                         if not quote_symbol.startswith(root):
                             continue
@@ -252,7 +563,7 @@ class MarketDataIngestCore:
                     if quote_symbol == instrument or quote_symbol.startswith(
                         (instrument.split()[0] if instrument else "") + " "
                     ) or quote_symbol == (instrument.split()[0] if instrument else ""):
-                        closed_candle = self.engine.market_data.process_quote_tick(
+                        self.engine.market_data.process_quote_tick(
                             ts=ts,
                             price=price,
                             bid=bid,
@@ -263,22 +574,6 @@ class MarketDataIngestCore:
                         tape_signal = self.tape_agent.score_momentum(tape_snapshot)
                         self.engine.market_data.last_tape_signal = tape_signal
                         self._publish_tape_signal(tape_signal)
-
-                        if closed_candle is not None:
-                            minute_start = ts.replace(second=0, microsecond=0)
-                            log_structured(
-                                LuminaError(
-                                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                                    code="INFO_PRINT_LEGACY",
-                                    message=(
-                                        f"[{minute_start.strftime('%H:%M')}] 1-min candle closed -> "
-                                        f"O={closed_candle['open']:.2f} H={closed_candle['high']:.2f} "
-                                        f"L={closed_candle['low']:.2f} C={closed_candle['close']:.2f} "
-                                        f"V={closed_candle['volume']}"
-                                    ),
-                                    context={},
-                                )
-                            )
 
                         if time.time() - last_tick_print >= float(
                             getattr(app, "TICK_PRINT_INTERVAL_SEC", 2.0)
@@ -323,7 +618,7 @@ class MarketDataIngestCore:
                     LuminaError(
                         severity=ErrorSeverity.RECOVERABLE_LEARNING,
                         code="INFO_PRINT_LEGACY",
-                        message="WS connected - 1-min candle builder active",
+                        message="WS connected - CrossTrade tape only (1m OHLC is NT BarsRequest)",
                         context={},
                     )
                 )
@@ -341,7 +636,7 @@ class MarketDataIngestCore:
                             if quote_symbol not in subscribed_symbols:
                                 continue
 
-                            ts = datetime.now()
+                            ts = datetime.now(timezone.utc)
                             price = self._extract_numeric(quote, ("last", "lastPrice", "tradePrice"), 0.0)
                             bid = self._extract_numeric(quote, ("bid", "bidPrice", "bestBid"), price)
                             ask = self._extract_numeric(quote, ("ask", "askPrice", "bestAsk"), price)
@@ -361,7 +656,7 @@ class MarketDataIngestCore:
                             if quote_symbol != instrument:
                                 continue
 
-                            closed_candle = self.engine.market_data.process_quote_tick(
+                            self.engine.market_data.process_quote_tick(
                                 ts=ts,
                                 price=price,
                                 bid=bid,
@@ -373,25 +668,6 @@ class MarketDataIngestCore:
                             tape_signal = self.tape_agent.score_momentum(tape_snapshot)
                             self.engine.market_data.last_tape_signal = tape_signal
                             self._publish_tape_signal(tape_signal)
-
-                            if closed_candle is not None:
-                                minute_start = ts.replace(second=0, microsecond=0)
-                                safe_candle = {
-                                    key: (value.isoformat() if isinstance(value, datetime) else value)
-                                    for key, value in dict(closed_candle).items()
-                                }
-                                log_structured(
-                                    LuminaError(
-                                        severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                                        code="INFO_PRINT_LEGACY",
-                                        message=(
-                                            f"[{minute_start.strftime('%H:%M')}] 1-min candle closed -> "
-                                            f"O={closed_candle['open']:.2f} H={closed_candle['high']:.2f} "
-                                            f"L={closed_candle['low']:.2f} C={closed_candle['close']:.2f} V={closed_candle['volume']}"
-                                        ),
-                                        context={"candle": safe_candle},
-                                    )
-                                )
 
                             if time.time() - last_tick_print >= float(getattr(app, "TICK_PRINT_INTERVAL_SEC", 2.0)):
                                 tape_txt = (

@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from lumina_core.maturity.apprenticeship.days import N_D_MIN
 from lumina_core.maturity.apprenticeship.heal import heal_apprenticeship_from_law
 from lumina_core.maturity.apprenticeship.law import (
     N_A_MIN,
@@ -28,6 +27,9 @@ def _pass_snap(**overrides: object) -> ApprenticeshipSnapshot:
         "n_plant": 0,
         "n_d": 5,
         "occupancy": 0.40,
+        "skill_wr": 0.55,
+        "breakeven_wr": 0.42,
+        "mean_r": 0.08,
         "median_loss_r": 1.2,
         "sharpe": 0.35,
         "dd_pct": 8.0,
@@ -54,7 +56,14 @@ def _seal(root: Path) -> None:
     state = root / "state"
     state.mkdir(parents=True, exist_ok=True)
     (state / "lumina_sim_envelope_sealed.json").write_text(
-        json.dumps({"sealed": True, "source": "test"}),
+        json.dumps(
+            {
+                "sealed": True,
+                "source": "test",
+                "daily_loss_cap": -1000.0,
+                "max_total_open_risk": 3000.0,
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -97,7 +106,11 @@ def _write_closes(root: Path, *, days: int, per_day: int, pnl_by_day: list[float
     for d_i, session in enumerate(sessions):
         day_pnl = pnls[d_i] if d_i < len(pnls) else 20.0
         per = max(1, per_day)
-        piece = day_pnl / float(per)
+        # The argument is the net day. The tape field is gross, and the ledger
+        # subtracts the MES Free round trip from every close.
+        from lumina_core.market.nt_fees import round_turn_fee_usd
+
+        piece = day_pnl / float(per) + round_turn_fee_usd("MES", 1, plan="free")
         for j in range(per):
             r = 0.20 if j % 3 else -0.10
             record_orderpath_fill(
@@ -114,6 +127,9 @@ def _write_closes(root: Path, *, days: int, per_day: int, pnl_by_day: list[float
                 win=r > 0,
                 pnl=piece,
                 session_date=session,
+                entry_px=5000.0,
+                stop_px=4980.0,
+                target_px=5040.0,
             )
             idx += 1
 
@@ -135,10 +151,10 @@ def test_n_a_below_150_is_inconclusive() -> None:
 
 
 @pytest.mark.unit
-def test_four_green_days_cannot_pass() -> None:
-    result = evaluate_apprenticeship_pass(_pass_snap(n_d=N_D_MIN - 1))
+def test_negative_mean_r_cannot_pass() -> None:
+    result = evaluate_apprenticeship_pass(_pass_snap(mean_r=-0.05))
     assert result.passed is False
-    assert any(f"n_D={N_D_MIN - 1}" in b for b in result.blockers)
+    assert any("mean_r" in b for b in result.blockers)
 
 
 @pytest.mark.unit
@@ -146,7 +162,7 @@ def test_full_and_passes() -> None:
     result = evaluate_apprenticeship_pass(_pass_snap())
     assert result.passed is True
     assert "risk_discipline" in result.proofs
-    assert "n_D>=5" in result.proofs
+    assert "economic_viability" in result.proofs
     assert "constitution_0" in result.proofs
 
 
@@ -280,12 +296,13 @@ def test_workspace_n_a_149_inconclusive(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_workspace_four_days_inconclusive(tmp_path: Path) -> None:
+def test_workspace_four_days_can_pass_the_tape_exam(tmp_path: Path) -> None:
     _write_pass_workspace(tmp_path, days=4, per_day=40)
     ok, missing, learned = evaluate_exit_proofs(tmp_path, "apprenticeship")
     assert ok is False
-    assert any("n_D=" in m for m in missing)
-    assert learned.get("clock_open") is True
+    assert any("sharpe=" in m for m in missing)
+    assert not any(str(m).startswith("n_D=") for m in missing)
+    assert "n_D>=5" not in (learned.get("exit_proofs") or [])
 
 
 @pytest.mark.unit

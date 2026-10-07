@@ -293,6 +293,7 @@ flowchart LR
 - `LuminaEngine` blijft nu onder de 350 regels en fungeert als orchestrator in plaats van god-object.
 - Legacy app-delegatie via `LuminaEngine.__getattr__/__setattr__` is verwijderd; callsites gebruiken nu expliciete engine-velden of `engine.app`.
 - Websocket/historische ingest blijft `MarketDataIngestService` in `market_data_service.py`; domeinhelpers blijven `MarketDataDomainService` in `market_data_domain_service.py`.
+- **OHLC SSOT (ADR-0053 + ADR-0054):** live Last bars komen uit NinjaTrader `BarsRequest.Update` via Fabric `is_bar` + `bar_period`. Tape schrijft nooit OHLC. 1/5/15/30/60/240-minuten zijn native NT session bars (instrument TradingHours). pandas resample is geen decision/chart SSOT. Missed 1m bars worden uit NT historical gevuld; onverklaarde gaten locken nieuwe entries. Completeness leeft op blackboard `market.bar_integrity` (OBSERVATION_DIM blijft 43).
 
 **Importrichtlijn (nieuwe code)**
 

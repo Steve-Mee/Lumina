@@ -6,6 +6,23 @@ from typing import Any
 
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate, is_stale_contract_symbol, roll_stale_contract_symbol
 from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+from lumina_core.engine.bar_integrity import BarBookStatus
+from lumina_core.engine.market_data_manager import MarketDataManager
+
+
+def _complete_market_data() -> MarketDataManager:
+    md = MarketDataManager()
+    md.integrity = BarBookStatus(
+        complete=True,
+        reason="complete",
+        missing_count=0,
+        filled_count=0,
+        session_holes=0,
+        lock_new_entries=False,
+        last_closed=datetime(2026, 10, 2, 14, 31, tzinfo=timezone.utc),
+        message="Closed 1m book matches NinjaTrader",
+    )
+    return md
 
 
 class _RiskController:
@@ -161,6 +178,7 @@ def _make_engine(
         "positions_margin_used": 5_000.0,
         "live_position_qty": 0,
         "final_arbitration": _AlwaysApproveArbitration(),
+        "market_data": _complete_market_data(),
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -180,6 +198,15 @@ def test_roll_stale_contract_symbol_from_jun_to_sep() -> None:
     assert roll_stale_contract_symbol("MES JUN26", now_utc=now) == "MES SEP26"
 
 
+def test_history_uses_the_listing_that_was_liquid_on_that_date() -> None:
+    from lumina_core.order_gatekeeper.contract_symbols import front_month_symbol
+
+    july = datetime(2026, 7, 15, tzinfo=timezone.utc)
+    october = datetime(2026, 10, 3, tzinfo=timezone.utc)
+    assert front_month_symbol("MES", now_utc=july) == "MES SEP26"
+    assert front_month_symbol("MES", now_utc=october) == "MES DEC26"
+
+
 def test_volume_roll_advances_liquid_front_before_expiry() -> None:
     from lumina_core.order_gatekeeper.contract_symbols import (
         is_past_volume_roll,
@@ -191,6 +218,19 @@ def test_volume_roll_advances_liquid_front_before_expiry() -> None:
     assert is_past_volume_roll("MES SEP26", now_utc=now) is True
     assert roll_to_liquid_front_month("MES SEP26", now_utc=now) == "MES DEC26"
     assert roll_stale_contract_symbol("MES SEP26", now_utc=now) == "MES SEP26"
+
+
+def test_enforce_pre_trade_gate_real_blocks_when_bar_book_missing() -> None:
+    engine = _make_engine(trade_mode="real", risk_controller=_RiskController(), market_data=None)
+    allowed, reason = enforce_pre_trade_gate(
+        engine,
+        symbol="MES DEC26",
+        regime="NEUTRAL",
+        proposed_risk=50.0,
+        order_side="BUY",
+    )
+    assert allowed is False
+    assert "locked" in reason.lower() or "missing" in reason.lower()
 
 
 def test_enforce_pre_trade_gate_blocks_stale_contract_in_sim_mode(monkeypatch) -> None:

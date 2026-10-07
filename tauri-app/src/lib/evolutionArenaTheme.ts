@@ -109,7 +109,7 @@ export function championRingOpacity(mode: TradingMode): number {
 }
 
 export function nodeRadius(fitness: number): number {
-  return 0.12 + fitness * 0.18;
+  return 0.28 + fitness * 0.32;
 }
 
 export function birthEffectParams(

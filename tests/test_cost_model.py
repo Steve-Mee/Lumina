@@ -170,8 +170,10 @@ class TestFromConfig:
             }
         }
         model = TradeExecutionCostModel.from_config(cfg, instrument="MES")
-        assert model.commission_per_side_usd == pytest.approx(1.50)
-        assert model.exchange_fee_per_side_usd == pytest.approx(0.40)
+        assert model.commission_per_side_usd == pytest.approx(0.39)
+        assert model.exchange_fee_per_side_usd == pytest.approx(0.36)
+        assert model.clearing_fee_per_side_usd == pytest.approx(0.19)
+        assert model.nfa_fee_per_side_usd == pytest.approx(0.0)
         assert model.slippage_atr_ratio == pytest.approx(0.08)
 
     def test_from_config_instrument_tick_params(self):
@@ -179,10 +181,11 @@ class TestFromConfig:
         assert model.tick_size == pytest.approx(0.25)
         assert model.tick_value == pytest.approx(12.50)
 
-    def test_from_config_unknown_instrument_falls_back_to_mes(self):
-        model = TradeExecutionCostModel.from_config({}, instrument="UNKNOWN")
-        assert model.tick_size == pytest.approx(0.25)
-        assert model.tick_value == pytest.approx(1.25)
+    def test_from_config_unknown_instrument_is_refused(self):
+        from lumina_core.market.nt_fees import CostCardError
+
+        with pytest.raises(CostCardError):
+            TradeExecutionCostModel.from_config({}, instrument="UNKNOWN")
 
 
 # ---------------------------------------------------------------------------

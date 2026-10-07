@@ -30,8 +30,20 @@ def heal_awakening_from_law(workspace_root: Path | str) -> dict[str, Any]:
 
     data = load_continuum(root)
     completed = list(data.get("completed_phases") or [])
+    rec = dict((data.get("phase_records") or {}).get("awakening") or {})
     if "awakening" not in completed:
-        return {"ok": True, "healed": False, "reason": "not_marked_complete", **proof_heal}
+        if rec.get("healed_from") != "completed_without_law":
+            return {"ok": True, "healed": False, "reason": "not_marked_complete", **proof_heal}
+        ok, missing, learned = evaluate_awakening_exit(root)
+        if not ok:
+            return {
+                "ok": True,
+                "healed": False,
+                "reason": "recompute_failed",
+                "missing": missing,
+                **proof_heal,
+            }
+        return _close_false_reopen(root, data, rec, learned, proof_heal)
 
     ok, missing, learned = evaluate_awakening_exit(root)
     if ok:
@@ -57,6 +69,35 @@ def heal_awakening_from_law(workspace_root: Path | str) -> dict[str, Any]:
         "ok": True,
         "healed": True,
         "missing": missing,
+        "completed_phases": list(data.get("completed_phases") or []),
+        **proof_heal,
+    }
+
+
+def _close_false_reopen(
+    root: Path,
+    data: dict[str, Any],
+    rec: dict[str, Any],
+    learned: dict[str, Any],
+    proof_heal: dict[str, Any],
+) -> dict[str, Any]:
+    """Put awakening back in completed_phases. Does not restamp completed_at."""
+    completed = list(data.get("completed_phases") or [])
+    if "awakening" not in completed:
+        completed.append("awakening")
+    data["completed_phases"] = [p for p in OPERATOR_PHASES if p in set(completed)]
+    rec["status"] = "completed"
+    rec["healed_from"] = "false_reopen_closed"
+    rec["error"] = None
+    rec["learned"] = {**(rec.get("learned") or {}), **learned}
+    data.setdefault("phase_records", {})["awakening"] = rec
+    save_continuum(root, data)
+    logger.warning("awakening.heal.false_reopen_closed birth_intact=true")
+    return {
+        "ok": True,
+        "healed": False,
+        "restored": True,
+        "reason": "false_reopen_closed",
         "completed_phases": list(data.get("completed_phases") or []),
         **proof_heal,
     }

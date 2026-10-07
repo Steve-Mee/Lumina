@@ -10,10 +10,7 @@ from pydantic import BaseModel, Field
 from backend.setup_endpoints import _services, _workspace_root
 from lumina_launcher.core.onboarding import extract_config_defaults
 from lumina_launcher.services.bot_config_persist import persist_bot_config
-from lumina_launcher.services.setup_persist import (
-    is_sim_envelope_sealed,
-    write_sim_envelope_sealed,
-)
+from lumina_launcher.services.setup_persist import is_sim_envelope_sealed
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -52,6 +49,23 @@ class BotConfigRequest(BaseModel):
 
 @router.post("/bot")
 async def save_bot_config(body: BotConfigRequest) -> dict[str, object]:
+    if body.seal_sim_envelope:
+        mode = str(body.mode or "").strip().lower()
+        cap = body.risk.daily_loss_cap
+        risk = body.risk.max_total_open_risk
+        if mode not in {"sim", "sim_real_guard"}:
+            raise HTTPException(status_code=422, detail="Playground seal is SIM only.")
+        if cap is None or float(cap) >= 0.0:
+            raise HTTPException(
+                status_code=422,
+                detail="daily_loss_cap must be a negative floor.",
+            )
+        if risk is None or float(risk) <= 0.0:
+            raise HTTPException(
+                status_code=422,
+                detail="max_total_open_risk must be above zero.",
+            )
+
     _, config_manager, _, _, _, _ = _services()
     try:
         persist_bot_config(
@@ -65,8 +79,19 @@ async def save_bot_config(body: BotConfigRequest) -> dict[str, object]:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     root = _workspace_root()
+    from lumina_core.maturity.playground.envelope import (
+        envelope_sealed_for_pass,
+        write_operator_seal,
+    )
+
     if body.seal_sim_envelope:
-        write_sim_envelope_sealed(root, sealed=True, source="bot_config_seal")
+        write_operator_seal(
+            root,
+            daily_loss_cap=float(body.risk.daily_loss_cap or 0.0),
+            max_total_open_risk=float(body.risk.max_total_open_risk),
+            source="bot_config_seal",
+        )
+    playground_sealed = envelope_sealed_for_pass(root)
 
     config = config_manager.load_yaml_config()
     env_values = config_manager.parse_env_file()
@@ -74,4 +99,7 @@ async def save_bot_config(body: BotConfigRequest) -> dict[str, object]:
         "success": True,
         "defaults": extract_config_defaults(config, env_values=env_values),
         "sim_envelope_sealed": is_sim_envelope_sealed(root),
+        "playground_envelope_sealed": playground_sealed,
+        "daily_loss_cap": body.risk.daily_loss_cap,
+        "max_total_open_risk": body.risk.max_total_open_risk,
     }

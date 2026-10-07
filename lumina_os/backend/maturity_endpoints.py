@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
@@ -14,6 +15,8 @@ from lumina_core.maturity.maturation_progress import (
     sync_maturation_from_birth_state,
 )
 from lumina_core.maturity.maturity_service import maturity_service
+from lumina_core.maturity.wipe_confirm import validate_wipe_phrase
+from lumina_core.notifications.phase_status_notify import notify_phase_status
 
 router = APIRouter(prefix="/api/maturity", tags=["maturity"])
 
@@ -42,18 +45,20 @@ class AdvanceRequest(BaseModel):
 class WipePhaseRequest(BaseModel):
     phase: str
     confirm: bool = False
+    confirm_phrase: str = ""
 
 
 class WipeAllRequest(BaseModel):
     confirm: bool = False
+    confirm_phrase: str = ""
 
 
 def _configure_service() -> None:
     maturity_service.configure_workspace(birth_service.workspace_root)
 
 
-@router.get("/progress")
-async def get_maturation_progress() -> dict[str, Any]:
+def _maturation_progress_payload() -> dict[str, Any]:
+    """Sync scan. Callers must run this off the event loop."""
     root = birth_service.workspace_root
     progress = sync_maturation_from_birth_state(root)
     eligible, blockers = maturation_eligible_for_real(root)
@@ -75,6 +80,14 @@ async def get_maturation_progress() -> dict[str, Any]:
         "active_phase": hub.get("active_phase"),
         "runner_active": hub.get("runner_active"),
     }
+
+
+@router.get("/progress")
+async def get_maturation_progress() -> dict[str, Any]:
+    # Stability scan + hub heal holds the interpreter for seconds. On the event
+    # loop that stalls /api/monitoring/health past the deck's 4s probe, and the
+    # Playground click (which remounts this poll) is reported as backend death.
+    return await asyncio.to_thread(_maturation_progress_payload)
 
 
 @router.get("/birth-exit")
@@ -99,7 +112,7 @@ async def get_maturity_honesty() -> dict[str, Any]:
 async def get_maturity_hub() -> dict[str, Any]:
     """Genesis-like inter-phase hub: learned, next steps, advance mode, wipe controls."""
     _configure_service()
-    return maturity_service.get_hub()
+    return await asyncio.to_thread(maturity_service.get_hub)
 
 
 @router.get("/awakening/progress")
@@ -113,14 +126,14 @@ async def get_awakening_progress() -> dict[str, Any]:
 async def get_playground_progress() -> dict[str, Any]:
     """Playground AND-gates for the operator HUD. pass_now ≡ engine."""
     _configure_service()
-    return maturity_service.playground_progress()
+    return await asyncio.to_thread(maturity_service.playground_progress)
 
 
 @router.post("/playground/deck-live")
 async def post_playground_deck_live() -> dict[str, Any]:
     """Operator opened the Command Deck during Playground."""
     _configure_service()
-    return maturity_service.mark_playground_deck_live()
+    return await asyncio.to_thread(maturity_service.mark_playground_deck_live)
 
 
 @router.get("/apprenticeship/progress")
@@ -146,7 +159,8 @@ async def set_maturity_preferences(body: PreferencesRequest) -> dict[str, Any]:
 @router.post("/start-phase")
 async def start_maturity_phase(body: StartPhaseRequest) -> dict[str, Any]:
     _configure_service()
-    result = maturity_service.start_phase(
+    result = await asyncio.to_thread(
+        maturity_service.start_phase,
         body.phase,
         explicit_user_start=bool(body.explicit_user_start),
     )
@@ -177,7 +191,14 @@ async def stop_maturity_phase() -> dict[str, Any]:
 @router.post("/wipe-phase")
 async def wipe_maturity_phase(body: WipePhaseRequest) -> dict[str, Any]:
     _configure_service()
-    result = maturity_service.wipe_phase(body.phase, confirm=bool(body.confirm))
+    gate = validate_wipe_phrase(
+        phase=body.phase,
+        confirm=bool(body.confirm),
+        phrase=body.confirm_phrase,
+    )
+    if gate is not None:
+        raise HTTPException(status_code=400, detail=gate)
+    result = maturity_service.wipe_phase(body.phase, confirm=True)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result)
     return result
@@ -186,7 +207,14 @@ async def wipe_maturity_phase(body: WipePhaseRequest) -> dict[str, Any]:
 @router.post("/wipe-all")
 async def wipe_all_maturation(body: WipeAllRequest) -> dict[str, Any]:
     _configure_service()
-    result = maturity_service.wipe_all(confirm=bool(body.confirm))
+    gate = validate_wipe_phrase(
+        phase="full",
+        confirm=bool(body.confirm),
+        phrase=body.confirm_phrase,
+    )
+    if gate is not None:
+        raise HTTPException(status_code=400, detail=gate)
+    result = maturity_service.wipe_all(confirm=True)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result)
     return result
@@ -229,6 +257,29 @@ async def approve_real_mode(body: ApproveRealRequest) -> dict[str, Any]:
         pass
     progress = sync_maturation_from_birth_state(root)
     readiness = evaluate_real_capital_readiness(root)
+    ready = bool(readiness.get("ready_for_real_capital"))
+    live = bool(readiness.get("real_trading_live"))
+    blockers = [str(item) for item in (readiness.get("blockers") or []) if str(item).strip()]
+    if ready and live:
+        approval_kind = "passed"
+    elif ready:
+        approval_kind = "progress"
+    else:
+        approval_kind = "incomplete"
+    notify_phase_status(
+        root,
+        "real",
+        kind=approval_kind,
+        message="Operator REAL-goedkeuring vastgelegd. Dit is geen live-order en geen PnL.",
+        learned={
+            "ready_for_real_capital": readiness.get("ready_for_real_capital"),
+            "maturation_eligible": readiness.get("maturation_eligible"),
+            "human_real_approval": readiness.get("human_real_approval"),
+            "real_trading_live": readiness.get("real_trading_live"),
+            "twin_can_bypass": readiness.get("twin_can_bypass"),
+        },
+        missing=[] if ready else blockers,
+    )
     return {
         "ok": True,
         "current_phase": progress.current_phase.value,

@@ -108,7 +108,9 @@ def _load_summary(path: Path) -> dict[str, Any] | None:
         resolved = path if path.is_absolute() else path.resolve()
         if not resolved.is_file():
             return None
-        payload = json.loads(resolved.read_text(encoding="utf-8"))
+        # PowerShell Set-Content writes a UTF-8 BOM. utf-8 rejects it and the
+        # stability scan then logs a traceback per file on the maturity poll.
+        payload = json.loads(resolved.read_text(encoding="utf-8-sig"))
     except OSError:
         return None
     except Exception:

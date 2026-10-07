@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
 import { toast } from "sonner";
 
 import {
@@ -7,8 +6,15 @@ import {
   envelopeConsequenceLine,
   envelopeSummaryLine,
 } from "@/components/config/BotConfigForm";
+import { playgroundSealBlocker } from "@/components/config/botConfigEnvelope";
+import { OnboardingShell } from "@/components/onboarding/OnboardingShell";
+import {
+  PhaseCtaBar,
+  PhaseGenesisFrame,
+  PhasePanelToolbar,
+} from "@/components/shared/PhaseCinematicFrames";
 import { EvolutionLadderStrip } from "@/components/shared/EvolutionLadderStrip";
-import { HelpTip } from "@/components/ui/HelpTip";
+import { LuminaPhaseHeader } from "@/components/shared/LuminaPhaseHeader";
 import {
   defaultBotConfigDraft,
   type BotConfigDraft,
@@ -18,7 +24,6 @@ import { helpFor } from "@/lib/helpTexts";
 import { postBotConfig } from "@/lib/setupClient";
 import { useBotConfigStore } from "@/store/botConfigStore";
 import { useOnboardingStore } from "@/store/onboardingStore";
-import { cn } from "@/lib/utils";
 
 /**
  * Post-birth Playground gate: seal SIM Risk Envelope before live SIM trading.
@@ -47,24 +52,26 @@ export function PlaygroundEnvelopeSeal() {
 
   const summary = envelopeSummaryLine(draft);
   const consequence = envelopeConsequenceLine(draft);
+  const sealBlocker = playgroundSealBlocker(draft);
 
   const handleSeal = async () => {
+    if (sealBlocker) {
+      toast.error(sealBlocker);
+      return;
+    }
     setSaving(true);
     try {
-      // Playground = SIM capital path (fictional money, real order flow via Fabric).
-      const sealedDraft: BotConfigDraft = {
-        ...draft,
-        mode: draft.mode === "real" ? "sim" : draft.mode,
-      };
       const result = await postBotConfig({
-        ...toBotConfigPayload(sealedDraft),
+        ...toBotConfigPayload(draft),
         seal_sim_envelope: true,
       });
-      if (!result.success) {
-        toast.error("Could not seal Risk Envelope");
+      if (!result.success || result.playground_envelope_sealed !== true) {
+        toast.error(sealBlocker ?? "Seal refused. Set a negative daily loss cap and an open-risk cap.");
         return;
       }
-      toast.success("SIM envelope sealed — Playground open");
+      toast.success(
+        `SIM envelope sealed. Daily loss cap ${result.daily_loss_cap}, open risk ${result.max_total_open_risk}.`,
+      );
       await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Seal failed");
@@ -74,53 +81,34 @@ export function PlaygroundEnvelopeSeal() {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="risk-envelope-screen fixed inset-0 z-[80] flex flex-col bg-[var(--lumina-void)]"
-      role="dialog"
-      aria-label="Seal SIM risk envelope for playground"
-    >
-      <EvolutionLadderStrip className="shrink-0" showBlockers />
-      <div className="risk-envelope-grid mx-auto w-full max-w-6xl min-h-0 flex-1 p-4">
-        <aside className="risk-envelope-stage">
-          <div className="px-4 text-center">
-            <p className="font-mono text-[0.55rem] tracking-[0.16em] text-cyan-400/80 uppercase">
-              Post-birth · Playground gate
-            </p>
-            <h2 className="mt-2 text-lg font-semibold text-cyan-50">Seal SIM Risk Envelope</h2>
-            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-              Birth built the organism. Now decide how hard it may trade with{" "}
-              <strong className="text-cyan-200/90">fictional capital</strong> on NinjaTrader
-              SIM — real order path, no live money.
-            </p>
-          </div>
-          <div className="risk-envelope-stage__summary">
-            <p className="risk-envelope-stage__summary-line">{summary}</p>
-            <p className="risk-envelope-stage__summary-consequence">{consequence}</p>
-          </div>
-        </aside>
-
-        <section className="risk-envelope-panel lumina-glass lumina-glass--overlay flex flex-col overflow-hidden">
-          <div className="risk-envelope-panel__toolbar">
-            <div>
-              <p className="risk-envelope-panel__toolbar-title">Risk envelope</p>
-              <p className="mt-0.5 font-mono text-[0.5rem] tracking-wide text-white/30 uppercase">
-                Required before Playground SIM trading
-              </p>
-            </div>
-            <HelpTip text={helpFor("config_birth_sim_runtime") ?? ""} />
-          </div>
-
+    <OnboardingShell className="birth-phase-screen birth-phase-screen--cinematic onboarding-shell--form">
+      <div className="birth-phase-cinematic relative mx-auto flex h-dvh min-h-0 w-full max-w-none flex-col overflow-hidden">
+        <LuminaPhaseHeader
+          eyebrow="Playground"
+          title="Seal SIM envelope"
+          status="Required before SIM crawl"
+          tone="cyan"
+          variant="strip"
+          className="lumina-phase-header relative z-20"
+        />
+        <EvolutionLadderStrip activePhase="playground" className="relative z-20" />
+        <PhaseGenesisFrame ariaLabel="Seal SIM risk envelope">
+          <PhasePanelToolbar
+            title="Risk envelope"
+            subtitle="Required before Playground SIM trading"
+            titleTip={helpFor("config_birth_sim_runtime") ?? ""}
+          />
           <div className="risk-envelope-banner risk-envelope-banner--info mx-2 mt-2 shrink-0">
             <p className="text-[11px] leading-relaxed">
               <strong className="text-cyan-200/90">What we need:</strong> pick SIM (or
               sim_real_guard), set Kelly / daily kill-switch / open risk, and evolution remmen.
               REAL target stays locked until the maturity ladder says go.
             </p>
+            <p className="mt-1 font-mono text-[10px] text-white/40">
+              {summary} · {consequence}
+            </p>
           </div>
-
-          <div className="risk-envelope-panel__body min-h-0 flex-1 overflow-hidden">
+          <div className="birth-genesis-panel__body min-h-0 flex-1 overflow-hidden">
             {loaded ? (
               <BotConfigForm
                 variant="deck"
@@ -139,22 +127,15 @@ export function PlaygroundEnvelopeSeal() {
               <p className="p-4 font-mono text-xs text-muted-foreground">Loading envelope…</p>
             )}
           </div>
-
-          <div className="risk-envelope-cta-bar">
-            <p className="mb-2 text-center font-mono text-[0.5rem] tracking-[0.12em] text-white/30 uppercase">
-              Next: Command Deck · SIM live + Evolution
-            </p>
-            <button
-              type="button"
-              className={cn("onboarding-cta w-full py-5", saving && "opacity-70")}
-              disabled={saving || !loaded}
-              onClick={() => void handleSeal()}
-            >
-              {saving ? "Sealing…" : "Seal SIM envelope & open Playground"}
-            </button>
-          </div>
-        </section>
+          <PhaseCtaBar
+            footnote={sealBlocker ?? "Next: Playground cinematic · SIM live"}
+            primaryLabel={saving ? "SEALING…" : "SEAL SIM ENVELOPE"}
+            onPrimary={() => void handleSeal()}
+            primaryDisabled={saving || !loaded || sealBlocker !== null}
+            primaryActivating={saving}
+          />
+        </PhaseGenesisFrame>
       </div>
-    </motion.div>
+    </OnboardingShell>
   );
 }

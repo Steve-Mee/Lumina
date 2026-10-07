@@ -1,4 +1,4 @@
-"""Foundation history SSOT: start 90, stitch, SLA vs rung not ceiling."""
+"""Foundation history SSOT: start 365, stitch, SLA vs rung not ceiling."""
 
 from __future__ import annotations
 
@@ -41,48 +41,57 @@ def _day_ticks(start: datetime, days: int, *, price: float = 5000.0) -> list[dic
 @pytest.mark.unit
 def test_prior_quarterly_mes_sep26_chain() -> None:
     assert prior_quarterly_contract("MES SEP26") == "MES JUN26"
-    assert prior_quarterly_contracts("MES SEP26") == ("MES JUN26", "MES MAR26", "MES DEC25")
+    assert prior_quarterly_contracts("MES SEP26") == (
+        "MES JUN26",
+        "MES MAR26",
+        "MES DEC25",
+        "MES SEP25",
+        "MES JUN25",
+    )
 
 
 @pytest.mark.unit
 def test_ssot_start_and_ceiling_independent_of_25k_trades() -> None:
-    assert FOUNDATION_HISTORY_START_DAYS == 90
-    assert FOUNDATION_HISTORY_EXPAND_STEPS == (90, 180, 365)
+    assert FOUNDATION_HISTORY_START_DAYS == 365
+    assert FOUNDATION_HISTORY_EXPAND_STEPS == (365,)
     assert FOUNDATION_HISTORY_MAX_DAYS == 365
     assert resolve_default_max_real_days(25_000) == 365
-    assert clamp_foundation_history_ceiling(56) == 90
+    assert clamp_foundation_history_ceiling(56) == 365
     assert clamp_foundation_history_ceiling(365) == 365
 
 
 @pytest.mark.unit
 def test_sla_requested_days_ignores_ceiling() -> None:
-    assert sla_requested_days({"requested_days": 90}) == 90
-    assert sla_requested_days({}) == 90
-    assert sla_requested_days(None, loaded_requested=90) == 90
-    assert training_window_sla_ok(days_loaded=90, requested_days=90) is True
-    assert training_window_sla_ok(days_loaded=57, requested_days=90) is False
+    assert sla_requested_days({"requested_days": 365}) == 365
+    assert sla_requested_days({"requested_days": 90}) == 365
+    assert sla_requested_days({}) == 365
+    assert sla_requested_days(None, loaded_requested=90) == 365
+    assert training_window_sla_ok(days_loaded=365, requested_days=365) is True
+    assert training_window_sla_ok(days_loaded=89, requested_days=365) is False
     assert training_window_sla_ok(days_loaded=90, requested_days=365) is False
 
 
 @pytest.mark.unit
 def test_sla_requested_days_never_uses_thin_actual_as_sport() -> None:
     """Fail-closed: 57/57 must not pass because the sport collapsed to actual."""
-    assert sla_requested_days({}, loaded_requested=57) == 90
-    assert sla_requested_days({"requested_days": 56}) == 90
-    assert sla_requested_days({"requested_days": 90}, loaded_requested=57) == 90
-    assert sla_requested_days({"requested_days": 180}) == 180
+    assert sla_requested_days({}, loaded_requested=57) == 365
+    assert sla_requested_days({"requested_days": 56}) == 365
+    assert sla_requested_days({"requested_days": 90}, loaded_requested=57) == 365
+    assert sla_requested_days({"requested_days": 180}) == 365
+    assert sla_requested_days({"requested_days": 365}) == 365
     assert history_window_meets_sla(actual_days=57, manifest={}) is False
     assert history_window_meets_sla(actual_days=57, manifest={"requested_days": 56}) is False
-    assert history_window_meets_sla(actual_days=90, manifest={"requested_days": 90}) is True
+    assert history_window_meets_sla(actual_days=90, manifest={"requested_days": 90}) is False
+    assert history_window_meets_sla(actual_days=365, manifest={"requested_days": 365}) is True
 
 
 @pytest.mark.unit
 def test_reload_sport_keeps_expand_rung() -> None:
-    assert resolve_reload_history_days({}) == 90
-    assert resolve_reload_history_days({"requested_days": 56}) == 90
-    assert resolve_reload_history_days({"requested_days": 180}) == 180
+    assert resolve_reload_history_days({}) == 365
+    assert resolve_reload_history_days({"requested_days": 56}) == 365
+    assert resolve_reload_history_days({"requested_days": 180}) == 365
     assert resolve_reload_history_days({"requested_days": 365}, ceiling=365) == 365
-    assert resolve_reload_history_days({"requested_days": 180}, ceiling=90) == 90
+    assert resolve_reload_history_days({"requested_days": 180}, ceiling=90) == 365
 
 
 @pytest.mark.unit
@@ -140,6 +149,27 @@ def test_single_contract_57_days_stays_thin_without_prior_bars() -> None:
 
 
 @pytest.mark.unit
+def test_full_window_on_first_walk_does_not_refetch_priors() -> None:
+    """A finished 365-day walk must not start again for SEP26/JUN26."""
+    calls: list[str] = []
+
+    def _load(**kwargs: Any) -> list[dict[str, Any]]:
+        calls.append(str(kwargs.get("instrument") or ""))
+        return _day_ticks(datetime(2025, 10, 4, tzinfo=timezone.utc), 360)
+
+    loaded = load_foundation_history_ticks(
+        market_data_service=object(),
+        runtime=object(),
+        days_back=365,
+        instrument="MES SEP26",
+        load_fn=_load,
+        now_utc=datetime(2026, 10, 3, tzinfo=timezone.utc),
+    )
+    assert calls == ["MES DEC26"]
+    assert loaded.actual_calendar_days >= 347
+
+
+@pytest.mark.unit
 def test_load_fn_requests_start_rung_not_ceiling() -> None:
     seen: list[int] = []
 
@@ -156,8 +186,8 @@ def test_load_fn_requests_start_rung_not_ceiling() -> None:
         now_utc=datetime(2026, 8, 15, tzinfo=timezone.utc),
     )
     assert seen
-    assert seen[0] == 90
-    assert loaded.requested_days == 90
+    assert seen[0] == FOUNDATION_HISTORY_START_DAYS
+    assert loaded.requested_days == FOUNDATION_HISTORY_START_DAYS
     assert loaded.actual_calendar_days >= 86
 
 

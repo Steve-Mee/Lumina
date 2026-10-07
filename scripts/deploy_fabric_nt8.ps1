@@ -40,9 +40,27 @@ $files = @(
     "Microsoft.Bcl.AsyncInterfaces.dll", "System.Text.Json.dll", "System.Text.Encodings.Web.dll"
 )
 
+# NT 8.1.8+ ships these in Program Files\bin and binding-redirects them.
+# Overlaying older net48 copies into Custom is a dual-load hazard.
+$NtBinOwned = @(
+    "Google.Protobuf.dll",
+    "Microsoft.Bcl.AsyncInterfaces.dll",
+    "System.Buffers.dll",
+    "System.Memory.dll",
+    "System.Numerics.Vectors.dll",
+    "System.Runtime.CompilerServices.Unsafe.dll",
+    "System.Text.Encodings.Web.dll",
+    "System.Text.Json.dll",
+    "System.Threading.Tasks.Extensions.dll"
+)
+$ntBin = $env:NINJATRADER8_BIN
+if (-not $ntBin -or -not (Test-Path $ntBin)) {
+    $ntBin = "C:\Program Files\NinjaTrader 8\bin"
+}
+
 # Product NtBridge must include NT Account + historical + live types (~50KB+).
 $BridgeMinBytes = 40000
-$RequiredMarkers = @("FabricNtHost", "NtAccountOrderGateway", "NtHistoricalDataProvider", "NtLiveMarketDataProvider")
+$RequiredMarkers = @("FabricNtHost", "NtAccountOrderGateway", "NtHistoricalDataProvider", "NtLiveMarketDataProvider", "NtLiveBarProvider")
 
 function Test-NtBridgeProduct {
     param([string]$Path)
@@ -96,6 +114,9 @@ function Copy-OrStage {
     try {
         Copy-Item $Src $dest -Force
         Write-Host "  OK $Name"
+        if (Test-Path $stage) {
+            Remove-Item $stage -Force -ErrorAction SilentlyContinue
+        }
     } catch {
         Copy-Item $Src $stage -Force
         Write-Warning "Locked $Name - staged as $Name.new (close NT and re-run)"
@@ -103,10 +124,28 @@ function Copy-OrStage {
 }
 
 foreach ($name in $files) {
+    if ($NtBinOwned -contains $name -and (Test-Path (Join-Path $ntBin $name))) {
+        foreach ($destDir in @($custom, $addons)) {
+            $overlay = Join-Path $destDir $name
+            if (Test-Path -LiteralPath $overlay) {
+                $q = Join-Path $destDir ($name + ".NT_BIN_OWNED")
+                if (Test-Path -LiteralPath $q) { Remove-Item -LiteralPath $q -Force -ErrorAction SilentlyContinue }
+                Rename-Item -LiteralPath $overlay -NewName ($name + ".NT_BIN_OWNED") -ErrorAction SilentlyContinue
+                Write-Host "  SKIP NT-owned overlay $name (quarantined in $destDir)"
+            } else {
+                Write-Host "  SKIP NT-owned $name (using $ntBin)"
+            }
+        }
+        continue
+    }
     $src = $null
     foreach ($dir in $srcCandidates) {
         $p = Join-Path $dir $name
         if (Test-Path $p) { $src = $p; break }
+    }
+    if ($name -eq "Lumina.Execution.Fabric.dll") {
+        $fabricBin = Join-Path $repo "integrations\ninjatrader8\Lumina.Execution.Fabric\bin\Release\net48\Lumina.Execution.Fabric.dll"
+        if (Test-Path $fabricBin) { $src = $fabricBin }
     }
     if (-not $src -and $bridgeSrc -and $name -eq "Lumina.Fabric.NtBridge.dll") {
         $src = $bridgeSrc
@@ -172,6 +211,15 @@ function Promote-StagedDlls {
                     Write-Host "  SKIP promote NtBridge.new (active already product $act bytes)"
                     return
                 }
+            }
+        }
+        if ((Test-Path $final)) {
+            $actTime = (Get-Item $final).LastWriteTimeUtc
+            $stgTime = (Get-Item $_.FullName).LastWriteTimeUtc
+            if ($stgTime -le $actTime) {
+                Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+                Write-Host "  SKIP promote $($_.Name) (active is newer)"
+                return
             }
         }
         try {

@@ -136,12 +136,15 @@ def _pids_on_port_windows(port: int) -> list[int]:
     pids: set[int] = set()
     try:
         # -a -n -o: all, numeric, owning PID
+        from lumina_core.process_probe import no_console
+
         completed = subprocess.run(
             ["netstat", "-ano", "-p", "tcp"],
             capture_output=True,
             text=True,
             timeout=5,
             check=False,
+            **no_console(),
         )
     except (OSError, subprocess.TimeoutExpired):
         return []
@@ -169,25 +172,11 @@ def _pids_on_port_windows(port: int) -> list[int]:
 
 def _windows_image_name(pid: int) -> str:
     try:
-        completed = subprocess.run(
-            ["tasklist", "/FI", f"PID eq {int(pid)}", "/FO", "CSV", "/NH"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
+        import psutil
+
+        return str(psutil.Process(int(pid)).name() or "")
+    except Exception:
         return ""
-    line = (completed.stdout or "").strip().splitlines()
-    if not line:
-        return ""
-    # "image.exe","pid","session","num","mem"
-    raw = line[0].strip().strip('"')
-    if raw.startswith('"'):
-        # CSV quoted
-        parts = line[0].split('","')
-        return parts[0].strip('"') if parts else ""
-    return raw.split(",")[0].strip().strip('"')
 
 
 def _is_simhost_image(name: str) -> bool:
@@ -227,6 +216,8 @@ def stop_simhost(*, port: int | None = None, force_port_simhosts: bool = True) -
         _SIMHOST_PROC = None
 
     if force_port_simhosts and port is not None and sys.platform == "win32":
+        from lumina_core.process_probe import no_console
+
         for pid in find_simhost_pids_on_port(int(port)):
             if pid in killed:
                 continue
@@ -236,6 +227,7 @@ def stop_simhost(*, port: int | None = None, force_port_simhosts: bool = True) -
                     capture_output=True,
                     timeout=5,
                     check=False,
+                    **no_console(),
                 )
                 killed.append(pid)
             except (OSError, subprocess.TimeoutExpired) as exc:
@@ -461,30 +453,10 @@ def ensure_simhost_listening(
 
 
 def is_ninjatrader_running() -> bool:
-    """True if NinjaTrader.exe is running (Windows-friendly)."""
-    try:
-        import psutil  # type: ignore
+    """True if NinjaTrader.exe is running. No tasklist console."""
+    from lumina_core.process_probe import process_image_running
 
-        for proc in psutil.process_iter(["name"]):
-            name = str(proc.info.get("name") or "").lower()
-            if name in {"ninjatrader.exe", "ninjatrader"}:
-                return True
-    except Exception:
-        pass
-    if sys.platform == "win32":
-        try:
-            r = subprocess.run(
-                ["tasklist", "/FI", "IMAGENAME eq NinjaTrader.exe", "/NH"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                check=False,
-            )
-            out = (r.stdout or "").lower()
-            return "ninjatrader.exe" in out
-        except (OSError, subprocess.TimeoutExpired):
-            return False
-    return False
+    return process_image_running("NinjaTrader.exe", "ninjatrader") is True
 
 
 def prefer_nt_addon_host(

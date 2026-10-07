@@ -20,6 +20,7 @@ Off-loopback requires API key unless LUMINA_METRICS_PUBLIC=true (explicit ops op
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
@@ -124,16 +125,7 @@ async def get_prometheus_metrics(
 # ── JSON endpoints (require API key via shared app dependency) ─────────────────
 
 
-@router.get(
-    "/metrics/json",
-    summary="JSON metrics snapshot",
-    description="Return the full metrics snapshot as a structured JSON object.",
-)
-async def get_metrics_json(
-    x_api_key: Optional[str] = Header(None),
-) -> dict[str, Any]:
-    _check_api_key(x_api_key)
-    obs = _require_service()
+def _metrics_json_payload(obs: Any) -> dict[str, Any]:
     # Return full collector snapshot + canonical UI fields expected by the React dashboard.
     # Keep both `_lumina_ui` and `lumina_ui` aliases for compatibility.
     enriched = enrich_observability_snapshot_for_react_dashboard(obs.snapshot())
@@ -150,6 +142,19 @@ async def get_metrics_json(
 
 
 @router.get(
+    "/metrics/json",
+    summary="JSON metrics snapshot",
+    description="Return the full metrics snapshot as a structured JSON object.",
+)
+async def get_metrics_json(
+    x_api_key: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    _check_api_key(x_api_key)
+    obs = _require_service()
+    return await asyncio.to_thread(_metrics_json_payload, obs)
+
+
+@router.get(
     "/health",
     summary="System health",
     description="Return a structured health summary including kill-switch state and WebSocket connectivity.",
@@ -157,7 +162,7 @@ async def get_metrics_json(
 async def get_health() -> dict[str, Any]:
     """No auth required – this endpoint is pinged by load balancers and Docker health checks."""
     obs = _require_service()
-    snap = obs.snapshot()
+    snap = await asyncio.to_thread(obs.snapshot)
 
     kill_switch = bool(_metric_value(snap, "lumina_risk_kill_switch_active", 0.0))
     ws_connected = bool(_metric_value(snap, "lumina_websocket_connected", 1.0))

@@ -18,11 +18,9 @@ import { CredentialsStep } from "@/components/onboarding/steps/CredentialsStep";
 import { QuickConfigStep } from "@/components/onboarding/steps/QuickConfigStep";
 import { SmartSetupStep } from "@/components/onboarding/steps/SmartSetupStep";
 import { WelcomeStep } from "@/components/onboarding/steps/WelcomeStep";
+import { selectActiveSteps } from "@/lib/onboardingPhase";
 import type { OnboardingStepId } from "@/lib/onboardingSteps";
-import {
-  selectActiveSteps,
-  useOnboardingStore,
-} from "@/store/onboardingStore";
+import { useOnboardingStore } from "@/store/onboardingStore";
 
 function needsSmartSetupStep(step: OnboardingStepId): boolean {
   return step === "ollama" || step === "model";
@@ -51,9 +49,7 @@ export function OnboardingWizard() {
   const stepTransition = transitionOrNone(reducedMotion, stepFade);
 
   const steps = useMemo(
-    () => selectActiveSteps(payload),
-    // Recompute when review mode toggles (selectActiveSteps reads store flag).
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- setupReviewActive is intentional
+    () => selectActiveSteps(payload, setupReviewActive),
     [payload, setupReviewActive],
   );
   const currentStep = steps[currentStepIndex] ?? steps[0] ?? "welcome";

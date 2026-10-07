@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import sys
@@ -163,3 +164,121 @@ def test_post_bot_config_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         },
     )
     assert reject.status_code == 422
+
+
+@pytest.mark.unit
+def test_seal_without_loss_floor_does_not_write_a_boolean(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    env_path = tmp_path / ".env"
+    config_path = tmp_path / "config.yaml"
+    env_path.write_text("TRADE_MODE=sim\n", encoding="utf-8")
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "mode": "sim",
+                "sim": {"kelly_fraction": 1.0, "daily_loss_cap": None, "max_total_open_risk": 3000},
+                "real": {"kelly_fraction": 0.25},
+                "broker": {"backend": "paper"},
+                "risk_controller": {},
+                "evolution": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    config_manager = ConfigManager(env_path, config_path)
+    monkeypatch.setattr(
+        "backend.config_endpoints._services",
+        lambda: (None, config_manager, None, None, None, None),
+    )
+    monkeypatch.setattr("backend.config_endpoints._workspace_root", lambda: tmp_path)
+    client = TestClient(app)
+    response = client.post(
+        "/api/config/bot",
+        json={
+            "mode": "sim",
+            "seal_sim_envelope": True,
+            "risk": {
+                "kelly_fraction": 0.5,
+                "daily_loss_cap": None,
+                "max_total_open_risk": 3000,
+            },
+            "evolution": {
+                "approval_required": True,
+                "aggressive_evolution": False,
+                "max_mutation_depth": "conservative",
+            },
+        },
+    )
+    assert response.status_code == 422
+    assert not (tmp_path / "state" / "lumina_sim_envelope_sealed.json").is_file()
+    saved = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    assert saved["sim"].get("daily_loss_cap") is None
+
+
+@pytest.mark.unit
+def test_seal_with_floor_writes_numeric_envelope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    env_path = tmp_path / ".env"
+    config_path = tmp_path / "config.yaml"
+    env_path.write_text("TRADE_MODE=sim\n", encoding="utf-8")
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "mode": "sim",
+                "sim": {"kelly_fraction": 1.0, "max_total_open_risk": 3000},
+                "real": {"kelly_fraction": 0.25},
+                "broker": {"backend": "paper"},
+                "risk_controller": {},
+                "evolution": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    config_manager = ConfigManager(env_path, config_path)
+    monkeypatch.setattr(
+        "backend.config_endpoints._services",
+        lambda: (None, config_manager, None, None, None, None),
+    )
+    monkeypatch.setattr("backend.config_endpoints._workspace_root", lambda: tmp_path)
+    client = TestClient(app)
+    response = client.post(
+        "/api/config/bot",
+        json={
+            "mode": "sim",
+            "seal_sim_envelope": True,
+            "risk": {
+                "kelly_fraction": 0.5,
+                "daily_loss_cap": -150,
+                "max_total_open_risk": 3000,
+            },
+            "evolution": {
+                "approval_required": True,
+                "aggressive_evolution": False,
+                "max_mutation_depth": "conservative",
+            },
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["playground_envelope_sealed"] is True
+    assert body["daily_loss_cap"] == -150
+    seal = json.loads((tmp_path / "state" / "lumina_sim_envelope_sealed.json").read_text(encoding="utf-8"))
+    assert seal["daily_loss_cap"] == -150.0
+    assert seal["max_total_open_risk"] == 3000.0
+    assert seal["sealed"] is True
+
+
+@pytest.mark.unit
+def test_boolean_writer_does_not_replace_a_numeric_seal(tmp_path: Path) -> None:
+    from lumina_core.maturity.playground.envelope import envelope_sealed_for_pass, write_operator_seal
+    from lumina_launcher.services.setup_persist_sim import write_sim_envelope_sealed
+
+    write_operator_seal(
+        tmp_path,
+        daily_loss_cap=-150.0,
+        max_total_open_risk=3000.0,
+        source="telegram",
+    )
+    write_sim_envelope_sealed(tmp_path, sealed=True, source="bot_config_seal")
+    raw = json.loads((tmp_path / "state" / "lumina_sim_envelope_sealed.json").read_text(encoding="utf-8"))
+    assert raw["daily_loss_cap"] == -150.0
+    assert raw["source"] == "telegram"
+    assert envelope_sealed_for_pass(tmp_path) is True

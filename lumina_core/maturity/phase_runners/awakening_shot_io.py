@@ -15,9 +15,12 @@ def default_train(
     reports: Path,
     pin: int,
     lr_scale: float = 1.0,
+    should_stop: Any | None = None,
 ) -> dict[str, Any]:
     del holdout
     from lumina_core.maturity.phase_runners.awakening_shot import AwakeningShotError
+    if should_stop is not None and should_stop():
+        raise AwakeningShotError("stop_requested")
     from lumina_core.birth.awakening_select_env import make_select_train_env
     from lumina_core.rl.ppo_device import _resolve_ppo_device
     from lumina_core.rl.ppo_trainer import PPOTrainer
@@ -41,14 +44,22 @@ def default_train(
         model = PPO.load(str(load_copy), env=env, device=device)
     except Exception as exc:
         raise AwakeningShotError(f"ppo_load_failed: {exc}") from exc
-    _heartbeat(workspace, activity="train_A", train_timesteps=0)
     scale = float(lr_scale)
     if abs(scale - 1.0) > 1e-12:
         try:
             model.learning_rate = float(model.learning_rate) * scale
         except (TypeError, ValueError):
             pass
-    cap = _timestep_cap_callback(int(pin), workspace=workspace)
+    _bind_frozen_birth_median(
+        env,
+        workspace=workspace,
+        reports=reports,
+        device=device,
+        should_stop=should_stop,
+        horizon_steps=int(pin),
+    )
+    _heartbeat(workspace, activity="train_A", train_timesteps=0)
+    cap = _timestep_cap_callback(int(pin), workspace=workspace, should_stop=should_stop)
     try:
         model.learn(
             total_timesteps=int(pin),
@@ -56,8 +67,12 @@ def default_train(
             callback=cap,
             progress_bar=False,
         )
+    except AwakeningShotError:
+        raise
     except Exception as exc:
         raise AwakeningShotError(f"learn_failed: {exc}") from exc
+    if cap is not None and bool(getattr(cap, "stopped", False)):
+        raise AwakeningShotError("stop_requested")
     actual = int(getattr(cap, "ran", 0) or 0) if cap is not None else int(pin)
     if actual > int(pin):
         raise AwakeningShotError(f"trainer ran {actual} steps > pin {pin}")
@@ -71,6 +86,53 @@ def default_train(
     }
 
 
+def _bind_frozen_birth_median(
+    env: Any,
+    *,
+    workspace: Path,
+    reports: Path,
+    device: str,
+    should_stop: Any | None,
+    horizon_steps: int,
+) -> None:
+    """One predict-only Birth walk on tape A. Sets session-day means. Never learn()."""
+    import shutil
+
+    from stable_baselines3 import PPO
+
+    from lumina_core.birth.awakening_select_env import bind_birth_tape_a_days
+    from lumina_core.birth.birth_exit_policy_export import PI_STAR_ZIP_NAME
+    from lumina_core.maturity.awakening.freeze_pin import copy_for_load, pin_dir
+    from lumina_core.maturity.phase_runners.awakening_shot import AwakeningShotError
+
+    pin = pin_dir(workspace) / PI_STAR_ZIP_NAME
+    if not pin.is_file() or pin.stat().st_size <= 0:
+        return
+    birth_copy = copy_for_load(pin)
+    birth_model: Any = None
+    stopped = False
+    try:
+        birth_model = PPO.load(str(birth_copy), env=env, device=device)
+        _means, stopped = bind_birth_tape_a_days(
+            env,
+            birth_model,
+            parent_path=pin,
+            reports_dir=reports,
+            should_stop=should_stop,
+            on_step=lambda steps: _heartbeat_probe(workspace, steps),
+            step_cap=int(horizon_steps),
+        )
+    except AwakeningShotError:
+        raise
+    except Exception as exc:
+        raise AwakeningShotError(f"birth_tape_a_probe_failed: {exc}") from exc
+    finally:
+        del birth_model
+        shutil.rmtree(birth_copy.parent, ignore_errors=True)
+    if stopped:
+        raise AwakeningShotError("stop_requested")
+
+
 def default_eval(
     *,
     holdout: list[dict[str, Any]],
@@ -78,12 +140,15 @@ def default_eval(
     workspace: Path,
     reports: Path,
     ledger_path: Path,
+    should_stop: Any | None = None,
 ) -> dict[str, Any]:
     from lumina_core.maturity.phase_runners.awakening_shot import AwakeningShotError
     from lumina_core.birth.awakening_grind_run import run_evaluate_only
     from lumina_core.birth.awakening_select_env import select_runtime
     from lumina_core.birth.birth_exit_policy_export import is_gitignored_ppo_zip
 
+    if should_stop is not None and should_stop():
+        raise AwakeningShotError("stop_requested")
     if is_gitignored_ppo_zip(child_path):
         raise AwakeningShotError("eval_refused_gitignored_ppo")
     _heartbeat(workspace, activity="eval_B", train_timesteps=None)
@@ -94,7 +159,10 @@ def default_eval(
         reports_dir=reports,
         ledger_path=ledger_path,
         policy_path=child_path,
+        should_stop=should_stop,
     )
+    if bool(getattr(metrics, "stopped", False)):
+        raise AwakeningShotError("stop_requested")
     n_all = int(metrics.n or 0)
     policy_n = int(metrics.policy_trades or 0)
     skill = _policy_skill_from_ledger(ledger_path)
@@ -111,12 +179,15 @@ def default_eval(
         "oos_sharpe": skill["sharpe"] if skill["policy_trades"] > 0 else metrics.oos_sharpe,
         "oos_dd_pct": skill["dd_pct"] if skill["policy_trades"] > 0 else metrics.oos_dd_pct,
         "occupancy": metrics.occupancy,
+        "occupancy_at_nb": getattr(metrics, "occupancy_at_nb", None),
         "mean_r": skill["mean_r"] if skill["policy_trades"] > 0 else metrics.mean_r,
         "median_loss_r": skill["median_loss_r"],
         "edge": metrics.edge,
         "holdout_exhausted": bool(metrics.holdout_exhausted),
         "occupancy_seed_source": seed_source,
         "n_plant": int(skill["n_plant"]),
+        "constitution_violations": getattr(metrics, "constitution_violations", None),
+        "constitution_blocks": getattr(metrics, "constitution_blocks", None),
     }
 
 
@@ -143,8 +214,8 @@ def _policy_skill_from_ledger(path: Path) -> dict[str, Any]:
         return empty
     import json
 
-    from lumina_core.birth.foundation_metrics import mean_r, median_loss_r
-    from lumina_core.birth.runway import risk_metrics_from_pnl
+    from lumina_core.birth.certificate_evaluator import max_drawdown_pct
+    from lumina_core.birth.foundation_metrics import mean_r, median_loss_r, s5_holdout_sharpe
 
     rows: list[dict[str, Any]] = []
     try:
@@ -166,8 +237,9 @@ def _policy_skill_from_ledger(path: Path) -> dict[str, Any]:
     wins = sum(1 for x in pnl if x > 0.0)
     sharpe, dd = (None, None)
     if pnl:
-        s, d = risk_metrics_from_pnl(pnl)
-        sharpe, dd = float(s), float(d)
+        # Same ratio as S5 and classify_stable. Do not annualize a trade as a day.
+        sharpe = s5_holdout_sharpe(pnl)
+        dd = max_drawdown_pct(pnl)
     return {
         "policy_only": n_pol > 0,
         "policy_trades": n_pol,
@@ -194,6 +266,19 @@ def _float_row(row: dict[str, Any], key: str) -> float:
         return 0.0
 
 
+def _heartbeat_probe(workspace: Path, steps: int) -> None:
+    """Tell the operator the day-book walk is moving. Not a PPO step count."""
+    try:
+        from lumina_core.maturity.awakening.progress import merge_awakening_progress
+
+        merge_awakening_progress(
+            workspace,
+            {"activity": "probe_A", "probe_bars": int(steps)},
+        )
+    except Exception:
+        return
+
+
 def _heartbeat(
     workspace: Path,
     *,
@@ -211,7 +296,12 @@ def _heartbeat(
         return
 
 
-def _timestep_cap_callback(cap: int, *, workspace: Path) -> Any:
+def _timestep_cap_callback(
+    cap: int,
+    *,
+    workspace: Path,
+    should_stop: Any | None = None,
+) -> Any:
     try:
         from stable_baselines3.common.callbacks import BaseCallback
     except Exception:
@@ -223,8 +313,12 @@ def _timestep_cap_callback(cap: int, *, workspace: Path) -> Any:
             self.max_steps = int(max_steps)
             self._last_beat = -1
             self.ran = 0
+            self.stopped = False
 
         def _on_step(self) -> bool:
+            if should_stop is not None and should_stop():
+                self.stopped = True
+                return False
             self.ran += 1
             if self.ran == 1 or (self.ran - self._last_beat) >= 1024:
                 self._last_beat = self.ran

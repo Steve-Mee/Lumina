@@ -19,6 +19,7 @@ otherwise ``LUMINA_DASHBOARD_API_KEY`` is used (legacy).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -100,7 +101,8 @@ async def get_evolution_tree(
 ) -> dict[str, Any]:
     """Return DNA lineage graph for Command Deck evolution visualization."""
     _verify_api_key(x_api_key, require_admin=False)
-    return build_evolution_tree(
+    return await asyncio.to_thread(
+        build_evolution_tree,
         depth=depth,
         include_rejected=include_rejected,
         root_hash=root_hash,

@@ -122,6 +122,7 @@ namespace NinjaTrader.NinjaScript.AddOns
                     Log("HeartbeatTimeout = " + config.HeartbeatTimeoutMs + " ms");
                     Log("AuthToken set    = " + (tokenPresent ? "YES" : "NO"));
                     Log("HistoricalData   = nt BarsRequest");
+                    Log("LiveBars         = nt BarsRequest.Update 1m Last");
                     Log("================================================");
 
                     if (!tokenPresent)
@@ -161,10 +162,10 @@ namespace NinjaTrader.NinjaScript.AddOns
                         if (!ntGw.TryBindFromNtAccounts())
                         {
                             Log("FATAL: could not bind NT Account '" + config.AccountName
-                                + "'. Open Control Center, ensure Sim101 (or configured) is connected.");
+                                + "'. Open Control Center and connect that account.");
                             FabricRuntimeStatus.Instance.SetHostError(
                                 "account_not_bound",
-                                "Bind Sim101 in NinjaTrader Control Center, then Repair / restart AddOn");
+                                "Connect the configured account in NinjaTrader Control Center, then Repair / restart AddOn");
                             WriteStatusFromRuntime();
                             try { ntGw.Dispose(); } catch { /* ignore */ }
                             return false;
@@ -175,12 +176,14 @@ namespace NinjaTrader.NinjaScript.AddOns
 
                     IHistoricalDataProvider historical = new NtHistoricalDataProvider(Log);
                     ILiveMarketDataProvider live = new NtLiveMarketDataProvider(Log);
-                    _host = new FabricGrpcHost(config, gateway, Log, historical, live);
+                    ILiveBarProvider liveBars = new NtLiveBarProvider(Log);
+                    _host = new FabricGrpcHost(config, gateway, Log, historical, live, liveBars);
                     _host.Start();
                     _started = true;
                     Log("Host started successfully gateway=" + gateway.GatewayKind
                         + " account=" + gateway.AccountName
                         + " historical=nt live=nt"
+                        + " liveBars=nt BarsRequest.Update 1m Last"
                         + " audit=" + (_host.AuditPath ?? "(default)"));
                     WriteStatusFromRuntime();
                     return true;

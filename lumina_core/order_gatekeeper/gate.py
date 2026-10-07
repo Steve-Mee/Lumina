@@ -120,6 +120,12 @@ def enforce_pre_trade_gate(
             return False, f"{user_reason} | {audit_reason}"
         return False, user_reason
 
+    from lumina_core.engine.bar_integrity import entries_blocked
+
+    blocked, book_reason = entries_blocked(engine)
+    if blocked:
+        return _deny("bar_book_incomplete", book_reason or "NT bar book incomplete — new entries locked")
+
     allow_stale = os.getenv("LUMINA_ALLOW_STALE_CONTRACTS", "false").strip().lower() == "true"
     if capabilities.requires_live_broker:
         stale_contract = _og.is_stale_contract_symbol(symbol)

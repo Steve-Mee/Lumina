@@ -97,6 +97,7 @@ export function isBenignBirthStatusMessage(raw: string | null | undefined): bool
   const t = text.toLowerCase();
   return (
     /nog niet gestart/.test(t) ||
+    /has not started/.test(t) ||
     /^not[_\s-]?started\.?$/.test(t) ||
     t === "idle" ||
     t === "wiped" ||
@@ -106,7 +107,9 @@ export function isBenignBirthStatusMessage(raw: string | null | undefined): bool
     /awaiting activation/.test(t) ||
     /maturity charter/.test(t) ||
     /leermotor is klaar/.test(t) ||
-    /training engine is ready/.test(t)
+    /training engine is ready/.test(t) ||
+    /foundation complete/.test(t) ||
+    /next is awakening/.test(t)
   );
 }
 

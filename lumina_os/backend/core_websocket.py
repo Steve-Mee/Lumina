@@ -115,7 +115,9 @@ async def get_core_live(
                 raise HTTPException(status_code=401, detail="API key required off-localhost")
             raise HTTPException(status_code=401, detail="Invalid API key")
     reader = CoreLiveTelemetryReader()
-    payload = reader.build_snapshot(_obs_service)
+    # Account reads inside the snapshot can block on NinjaTrader for the fabric
+    # command timeout (10s). That must not freeze the HTTP loop.
+    payload = await asyncio.to_thread(reader.build_snapshot, _obs_service)
     return _build_frame(seq=0, payload=payload)
 
 
@@ -165,7 +167,7 @@ async def ws_core_live(websocket: WebSocket) -> None:
 
     try:
         while True:
-            payload = reader.build_snapshot(_obs_service)
+            payload = await asyncio.to_thread(reader.build_snapshot, _obs_service)
             await websocket.send_json(_build_frame(seq=seq, payload=payload))
             seq += 1
 

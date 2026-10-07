@@ -58,23 +58,35 @@ class PriceDupeResolver:
     def _locked_price_and_ohlc(self) -> tuple[float, Any]:
         """Single lock acquisition for price + OHLC copy (pre_dream cycle needs both)."""
         try:
-            with getattr(self.app, "live_data_lock", contextlib.nullcontext()):
+            engine = getattr(self.app, "engine", None)
+            market = getattr(engine, "market_data", None) if engine is not None else None
+            if market is None:
+                market = getattr(self.app, "market_data", None)
+            lock = getattr(market, "live_data_lock", None) if market is not None else None
+            if lock is None:
+                lock = getattr(self.app, "live_data_lock", None)
+            if lock is None:
+                lock = contextlib.nullcontext()
+            with lock:
                 price = 0.0
-                if getattr(self.app, "live_quotes", None) and len(self.app.live_quotes) > 0:
-                    last = self.app.live_quotes[-1]
+                quotes = getattr(self.app, "live_quotes", None)
+                if not quotes and market is not None:
+                    quotes = getattr(market, "live_quotes", None)
+                if quotes:
+                    last = quotes[-1]
                     if isinstance(last, dict):
                         price = float(last.get("last", 0.0) or 0.0)
                     else:
                         price = float(getattr(last, "last", 0.0) or 0.0)
-                else:
-                    ohlc = getattr(self.app, "ohlc_1min", None)
-                    if ohlc is not None and len(ohlc) > 0:
-                        price = float(ohlc["close"].iloc[-1] or 0.0)
                 ohlc = getattr(self.app, "ohlc_1min", None)
+                if (ohlc is None or len(ohlc) == 0) and market is not None:
+                    ohlc = getattr(market, "ohlc_1min", None)
+                if price <= 0.0 and ohlc is not None and len(ohlc) > 0:
+                    price = float(ohlc["close"].iloc[-1] or 0.0)
                 df = ohlc.copy() if ohlc is not None else ohlc
                 return price, df
         except Exception:
-            return 0.0, getattr(self.app, "ohlc_1min", None)
+            return 0.0, None
 
     def fetch_locked_price(self) -> float:
         """Common under live_data_lock price fetch (resolves dupe supervisor <-> pre_dream inline + _fetch stub). Best-effort fallback to 0.0. Hygiene for first-iter/unbound."""

@@ -41,12 +41,7 @@ export type HubCharterTile = {
   footnote: string;
 };
 
-const SKIP_LEARNED_KEYS = new Set([
-  "birth_exit",
-  "exit_proofs",
-  "soft_block_rate_per_1k_signals",
-  "training_mode",
-]);
+const SKIP_LEARNED_KEYS = new Set(["birth_exit", "exit_proofs", "soft_block_rate_per_1k_signals", "training_mode"]);
 
 const STAGE_LABELS: Record<string, string> = {
   stage1_trend: "Trend",
@@ -63,6 +58,20 @@ const PROOF_LABELS: Record<string, string> = {
   twin_watch_missing: "Twin watch of this run",
   occupancy_missing: "Occupancy exam band",
   occupancy_in_band: "Occupancy exam band",
+  median_loss_r_missing: "Process-R (median loss R missing)",
+  edge_missing: "Prefer-better edge missing",
+  mean_r_or_birth_mean_r_missing: "Prefer-better mean R missing",
+  adr0026_wr_missing: "Recorded holdout WR missing",
+  parent_replay_missing: "Baseline book missing",
+  baseline_book_missing: "Baseline book missing",
+  baseline_book: "Baseline book",
+  median_win_r_collapsed: "Playground rule exam: median win collapsed",
+  baseline_is_plant: "Plant baseline",
+  baseline_not_the_plant: "Plant baseline (weight sha ≠ Birth plant)",
+  weight_sha_missing: "Plant baseline (weight sha missing)",
+  constitution_clear: "Constitution",
+  constitution_unmeasured: "Constitution unmeasured",
+  constitution_event: "Constitution event",
   recovery_not_proven: "Recovery without cheat",
   recovery_ok: "Recovery without cheat",
   regime_visibility_missing: "Regime visibility",
@@ -71,18 +80,20 @@ const PROOF_LABELS: Record<string, string> = {
   birth_freeze_intact: "Birth freeze intact",
   skill_not_policy_only: "Policy-only skill",
   policy_only: "Policy-only skill",
-  child_sha_equals_init: "No substitution (child ≠ parent)",
-  no_substitution: "No substitution (child ≠ parent)",
+  child_or_init_sha_missing: "Plant baseline (SHA missing)",
+  child_sha_equals_init: "Plant baseline (legacy child-sha token)",
+  no_substitution: "Plant baseline (legacy name)",
   deck_unlocked: "Command Deck unlock",
   deck_live: "Command Deck live",
   deck_not_live: "Command Deck live",
   sim_envelope_sealed: "SIM envelope sealed",
   first_sim_order_placed: "First SIM order",
+  "green_days>=5": "Vijf groene sessiedagen",
   first_honest_fill: "First honest SIM fill",
   "n_P>=150": "Policy SIM closes ≥ 150",
   economic_viability: "WR ≥ geometry BE and mean R ≥ 0",
-  awakening_child_loaded: "Awakening child loaded",
-  awakening_child_not_loaded: "Awakening child loaded",
+  awakening_child_loaded: "First Watch baseline loaded",
+  awakening_child_not_loaded: "First Watch baseline loaded",
   envelope_not_breached: "Envelope not breached",
   envelope_breached: "Envelope not breached",
   mode_sim_fail_closed: "SIM mode fail-closed",
@@ -140,6 +151,7 @@ export function proofLabel(code: string): string {
   if (na) return `Apprenticeship policy closes ${na[1]} / ${na[2]}`;
   const ndg = raw.match(/^n_([DG])=(\d+) < (\d+)$/);
   if (ndg) return ndg[1] === "D" ? `Green session days ${ndg[2]} / ${ndg[3]}` : `Proving Ground policy closes ${ndg[2]} / ${ndg[3]}`;
+  if (/paired regret/i.test(raw)) return `Playground rule exam: ${raw}`;
   return raw.replace(/_/g, " ");
 }
 
@@ -214,13 +226,17 @@ export function hubVerdict(hub: MaturityHubPayload | null): string {
       ? hub.focus_learned.note.trim()
       : "";
   if (focus === "awakening") {
-    return focusMsg || "Awakening: open eyes — prefer better than frozen π*. STABLE + n_B≥500 AND.";
+    const spec = String(hub?.phase_specs?.awakening?.human_goal || "").trim();
+    const stale = /eyes open|prefer better|prefer-better/i;
+    if (focusMsg && !stale.test(focusMsg)) return focusMsg;
+    if (spec && !stale.test(spec)) return spec;
+    return "Awakening is First Watch: frozen Birth plant on holdout B. STABLE + n_B≥500. Paired CI is not this exit.";
   }
   if (focus === "playground") {
-    return focusMsg || "Playground: crawl in NT SIM. First fill, n_P≥150, WR≥BE, mean R≥0.";
+    return focusMsg || "Playground: leerschool in SIM. Poort: 5 groene sessiedagen.";
   }
   if (focus === "apprenticeship") {
-    return focusMsg || "Apprenticeship: walk. 5 green sim_real_guard days, Sharpe≥0.20, DD≤12%.";
+    return focusMsg || "Apprenticeship: examen. n≥150, WR≥BE, mean R≥0, Sharpe≥0.20, DD≤12%.";
   }
   if (focus === "proving_ground") return focusMsg || "Proving Ground: driving test. Cert 48%/0.35/8% + shadow + PromotionGate.";
   const message = hub?.learned && typeof hub.learned.message === "string" ? hub.learned.message.trim() : "";
@@ -276,27 +292,12 @@ export function hubCharterTiles(hub: MaturityHubPayload | null): HubCharterTile[
   ];
 }
 
-export function formatRemainingSec(sec: number | null | undefined): string {
-  if (sec == null || Number.isNaN(sec)) return "";
-  const s = Math.max(0, Math.floor(sec));
-  if (s <= 0) return "expired";
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const r = s % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${r}s`;
-  return `${r}s`;
-}
-
-export function formatAwakeningProbe(
-  learned: Record<string, unknown> | undefined,
-): string | null {
+export function formatAwakeningProbe(learned: Record<string, unknown> | undefined): string | null {
   const base = asFiniteNumber(learned?.birth_oos_wr ?? learned?.baseline_oos_wr);
   const probe = asFiniteNumber(learned?.wr ?? learned?.probe_oos_wr);
   if (base == null || probe == null) return null;
   const lift = probe - base;
-  const sign = lift >= 0 ? "+" : "";
-  return `Birth OOS ${formatPct(base)} → shot ${formatPct(probe)} (lift ${sign}${formatPct(lift)})`;
+  return `Birth OOS ${formatPct(base)} → shot ${formatPct(probe)} (lift ${lift >= 0 ? "+" : ""}${formatPct(lift)})`;
 }
 
 export type HubWipeKind = "awakening" | "playground" | "apprenticeship" | "proving_ground" | "birth" | "full";
@@ -311,22 +312,22 @@ export const HUB_WIPE_CARDS: {
   {
     kind: "awakening",
     label: "Wipe Awakening",
-    hint: "Keep Birth · destroy shot",
-    tip: "Remove generated Awakening data only. Birth plant, frozen π*, history, and setup stay. Two-step confirm.",
+    hint: "Keep Birth · destroy First Watch",
+    tip: "Remove First Watch seal, holdout ledgers, and generated Awakening data. Birth plant, frozen π*, journal, and setup stay. Three-step typed confirm.",
     tone: "warn",
   },
   {
     kind: "birth",
     label: "Wipe Birth",
     hint: "Keep history · destroy plant",
-    tip: "Destroy the Birth plant and Awakening. Tick cache and setup stay. Two-step confirm.",
+    tip: "Destroy the Birth plant and Awakening. Tick cache and setup stay. Three-step typed confirm.",
     tone: "warn",
   },
   {
     kind: "full",
     label: "Full wipe",
     hint: "Setup kept · blank Genesis",
-    tip: "Wipe Birth, Awakening, and tick cache. Smart Setup stays. You restart from a blank Genesis deck. Two-step confirm.",
+    tip: "Wipe Birth, Awakening, and tick cache. Smart Setup stays. You restart from a blank Genesis deck. Three-step typed confirm.",
     tone: "danger",
   },
 ];
@@ -341,9 +342,7 @@ export function startPhaseCtaLabel(
   return `${verb} ${phaseLabel(nextPhase)}`;
 }
 
-function lastResultRecord(
-  hub: MaturityHubPayload | null,
-): Record<string, unknown> | null {
+function lastResultRecord(hub: MaturityHubPayload | null): Record<string, unknown> | null {
   const raw = hub?.last_result;
   return raw && typeof raw === "object" ? raw : null;
 }

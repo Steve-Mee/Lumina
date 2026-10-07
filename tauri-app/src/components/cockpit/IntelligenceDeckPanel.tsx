@@ -93,11 +93,11 @@ export function IntelligenceDeckPanel({
       <Tabs
         value={activeRightTab}
         onValueChange={(value) => setActiveRightTab(value as RightDeckTab)}
-        className="flex min-h-0 flex-1 flex-col"
+        className="flex min-h-0 flex-1 flex-col gap-0"
       >
         <div
           className={cn(
-            "relative border-b border-white/5 px-4 py-3",
+            "deck-panel-toolbar risk-envelope-panel__toolbar relative",
             isAnnexActive && "deck-header--annex",
           )}
         >
@@ -107,24 +107,24 @@ export function IntelligenceDeckPanel({
             animate={{ scaleX: 1 }}
             transition={transitionOrNone(reducedMotion, { ...modeMotion, delay: 0.1 })}
           />
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2
+          <div className="command-deck-ops__board-chrome-row">
+            <div className="command-deck-ops__board-identity min-w-0">
+              <p
                 className={cn(
-                  "deck-header-title deck-title mode-text-tier2",
+                  "risk-envelope-panel__toolbar-title",
                   isAnnexActive ? "text-muted-foreground/80" : modeTitleClass(operatorMode),
                 )}
               >
                 Intelligence{isAnnexActive ? " · Annex" : ""}
-              </h2>
+              </p>
               {!hideSubtitle ? (
-                <p className="font-mono text-[11px] text-muted-foreground/80">
+                <p className="mt-0.5 truncate font-mono text-[0.5rem] tracking-wide text-white/30 uppercase">
                   {INTELLIGENCE_DECK_TAB_SUBTITLES[activeRightTab]}
                 </p>
               ) : null}
             </div>
-            <div className="flex max-w-full flex-wrap items-center gap-1">
-              <TabsList className="max-w-full flex-wrap justify-end">
+            <div className="command-deck-ops__board-nav">
+              <TabsList className="command-deck-ops__nav">
                 {INTELLIGENCE_PRIMARY_TABS.map((tab) => (
                   <TabsTrigger
                     key={tab}
@@ -148,7 +148,7 @@ export function IntelligenceDeckPanel({
                 badgeVariant="mode"
                 onClick={() => setDrawerOpen(true)}
                 className={cn(
-                  isOpsActive ? "deck-tab-chip deck-tab-chip--active border-transparent" : undefined,
+                  isOpsActive ? "genesis-recovery-action-card__btn--accent" : undefined,
                   realOpsHint && "deck-tab-chip--hint-pulse",
                 )}
               />
@@ -156,7 +156,12 @@ export function IntelligenceDeckPanel({
           </div>
         </div>
 
-        <div className="mt-0 flex min-h-0 flex-1 flex-col p-2">
+        <div
+          className={cn(
+            "mt-0 flex min-h-0 flex-1 flex-col",
+            activeRightTab === "brief" ? "p-0" : "p-2",
+          )}
+        >
           <IntelligenceTabContent
             tab={activeRightTab}
             operatorMode={operatorMode}

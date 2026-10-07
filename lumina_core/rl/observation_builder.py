@@ -75,6 +75,19 @@ def dna_embedding(dna_hash: str) -> list[float]:
     return [(b / 127.5) - 1.0 for b in raw[:4]]
 
 
+def _num(value: Any, default: float) -> float:
+    """Explicit null is a missing reading. It must not raise, and it is not a number."""
+    if isinstance(value, bool) or value is None:
+        return default
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if number != number or number in (float("inf"), float("-inf")):
+        return default
+    return number
+
+
 def _has_trend_features(row: dict[str, Any]) -> bool:
     return "trend_regime_strength" in row
 
@@ -113,9 +126,9 @@ def build_observation_vector(
 ) -> np.ndarray:
     price = float(row.get("close", row.get("last", 0.0)) or 0.0)
 
-    recent = data[max(0, idx - 120) : idx + 1]
     regime = str(row.get("regime", "NEUTRAL"))
     skip_regime_detection = trade_mode == "birth" and bool(str(row.get("regime", "")).strip())
+    recent = [] if skip_regime_detection else data[max(0, idx - 120) : idx + 1]
     if not skip_regime_detection and len(recent) > 20 and hasattr(engine, "detect_market_regime"):
         try:
             frame = normalize_ohlc_frame(pd.DataFrame(recent))
@@ -151,33 +164,34 @@ def build_observation_vector(
     world_model = getattr(engine, "world_model", {}) or {}
     macro = world_model.get("macro", {}) if isinstance(world_model, dict) else {}
 
-    fib_0382 = float(fib_levels.get("0.382", price)) if isinstance(fib_levels, dict) else price
-    fib_05 = float(fib_levels.get("0.5", price)) if isinstance(fib_levels, dict) else price
-    fib_0618 = float(fib_levels.get("0.618", price)) if isinstance(fib_levels, dict) else price
+    fib_0382 = _num(fib_levels.get("0.382"), price) if isinstance(fib_levels, dict) else price
+    fib_05 = _num(fib_levels.get("0.5"), price) if isinstance(fib_levels, dict) else price
+    fib_0618 = _num(fib_levels.get("0.618"), price) if isinstance(fib_levels, dict) else price
 
-    bible_confluence = float(row.get("bible_confluence", dream.get("confluence_score", 0.55) or 0.55))
-    bible_news = float(row.get("bible_news_proximity", 1.0) or 1.0)
-    bible_session = float(row.get("bible_session_phase", 0.0) or 0.0)
-    bible_mtf = float(row.get("bible_mtf_bias", 0.0) or 0.0)
+    bible_confluence = _num(row.get("bible_confluence"), _num(dream.get("confluence_score"), 0.55))
+    bible_news = _num(row.get("bible_news_proximity"), 1.0)
+    bible_session = _num(row.get("bible_session_phase"), 0.0)
+    bible_mtf = _num(row.get("bible_mtf_bias"), 0.0)
+    confidence = _num(dream.get("confidence"), bible_confluence)
 
     return np.array(
         [
             price,
             regime_strength,
-            float(tape.get("volume_delta", 0.0)),
-            float(tape.get("avg_volume_delta_10", 0.0)),
-            float(tape.get("bid_ask_imbalance", 1.0)),
-            float(tape.get("cumulative_delta_10", 0.0)),
-            float(dream.get("confidence", bible_confluence)),
-            float(dream.get("confluence_score", bible_confluence)),
-            float(dream.get("stop", 0.0)),
-            float(dream.get("target", 0.0)),
+            _num(tape.get("volume_delta"), 0.0),
+            _num(tape.get("avg_volume_delta_10"), 0.0),
+            _num(tape.get("bid_ask_imbalance"), 1.0),
+            _num(tape.get("cumulative_delta_10"), 0.0),
+            confidence,
+            _num(dream.get("confluence_score"), bible_confluence),
+            _num(dream.get("stop"), 0.0),
+            _num(dream.get("target"), 0.0),
             fib_0382,
             fib_05,
             fib_0618,
-            float(macro.get("vix", 0.0)),
-            float(macro.get("yield10y", 0.0)),
-            float(macro.get("dxy", 0.0)),
+            _num(macro.get("vix"), 0.0),
+            _num(macro.get("yield10y"), 0.0),
+            _num(macro.get("dxy"), 0.0),
             float(position),
             float(qty),
             float(entry_price),

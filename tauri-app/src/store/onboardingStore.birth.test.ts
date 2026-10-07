@@ -214,8 +214,8 @@ describe("onboardingStore.activateBirth", () => {
     const ok = await useOnboardingStore.getState().activateBirth();
 
     expect(ok).toBe(true);
-    // Surface may be hub or cockpit depending on app_surface / transition mapping.
-    expect(["hub", "cockpit", "birth"]).toContain(useOnboardingStore.getState().phase);
+    expect(useOnboardingStore.getState().phase).toBe("awakening");
+    expect(useOnboardingStore.getState().birthPhaseCommitted).toBe(false);
     expect(toast.info).toHaveBeenCalled();
   });
 

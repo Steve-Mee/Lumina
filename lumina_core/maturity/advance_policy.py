@@ -177,25 +177,18 @@ def _notify_phase_complete(
     auto: bool = False,
 ) -> None:
     try:
-        from lumina_core.notifications.attention_notifier import notify_attention
-        from lumina_core.notifications.milestone_events import MilestoneCategory, MilestoneEvent
+        from lumina_core.notifications.phase_status_notify import notify_phase_handoff
 
-        summary = (
-            f"Phase {completed} complete. Next: {nxt}."
-            + (" Confirm REAL on hub." if need_confirm else "")
-            + (" Auto-evolve will start next." if auto else " Open Phase Hub to continue.")
+        notify_phase_handoff(
+            root,
+            completed=completed,
+            nxt=nxt,
+            need_confirm=need_confirm,
+            auto=auto,
+            learned=_phase_learned(root, completed),
         )
-        ev = MilestoneEvent(
-            milestone_id=f"phase_complete:{completed}",
-            category=MilestoneCategory.BIRTH,
-            title=f"Phase complete: {completed}",
-            summary=summary,
-            context={"next": nxt, "auto": auto},
-            dedupe_key=f"phase_complete:{completed}",
-        )
-        notify_attention(ev, workspace_root=root)
     except Exception as exc:
-        logger.debug("advance.notify_failed: %s", exc)
+        logger.warning("advance.notify_failed: %s", exc)
 
 
 def _notify_telegram_advance(
@@ -208,37 +201,26 @@ def _notify_telegram_advance(
     ttl_sec: int = 86400,
 ) -> None:
     try:
-        from lumina_core.notifications.attention_notifier import notify_attention
-        from lumina_core.notifications.milestone_events import MilestoneCategory, MilestoneEvent
+        from lumina_core.notifications.phase_status_notify import notify_phase_handoff
 
-        hours = max(1, int(ttl_sec) // 3600)
-        expiry_line = (
-            f"Token expires: {expires_at} (~{hours}h). Reply before then.\n"
-            if expires_at
-            else f"Token TTL: ~{hours}h.\n"
+        notify_phase_handoff(
+            root,
+            completed=completed,
+            nxt=nxt,
+            token=str(token or ""),
+            expires_at=str(expires_at or ""),
+            ttl_sec=int(ttl_sec or 0),
+            learned=_phase_learned(root, completed),
+            expects_reply=True,
         )
-        summary = (
-            f"Phase {completed} complete. Reply YES <token> to start {nxt}.\n"
-            f"Token: {token}\n"
-            f"{expiry_line}"
-            f"Or open Phase Hub on PC and press Start / paste token."
-        )
-        # M7: include expires_at in dedupe so reissue is not swallowed as noise
-        dedupe_suffix = str(expires_at or token or "")[-24:]
-        ev = MilestoneEvent(
-            milestone_id=f"phase_advance_request:{completed}:{nxt}",
-            category=MilestoneCategory.BIRTH,
-            title=f"Start next phase? → {nxt}",
-            summary=summary,
-            context={
-                "token": token,
-                "to": nxt,
-                "from": completed,
-                "expires_at": expires_at,
-                "ttl_sec": ttl_sec,
-            },
-            dedupe_key=f"phase_advance_request:{completed}:{nxt}:{dedupe_suffix}",
-        )
-        notify_attention(ev, workspace_root=root)
     except Exception as exc:
-        logger.debug("advance.telegram_notify_failed: %s", exc)
+        logger.warning("advance.telegram_notify_failed: %s", exc)
+
+
+def _phase_learned(root: Path, phase: str) -> dict[str, Any] | None:
+    data = load_continuum(root)
+    rec = (data.get("phase_records") or {}).get(phase)
+    if not isinstance(rec, dict):
+        return None
+    learned = rec.get("learned")
+    return dict(learned) if isinstance(learned, dict) else None

@@ -80,7 +80,31 @@ def run_tick_exec(sm: Any, ctx: SupervisorTickCtx) -> None:
                         regime=str(regime),
                     )
             else:
-                if hasattr(app, "place_order") and app.place_order(signal, qty):
+                playground_owns = False
+                try:
+                    from pathlib import Path
+
+                    from lumina_core.maturity.playground.crawl import playground_owns_execution
+
+                    playground_owns = playground_owns_execution(
+                        Path(__file__).resolve().parents[2],
+                        str(trade_mode),
+                    )
+                except Exception as exc:
+                    # Unknown ownership does not send a second SIM order.
+                    log_structured(
+                        LuminaError(
+                            severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                            code="PLAYGROUND_OWNERSHIP_UNREADABLE",
+                            message=f"Playground ownership unreadable: {exc}",
+                            context={"mode": str(trade_mode)},
+                        )
+                    )
+                    playground_owns = True
+                if playground_owns:
+                    # The Awakening child crawl is the only SIM order source.
+                    pass
+                elif hasattr(app, "place_order") and app.place_order(signal, qty):
                     log_structured(
                         LuminaError(
                             severity=ErrorSeverity.RECOVERABLE_LEARNING,

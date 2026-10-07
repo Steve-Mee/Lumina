@@ -29,6 +29,27 @@ def _rising_ticks(n: int) -> list[dict]:
 
 
 @pytest.mark.unit
+def test_oracle_scan_yields_while_preparing_a_long_tape(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[int] = []
+    monkeypatch.setattr(
+        "lumina_core.birth.pattern_miner.release_control_plane",
+        lambda step: calls.append(step),
+    )
+    mine_winning_patterns(
+        ticks=_rising_ticks(160),
+        stage=CurriculumStage.STAGE1_TREND,
+        runtime=SimpleNamespace(),
+        max_patterns=2,
+        scan_stride=20,
+        max_hold_bars=30,
+        auto_calibrate=False,
+        stop_pct=0.001,
+        target_pct=0.002,
+    )
+    assert 128 in calls
+
+
+@pytest.mark.unit
 def test_oracle_miner_finds_wins_on_rising_ticks() -> None:
     ticks = _rising_ticks(600)
     result = mine_winning_patterns(

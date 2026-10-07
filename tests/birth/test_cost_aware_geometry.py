@@ -35,7 +35,7 @@ def _chrono_ticks(n: int = 500, step: float = 0.4) -> list[dict]:
 @pytest.mark.unit
 def test_cost_usd_positive() -> None:
     c = estimate_round_trip_cost_usd(price=7500.0)
-    assert c >= 2.0
+    assert c == pytest.approx(1.88)
 
 
 @pytest.mark.unit

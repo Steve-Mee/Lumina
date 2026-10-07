@@ -13,6 +13,8 @@ interface BirthLaunchButtonProps {
   waitingSession?: boolean;
   /** Idle label when not arming (e.g. ACTIVATE BIRTH / RETRY BIRTH). */
   idleLabel?: string;
+  /** Label while the phase is already running. */
+  activeLabel?: string;
   onClick: () => void;
   onPrimedChange?: (primed: boolean) => void;
   onSequencingChange?: (sequencing: boolean) => void;
@@ -34,6 +36,7 @@ export function BirthLaunchButton({
   disabled = false,
   waitingSession = false,
   idleLabel = "ACTIVATE BIRTH",
+  activeLabel = "VERIFYING FABRIC / STARTING BIRTH…",
   onClick,
   onPrimedChange,
   onSequencingChange,
@@ -201,7 +204,7 @@ export function BirthLaunchButton({
 
   // activating=true while backend sync preflight runs — keep label honest, not frozen forever.
   const label = activating
-    ? "VERIFYING FABRIC / STARTING BIRTH…"
+    ? activeLabel
     : sequencing
       ? "SEQUENCING NEURAL LATTICE…"
       : holdProgress > 0 && holdProgress < 1

@@ -63,12 +63,13 @@ class PreDreamMarketTickService:
         fast_result = app.engine.fast_path.run(df, price, regime)
         fast_result = self._apply_rl_bias(rl_signal, fast_result)
         if not fast_result["used_llm"]:
+            self._refresh_screen_share()
             now_mono = time.monotonic()
             if now_mono - _live_feed_fastpath_last_mono >= _LIVE_FEED_FASTPATH_LOG_INTERVAL_S:
                 _live_feed_fastpath_last_mono = now_mono
                 (self._logger or logger).info(
                     "LIVE_FEED_DAEMON_IDLE,worker=pre_dream,reason=fast_path_no_llm_branch,"
-                    "ohlc_bars=%s,note=no_chart_until_used_llm_true",
+                    "ohlc_bars=%s,note=screen_share_snapshot_independent_of_llm",
                     len(df),
                 )
             return PreDreamMarketTickResult(should_continue=True)
@@ -87,3 +88,22 @@ class PreDreamMarketTickService:
             rl_signal=rl_signal,
             rl_action=rl_action,
         )
+
+    def _refresh_screen_share(self) -> None:
+        """Paint the open screen-share. Does not enter the LLM branch."""
+        app = self.app
+        if hasattr(app, "SCREEN_SHARE_ENABLED"):
+            screen_on = bool(app.SCREEN_SHARE_ENABLED)
+        else:
+            engine = getattr(app, "engine", None)
+            cfg = getattr(engine, "config", None)
+            screen_on = bool(getattr(cfg, "screen_share_enabled", False))
+        if not screen_on:
+            return
+        publish = getattr(app, "publish_screen_share_snapshot", None)
+        if not callable(publish):
+            return
+        try:
+            publish()
+        except Exception as exc:
+            (self._logger or logger).warning("LIVE_FEED_FASTPATH_CHART_ABORT,reason=%s", exc)

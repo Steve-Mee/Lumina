@@ -18,9 +18,9 @@ export function AwakeningLifePulse(input: Omit<AwakeningLifeInput, "nowMs">) {
   const line = awakeningLifeLine(live);
   const caption =
     state === "live"
-      ? "Evolving now"
+      ? "Evaluating First Watch"
       : state === "computing"
-        ? "This cycle is still computing — not stuck"
+        ? "Holdout walk still computing — not stuck"
         : "Clock idle";
 
   return (

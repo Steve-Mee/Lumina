@@ -35,6 +35,21 @@ export function openRiskConsequence(value: number, isReal: boolean): string {
   return CONSEQUENCE_HINTS.open_risk_tight;
 }
 
+/** Why the Playground seal button must stay off. Null means the numbers are enough. */
+export function playgroundSealBlocker(draft: BotConfigDraft): string | null {
+  if (draft.mode !== "sim" && draft.mode !== "sim_real_guard") {
+    return "Playground seal is SIM only.";
+  }
+  const cap = draft.risk.daily_loss_cap;
+  if (cap == null || cap >= 0) {
+    return "Daily loss cap must be a negative floor.";
+  }
+  if (!(draft.risk.max_total_open_risk > 0)) {
+    return "Open risk must be above zero.";
+  }
+  return null;
+}
+
 export function envelopeSummaryLine(draft: BotConfigDraft): string {
   const cap =
     draft.risk.daily_loss_cap == null ? "None" : `$${draft.risk.daily_loss_cap}`;

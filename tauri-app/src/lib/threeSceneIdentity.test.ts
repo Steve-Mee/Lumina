@@ -16,7 +16,19 @@ const evolutionSceneSource = readFileSync(
   join(root, "components/evolution/EvolutionForceGraphScene.tsx"),
   "utf8",
 );
+const evolutionCameraSource = readFileSync(
+  join(root, "components/evolution/EvolutionArenaCamera.tsx"),
+  "utf8",
+);
 const primitivesSource = readFileSync(join(root, "components/three/helixPrimitives.tsx"), "utf8");
+const organismCameraSource = readFileSync(
+  join(root, "components/organism/OrganismStageCamera.tsx"),
+  "utf8",
+);
+const organismSceneSource = readFileSync(
+  join(root, "components/birth/BirthHelixScenes.tsx"),
+  "utf8",
+);
 
 describe("three scene identity", () => {
   it("BirthHelix and LivingCore do not import each other's scene files", () => {
@@ -36,6 +48,7 @@ describe("three scene identity", () => {
     expect(birthSource).toContain("helixTubeSegments");
     expect(birthSource).toContain("BirthHelixScene");
     expect(scenesSource).toContain("CeremonyHelixScene");
+    expect(scenesSource).toContain("OrganismAnatomy");
     expect(ceremonySource).toContain("DoubleHelixStrands");
     // Gradient strand materials live in shared primitives; ceremony composes DoubleHelixStrands.
     expect(primitivesSource).toContain("createStrandGradientMaterial");
@@ -52,10 +65,22 @@ describe("three scene identity", () => {
     expect(coreSource).not.toContain("immersiveHaloClass");
   });
 
+  it("organism stage camera centers the being in its column", () => {
+    expect(organismCameraSource).toContain("lookAt(0, 0, 0)");
+    expect(organismCameraSource).toContain("organismFitDistance");
+    expect(organismCameraSource).toContain("helix-column-host");
+    expect(organismCameraSource).toContain("setSize");
+    expect(organismSceneSource).toContain("CeremonyHelixScene");
+    expect(organismSceneSource).toContain("OrganismAnatomy");
+    expect(organismSceneSource).toContain("OrganismStageCamera");
+    expect(organismSceneSource).not.toContain("maturationClient");
+  });
+
   it("Evolution arena locks camera and disables zoom by default", () => {
-    expect(evolutionSceneSource).toContain("enableZoom={false}");
+    expect(evolutionCameraSource).toContain("enableZoom={false}");
     expect(evolutionSceneSource).not.toContain("EvolutionNodeTooltip");
-    expect(evolutionSceneSource).toContain("enableRotate={false}");
+    expect(evolutionCameraSource).toContain("enableRotate={false}");
+    expect(evolutionCameraSource).toContain("arenaCameraDistance");
     expect(evolutionSceneSource).toContain("championBirth");
   });
 });

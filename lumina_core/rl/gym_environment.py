@@ -33,10 +33,10 @@ class RLConfig:
     slippage_points: float = 0.125
     slippage_sigma: float = 0.5
     slippage_volatility_factor: float = 1.0
-    commission_per_side_usd: float = 1.29
-    exchange_fee_per_side_usd: float = 0.35
-    clearing_fee_per_side_usd: float = 0.10
-    nfa_fee_per_side_usd: float = 0.02
+    commission_per_side_usd: float = 0.39
+    exchange_fee_per_side_usd: float = 0.36
+    clearing_fee_per_side_usd: float = 0.19
+    nfa_fee_per_side_usd: float = 0.0
     real_safety_threshold_usd: float = 1000.0
     real_safety_threshold_ratio: float = 0.90
     sim_var_penalty_coeff: float = 0.04
@@ -162,14 +162,19 @@ class RLTradingEnvironment(RLTradingEnvironmentStepMixin, gym.Env):
         risk_cfg = getattr(getattr(engine, "config", None), "risk_controller", {})
         risk_cfg = risk_cfg if isinstance(risk_cfg, dict) else {}
         trade_mode = str(getattr(getattr(engine, "config", None), "trade_mode", "sim") or "sim").strip().lower()
+        from lumina_core.market.nt_fees import fee_components
+
+        listed = str(getattr(getattr(engine, "config", None), "instrument", "MES") or "MES")
+        root = "MES" if trade_mode == "birth" else listed
+        commission, exchange_fee, clearing_fee, nfa_fee = fee_components(root)
         return RLConfig(
             slippage_points=float(risk_cfg.get("slippage_base_points", 0.125) or 0.125),
             slippage_sigma=float(risk_cfg.get("slippage_sigma", 0.5) or 0.5),
             slippage_volatility_factor=float(risk_cfg.get("slippage_volatility_factor", 1.0) or 1.0),
-            commission_per_side_usd=float(risk_cfg.get("commission_per_side_usd", 1.29) or 1.29),
-            exchange_fee_per_side_usd=float(risk_cfg.get("exchange_fee_per_side_usd", 0.35) or 0.35),
-            clearing_fee_per_side_usd=float(risk_cfg.get("clearing_fee_per_side_usd", 0.10) or 0.10),
-            nfa_fee_per_side_usd=float(risk_cfg.get("nfa_fee_per_side_usd", 0.02) or 0.02),
+            commission_per_side_usd=commission,
+            exchange_fee_per_side_usd=exchange_fee,
+            clearing_fee_per_side_usd=clearing_fee,
+            nfa_fee_per_side_usd=nfa_fee,
             real_safety_threshold_usd=float(risk_cfg.get("real_capital_safety_threshold_usd", 1000.0) or 1000.0),
             real_safety_threshold_ratio=float(risk_cfg.get("real_capital_safety_threshold_ratio", 0.90) or 0.90),
             sim_var_penalty_coeff=float(risk_cfg.get("sim_var_penalty_coeff", 0.04) or 0.04),
@@ -214,13 +219,16 @@ class RLTradingEnvironment(RLTradingEnvironmentStepMixin, gym.Env):
         return float(self.valuation_engine.point_value(self.instrument))
 
     def _fees_usd(self, *, quantity: int, sides: int) -> float:
-        per_side = (
-            float(self.config.commission_per_side_usd)
-            + float(self.config.exchange_fee_per_side_usd)
-            + float(self.config.clearing_fee_per_side_usd)
-            + float(self.config.nfa_fee_per_side_usd)
-        )
-        return float(max(0, int(quantity)) * max(1, int(sides)) * max(0.0, per_side))
+        """One side of the NinjaTrader card. Birth is always the MES card.
+
+        The four dollar fields on ``RLConfig`` are not this charge. A config
+        amount cannot undercut the card.
+        """
+        from lumina_core.market.nt_fees import all_in_per_side_usd
+
+        root = "MES" if self.is_birth_mode() else str(self.instrument or "")
+        per_side = all_in_per_side_usd(root, qty=max(0, int(quantity)))
+        return float(per_side * max(1, int(sides)))
 
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed)

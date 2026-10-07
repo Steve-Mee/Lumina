@@ -246,7 +246,7 @@ def test_e_failing_s5_does_not_write_fitness(tmp_path) -> None:  # type: ignore[
         practice_completed_flag_path=tmp_path / "state" / "practice.flag",
         completion_flag_path=tmp_path / "state" / "lumina_birth_completed.flag",
         ppo_steps=0,
-        _real_data_pct=1.0,
+        _real_data_pct=100.0,
         birth_start_time=0.0,
     )
     (tmp_path / "state").mkdir(parents=True, exist_ok=True)

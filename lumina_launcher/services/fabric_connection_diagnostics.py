@@ -57,15 +57,15 @@ def _load_fabric_json() -> dict[str, Any]:
 
 
 def _resolve_diag_instrument(explicit: str | None = None) -> str:
-    """Prefer full contract names. Bare MES/MNQ roots are expanded by NT provider too.
-
-    Priority: multi-token explicit → config trading.instrument → explicit root → MES SEP26.
-    """
+    """Root or a listed month. The liquid contract is chosen from today's date."""
     raw = str(explicit or "").strip()
-    if raw and len(raw.split()) >= 2:
-        return raw
-
     instrument = ""
+    if raw and len(raw.split()) >= 2:
+        from lumina_core.order_gatekeeper.contract_symbols import live_listing
+
+        rolled = str(live_listing(raw) or "").strip().upper()
+        return rolled or raw.upper()
+
     try:
         import yaml
 
@@ -93,9 +93,11 @@ def _resolve_diag_instrument(explicit: str | None = None) -> str:
     except Exception:
         instrument = ""
 
-    if instrument:
-        return instrument
-    return raw or "MES SEP26"
+    from lumina_core.order_gatekeeper.contract_symbols import live_listing
+
+    chosen = instrument or raw or "MES"
+    rolled = str(live_listing(chosen) or "").strip().upper()
+    return rolled or chosen.upper()
 
 
 def run_fabric_connection_diagnostics(

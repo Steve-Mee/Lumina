@@ -6,7 +6,6 @@ export const ANALYTICS_CENTER_TABS = ["ppo", "readiness"] as const;
 export type AnalyticsCenterTab = (typeof ANALYTICS_CENTER_TABS)[number];
 
 export const ANALYTICS_RIGHT_TABS = [
-  "performance",
   "monitor",
   "liveActivity",
   "adaptive",

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { AwakeningMission } from "@/components/maturity/AwakeningMission";
@@ -24,12 +24,14 @@ export function AwakeningPhaseScreen() {
   const [progress, setProgress] = useState<AwakeningProgressView | null>(null);
   const [busy, setBusy] = useState(false);
   const [wiping, setWiping] = useState(false);
-  const [wipeStep, setWipeStep] = useState<1 | 2>(1);
   const [wipeOpen, setWipeOpen] = useState(false);
   const [wipeError, setWipeError] = useState<string | null>(null);
   const refreshOnboarding = useOnboardingStore((s) => s.refresh);
   const returnToPhaseHub = useOnboardingStore((s) => s.returnToPhaseHub);
+  const appSurface = useOnboardingStore((s) => s.payload?.app_surface);
+  const appSurfaceReason = useOnboardingStore((s) => s.payload?.app_surface_reason);
 
+  const toastAt = useRef(0);
   const reload = useCallback(async () => {
     try {
       const [hubPayload, prog] = await Promise.all([
@@ -39,17 +41,24 @@ export function AwakeningPhaseScreen() {
       setHub(hubPayload);
       setProgress(prog);
     } catch (err) {
+      const now = Date.now();
+      if (now - toastAt.current < 30_000) return;
+      toastAt.current = now;
       toast.error(err instanceof Error ? err.message : "Awakening progress unavailable");
     }
   }, []);
 
-  const running = Boolean(hub?.runner_active || progress?.runner_active);
+  const polled = hub != null || progress != null;
+  const running = polled
+    ? Boolean(hub?.runner_active || progress?.runner_active)
+    : appSurface === "awakening" && appSurfaceReason === "awakening_running";
 
   useEffect(() => {
     void reload();
+    // Slower than the backend's worst stall, so polls do not stack.
     const id = window.setInterval(() => {
       void reload();
-    }, running ? 2000 : 4000);
+    }, running ? 8_000 : 12_000);
     return () => window.clearInterval(id);
   }, [reload, running]);
 
@@ -87,7 +96,7 @@ export function AwakeningPhaseScreen() {
     setBusy(true);
     try {
       await postStopMaturityPhase();
-      toast.success("Stop requested — current cycle finishes, then the clock halts");
+      toast.success("Stopping — the current bar finishes, then the clock halts");
       await reload();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Stop failed");
@@ -108,15 +117,14 @@ export function AwakeningPhaseScreen() {
       return;
     }
     setWipeError(null);
-    setWipeStep(1);
     setWipeOpen(true);
   };
 
-  const confirmWipe = async () => {
+  const confirmWipe = async (phrase: string) => {
     setWiping(true);
     setWipeError(null);
     try {
-      await postWipeMaturityPhase("awakening");
+      await postWipeMaturityPhase("awakening", phrase);
       setWipeOpen(false);
       toast.success("Awakening wiped — Birth kept");
       setPreferAwakeningHub(true);
@@ -133,17 +141,25 @@ export function AwakeningPhaseScreen() {
       <div className="birth-phase-cinematic relative mx-auto flex h-dvh min-h-0 w-full max-w-none flex-col overflow-hidden">
         <LuminaPhaseHeader
           eyebrow="Awakening"
-          title="Open eyes"
+          title="First Watch"
           status={status}
           tone={passNow ? "emerald" : running ? "cyan" : "amber"}
-          variant="compact"
+          variant={running ? "compact" : "strip"}
           className="lumina-phase-header relative z-20"
         />
-        <EvolutionLadderStrip activePhase="awakening" className="relative z-20 evolution-ladder-strip--dense !py-1" />
+        <EvolutionLadderStrip
+          activePhase="awakening"
+          className={
+            running
+              ? "relative z-20 evolution-ladder-strip--dense !py-1"
+              : "relative z-20"
+          }
+        />
         <AwakeningMission
           hub={hub}
           progress={progress}
           busy={busy}
+          clockLive={appSurface === "awakening" && appSurfaceReason === "awakening_running"}
           onStart={() => void onStart()}
           onStop={() => void onStop()}
           onReturnHub={() => void onReturnHub()}
@@ -151,16 +167,13 @@ export function AwakeningPhaseScreen() {
         />
         <PhaseHubWipeConfirm
           kind={wipeOpen ? "awakening" : null}
-          step={wipeStep}
           wiping={wiping}
           error={wipeError}
           onCancel={() => {
             setWipeOpen(false);
-            setWipeStep(1);
             setWipeError(null);
           }}
-          onContinue={() => setWipeStep(2)}
-          onConfirm={() => void confirmWipe()}
+          onConfirm={(phrase) => void confirmWipe(phrase)}
         />
       </div>
     </OnboardingShell>

@@ -62,7 +62,7 @@ const WINDOWS_VLLM_REASON =
 export function organsFromPayload(payload: OnboardingPayload | null | undefined): OrgansTruthV1 | null {
   const raw = payload?.organs_truth_v1 ?? payload?.intelligence?.organs_truth_v1;
   if (!raw || typeof raw !== "object") return null;
-  return raw as OrgansTruthV1;
+  return raw as unknown as OrgansTruthV1;
 }
 
 export function isWindowsFixture(payload: OnboardingPayload | null | undefined): boolean {

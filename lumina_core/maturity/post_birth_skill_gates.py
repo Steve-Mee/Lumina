@@ -60,7 +60,7 @@ def economic_viability(
     skill_wr: float | None,
     breakeven_wr: float | None,
 ) -> PostBirthGateResult:
-    """Playground: profitability vs geometry BE. Not a Birth pass gate."""
+    """Apprenticeship exam: profitability vs geometry BE. Not a Birth or Playground pass gate."""
     blockers: list[str] = []
     if mean_r is None:
         blockers.append("mean_r_missing")
@@ -73,7 +73,7 @@ def economic_viability(
     return PostBirthGateResult(
         passed=not blockers,
         gate_id="economic_viability",
-        home_phase="playground",
+        home_phase="apprenticeship",
         blockers=tuple(blockers),
         detail={
             "mean_r": mean_r,

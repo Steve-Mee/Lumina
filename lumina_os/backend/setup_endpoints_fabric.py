@@ -1,4 +1,5 @@
 """Setup fabric/configure endpoints (M5)."""
+
 from __future__ import annotations
 
 import logging
@@ -22,6 +23,7 @@ from lumina_os.backend.setup_onboarding_payload import (
 
 logger = logging.getLogger(__name__)
 
+
 class ConfigureCredentials(BaseModel):
     LUMINA_JWT_SECRET_KEY: str = ""
     CROSSTRADE_TOKEN: str = ""
@@ -33,16 +35,19 @@ class ConfigureCredentials(BaseModel):
     TELEGRAM_CHAT_ID: str = ""
     emergency_market_data_fallback: bool = False
 
+
 class ConfigureRisk(BaseModel):
     kelly_fraction: float = Field(default=1.0, ge=0.05, le=1.0)
     daily_loss_cap: float | None = None
     max_total_open_risk: float = Field(default=3000.0, ge=50.0)
     real_capital_safety_threshold_usd: float = Field(default=1000.0, ge=100.0)
 
+
 class ConfigureEvolution(BaseModel):
     approval_required: bool = True
     aggressive_evolution: bool = False
     max_mutation_depth: Literal["conservative", "moderate", "radical"] = "conservative"
+
 
 class ConfigureTraining(BaseModel):
     training_trades: int = Field(default=25000, ge=1000, le=2_000_000)
@@ -52,6 +57,7 @@ class ConfigureTraining(BaseModel):
     require_real_simulator_data: bool = True
     stage1_winrate_pass_threshold: float | None = Field(default=None, ge=0.35, le=0.45)
 
+
 class ConfigureRequest(BaseModel):
     mode: str = "sim"
     credentials: ConfigureCredentials = Field(default_factory=ConfigureCredentials)
@@ -60,12 +66,14 @@ class ConfigureRequest(BaseModel):
     training: ConfigureTraining = Field(default_factory=ConfigureTraining)
     selected_model_key: str | None = None
 
+
 class FabricConnectionTestRequest(BaseModel):
     include_safe_mode: bool = False
     # Empty → diagnostics resolve trading.instrument from config.yaml (e.g. MES SEP26).
     instrument: str = Field(default="", max_length=64)
     # Always refused: diagnostics must not submit NT orders.
     allow_live_order_probe: bool = False
+
 
 async def fabric_connection_test(body: FabricConnectionTestRequest | None = None) -> dict[str, Any]:
     """Run SIM-only Execution Fabric diagnostics (Brain ↔ NT8 Fabric, not CrossTrade)."""
@@ -115,10 +123,7 @@ async def fabric_connection_test(body: FabricConnectionTestRequest | None = None
     certified = False
     if str(payload.get("overall", "")).lower() == "green":
         token = str(
-            (token_ssot or {}).get("token")
-            or os.getenv("LUMINA_FABRIC_TOKEN")
-            or os.getenv("LUMINA_NT8_API_KEY")
-            or ""
+            (token_ssot or {}).get("token") or os.getenv("LUMINA_FABRIC_TOKEN") or os.getenv("LUMINA_NT8_API_KEY") or ""
         ).strip()
         write_certificate(
             overall="green",
@@ -129,6 +134,7 @@ async def fabric_connection_test(body: FabricConnectionTestRequest | None = None
         certified = True
     payload["certified"] = certified
     return payload
+
 
 async def fabric_bootstrap() -> dict[str, Any]:
     """Zero-touch token + fabric.json + AddOn deploy (idempotent)."""
@@ -155,6 +161,18 @@ async def fabric_bootstrap() -> dict[str, Any]:
     result["halt"] = read_halt(root) if is_halt_active(root) else None
     return result
 
+
+_ALIGN_ON_AUTH_FAILURE = frozenset({"AUTH_FAILED", "TOKEN_EMPTY", "AUTH_TIMEOUT"})
+
+
+def _status_should_force_align(live: dict[str, Any]) -> bool:
+    """True only after a real auth failure. Empty code means still connecting."""
+    if live.get("auth_ok"):
+        return False
+    code = str(live.get("last_error_code") or "").strip().upper()
+    return code in _ALIGN_ON_AUTH_FAILURE
+
+
 async def fabric_link_status() -> dict[str, Any]:
     """SSOT Fabric link health (live level ≠ paper certificate).
 
@@ -166,6 +184,11 @@ async def fabric_link_status() -> dict[str, Any]:
     Cold-start: when supervisor reports AUTH_FAILED, dual-write token SSOT and
     force one reconnect so host hot-reload + Brain SSOT can seal GREEN without
     a full NT restart (see FabricConfig.ResolveToken).
+
+    An empty error code is not a failure. The Vault polls this every few
+    seconds while the supervisor is still connecting. Treating that as
+    AUTH_FAILED opened a second TradingStream and closed it, which flashed
+    the link green and restarted reconnect.
     """
     from lumina_launcher.services.fabric_link_health import build_fabric_link_health
 
@@ -201,13 +224,8 @@ async def fabric_link_status() -> dict[str, Any]:
             ensure_fabric_link_supervisor(eng, mode_context="sim")
         live = get_fabric_link_supervisor().status().to_dict()
 
-        # AUTH_FAILED / empty token: dual-write SSOT + reconnect once (Systems Go path).
-        err_code = str(live.get("last_error_code") or "").strip().upper()
-        if (
-            provider in {"ninjatrader", "nt", "fabric"}
-            and not live.get("auth_ok")
-            and err_code in {"AUTH_FAILED", "TOKEN_EMPTY", "AUTH_TIMEOUT", ""}
-        ):
+        # Real auth failures only. Empty code means "still connecting".
+        if provider in {"ninjatrader", "nt", "fabric"} and _status_should_force_align(live):
             try:
                 from lumina_launcher.services.fabric_link_ensure import (
                     ensure_fabric_token_aligned_and_live,
@@ -250,8 +268,9 @@ async def fabric_link_status() -> dict[str, Any]:
         "health": health,
     }
 
+
 async def fabric_nt_watch() -> dict[str, Any]:
-    """Detect NT8 binary changes and re-probe Fabric (fail-closed halt on failure)."""
+    """Keep Custom.csproj compilable; on NT8 binary change re-probe (halt if still red)."""
     from lumina_launcher.services.ninjatrader_watch import check_ninjatrader_update_and_reprobe
 
     return check_ninjatrader_update_and_reprobe(_workspace_root())
@@ -295,6 +314,7 @@ async def fabric_heal(body: FabricHealRequest | None = None) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Fabric heal failed: {exc}") from exc
     return report.to_dict()
 
+
 async def configure_setup(body: ConfigureRequest) -> dict[str, Any]:
     setup, config_manager, first_boot, _, hardware, model_service = _services()
     root = _workspace_root()
@@ -310,6 +330,16 @@ async def configure_setup(body: ConfigureRequest) -> dict[str, Any]:
                 raise HTTPException(status_code=400, detail=f"Missing required credential: {key}")
 
     snapshot = hardware.get_snapshot(refresh=True)
+    from lumina_launcher.services.nt_account_store import first_seal_account_block
+
+    try:
+        setup_complete = bool(setup.is_setup_complete())
+    except Exception:
+        logger.warning("setup completeness unreadable; account pair stays required", exc_info=True)
+        setup_complete = False
+    account_error = first_seal_account_block(root, setup_complete=setup_complete)
+    if account_error:
+        raise HTTPException(status_code=400, detail=account_error)
     # Ensure Vault emergency flag rides configure path (not credentials-only).
     if "emergency_market_data_fallback" not in creds:
         creds["emergency_market_data_fallback"] = bool(
@@ -336,8 +366,10 @@ async def configure_setup(body: ConfigureRequest) -> dict[str, Any]:
         "onboarding": build_onboarding_payload(serving_request=True),
     }
 
+
 class TauriSigningRequest(BaseModel):
     force: bool = False
+
 
 async def generate_tauri_signing(body: TauriSigningRequest | None = None) -> dict[str, Any]:
     from lumina_launcher.services.tauri_signing_service import TauriSigningService

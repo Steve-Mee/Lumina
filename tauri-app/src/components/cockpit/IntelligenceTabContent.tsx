@@ -57,21 +57,12 @@ function TabFallback({ label }: { label: string }) {
 function AnnexTabContent({
   tab,
   children,
-  inset = false,
 }: {
   tab: RightDeckTab;
   children: ReactNode;
-  inset?: boolean;
 }) {
-  if (tab === "brief") {
+  if (tab === "brief" || tab === "performance" || tab === "admin") {
     return <>{children}</>;
-  }
-  if (tab === "performance") {
-    return (
-      <ObservationDeckFrame subtitle={INTELLIGENCE_DECK_TAB_SUBTITLES[tab]} inset={inset}>
-        {children}
-      </ObservationDeckFrame>
-    );
   }
   if (
     tab === "hardware" ||
@@ -139,11 +130,9 @@ export function IntelligenceTabContent({
     case "performance":
       return (
         <motion.div key="performance" {...motionProps}>
-          <AnnexTabContent tab="performance" inset>
-            <Suspense fallback={<TabFallback label={DECK_LOADING_COPY.ppoSync} />}>
-              <TradingPerformancePanel />
-            </Suspense>
-          </AnnexTabContent>
+          <Suspense fallback={<TabFallback label={DECK_LOADING_COPY.ppoSync} />}>
+            <TradingPerformancePanel />
+          </Suspense>
         </motion.div>
       );
     case "realOps":
@@ -215,11 +204,9 @@ export function IntelligenceTabContent({
     case "admin":
       return (
         <motion.div key="admin" {...motionProps}>
-          <AnnexTabContent tab="admin">
-            <Suspense fallback={<TabFallback label={DECK_LOADING_COPY.settingsSync} />}>
-              <AdminPanel className="p-2" />
-            </Suspense>
-          </AnnexTabContent>
+          <Suspense fallback={<TabFallback label={DECK_LOADING_COPY.settingsSync} />}>
+            <AdminPanel />
+          </Suspense>
         </motion.div>
       );
     default:

@@ -32,7 +32,9 @@ def test_default_trading_instrument_prefers_yaml(monkeypatch: pytest.MonkeyPatch
         "_load_yaml_config",
         lambda: {"trading": {"instrument": "MES SEP26"}},
     )
-    assert eng_cfg._default_trading_instrument() == "MES SEP26"
+    from lumina_core.order_gatekeeper.contract_symbols import live_listing
+
+    assert eng_cfg._default_trading_instrument() == live_listing("MES SEP26")
 
 
 @pytest.mark.unit
@@ -44,7 +46,21 @@ def test_default_trading_instrument_env_overrides_yaml(monkeypatch: pytest.Monke
         "_load_yaml_config",
         lambda: {"trading": {"instrument": "MES SEP26"}},
     )
-    assert eng_cfg._default_trading_instrument() == "MNQ SEP26"
+    from lumina_core.order_gatekeeper.contract_symbols import live_listing
+
+    assert eng_cfg._default_trading_instrument() == live_listing("MNQ SEP26")
+
+
+@pytest.mark.unit
+def test_default_trading_instrument_calendar_when_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    from lumina_core.engine import engine_config_helpers as helpers
+    from lumina_core.order_gatekeeper.contract_symbols import live_listing
+
+    monkeypatch.delenv("INSTRUMENT", raising=False)
+    monkeypatch.setattr(helpers, "_load_yaml_config", lambda: {})
+    got = helpers._default_trading_instrument()
+    assert got == live_listing("MES")
+    assert got != "MES SEP26"
 
 
 @pytest.mark.unit
@@ -59,4 +75,6 @@ def test_parse_swarm_symbols_defaults_to_primary_instrument(
         "_load_yaml_config",
         lambda: {"trading": {"instrument": "MES SEP26"}},
     )
-    assert eng_cfg._parse_swarm_symbols() == ["MES SEP26"]
+    from lumina_core.order_gatekeeper.contract_symbols import live_listing
+
+    assert eng_cfg._parse_swarm_symbols() == [live_listing("MES SEP26")]

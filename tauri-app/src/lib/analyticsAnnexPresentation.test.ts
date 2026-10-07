@@ -17,11 +17,11 @@ describe("analyticsAnnexPresentation", () => {
     expect([...ANALYTICS_CENTER_TABS]).toEqual(["ppo", "readiness"]);
   });
 
-  it("classifies right annex tabs including performance", () => {
-    expect(isAnalyticsRightTab("performance")).toBe(true);
-    expect(isAnalyticsRightTab("monitor")).toBe(true);
+  it("classifies right annex tabs excluding primary Brief/Performance", () => {
+    expect(isAnalyticsRightTab("performance")).toBe(false);
     expect(isAnalyticsRightTab("brief")).toBe(false);
-    expect(ANALYTICS_RIGHT_TABS).toContain("performance");
+    expect(isAnalyticsRightTab("monitor")).toBe(true);
+    expect(ANALYTICS_RIGHT_TABS).not.toContain("performance");
     expect(ANALYTICS_RIGHT_TABS).toContain("admin");
   });
 

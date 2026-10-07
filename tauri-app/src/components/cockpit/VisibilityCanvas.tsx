@@ -20,6 +20,8 @@ interface VisibilityCanvasProps {
   camera: CanvasProps["camera"];
   children: ReactNode;
   onCreated?: CanvasProps["onCreated"];
+  /** 0 keeps the CSS void; 1 is required when EffectComposer bloom is mounted. */
+  clearAlpha?: number;
 }
 
 export function VisibilityCanvas({
@@ -30,6 +32,7 @@ export function VisibilityCanvas({
   camera,
   children,
   onCreated,
+  clearAlpha = 0,
 }: VisibilityCanvasProps) {
   const { ref, isVisible } = usePanelVisibility();
   const visualQuality = useVisualSettingsStore(selectVisualQuality);
@@ -38,22 +41,30 @@ export function VisibilityCanvas({
   return (
     <div
       ref={ref}
-      className={cn("relative h-full w-full", minHeight, className)}
+      className={cn("relative h-full w-full min-h-0", minHeight, className)}
+      style={{ width: "100%", height: "100%" }}
     >
       <PanelErrorBoundary panelName={panelName}>
         <Canvas
           key={visualQuality}
           className={cn("h-full w-full touch-none", minHeight)}
-          style={{ visibility: isVisible ? "visible" : "hidden" }}
+          style={{ width: "100%", height: "100%", visibility: isVisible ? "visible" : "hidden" }}
           frameloop={isVisible ? "always" : "never"}
           dpr={renderConfig.dpr}
           camera={camera}
+          resize={{ debounce: 0 }}
           gl={{
             antialias: renderConfig.antialias,
             alpha: true,
             powerPreference: "high-performance",
           }}
-          onCreated={onCreated}
+          onCreated={(state) => {
+            state.gl.setClearColor(0x070b12, clearAlpha);
+            if (state.size.width > 0 && state.size.height > 0) {
+              state.gl.setSize(state.size.width, state.size.height, false);
+            }
+            onCreated?.(state);
+          }}
         >
           {children}
         </Canvas>

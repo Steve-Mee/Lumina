@@ -13,6 +13,9 @@ from lumina_core.maturity.awakening.law import (
 MAX_CYCLES = 8
 MAX_STALL_RETRIES = 3
 REGRESS_SHARPE_LE = -3.0
+# Living train on tape A. Lab select stays at 10_000. A discard keeps full LR.
+LIVE_PPO_TIMESTEPS = 25_000
+LIVE_FINETUNE_LR_SCALE = 1.0
 
 
 def skill_clock_open(snap: AwakeningSnapshot) -> bool:

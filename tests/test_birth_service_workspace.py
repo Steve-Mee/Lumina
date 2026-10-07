@@ -1042,7 +1042,7 @@ def test_reconcile_orphaned_marks_interrupted(tmp_path: Path) -> None:
     assert reconciled.get("phase") == "paused"
     assert reconciled.get("user_initiated_stop") is False
     assert reconciled.get("prior_stage") == "loading_data"
-    assert "gebruikersstop" in str(reconciled.get("message", "")).lower()
+    assert "without a user stop" in str(reconciled.get("message", "")).lower()
     legacy = json.loads((tmp_path / "state" / "first_boot_progress.json").read_text(encoding="utf-8"))
     assert legacy.get("stage") == "paused"
     assert legacy.get("user_initiated_stop") is False

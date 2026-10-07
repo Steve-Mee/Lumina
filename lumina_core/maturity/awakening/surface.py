@@ -1,4 +1,4 @@
-"""When the operator should see the Awakening cinematic instead of Phase Hub."""
+"""When the operator should see the Awakening mission instead of Phase Hub."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,7 +10,13 @@ CINEMATIC_STATUSES = frozenset({"running", "failed", "incomplete"})
 
 
 def awakening_cinematic_wanted(workspace_root: Path | str) -> tuple[bool, str]:
-    """True once Awakening has started and is not completed. Never-started stays hub."""
+    """True once Awakening has started and is not completed.
+
+    Never-started stays on Phase Hub (ADR-0036 ``hub_after_exit``). The operator
+    starts First Watch from that charter. First Watch is the living mission, or
+    the screen after a real incomplete or failed attempt — not a Retry for a
+    phase that has not been started.
+    """
     root = Path(workspace_root)
     data = load_continuum(root)
     completed = list(data.get("completed_phases") or [])

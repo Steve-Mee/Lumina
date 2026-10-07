@@ -1,4 +1,7 @@
-import { probeBackendHealth } from "@/lib/setupClient";
+import {
+  probeBackendReachability,
+  type BackendProbeVerdict,
+} from "@/lib/setupClient";
 
 type Listener = (state: BackendHealthSnapshot) => void;
 
@@ -7,14 +10,43 @@ export interface BackendHealthSnapshot {
   known: boolean;
 }
 
-let backendAlive = false;
-let backendHealthKnown = false;
+/** Two refused connections before the deck locks. One busy probe never counts. */
+export const HARD_DOWN_POLLS = 2;
+
+export interface BackendHealthMachine {
+  alive: boolean;
+  known: boolean;
+  hardDownStreak: number;
+}
+
+export function applyProbeVerdict(
+  state: BackendHealthMachine,
+  verdict: BackendProbeVerdict,
+): BackendHealthMachine {
+  if (verdict === "up") {
+    return { alive: true, known: true, hardDownStreak: 0 };
+  }
+  if (verdict === "timeout") {
+    return { ...state, hardDownStreak: 0 };
+  }
+  const hardDownStreak = state.hardDownStreak + 1;
+  if (hardDownStreak >= HARD_DOWN_POLLS) {
+    return { alive: false, known: true, hardDownStreak };
+  }
+  return { ...state, hardDownStreak };
+}
+
+let machine: BackendHealthMachine = {
+  alive: false,
+  known: false,
+  hardDownStreak: 0,
+};
 const listeners = new Set<Listener>();
 let subscriberCount = 0;
 let intervalId: ReturnType<typeof setInterval> | null = null;
 
 function snapshot(): BackendHealthSnapshot {
-  return { alive: backendAlive, known: backendHealthKnown };
+  return { alive: machine.alive, known: machine.known };
 }
 
 function emit(): void {
@@ -25,12 +57,8 @@ function emit(): void {
 }
 
 async function probe(): Promise<void> {
-  try {
-    backendAlive = await probeBackendHealth();
-  } catch {
-    backendAlive = false;
-  }
-  backendHealthKnown = true;
+  const verdict = await probeBackendReachability();
+  machine = applyProbeVerdict(machine, verdict);
   emit();
 }
 
@@ -54,11 +82,11 @@ export function refreshBackendHealth(): Promise<void> {
 }
 
 export function getBackendAlive(): boolean {
-  return backendAlive;
+  return machine.alive;
 }
 
 export function getBackendHealthKnown(): boolean {
-  return backendHealthKnown;
+  return machine.known;
 }
 
 export function getBackendHealthSnapshot(): BackendHealthSnapshot {

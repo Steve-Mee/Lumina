@@ -72,6 +72,24 @@ def _missing_foundation_receipts(host: Any) -> list[str]:
     return missing
 
 
+def _thin_awakening_holdout(host: Any) -> str | None:
+    """Refuse to freeze a plant whose holdout B cannot host n_B≥500."""
+    try:
+        from lumina_core.birth.awakening_holdout_capacity import thin_holdout_reason
+        from lumina_core.birth.tick_cache_persist import load_split_cache
+
+        split = load_split_cache(host.workspace_root, holdout_pct=0.2)
+        if split is None or not getattr(split, "holdout", None):
+            return None
+        hold_bars = 120
+        geo = getattr(host, "trade_geometry", None) or getattr(host, "_trade_geometry", None)
+        if geo is not None:
+            hold_bars = int(getattr(geo, "hold_bars", 120) or 120)
+        return thin_holdout_reason(len(split.holdout), hold_bars)
+    except Exception:
+        return None
+
+
 def complete_foundation_birth(
     host: Any,
     *,
@@ -112,6 +130,48 @@ def complete_foundation_birth(
             "total_trades": host.cumulative_trades,
             "training_mode": training_mode,
         }
+    from lumina_core.birth.data_source_honesty import real_historical_tape_reason
+
+    manifest = getattr(host, "_data_manifest", None)
+    manifest_source = None
+    manifest_pct = None
+    if isinstance(manifest, dict):
+        if "source" in manifest:
+            manifest_source = manifest.get("source")
+        if "real_data_pct" in manifest:
+            manifest_pct = manifest.get("real_data_pct")
+    if manifest_pct is None and hasattr(host, "_real_data_pct"):
+        manifest_pct = getattr(host, "_real_data_pct")
+    tape_fail = real_historical_tape_reason(
+        real_data_pct=manifest_pct,
+        source=None if manifest_source is None else str(manifest_source),
+    )
+    if tape_fail:
+        logger.error("birth.foundation.synthetic_tape_refused reason=%s", tape_fail)
+        return {
+            "status": "foundation_incomplete",
+            "failure_reason": tape_fail,
+            "total_trades": host.cumulative_trades,
+            "training_mode": training_mode,
+        }
+    cap_fail = _thin_awakening_holdout(host)
+    if cap_fail:
+        from lumina_core.birth.holdout_capacity_refusal import persist_holdout_capacity_refusal
+
+        persist_holdout_capacity_refusal(
+            host.workspace_root,
+            reason=cap_fail,
+            cumulative_trades=int(host.cumulative_trades or 0),
+            target_trades=int(trade_budget_cap),
+            ppo_steps=int(getattr(host, "ppo_steps", 0) or 0),
+            birth_start_time=float(getattr(host, "birth_start_time", 0) or 0),
+        )
+        return {
+            "status": "foundation_incomplete",
+            "failure_reason": cap_fail,
+            "total_trades": host.cumulative_trades,
+            "training_mode": training_mode,
+        }
     receipts_payload = [
         r.to_dict() for r in list(getattr(host, "_stage_pass_receipts", []) or [])
     ]
@@ -141,6 +201,9 @@ def complete_foundation_birth(
     try:
         pi_star_path = export_birth_exit_pi_star(host)
         frozen_sha = file_sha256(pi_star_path)
+        from lumina_core.maturity.awakening.freeze_pin import pin_birth_pi_star
+
+        pin_birth_pi_star(Path(host.workspace_root))
     except Exception as exc:
         logger.error("birth.foundation.pi_star_export_failed: %s", exc)
         return {

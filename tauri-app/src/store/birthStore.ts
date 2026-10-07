@@ -52,6 +52,10 @@ export {
 };
 export type { BirthSurface, BirthUiPhase };
 
+function genesisPinPatch() {
+  return { uiPhase: "idle" as const, birthSurface: "genesis" as const, genesisPinned: true, runPinned: false, pollError: null };
+}
+
 /** Cold-start probe for previous birth session (checkpoint / interrupted). */
 export type BirthSessionProbeState = "pending" | "ready" | "error";
 
@@ -644,26 +648,11 @@ export const useBirthStore = create<BirthState>((set, get) => ({
   beginFinale: () => set({ uiPhase: "finale" }),
 
   returnToGenesis: () => {
-    // Pin first so any applyStatus/poll re-entry honors genesis and stays off error overlays.
-    set({
-      uiPhase: "idle",
-      birthSurface: "genesis",
-      genesisPinned: true,
-      runPinned: false,
-      pollError: null,
-    });
+    const pin = genesisPinPatch();
+    set(pin);
     const status = get().status;
-    if (status) {
-      get().applyStatus(status);
-    }
-    // Re-assert pin after applyStatus (failed/error payloads previously forced uiPhase back to error).
-    set({
-      uiPhase: "idle",
-      birthSurface: "genesis",
-      genesisPinned: true,
-      runPinned: false,
-      pollError: null,
-    });
+    if (status) get().applyStatus(status);
+    set(pin);
   },
 
   reset: () => {

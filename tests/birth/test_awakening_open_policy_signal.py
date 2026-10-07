@@ -349,9 +349,14 @@ def test_evaluate_only_policy_stores_last_open_signal() -> None:
             return [1.0, 0.5, 0.002, 0.003], None
 
     wrapped = EvaluateOnlyPolicy(_Inner())
-    wrapped.predict(np.zeros(4, dtype=np.float32), deterministic=True)
+    obs = np.zeros(4, dtype=np.float32)
+    wrapped.predict(obs, deterministic=True)
+    assert wrapped.last_open_signal is None
+    wrapped.capture_open_signal()
     assert wrapped.last_open_signal is not None
     assert "open_policy_value" in wrapped.last_open_signal
+    again = extract_policy_signals(wrapped._inner, obs, wrapped._pending_action)
+    assert again == wrapped.last_open_signal
 
 
 def test_candidate_names_only_three() -> None:

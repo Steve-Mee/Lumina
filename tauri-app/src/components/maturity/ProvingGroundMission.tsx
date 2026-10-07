@@ -1,14 +1,22 @@
 import { ProvingGroundLifePulse } from "@/components/maturity/ProvingGroundLifePulse";
-import { CharterTile } from "@/components/birth/BirthGenesisDeckPrimitives";
-import { BirthLaunchButton } from "@/components/birth/BirthLaunchButton";
-import { BirthStagePassChecklistCard } from "@/components/birth/BirthStagePassChecklistCard";
 import { provingGroundTilesFromLearned } from "@/components/maturity/phaseHubProvingGround";
+import { LivingPhaseMission } from "@/components/shared/LivingPhaseMission";
+import type { PhaseChip } from "@/components/shared/PhaseCinematicFrames";
 import type { MaturityHubPayload } from "@/lib/maturationClient";
 import {
   buildProvingGroundChecklist,
   type ProvingGroundProgressView,
 } from "@/lib/provingGround/provingGroundChecklist";
 import { provingGroundMissionMessage } from "@/lib/provingGround/provingGroundFailCopy";
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
 
 export function ProvingGroundMission({
   hub,
@@ -30,10 +38,12 @@ export function ProvingGroundMission({
   const running = Boolean(hub?.runner_active || progress?.runner_active);
   const learned = {
     ...(hub?.focus_learned ?? {}),
+    ...(progress?.progress ?? {}),
     ...(progress?.learned ?? {}),
   };
   const checklist = buildProvingGroundChecklist(progress);
   const tiles = provingGroundTilesFromLearned(learned);
+  const tile = (label: string) => tiles.find((item) => item.label === label);
   const note = typeof progress?.learned?.note === "string" ? progress.learned.note : null;
   const message = provingGroundMissionMessage({
     running,
@@ -43,10 +53,85 @@ export function ProvingGroundMission({
     note,
   });
   const retry = !running && !progress?.pass_now;
+  const nG = asNumber(learned.n_g) ?? 0;
+  const gate = asNumber(learned.promotion_criteria_passed) ?? 0;
+  const shadowOk = learned.shadow_this_run === true;
+
+  const chips: PhaseChip[] = [
+    {
+      label: "n_G",
+      state: nG >= 150 ? "ok" : running ? "partial" : "idle",
+      tip: "Policy-only proving tape. Earlier tapes do not count.",
+    },
+    {
+      label: "CERT",
+      state: running ? "partial" : "idle",
+      tip: "OOS WR ≥ 48% · Sharpe ≥ 0.35 · DD ≤ 8%. Birth certificate JSON is not pass.",
+    },
+    {
+      label: "SHADOW",
+      state: shadowOk ? "ok" : running ? "partial" : "idle",
+      tip: "This clock: live SIM fill-rate and slippage vs backtest.",
+    },
+    {
+      label: "GATE",
+      state: gate >= 4 ? "ok" : running ? "partial" : "idle",
+      tip: "PromotionGate.evaluate on this child. Missing evidence = reject.",
+    },
+  ];
 
   return (
-    <div className="birth-mission-shell relative flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-3 md:p-4">
+    <LivingPhaseMission
+      running={running}
+      busy={busy}
+      panelTitle="Driving test"
+      panelSubtitle={running ? "Cert exam · this run" : "Last machine exam · click to start"}
+      titleTip="Last machine exam before capital. Not walking. Not REAL money."
+      progressLabel={`${checklist.metCount}/${checklist.totalCount}`}
+      statusLine={message}
+      chips={chips}
+      tiles={tiles}
+      kpis={[
+        {
+          label: "n_G",
+          value: tile("n_G")?.value ?? "0 / 150",
+          detail: "/ 150 policy closes",
+          tone: nG >= 150 ? "success" : "accent",
+        },
+        {
+          label: "Cert WR",
+          value: tile("Cert WR")?.value ?? "—",
+          detail: tile("Cert WR")?.footnote,
+          tone: "accent",
+        },
+        {
+          label: "Sharpe / DD",
+          value: tile("Sharpe / DD")?.value ?? "—",
+          detail: tile("Sharpe / DD")?.footnote,
+        },
+        {
+          label: "PromotionGate",
+          value: tile("PromotionGate")?.value ?? "0 / 4",
+          detail: tile("PromotionGate")?.footnote,
+          tone: gate >= 4 ? "success" : "accent",
+        },
+      ]}
+      fields={[
+        {
+          label: "Shadow",
+          value: tile("Shadow")?.value ?? "—",
+          hint: tile("Shadow")?.footnote,
+          tone: shadowOk ? "ok" : "warn",
+        },
+        {
+          label: "Doel",
+          value: tile("Doel")?.value ?? "Rijexamen",
+          hint: tile("Doel")?.footnote,
+        },
+      ]}
+      checklist={checklist}
+      checklistGoal="AND gates"
+      lifePulse={
         <ProvingGroundLifePulse
           running={running}
           activity={learned.activity ?? progress?.progress?.activity}
@@ -54,60 +139,19 @@ export function ProvingGroundMission({
           gate={learned.promotion_criteria_passed ?? progress?.progress?.promotion_criteria_passed}
           updatedAt={progress?.progress?.updated_at ?? learned.updated_at}
         />
-        <p className="phase-hub-verdict shrink-0 px-1">{message}</p>
-        <div className="genesis-charter-tile-grid phase-hub-kpi-grid shrink-0">
-          {tiles.map((tile) => (
-            <CharterTile
-              key={tile.label}
-              label={tile.label}
-              value={tile.value}
-              tip={tile.tip}
-              footnote={tile.footnote}
-            />
-          ))}
-        </div>
-        <div className="min-h-0 flex-1 overflow-auto">
-          <BirthStagePassChecklistCard
-            checklist={checklist}
-            goalLabel="AND gates"
-            showMode={false}
-          />
-        </div>
-      </div>
-      <div className="risk-envelope-cta-bar genesis-launch-cta phase-hub-cta shrink-0">
-        <div className="phase-hub-cta__row">
-          {running ? (
-            <BirthLaunchButton
-              idleLabel="STOP CLOCK"
-              className="phase-hub-cta__primary"
-              disabled={busy}
-              onActivate={onStop}
-            />
-          ) : (
-            <BirthLaunchButton
-              idleLabel={retry ? "RETRY PROVING GROUND" : "START PROVING GROUND"}
-              className="phase-hub-cta__primary"
-              disabled={busy}
-              onActivate={onStart}
-            />
-          )}
-          <BirthLaunchButton
-            idleLabel="PHASE HUB"
-            className="phase-hub-cta__deck"
-            disabled={busy}
-            onActivate={onReturnHub}
-          />
-        </div>
-        {!running ? (
-          <button
-            type="button"
-            className="mt-2 text-xs text-amber-200/80 underline-offset-2 hover:underline"
-            onClick={onWipe}
-          >
-            Wipe Proving Ground (keep Apprenticeship)
-          </button>
-        ) : null}
-      </div>
-    </div>
+      }
+      intelTitle="AND gates"
+      intelSubtitle="Cert 48% · shadow · PromotionGate 4/4"
+      intelChips={chips}
+      startLabel={retry ? "RETRY PROVING GROUND" : "START PROVING GROUND"}
+      onStart={onStart}
+      onStop={onStop}
+      onSecondary={onReturnHub}
+      wipeLabel="Wipe Proving Ground (keep Apprenticeship)"
+      onWipe={onWipe}
+      ctaFootnote={
+        running ? "Living clock · driving test" : "Start · floors stay fail-closed · no REAL"
+      }
+    />
   );
 }

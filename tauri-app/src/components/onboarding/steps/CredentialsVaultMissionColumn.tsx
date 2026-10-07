@@ -1,4 +1,6 @@
 /** Col 2 — Birth-style mission control: chips, focus rows, diagnostic actions, seal. */
+import { useEffect } from "react";
+
 import { CredentialsVaultStatusStrip } from "@/components/onboarding/steps/CredentialsVaultChrome";
 import type { ChipState } from "@/components/onboarding/steps/CredentialsVaultPrimitives";
 import type {
@@ -7,6 +9,7 @@ import type {
   VaultFocusRow,
 } from "@/components/onboarding/steps/credentialsVaultState";
 import { cn } from "@/lib/utils";
+import { useNtAccountGateStore } from "@/store/ntAccountGateStore";
 
 export function CredentialsVaultMissionColumn({
   envPath,
@@ -86,28 +89,54 @@ export function CredentialsVaultMissionColumn({
   onContinue: () => void;
   className?: string;
 }) {
+  const ntLoaded = useNtAccountGateStore((s) => s.loaded);
+  const ntFailed = useNtAccountGateStore((s) => s.failed);
+  const ntPair = useNtAccountGateStore((s) => s.pairComplete);
+  const ntDemo = useNtAccountGateStore((s) => s.snapshot?.demo_account ?? "");
+  const refreshNt = useNtAccountGateStore((s) => s.refresh);
+  useEffect(() => {
+    void refreshNt();
+  }, [refreshNt]);
+  const accountsBlockSeal = !setupReviewActive && (!ntLoaded || !ntPair);
+
   const securityRows = rows.filter((r) => r.section === "security");
   const fabricRows = rows.filter((r) => r.section === "fabric");
   const twinRows = rows.filter((r) => r.section === "twin");
   const alertRows = rows.filter((r) => r.section === "alerts");
   const dataRows = rows.filter((r) => r.section === "data");
 
+  const paintRow = (row: VaultFocusRow): VaultFocusRow => {
+    if (row.id !== "nt_accounts") return row;
+    const state = !ntLoaded ? "idle" : ntPair ? "ok" : "partial";
+    const summary = !ntLoaded
+      ? "Laden…"
+      : ntFailed
+        ? "Backend onbereikbaar"
+        : ntPair
+          ? `${ntDemo} · real opgeslagen`
+          : ntDemo
+            ? `${ntDemo} · real ontbreekt`
+            : "Demo en real verplicht";
+    return { ...row, state, summary };
+  };
+
   const renderRow = (row: VaultFocusRow) => {
-    const active = focus === row.id;
+    const shown = paintRow(row);
+    const active = focus === shown.id;
     return (
       <button
         key={row.id}
         type="button"
         className="credentials-vault-focus-row"
-        data-state={row.state === "idle" ? undefined : row.state}
+        data-state={shown.state === "idle" ? undefined : shown.state}
         data-active={active ? "true" : "false"}
-        title={row.tip}
-        onClick={() => onFocus(row.id)}
+        title={shown.tip}
+        onClick={() => onFocus(shown.id)}
       >
         <span className="credentials-vault-focus-row__dot" aria-hidden />
         <span className="credentials-vault-focus-row__meta">
-          <span className="credentials-vault-focus-row__label">{row.label}</span>
-          <span className="credentials-vault-focus-row__summary">{row.summary}</span>
+          <span className="credentials-vault-focus-row__label">{shown.label}</span>
+          <span className="credentials-vault-focus-row__summary">{shown.summary}</span>
         </span>
       </button>
     );
@@ -318,14 +347,16 @@ export function CredentialsVaultMissionColumn({
         <button
           type="button"
           className="onboarding-cta"
-          disabled={!canContinue || saving || ntInstalled === false}
+          disabled={!canContinue || saving || ntInstalled === false || accountsBlockSeal}
           onClick={onContinue}
           title={
             !fabricReadyForSeal
               ? "Need live host + dual-plane proof (Test connection) before Genesis"
               : twinState !== "ok"
                 ? "Finish Twin base training before seal"
-                : "Seal vault and continue"
+                : accountsBlockSeal
+                  ? "Sla demo- en real-rekening op in NT-rekeningen"
+                  : "Seal vault and continue"
           }
         >
           {saving ? "Sealing…" : "Save & seal"}
@@ -337,6 +368,10 @@ export function CredentialsVaultMissionColumn({
         ) : twinState !== "ok" ? (
           <p className="credentials-vault-seal-hint">
             Critical: Twin base training required before Birth can start
+          </p>
+        ) : accountsBlockSeal ? (
+          <p className="credentials-vault-seal-hint">
+            Demo- en real-rekening opslaan in NT-rekeningen voordat je verzegelt
           </p>
         ) : (
           <p

@@ -10,9 +10,22 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-def _om():
-    from lumina_os.backend import core_websocket as cw
-    return cw
+
+def _operator_mode_override() -> str | None:
+    """Read the flag on the already-loaded router module.
+
+    Importing the package a second time would hide the operator's choice.
+    """
+    import sys
+
+    for name in ("backend.core_websocket", "lumina_os.backend.core_websocket"):
+        mod = sys.modules.get(name)
+        if mod is None:
+            continue
+        value = getattr(mod, "_operator_mode_override", None)
+        if value:
+            return str(value)
+    return None
 
 try:
     from api.monitoring import _safe_read_json, resolve_state_directory
@@ -169,14 +182,18 @@ class CoreLiveTelemetryReader:
             payload = adaptive.get("payload") if isinstance(adaptive.get("payload"), dict) else {}
             mode = str(payload.get("mode") or "unknown")
 
-        if _om()._operator_mode_override:
-            mode = _om()._operator_mode_override
+        override = _operator_mode_override()
+        if override:
+            mode = override
 
         equity = _coerce_float(runtime.get("account_equity"))
         if equity is None:
             risk = (sim_state.get("state_snapshot") or {}).get("risk") or {}
             if isinstance(risk, dict):
                 equity = _coerce_float(risk.get("account_equity"))
+        live_equity = _live_sim_net_liquidation()
+        if live_equity is not None:
+            equity = live_equity
 
         consecutive_losses = _coerce_int(runtime.get("consecutive_losses"), default=0)
         has_data = bool(runtime) or bool(sim_state) or bool(adaptive)
@@ -221,6 +238,9 @@ class CoreLiveTelemetryReader:
         )
 
         ninjatrader_block = _build_ninjatrader_telemetry_block()
+        bar_book_block = _bar_book_block(
+            self._files.read_json(self._state_dir / "lumina_bar_integrity.json")
+        )
 
         return {
             "mode": mode.lower() if mode else "unknown",
@@ -235,7 +255,40 @@ class CoreLiveTelemetryReader:
             "performance": performance_block,
             "real_ops": real_ops_block,
             "ninjatrader": ninjatrader_block,
+            "bar_book": bar_book_block,
         }
+
+def _live_sim_net_liquidation() -> float | None:
+    """NinjaTrader net liquidation. A stale metrics file is not this number."""
+    try:
+        from lumina_core.maturity.playground.portfolio_seal import cached_sim_account
+
+        account = cached_sim_account()
+    except Exception:
+        return None
+    if account is None or account.equity is None or account.equity <= 0.0:
+        return None
+    return float(account.equity)
+
+
+def _bar_book_block(raw: dict[str, Any]) -> dict[str, Any] | None:
+    """Operator-visible NT 1m book completeness. Missing file is unknown, not complete."""
+    if not raw:
+        return None
+    if "complete" not in raw and "lock_new_entries" not in raw:
+        return None
+    try:
+        missing = int(raw.get("missing_count") or 0)
+    except (TypeError, ValueError):
+        missing = 0
+    return {
+        "complete": bool(raw.get("complete")),
+        "lock_new_entries": bool(raw.get("lock_new_entries")),
+        "reason": str(raw.get("reason") or ""),
+        "missing_count": missing,
+        "message": str(raw.get("message") or ""),
+    }
+
 
 def _build_ninjatrader_telemetry_block() -> dict[str, Any]:
     try:

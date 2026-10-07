@@ -94,8 +94,8 @@ def compute_genesis_charter(workspace_root: Path | str) -> GenesisCharter:
         ),
         "max_real_days": (
             f"Foundation history ceiling {max_real_days}d "
-            f"(start {foundation_history_start_days()}d; expand 180/365 on stall; "
-            "not sized from trades)"
+            f"(start {foundation_history_start_days()}d; the sport that can host "
+            "Awakening n_B≥500; not sized from trades)"
         ),
         "prefer_real_data_only": "birth_v2.prefer_real_data_only",
     }

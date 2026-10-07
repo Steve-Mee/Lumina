@@ -6,6 +6,7 @@ import { BirthLaunchButton } from "@/components/birth/BirthLaunchButton";
 import { BirthStagePassChecklistCard } from "@/components/birth/BirthStagePassChecklistCard";
 import { PhaseHubWipeConfirm } from "@/components/maturity/PhaseHubWipeConfirm";
 import { playgroundTilesFromLearned } from "@/components/maturity/phaseHubPlayground";
+import { PlaygroundSenseBrief } from "@/components/maturity/PlaygroundSenseBrief";
 import { EvolutionLadderStrip } from "@/components/shared/EvolutionLadderStrip";
 import { LuminaPhaseHeader } from "@/components/shared/LuminaPhaseHeader";
 import {
@@ -21,6 +22,7 @@ import {
   buildPlaygroundChecklist,
   type PlaygroundProgressView,
 } from "@/lib/playground/playgroundChecklist";
+import { playgroundClockButtonLabel } from "@/lib/playground/playgroundFailCopy";
 import { setPreferPlaygroundHub } from "@/lib/playground/playgroundSurfacePref";
 import { useOnboardingStore } from "@/store/onboardingStore";
 import { cn } from "@/lib/utils";
@@ -31,8 +33,8 @@ export function PlaygroundDeckOverlay() {
   const [busy, setBusy] = useState(false);
   const [wiping, setWiping] = useState(false);
   const [wipeOpen, setWipeOpen] = useState(false);
-  const [wipeStep, setWipeStep] = useState<1 | 2>(1);
   const [wipeError, setWipeError] = useState<string | null>(null);
+  const [pollNote, setPollNote] = useState<string | null>(null);
   const refreshOnboarding = useOnboardingStore((s) => s.refresh);
   const returnToPhaseHub = useOnboardingStore((s) => s.returnToPhaseHub);
 
@@ -44,8 +46,10 @@ export function PlaygroundDeckOverlay() {
       ]);
       setHub(hubPayload);
       setProgress(prog);
+      setPollNote(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Playground progress unavailable");
+      // One status line. A toast on every 2s poll covered the deck.
+      setPollNote(err instanceof Error ? err.message : "Playground progress unavailable");
     }
   }, []);
 
@@ -72,11 +76,13 @@ export function PlaygroundDeckOverlay() {
   const learned = { ...(hub?.focus_learned ?? {}), ...(progress?.learned ?? {}) };
   const tiles = playgroundTilesFromLearned(learned);
   const checklist = buildPlaygroundChecklist(progress);
-  const status = running
-    ? hub?.progress_message || "Crawling in NT SIM"
-    : passNow
-      ? "AND passed — return to Phase Hub"
-      : "Incomplete — floors stay fail-closed";
+  const status = pollNote
+    ? pollNote
+    : running
+      ? hub?.progress_message || "Leerschool · wacht op de klokzin"
+      : passNow
+        ? "AND passed — return to Phase Hub"
+        : "Incomplete — floors stay fail-closed";
 
   const onStart = async () => {
     setBusy(true);
@@ -114,29 +120,35 @@ export function PlaygroundDeckOverlay() {
 
   return (
     <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex max-h-[46vh] flex-col overflow-hidden">
-      <div className="pointer-events-auto mx-auto w-full max-w-6xl px-3 pt-2">
-        <div className="lumina-glass lumina-glass--overlay flex max-h-[44vh] flex-col overflow-hidden rounded-md">
+      <div className="pointer-events-auto mx-auto flex min-h-0 w-full max-w-6xl flex-col px-3 pt-2">
+        <div className="lumina-glass lumina-glass--overlay flex min-h-0 max-h-[44vh] flex-col overflow-hidden rounded-md">
           <LuminaPhaseHeader
             eyebrow="Playground"
             title="Eerste stappen"
             status={status}
-            tone={passNow ? "emerald" : running ? "cyan" : "amber"}
+            tone={pollNote ? "amber" : passNow ? "emerald" : running ? "cyan" : "amber"}
             variant="compact"
           />
-          <EvolutionLadderStrip activePhase="playground" className="evolution-ladder-strip--dense !py-1" />
-          <div className="genesis-charter-tile-grid phase-hub-kpi-grid shrink-0 px-2 py-1">
-            {tiles.map((tile) => (
-              <CharterTile key={tile.label} label={tile.label} value={tile.value} tip={tile.tip} footnote={tile.footnote} />
-            ))}
-          </div>
+          <EvolutionLadderStrip activePhase="playground" className="evolution-ladder-strip--dense shrink-0 !py-1" />
           <div className="min-h-0 flex-1 overflow-auto px-2">
+            <PlaygroundSenseBrief sense={progress?.sense} running={running} />
+            <div className="genesis-charter-tile-grid phase-hub-kpi-grid px-0 py-1">
+              {tiles.map((tile) => (
+                <CharterTile key={tile.label} label={tile.label} value={tile.value} tip={tile.tip} footnote={tile.footnote} />
+              ))}
+            </div>
             <BirthStagePassChecklistCard checklist={checklist} goalLabel="AND gates" showMode={false} />
           </div>
-          <div className="phase-hub-cta__row px-2 pb-2">
+          <div className="phase-hub-cta__row shrink-0 px-2 pb-2">
             <BirthLaunchButton
-              activating={running}
+              activating={busy && !running}
               disabled={busy || running}
-              idleLabel={(passNow ? "Playground complete" : running ? "Crawling" : "Start Playground").toUpperCase()}
+              activeLabel="OPENING PLAYGROUND CLOCK…"
+              idleLabel={playgroundClockButtonLabel({
+                running,
+                passNow,
+                progressMessage: hub?.progress_message,
+              })}
               onClick={() => void onStart()}
               className="phase-hub-cta__primary"
             />
@@ -152,11 +164,10 @@ export function PlaygroundDeckOverlay() {
           </div>
           <button
             type="button"
-            className={cn("mb-2 font-mono text-[10px] text-rose-200/70", busy && "opacity-50")}
+            className={cn("mb-2 shrink-0 font-mono text-[10px] text-rose-200/70", busy && "opacity-50")}
             disabled={busy || running}
             onClick={() => {
               setWipeError(null);
-              setWipeStep(1);
               setWipeOpen(true);
             }}
           >
@@ -166,20 +177,17 @@ export function PlaygroundDeckOverlay() {
       </div>
       <PhaseHubWipeConfirm
         kind={wipeOpen ? "playground" : null}
-        step={wipeStep}
         wiping={wiping}
         error={wipeError}
         onCancel={() => {
           setWipeOpen(false);
-          setWipeStep(1);
           setWipeError(null);
         }}
-        onContinue={() => setWipeStep(2)}
-        onConfirm={() => {
+        onConfirm={(phrase) => {
           void (async () => {
             setWiping(true);
             try {
-              await postWipeMaturityPhase("playground");
+              await postWipeMaturityPhase("playground", phrase);
               setWipeOpen(false);
               setPreferPlaygroundHub(true);
               await refreshOnboarding();

@@ -52,6 +52,84 @@ def _runtime() -> SimpleNamespace:
 
 
 @pytest.mark.unit
+def test_eval_extracts_open_signal_only_when_a_position_opens(tmp_path: Path) -> None:
+    """Second forward is the open bar. Flat bars keep the same action and closes."""
+    from lumina_core.birth.awakening_grind import EvaluateOnlyPolicy
+
+    import copy
+
+    ticks = enrich_ticks_for_sim(_rising_historical_ticks(160))
+    calls = {"n": 0}
+    real = __import__(
+        "lumina_core.birth.policy_signal_extract", fromlist=["extract_policy_signals"]
+    ).extract_policy_signals
+
+    def _count(model, obs, action=None):
+        calls["n"] += 1
+        return real(model, obs, action)
+
+    class _Eager(EvaluateOnlyPolicy):
+        def predict(self, *args, **kwargs):
+            raw = super().predict(*args, **kwargs)
+            self.capture_open_signal()
+            return raw
+
+    kwargs = {
+        "runtime": _runtime(),
+        "data": ticks,
+        "target_trades": 30,
+        "workspace_root": tmp_path,
+        "rollout_step_budget": 80,
+        "stall_probe_steps": 80,
+        "exploration_steps": 0,
+        "participation_envelope_enabled": False,
+    }
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            "lumina_core.birth.awakening_grind.extract_policy_signals",
+            _count,
+        )
+        lazy_kwargs = {**kwargs, "data": copy.deepcopy(ticks)}
+        eager_kwargs = {**kwargs, "data": copy.deepcopy(ticks)}
+        lazy = run_policy_rollout(policy=EvaluateOnlyPolicy(_RecordingPolicy()), **lazy_kwargs)
+        lazy_calls = calls["n"]
+        calls["n"] = 0
+        eager = run_policy_rollout(policy=_Eager(_RecordingPolicy()), **eager_kwargs)
+        eager_calls = calls["n"]
+    assert lazy.rollout_steps == eager.rollout_steps
+    assert lazy.rollout_steps > 0
+    assert lazy.trades == eager.trades
+    assert eager_calls >= lazy.rollout_steps
+    assert lazy_calls * 4 < lazy.rollout_steps
+
+
+@pytest.mark.unit
+def test_rollout_stops_when_operator_requests(tmp_path: Path) -> None:
+    ticks = enrich_ticks_for_sim(_rising_historical_ticks(160))
+    calls = {"n": 0}
+
+    def _stop() -> bool:
+        calls["n"] += 1
+        return calls["n"] > 4
+
+    result = run_policy_rollout(
+        runtime=_runtime(),
+        data=ticks,
+        policy=_HoldOnlyPolicy(),
+        target_trades=100,
+        workspace_root=tmp_path,
+        rollout_step_budget=80,
+        stall_probe_steps=80,
+        exploration_steps=0,
+        participation_envelope_enabled=False,
+        should_stop=_stop,
+    )
+    assert result.stopped is True
+    assert result.stall_reason == "stop_requested"
+    assert result.rollout_steps < 80
+
+
+@pytest.mark.unit
 def test_hold_only_policy_stalls_with_step_budget(tmp_path: Path) -> None:
     ticks = enrich_ticks_for_sim(_rising_historical_ticks(600))
     result = run_policy_rollout(
