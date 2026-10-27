@@ -1,0 +1,9 @@
+# Safety CLI only — do not install this file into the same environment as
+# requirements-core.txt. safety 3.x still requires filelock<4.0, while core
+# pins filelock==4.2.1 (GHSA-v4x8-3wr5-3wq8 / GHSA-9vhv-jxww-xfm5 /
+# GHSA-567q-5qvw-pf92). CI uses a sidecar venv for this profile.
+#
+#   python -m venv .venv-audit
+#   .venv-audit/bin/pip install -r requirements-audit.txt
+
+safety==3.7.0
