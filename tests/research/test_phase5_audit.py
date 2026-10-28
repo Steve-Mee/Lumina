@@ -282,7 +282,7 @@ def test_verify_cli_pins_holdout_seeds_not_audit_or_independent() -> None:
 
 
 @pytest.mark.unit
-def test_dd_only_decay_flags_in_normal_and_is_skipped_by_material_in_high_vol() -> None:
+def test_dd_only_decay_flags_in_normal_and_high_vol() -> None:
     cfg = load_default_config()
     mean, _stdev = oos_stats(INDEPENDENT_OOS)
     series = _dd_only_series(oos_mean=mean)
@@ -291,11 +291,11 @@ def test_dd_only_decay_flags_in_normal_and_is_skipped_by_material_in_high_vol() 
     high = assess_material(series, INDEPENDENT_OOS, cfg, vol_regime="high_vol")
     assert normal.ready is True
     assert normal.severity >= 1
-    assert high.severity == 0
-    assert high.stage == "active"
+    assert high.severity >= 1
+    assert high.stage != "active"
     combined_high = combined_assessment(series, INDEPENDENT_OOS, cfg, vix=HIGH_VOL_VIX + 5.0)
     assert combined_high.vol_regime == "high_vol"
-    assert combined_high.assessment.stage == "active"
+    assert combined_high.assessment.stage != "active"
 
 
 @pytest.mark.unit
@@ -320,8 +320,7 @@ def test_ic_collapse_in_high_vol_still_detects(tmp_path: Path) -> None:
 def test_high_vol_dd_only_decay_detection_and_ttd(tmp_path: Path) -> None:
     """Frozen floor: meaningful DD-only decay (>=1.5x) must be detected in high vol.
 
-    Material DD is skipped in high_vol. This test measures the live monitor, not the
-    helper in isolation. A miss is a floor failure; floors are not loosened.
+    Detector-only: vol-scaled / quiet crash-recover DD, never a skip. Floors stay.
     """
     mean, _stdev = oos_stats(INDEPENDENT_OOS)
     n_paths = 12
@@ -346,11 +345,7 @@ def test_high_vol_dd_only_decay_detection_and_ttd(tmp_path: Path) -> None:
     detection_rate = detected / float(n_paths)
     max_ttd = max(ttds) if ttds else None
     # Keep the numbers in the assertion message for the audit report.
-    missed = (
-        detection_rate < DETECTION_RATE_MIN
-        or max_ttd is None
-        or max_ttd > TTD_MAX_TRADING_DAYS
-    )
+    missed = detection_rate < DETECTION_RATE_MIN or max_ttd is None or max_ttd > TTD_MAX_TRADING_DAYS
     assert not missed, (
         f"FROZEN FLOOR MISS high_vol DD-only: detection={detection_rate:.3f} "
         f"(floor {DETECTION_RATE_MIN}) max_ttd={max_ttd} (floor {TTD_MAX_TRADING_DAYS}) "
