@@ -13,6 +13,9 @@ pytest-randomly==3.16.0     # Deterministic but shuffled test order per seed
 mypy==1.15.0
 pyright==1.1.400
 ruff==0.11.6
+# mypy-research.ini uses plugins = pydantic.mypy. Pin matches requirements-core.
+# Previously pulled in by safety; Safety now lives in requirements-audit.txt.
+pydantic==2.12.5
 
 # -- Execution Fabric proto codegen -----------------------------------------
 grpcio-tools==1.73.1
