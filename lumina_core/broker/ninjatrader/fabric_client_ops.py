@@ -11,6 +11,13 @@ import grpc
 from lumina_core.broker.broker_bridge.schemas import Order
 from lumina_core.broker.ninjatrader import fabric_mapper as mapper
 from lumina_core.broker.ninjatrader.generated import fabric_pb2_grpc
+from lumina_core.order_gatekeeper.ungated_place_block import (
+    UNGATED_PLACE_BLOCK_REASON,
+    assert_validation_gate_or_block,
+    blocked_fabric_place_result,
+    gate_order,
+    live_qty_from_positions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +204,23 @@ class FabricClientOpsMixin:
                     "Startup/Test connection must not submit NT orders."
                 ),
             }
+        book_qty: int | None = None
+        getter = getattr(self, "get_account_state", None)
+        if callable(getter):
+            try:
+                _account, positions, code = getter()
+                if str(code) == "ok":
+                    book_qty = live_qty_from_positions(positions, getattr(order, "symbol", None))
+            except Exception:
+                logger.debug("fabric.s0_book_qty_failed", exc_info=True)
+                book_qty = 0
+        allowed_s0, block_reason = gate_order(
+            "fabric_client_ops.place_order_sync",
+            order,
+            live_position_qty=book_qty,
+        )
+        if not allowed_s0:
+            return blocked_fabric_place_result(block_reason)
         if not self.is_connected:
             return {"type": "error", "code": "DISCONNECTED", "message": "Fabric not connected"}
         # Fail-closed: host SAFE / FULL_SAFE rejects new places (cancel/flatten separate APIs).
@@ -247,5 +271,43 @@ class FabricClientOpsMixin:
             mapper.place_command_to_brain_message(cmd),
             wait_key=corr,
             alt_keys=(client_order_id,),
+            timeout_seconds=timeout_seconds,
+        )
+
+    def modify_order_sync(
+        self,
+        *,
+        client_order_id: str = "",
+        nt_order_id: str = "",
+        quantity: int = 0,
+        price: float = 0.0,
+        stop_price: float = 0.0,
+        correlation_id: str | None = None,
+        timeout_seconds: float | None = None,
+    ) -> dict[str, Any]:
+        """S0: quantity/price modify is place-adjacent and has no reduce proof here."""
+        allowed_s0, block_reason = assert_validation_gate_or_block(
+            "fabric_client.modify_order_sync",
+            order_side=None,
+            live_position_qty=0,
+            order_qty=int(quantity or 0) or None,
+        )
+        if not allowed_s0:
+            return blocked_fabric_place_result(block_reason or UNGATED_PLACE_BLOCK_REASON)
+        if not self.is_connected:
+            return {"type": "error", "code": "DISCONNECTED", "message": "Fabric not connected"}
+        corr = correlation_id or str(uuid.uuid4())
+        msg = mapper.modify_to_brain_message(
+            client_order_id=client_order_id,
+            nt_order_id=nt_order_id,
+            quantity=quantity,
+            price=price,
+            stop_price=stop_price,
+            correlation_id=corr,
+        )
+        return self._send_and_wait(
+            msg,
+            wait_key=corr,
+            alt_keys=(client_order_id,) if client_order_id else (),
             timeout_seconds=timeout_seconds,
         )

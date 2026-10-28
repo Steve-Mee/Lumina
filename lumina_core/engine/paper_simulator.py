@@ -195,6 +195,7 @@ class PaperSimulator:
                     reduce_only=True,
                     order_side=close_side,
                     live_position_qty=qty_now,
+                    order_qty=int(absq),
                     reason="paper_stop_or_target_close",
                 )
                 if not close_ok:

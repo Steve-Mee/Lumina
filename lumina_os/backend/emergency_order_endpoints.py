@@ -10,7 +10,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from backend.app_auth import verify_admin_role
 from lumina_core.broker.broker_bridge import Order, broker_factory
 from lumina_core.engine.engine_config import EngineConfig
-from lumina_core.order_gatekeeper.ungated_place_block import assert_validation_gate_or_block
+from lumina_core.order_gatekeeper.ungated_place_block import (
+    assert_validation_gate_or_block,
+    flatten_intent_from_position,
+    signed_qty_from_position,
+)
 
 logger = logging.getLogger(__name__)
 _EMERGENCY_LOCK = threading.Lock()
@@ -57,18 +61,25 @@ def _execute_emergency_flatten() -> dict[str, Any]:
 
             flattened: list[dict[str, Any]] = []
             for pos in positions:
-                qty = int(getattr(pos, "quantity", 0) or 0)
-                if qty == 0:
-                    continue
                 symbol = str(getattr(pos, "symbol", "") or "").strip()
                 if not symbol:
                     continue
-                close_side = "SELL" if qty > 0 else "BUY"
+                if signed_qty_from_position(pos) is None:
+                    raise HTTPException(
+                        status_code=503,
+                        detail=f"Emergency flatten blocked for {symbol}: unreadable position qty",
+                    )
+                intent = flatten_intent_from_position(pos)
+                if intent is None:
+                    continue
+                close_side, signed = intent
+                order_qty = abs(signed)
                 allowed, reason = assert_validation_gate_or_block(
                     "emergency_order_endpoints",
                     emergency=True,
                     order_side=close_side,
-                    live_position_qty=qty,
+                    live_position_qty=signed,
+                    order_qty=order_qty,
                     reason="api_emergency_stop",
                 )
                 if not allowed:
@@ -80,11 +91,15 @@ def _execute_emergency_flatten() -> dict[str, Any]:
                     Order(
                         symbol=symbol,
                         side=close_side,
-                        quantity=abs(qty),
+                        quantity=order_qty,
                         order_type="MARKET",
                         stop_loss=0.0,
                         take_profit=0.0,
-                        metadata={"reason": "api_emergency_stop", "reduce_only": True},
+                        metadata={
+                            "reason": "api_emergency_stop",
+                            "reduce_only": True,
+                            "emergency": True,
+                        },
                     )
                 )
                 if not bool(getattr(result, "accepted", False)):
@@ -98,7 +113,7 @@ def _execute_emergency_flatten() -> dict[str, Any]:
                 flattened.append(
                     {
                         "symbol": symbol,
-                        "closed_qty": abs(qty),
+                        "closed_qty": order_qty,
                         "side": close_side,
                         "order_id": str(getattr(result, "order_id", "") or ""),
                         "status": str(getattr(result, "status", "accepted") or "accepted"),

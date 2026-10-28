@@ -26,7 +26,12 @@ import uuid
 from typing import Any
 
 from lumina_core.broker.broker_bridge import Order
-from lumina_core.order_gatekeeper.ungated_place_block import blocked_order_result, gate_order
+from lumina_core.order_gatekeeper.ungated_place_block import (
+    blocked_order_result,
+    flatten_intent_from_position,
+    gate_order,
+    signed_qty_from_position,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -113,11 +118,15 @@ class PaperTradeExecutor:
 
     def submit_paper_order(self, order: Order, **kwargs: Any) -> Any:
         """Submit (wrapper; optional typed publish for Phase 2 spine)."""
+        live_qty = kwargs.get("live_position_qty")
         allowed, reason = gate_order(
             "paper_trade_executor.submit_paper_order",
             order,
+            emergency=bool(kwargs.get("emergency", False)),
             engine=self.engine,
             app=self.app,
+            broker=self.broker,
+            live_position_qty=int(live_qty) if live_qty is not None else None,
         )
         if not allowed:
             return blocked_order_result(reason)
@@ -142,14 +151,16 @@ class PaperTradeExecutor:
 
     # EOD wrapper (thin for the EOD site; can be called from _enforce_real_eod_force_close)
     def build_and_submit_eod_close(self, *, pos: Any, mode: str, **kwargs: Any) -> Any:
-        qty = int(getattr(pos, "quantity", 0) or 0)
-        if qty == 0:
+        if signed_qty_from_position(pos) is None:
+            return blocked_order_result()
+        intent = flatten_intent_from_position(pos)
+        if intent is None:
             return None
+        close_side, signed = intent
         symbol = str(getattr(pos, "symbol", kwargs.get("symbol", "UNKNOWN")))
-        close_side = "SELL" if qty > 0 else "BUY"
         order = self.build_paper_order(
             signal=close_side,
-            qty=abs(qty),
+            qty=abs(signed),
             dream_snapshot=kwargs.get("dream_snapshot"),
             decision_context_id=kwargs.get("decision_context_id"),
             prev_hash=kwargs.get("prev_hash"),
@@ -163,16 +174,8 @@ class PaperTradeExecutor:
         order.metadata["reason"] = "eod_force_close"
         order.metadata["mode"] = mode
         order.metadata["reduce_only"] = True
-        allowed, reason = gate_order(
-            "eod_force_close",
-            order,
-            emergency=True,
-            engine=self.engine,
-            app=self.app,
-        )
-        if not allowed:
-            return blocked_order_result(reason)
-        return self.submit_paper_order(order)
+        order.metadata["emergency"] = True
+        return self.submit_paper_order(order, emergency=True, live_position_qty=signed)
 
 
 def _paper_instrument(app: Any) -> str:

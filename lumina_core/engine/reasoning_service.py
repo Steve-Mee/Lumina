@@ -69,6 +69,7 @@ class ReasoningService(ReasoningPathsMixin, ReasoningDecisionLogMixin):
             "reasoning_service.submit_order",
             order,
             engine=self.engine,
+            broker=getattr(self.container, "broker", None),
         )
         if not allowed_s0:
             return blocked_order_result(block_reason)

@@ -16,6 +16,7 @@ from lumina_core.broker.broker_bridge.admission import run_final_arbitration
 from lumina_core.broker.broker_bridge.base import BrokerBridge
 from lumina_core.broker.broker_bridge.cross_trade_payload import parse_account_info_payload
 from lumina_core.broker.broker_bridge.schemas import AccountInfo, Fill, Order, OrderResult, Position
+from lumina_core.order_gatekeeper.ungated_place_block import blocked_order_result, gate_order
 
 @dataclass(slots=True)
 class CrossTradeBroker(BrokerBridge):
@@ -88,6 +89,15 @@ class CrossTradeBroker(BrokerBridge):
         client_order_id = str(order.metadata.get("clientOrderId") or f"lumina-{uuid.uuid4()}") if hasattr(order, 'metadata') else f"lumina-{uuid.uuid4()}"
         if lineage:
             self._pending_lineage[client_order_id] = lineage
+
+        allowed_s0, block_reason = gate_order(
+            "cross_trade_broker.submit_order",
+            order,
+            engine=self.engine,
+            broker=self,
+        )
+        if not allowed_s0:
+            return blocked_order_result(block_reason)
 
         allowed, reason = run_final_arbitration(self.engine, order)
         if not allowed:

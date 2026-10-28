@@ -20,7 +20,11 @@ from typing import Any
 
 from lumina_core.engine.paper_trade_executor import PaperTradeExecutor
 from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
-from lumina_core.order_gatekeeper.ungated_place_block import assert_validation_gate_or_block
+from lumina_core.order_gatekeeper.ungated_place_block import (
+    assert_validation_gate_or_block,
+    flatten_intent_from_position,
+    signed_qty_from_position,
+)
 from lumina_core.risk.mode_capabilities import resolve_mode_capabilities
 
 logger = logging.getLogger(__name__)
@@ -117,16 +121,20 @@ class EODForceCloseService:
 
         flattened_any = False
         for pos in positions:
-            qty = int(getattr(pos, "quantity", 0) or 0)
-            if qty == 0:
-                continue
             symbol = str(getattr(pos, "symbol", getattr(self.app, "INSTRUMENT", self.app.engine.config.instrument)))
-            close_side = "SELL" if qty > 0 else "BUY"
+            if signed_qty_from_position(pos) is None:
+                (self._logger or logger).error("EOD FORCE-CLOSE blocked: unreadable position qty for %s", symbol)
+                continue
+            intent = flatten_intent_from_position(pos)
+            if intent is None:
+                continue
+            close_side, signed = intent
             eod_ok, eod_reason = assert_validation_gate_or_block(
                 "eod_force_close",
                 emergency=True,
                 order_side=close_side,
-                live_position_qty=qty,
+                live_position_qty=signed,
+                order_qty=abs(signed),
                 reason="eod_force_close",
             )
             if not eod_ok:
@@ -149,7 +157,7 @@ class EODForceCloseService:
                     # Fallback to direct (preserves exact pre-sub6 behavior)
                     eod_order = self.executor.build_paper_order(
                         signal=close_side,
-                        qty=abs(qty),
+                        qty=abs(signed),
                         dream_snapshot=None,
                         decision_context_id=None,
                         prev_hash=None,
@@ -162,7 +170,7 @@ class EODForceCloseService:
                     eod_order.metadata["reason"] = "eod_force_close"
                     eod_order.metadata["mode"] = mode
                     eod_order.metadata["reduce_only"] = True
-                    eod_order.metadata["live_position_qty"] = qty
+                    eod_order.metadata["emergency"] = True
                     result = self.executor.submit_paper_order(eod_order)
 
                 if bool(getattr(result, "accepted", False)):

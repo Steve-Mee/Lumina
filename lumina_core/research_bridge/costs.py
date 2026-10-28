@@ -64,11 +64,11 @@ def hypothetical_execution_costs(
         fill_price = float(reference_price) - tick_size
     slip_ticks = abs(fill_price - float(reference_price)) / tick_size
     slip_usd = float(slip_ticks) * tick_usd * float(contracts)
-    commission_usd = float(all_in_per_side_usd(instrument, qty=contracts))
+    commission_usd = float(all_in_per_side_usd(instrument, plan="free", qty=contracts))
     commission_ticks = commission_usd / tick_usd if tick_usd > 0.0 else 0.0
     research_total = _research_four_leg_usd(instrument=instrument, quantity=float(contracts), tick_size=tick_size)
     execution_total = commission_usd + slip_usd
-    discrepancy = research_total is not None and float(research_total) > execution_total + 1e-12
+    discrepancy = research_total is not None and abs(float(research_total) - execution_total) > 1e-12
     return ExecutionSideCosts(
         fill_price=fill_price,
         reference_price=float(reference_price),

@@ -79,6 +79,7 @@ class PolicyEngine:
             "policy_engine.execute_order",
             order,
             engine=self.engine,
+            broker=self.broker,
         )
         if not allowed_s0:
             return blocked_order_result(block_reason)

@@ -17,8 +17,12 @@ from lumina_core.order_gatekeeper.regime_session import (  # noqa: F401
 from lumina_core.order_gatekeeper.ungated_place_block import (  # noqa: F401
     UNGATED_PLACE_BLOCK_REASON,
     assert_validation_gate_or_block,
+    blocked_fabric_place_result,
     blocked_order_result,
+    flatten_intent_from_position,
     gate_order,
+    live_qty_from_positions,
+    signed_qty_from_position,
 )
 from lumina_core.risk.final_arbitration import evaluate_constitution_for_intent  # noqa: F401
 

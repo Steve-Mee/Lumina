@@ -127,6 +127,7 @@ def submit_order_with_risk_check(
         order,
         engine=getattr(app, "engine", None),
         app=app,
+        broker=getattr(getattr(app, "container", None), "broker", None),
     )
     if not allowed_s0:
         app.logger.warning("Order blocked by S0 ungated-place freeze: %s", block_reason)
