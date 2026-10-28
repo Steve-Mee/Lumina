@@ -137,13 +137,14 @@ jobs:
       - name: Run pip-audit on core + trading
         run: |
           # Starlette PYSEC-2026-161: FastAPI still pins Starlette.
-          # filelock 4.2.1 would fix GHSA-v4x8-3wr5-3wq8 / GHSA-9vhv-jxww-xfm5 /
-          # GHSA-567q-5qvw-pf92 but safety 3.7.0 requires filelock<4.0.
+          # Production filelock is 4.2.4 (remediates GHSA-v4x8-3wr5-3wq8 /
+          # GHSA-9vhv-jxww-xfm5 / GHSA-567q-5qvw-pf92 / GHSA-j8f7-rjxc-mr56 /
+          # GHSA-8mx5-7m5m-r77g / GHSA-69hj-f68j-2879 / GHSA-rfpc-qcw5-3pc4 /
+          # GHSA-cwqr-hh33-gh44 / GHSA-fq56-3cx3-fjxp). safety 3.7.0 still
+          # requires filelock<4.0 for the audit CLI only; that transitive pin
+          # is not the production requirement.
           pip-audit --requirement requirements-core.txt \
-            --ignore-vuln PYSEC-2026-161 \
-            --ignore-vuln GHSA-v4x8-3wr5-3wq8 \
-            --ignore-vuln GHSA-9vhv-jxww-xfm5 \
-            --ignore-vuln GHSA-567q-5qvw-pf92
+            --ignore-vuln PYSEC-2026-161
           pip-audit --requirement requirements-trading.txt
 
       - name: Run Safety audit (scan/check fallback)
