@@ -1,0 +1,17 @@
+{
+  "detected": 0,
+  "detection_rate": 0.0,
+  "first_path": {
+    "dd": 0.4,
+    "depth": 0.4,
+    "high_severity": 0,
+    "normal_severity": 1
+  },
+  "floor_detection": 0.85,
+  "floor_ttd": 15,
+  "material_dd_mult": 1.5,
+  "max_ttd": null,
+  "n": 12,
+  "note": "DD-only path keeps rolling mean above OOS; material DD fires in normal and is skipped in high_vol; z/CUSUM/SPRT do not fire. Re-enabling DD without skip blew healthy_regime_switch FAR to ~0.33 on a 6-path probe.",
+  "passed": false
+}

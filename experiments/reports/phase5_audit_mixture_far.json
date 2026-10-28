@@ -1,0 +1,13 @@
+{
+  "paths": 60,
+  "alarm_paths": 48,
+  "far": 0.8,
+  "ready_windows_normal": 2063,
+  "ready_windows_high_vol": 997,
+  "alarms_in_normal_label": 47,
+  "alarms_in_high_vol_label": 1,
+  "oos_mean": 0.7716666666666666,
+  "oos_stdev": 0.05145116346811043,
+  "generator": "iid 40% N(mu, 1.60*oos_stdev) / 60% N(mu, 0.70*oos_stdev); constant mean; no VIX",
+  "note": "Alarms come from rolling-mean / CUSUM / IC-Sharpe noise under heteroskedastic iid draws, not from a quiet-then-loud between-window regime. Most ready windows still label normal because 20d realized vol often sits at or below the trailing 75th of the mixed sample. This is a harsh intra-window chop stress, not a realistic persistent high-vol regime."
+}
