@@ -12,7 +12,7 @@ import pytest
 from lumina_research.monitoring.config import config_from_mapping, load_default_config
 from lumina_research.monitoring.loop import run_phase4_detection
 from lumina_research.monitoring.statistics import assess_decay, cusum_down, empirical_percentile, sprt_llr, z_score
-from lumina_research.monitoring.synthetic import DEFAULT_OOS, decaying_path, healthy_path, oos_stats
+from lumina_research.monitoring.synthetic import DEFAULT_OOS, decaying_path, oos_stats
 from tests.research.phase4_harness import admit_signal, make_runtime
 
 

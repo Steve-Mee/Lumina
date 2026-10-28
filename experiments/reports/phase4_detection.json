@@ -1,0 +1,269 @@
+{
+  "detection_rate": 1.0,
+  "false_alarm_rate": 0.0,
+  "mean_time_to_detect": 3.5625,
+  "median_time_to_detect": 4.0,
+  "n_decaying": 16,
+  "n_detected": 16,
+  "n_false_alarms": 0,
+  "n_healthy": 16,
+  "paths": [
+    {
+      "decaying": false,
+      "detected": false,
+      "false_alarm": false,
+      "final_stage": "active",
+      "signal_id": "hyp-healthy-0",
+      "time_to_detect": null
+    },
+    {
+      "decaying": false,
+      "detected": false,
+      "false_alarm": false,
+      "final_stage": "active",
+      "signal_id": "hyp-healthy-1",
+      "time_to_detect": null
+    },
+    {
+      "decaying": false,
+      "detected": false,
+      "false_alarm": false,
+      "final_stage": "active",
+      "signal_id": "hyp-healthy-2",
+      "time_to_detect": null
+    },
+    {
+      "decaying": false,
+      "detected": false,
+      "false_alarm": false,
+      "final_stage": "active",
+      "signal_id": "hyp-healthy-3",
+      "time_to_detect": null
+    },
+    {
+      "decaying": false,
+      "detected": false,
+      "false_alarm": false,
+      "final_stage": "active",
+      "signal_id": "hyp-healthy-4",
+      "time_to_detect": null
+    },
+    {
+      "decaying": false,
+      "detected": false,
+      "false_alarm": false,
+      "final_stage": "active",
+      "signal_id": "hyp-healthy-5",
+      "time_to_detect": null
+    },
+    {
+      "decaying": false,
+      "detected": false,
+      "false_alarm": false,
+      "final_stage": "active",
+      "signal_id": "hyp-healthy-6",
+      "time_to_detect": null
+    },
+    {
+      "decaying": false,
+      "detected": false,
+      "false_alarm": false,
+      "final_stage": "active",
+      "signal_id": "hyp-healthy-7",
+      "time_to_detect": null
+    },
+    {
+      "decaying": false,
+      "detected": false,
+      "false_alarm": false,
+      "final_stage": "active",
+      "signal_id": "hyp-healthy-8",
+      "time_to_detect": null
+    },
+    {
+      "decaying": false,
+      "detected": false,
+      "false_alarm": false,
+      "final_stage": "active",
+      "signal_id": "hyp-healthy-9",
+      "time_to_detect": null
+    },
+    {
+      "decaying": false,
+      "detected": false,
+      "false_alarm": false,
+      "final_stage": "active",
+      "signal_id": "hyp-healthy-10",
+      "time_to_detect": null
+    },
+    {
+      "decaying": false,
+      "detected": false,
+      "false_alarm": false,
+      "final_stage": "active",
+      "signal_id": "hyp-healthy-11",
+      "time_to_detect": null
+    },
+    {
+      "decaying": false,
+      "detected": false,
+      "false_alarm": false,
+      "final_stage": "active",
+      "signal_id": "hyp-healthy-12",
+      "time_to_detect": null
+    },
+    {
+      "decaying": false,
+      "detected": false,
+      "false_alarm": false,
+      "final_stage": "active",
+      "signal_id": "hyp-healthy-13",
+      "time_to_detect": null
+    },
+    {
+      "decaying": false,
+      "detected": false,
+      "false_alarm": false,
+      "final_stage": "active",
+      "signal_id": "hyp-healthy-14",
+      "time_to_detect": null
+    },
+    {
+      "decaying": false,
+      "detected": false,
+      "false_alarm": false,
+      "final_stage": "active",
+      "signal_id": "hyp-healthy-15",
+      "time_to_detect": null
+    },
+    {
+      "decaying": true,
+      "detected": true,
+      "false_alarm": false,
+      "final_stage": "retired",
+      "signal_id": "hyp-decay-0",
+      "time_to_detect": 4
+    },
+    {
+      "decaying": true,
+      "detected": true,
+      "false_alarm": false,
+      "final_stage": "retired",
+      "signal_id": "hyp-decay-1",
+      "time_to_detect": 4
+    },
+    {
+      "decaying": true,
+      "detected": true,
+      "false_alarm": false,
+      "final_stage": "retired",
+      "signal_id": "hyp-decay-2",
+      "time_to_detect": 4
+    },
+    {
+      "decaying": true,
+      "detected": true,
+      "false_alarm": false,
+      "final_stage": "retired",
+      "signal_id": "hyp-decay-3",
+      "time_to_detect": 4
+    },
+    {
+      "decaying": true,
+      "detected": true,
+      "false_alarm": false,
+      "final_stage": "retired",
+      "signal_id": "hyp-decay-4",
+      "time_to_detect": 4
+    },
+    {
+      "decaying": true,
+      "detected": true,
+      "false_alarm": false,
+      "final_stage": "retired",
+      "signal_id": "hyp-decay-5",
+      "time_to_detect": 4
+    },
+    {
+      "decaying": true,
+      "detected": true,
+      "false_alarm": false,
+      "final_stage": "retired",
+      "signal_id": "hyp-decay-6",
+      "time_to_detect": 3
+    },
+    {
+      "decaying": true,
+      "detected": true,
+      "false_alarm": false,
+      "final_stage": "retired",
+      "signal_id": "hyp-decay-7",
+      "time_to_detect": 3
+    },
+    {
+      "decaying": true,
+      "detected": true,
+      "false_alarm": false,
+      "final_stage": "retired",
+      "signal_id": "hyp-decay-8",
+      "time_to_detect": 4
+    },
+    {
+      "decaying": true,
+      "detected": true,
+      "false_alarm": false,
+      "final_stage": "retired",
+      "signal_id": "hyp-decay-9",
+      "time_to_detect": 3
+    },
+    {
+      "decaying": true,
+      "detected": true,
+      "false_alarm": false,
+      "final_stage": "retired",
+      "signal_id": "hyp-decay-10",
+      "time_to_detect": 4
+    },
+    {
+      "decaying": true,
+      "detected": true,
+      "false_alarm": false,
+      "final_stage": "retired",
+      "signal_id": "hyp-decay-11",
+      "time_to_detect": 3
+    },
+    {
+      "decaying": true,
+      "detected": true,
+      "false_alarm": false,
+      "final_stage": "retired",
+      "signal_id": "hyp-decay-12",
+      "time_to_detect": 4
+    },
+    {
+      "decaying": true,
+      "detected": true,
+      "false_alarm": false,
+      "final_stage": "retired",
+      "signal_id": "hyp-decay-13",
+      "time_to_detect": 3
+    },
+    {
+      "decaying": true,
+      "detected": true,
+      "false_alarm": false,
+      "final_stage": "retired",
+      "signal_id": "hyp-decay-14",
+      "time_to_detect": 2
+    },
+    {
+      "decaying": true,
+      "detected": true,
+      "false_alarm": false,
+      "final_stage": "retired",
+      "signal_id": "hyp-decay-15",
+      "time_to_detect": 4
+    }
+  ],
+  "seed": 20261028
+}
