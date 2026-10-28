@@ -20,7 +20,7 @@ if str(_LUMINA_OS_PATH) not in sys.path:
 from backend.ninjatrader_websocket import router as ninjatrader_router  # noqa: E402
 from lumina_core.broker.ninjatrader.bridge_service import reset_ninjatrader_bridge_service  # noqa: E402
 from lumina_core.broker.ninjatrader.broker import NinjaTraderBroker  # noqa: E402
-from lumina_core.broker.broker_bridge.schemas import Order  # noqa: E402
+from lumina_core.broker.broker_bridge.schemas import Order, Position  # noqa: E402
 
 
 def _utc_now_iso() -> str:
@@ -162,17 +162,23 @@ def test_broker_admission_blocks_before_ws_send() -> None:
 
     bridge.register_send(_capture_send)
 
-    engine = SimpleNamespace(config=SimpleNamespace(trade_mode="sim"))
+    engine = SimpleNamespace(config=SimpleNamespace(trade_mode="sim"), live_position_qty=1)
     broker = NinjaTraderBroker(
         configured_account="Sim101",
         ninjatrader_enabled=True,
         engine=engine,
         bridge_service=bridge,
     )
+    bridge._positions.append(Position(symbol="MES 06-26", quantity=1, avg_price=100.0, side="BUY"))
 
     with patch("lumina_core.broker.ninjatrader.broker.run_final_arbitration", return_value=(False, "gate_reject")):
         result = broker.submit_order(
-            Order(symbol="MES 06-26", side="BUY", quantity=1, metadata={"reference_price": 100.0, "proposed_risk": 1.0})
+            Order(
+                symbol="MES 06-26",
+                side="SELL",
+                quantity=1,
+                metadata={"reference_price": 100.0, "proposed_risk": 1.0, "reduce_only": True},
+            )
         )
 
     assert result.accepted is False

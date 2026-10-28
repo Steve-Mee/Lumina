@@ -17,19 +17,18 @@ PLACE_NAMES = frozenset(
         "try_open",
         "submit_paper_order",
         "submit_order_with_risk_check",
+        "place_order_sync",
+        "modify_order_sync",
     }
 )
-EXCLUDED_CALL_NAMES = frozenset({"place_order_sync"})
+# Transport definitions that themselves call gate_order (not callers of those defs).
+GATED_TRANSPORT_DEFS = frozenset({"place_order_sync", "submit_paper_order", "modify_order_sync"})
 GATE_NAMES = frozenset({"assert_validation_gate_or_block", "gate_order"})
 TRANSPORT_ALLOW = frozenset(
     {
         "lumina_core/broker/broker_bridge/base.py",
-        "lumina_core/broker/broker_bridge/paper_broker.py",
-        "lumina_core/broker/broker_bridge/cross_trade_broker.py",
-        "lumina_core/broker/ninjatrader/broker.py",
-        "lumina_core/broker/ninjatrader/bridge_command_sync.py",
-        "lumina_core/broker/ninjatrader/fabric_client_ops.py",
         "lumina_core/ports/broker.py",
+        "lumina_core/broker/ninjatrader/bridge_command_sync.py",
     }
 )
 
@@ -81,16 +80,44 @@ def test_every_place_call_is_gated_or_listed_transport() -> None:
                 if not isinstance(node, ast.Call):
                     continue
                 name = _call_name(node)
-                if name is None or name in EXCLUDED_CALL_NAMES or name not in PLACE_NAMES:
+                if name is None or name not in PLACE_NAMES:
                     continue
                 if rel in TRANSPORT_ALLOW:
                     continue
                 fn = _enclosing_function(node, parents)
+                if fn is not None and fn.name in GATED_TRANSPORT_DEFS and _function_calls_gate(fn):
+                    continue
+                if name in GATED_TRANSPORT_DEFS:
+                    # Callers of a gated transport definition do not re-call the freeze.
+                    continue
                 if fn is None or not _function_calls_gate(fn):
                     lineno = getattr(node, "lineno", 0)
                     owner = fn.name if fn is not None else "<module>"
                     failures.append(f"{rel}:{lineno}:{owner} calls {name} without S0 gate")
     assert failures == [], "Ungated place path(s):\n" + "\n".join(failures)
+
+
+@pytest.mark.unit
+def test_order_to_place_command_only_lives_behind_s0_gate() -> None:
+    failures: list[str] = []
+    for root in SCAN_ROOTS:
+        for path in root.rglob("*.py"):
+            rel = path.relative_to(ROOT).as_posix()
+            if "/generated/" in rel or rel.endswith("_pb2.py") or rel.endswith("_pb2_grpc.py"):
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            parents = _parents(tree)
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                if _call_name(node) != "order_to_place_command":
+                    continue
+                fn = _enclosing_function(node, parents)
+                if fn is None or not _function_calls_gate(fn):
+                    lineno = getattr(node, "lineno", 0)
+                    owner = fn.name if fn is not None else "<module>"
+                    failures.append(f"{rel}:{lineno}:{owner} builds PlaceOrderCommand without S0 gate")
+    assert failures == [], "Ungated PlaceOrderCommand builder(s):\n" + "\n".join(failures)
 
 
 @pytest.mark.unit

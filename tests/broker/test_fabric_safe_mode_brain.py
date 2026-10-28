@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from lumina_core.broker.broker_bridge.schemas import Order
+from lumina_core.broker.broker_bridge.schemas import Order, Position
 from lumina_core.broker.ninjatrader.connection_state import NinjaTraderConnectionState
 from lumina_core.broker.ninjatrader.guards import assert_nt_bridge_capability
 from lumina_core.broker.ninjatrader.promotion_gate import NtBridgeAction
@@ -78,12 +78,15 @@ def test_place_order_sync_blocks_on_local_safe_mode() -> None:
         def safe_mode(self) -> int:
             return int(self._safe_mode)
 
+        def get_account_state(self) -> tuple[object, list[Position], str]:
+            return None, [Position(symbol="MNQ", quantity=1, avg_price=1.0, side="LONG")], "ok"
+
         def _send_and_wait(self, *_a: Any, **_k: Any) -> dict[str, Any]:
             raise AssertionError("must not RPC place while SAFE")
 
     fake = _Fake()
-    order = Order(symbol="MNQ", side="BUY", quantity=1, order_type="MARKET")
-    order.metadata = {"decision_context_id": "ctx-safe-1"}
+    order = Order(symbol="MNQ", side="SELL", quantity=1, order_type="MARKET")
+    order.metadata = {"decision_context_id": "ctx-safe-1", "reduce_only": True}
     out = fake.place_order_sync(order, client_order_id="c-safe")
     assert out.get("type") == "error"
     assert out.get("code") == "SAFE_MODE"

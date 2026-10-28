@@ -99,11 +99,11 @@ class TestPaperTradeExecutor:
     def test_submit_paper_order_allows_reduce_only_flatten(self):
         mock_broker = MagicMock()
         mock_broker.submit_order.return_value = type("Res", (), {"accepted": True})()
-        executor = PaperTradeExecutor(broker=mock_broker)
+        engine = SimpleNamespace(live_position_qty=1)
+        executor = PaperTradeExecutor(broker=mock_broker, engine=engine)
         order = executor.build_paper_order(signal="SELL", qty=1, dream_snapshot=_make_dream())
         order.metadata["reduce_only"] = True
-        order.metadata["live_position_qty"] = 1
-        res = executor.submit_paper_order(order)
+        res = executor.submit_paper_order(order, live_position_qty=1)
         mock_broker.submit_order.assert_called_once_with(order)
         assert getattr(res, "accepted", False) is True
 

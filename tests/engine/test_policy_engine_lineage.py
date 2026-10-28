@@ -7,7 +7,7 @@ import pytest
 
 from lumina_core.agent_orchestration.event_bus import EventBus
 from lumina_core.agent_orchestration.schemas import FinalArbitrationResult
-from lumina_core.broker.broker_bridge import Order, OrderResult
+from lumina_core.broker.broker_bridge import Order, OrderResult, Position
 from lumina_core.engine.policy_engine import PolicyEngine
 from lumina_core.order_gatekeeper import _domain_event_fingerprint
 
@@ -32,8 +32,9 @@ def test_execute_order_recovers_ctx_from_typed_arb_metadata(monkeypatch: pytest.
 
     broker = MagicMock()
     broker.submit_order.return_value = OrderResult(accepted=True, order_id="1", status="filled", message="ok")
+    broker.get_positions.return_value = [Position(symbol="MES", quantity=1, avg_price=1.0, side="BUY")]
 
-    engine = SimpleNamespace(event_bus=bus, blackboard=None)
+    engine = SimpleNamespace(event_bus=bus, blackboard=None, live_position_qty=1)
     monkeypatch.setattr(
         "lumina_core.engine.policy_engine.enforce_pre_trade_gate",
         lambda *a, **k: (True, "ok"),
@@ -79,8 +80,9 @@ def test_execute_order_uses_latest_arb_for_matching_symbol(monkeypatch: pytest.M
 
     broker = MagicMock()
     broker.submit_order.return_value = OrderResult(accepted=True, order_id="1", status="filled", message="ok")
+    broker.get_positions.return_value = [Position(symbol="MES", quantity=1, avg_price=1.0, side="BUY")]
 
-    engine = SimpleNamespace(event_bus=bus, blackboard=None)
+    engine = SimpleNamespace(event_bus=bus, blackboard=None, live_position_qty=1)
     monkeypatch.setattr(
         "lumina_core.engine.policy_engine.enforce_pre_trade_gate",
         lambda *a, **k: (True, "ok"),
@@ -102,13 +104,20 @@ def test_execute_order_uses_latest_arb_for_matching_symbol(monkeypatch: pytest.M
 @pytest.mark.unit
 def test_execute_order_skips_lineage_when_gate_rejects(monkeypatch: pytest.MonkeyPatch) -> None:
     broker = MagicMock()
-    engine = SimpleNamespace(event_bus=MagicMock(), blackboard=None)
+    broker.get_positions.return_value = [Position(symbol="MES", quantity=1, avg_price=1.0, side="BUY")]
+    engine = SimpleNamespace(event_bus=MagicMock(), blackboard=None, live_position_qty=1)
     monkeypatch.setattr(
         "lumina_core.engine.policy_engine.enforce_pre_trade_gate",
         lambda *a, **k: (False, "blocked"),
     )
 
-    order = Order(symbol="MES", side="BUY", quantity=1, order_type="MARKET")
+    order = Order(
+        symbol="MES",
+        side="SELL",
+        quantity=1,
+        order_type="MARKET",
+        metadata={"reduce_only": True},
+    )
     policy = PolicyEngine(engine=engine, broker=broker)
     result = policy.execute_order(order)
 

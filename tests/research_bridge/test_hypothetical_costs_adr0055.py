@@ -70,6 +70,33 @@ def test_fill_event_uses_execution_side_even_on_discrepancy(tmp_path: Path) -> N
 
 
 @pytest.mark.unit
+def test_shadow_costs_are_free_plan_even_if_config_says_lifetime(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("lumina_core.market.nt_fees.active_plan", lambda config=None: "lifetime")
+    mes = hypothetical_execution_costs(instrument="MES", direction="BUY", size=1.0, reference_price=5000.0)
+    es = hypothetical_execution_costs(instrument="ES", direction="BUY", size=1.0, reference_price=5000.0)
+    assert mes.commission_usd == pytest.approx(0.94)
+    assert es.commission_usd == pytest.approx(2.87)
+    assert mes.commission_ticks == pytest.approx(0.94 / 1.25)
+    assert es.commission_ticks == pytest.approx(2.87 / 12.50)
+
+
+@pytest.mark.unit
+def test_discrepancy_flags_both_directions(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("lumina_core.research_bridge.costs._research_four_leg_usd", lambda **_k: 0.0)
+    low = hypothetical_execution_costs(instrument="MES", direction="BUY", size=1.0, reference_price=5000.0)
+    assert low.discrepancy is True
+    monkeypatch.setattr("lumina_core.research_bridge.costs._research_four_leg_usd", lambda **_k: 999.0)
+    high = hypothetical_execution_costs(instrument="MES", direction="BUY", size=1.0, reference_price=5000.0)
+    assert high.discrepancy is True
+    monkeypatch.setattr(
+        "lumina_core.research_bridge.costs._research_four_leg_usd",
+        lambda **_k: float(low.commission_usd + low.slippage_usd),
+    )
+    matched = hypothetical_execution_costs(instrument="MES", direction="BUY", size=1.0, reference_price=5000.0)
+    assert matched.discrepancy is False
+
+
+@pytest.mark.unit
 def test_invalid_reference_or_size_fail_closed() -> None:
     with pytest.raises(ValueError, match="reference_price"):
         hypothetical_execution_costs(instrument="MES", direction="BUY", size=1.0, reference_price=0.0)

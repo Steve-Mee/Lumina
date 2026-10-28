@@ -73,6 +73,7 @@ def test_submit_order_with_risk_check_buy_is_frozen(monkeypatch) -> None:
 
 def test_submit_order_with_risk_check_allows_reduce_only_flatten(monkeypatch) -> None:
     app, broker = _app("real")
+    app.engine.live_position_qty = 1
     monkeypatch.setattr(
         "lumina_core.trade_workers.check_pre_trade_risk",
         lambda *_a, **_k: (True, "ok"),

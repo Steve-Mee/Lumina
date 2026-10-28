@@ -9,19 +9,22 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lumina_core.broker.broker_bridge.schemas import Order, OrderResult
+from lumina_core.broker.broker_bridge.schemas import Order, OrderResult, Position
 from lumina_core.engine.policy_engine import PolicyEngine
 from lumina_core.engine.supervisor_tick_ctx import SupervisorTickCtx
 from lumina_core.engine.supervisor_tick_exec import run_tick_exec
 from lumina_core.order_gatekeeper.ungated_place_block import (
     UNGATED_PLACE_BLOCK_REASON,
     assert_validation_gate_or_block,
+    blocked_fabric_place_result,
     blocked_order_result,
     freeze_is_armed,
     gate_order,
     inspect_order_flags,
     is_risk_reducing_side,
     live_qty_from_order_or_engine,
+    live_qty_from_positions,
+    signed_qty_from_position,
 )
 from lumina_core.runtime_context import RuntimeContext
 from lumina_core.trade_workers import submit_order_with_risk_check
@@ -68,6 +71,7 @@ def test_policy_execute_order_buy_is_blocked() -> None:
 def test_reduce_only_flatten_reaches_broker() -> None:
     broker = MagicMock()
     broker.submit_order.return_value = OrderResult(accepted=True, order_id="flat", status="filled", message="ok")
+    broker.get_positions.return_value = [Position(symbol="MES", quantity=1, avg_price=1.0, side="BUY")]
     engine = SimpleNamespace(event_bus=None, blackboard=None, live_position_qty=1)
     policy = PolicyEngine(engine=engine, broker=broker)
     order = Order(
@@ -92,6 +96,7 @@ def test_emergency_flatten_is_allowed() -> None:
         emergency=True,
         order_side="SELL",
         live_position_qty=2,
+        order_qty=2,
         reason="api_emergency_stop",
     )
     assert allowed is True
@@ -195,6 +200,11 @@ def test_blocked_order_result_shape() -> None:
     assert result.accepted is False
     assert result.status == "rejected"
     assert result.message == UNGATED_PLACE_BLOCK_REASON
+    fabric = blocked_fabric_place_result()
+    assert fabric["type"] == "error"
+    assert fabric["code"] == UNGATED_PLACE_BLOCK_REASON
+    assert signed_qty_from_position(Position(symbol="MNQ", quantity=4, avg_price=1.0, side="SHORT")) == -4
+    assert live_qty_from_positions([Position(symbol="ES", quantity=1, avg_price=1.0, side="LONG")], "ES") == 1
 
 
 @pytest.mark.unit
@@ -205,19 +215,21 @@ def test_gate_order_reads_metadata() -> None:
         quantity=1,
         metadata={"reduce_only": True, "live_position_qty": 1, "reason": "eod_force_close"},
     )
-    allowed, reason = gate_order("eod_force_close", order, emergency=False)
+    engine = SimpleNamespace(live_position_qty=1)
+    allowed, reason = gate_order("eod_force_close", order, emergency=False, engine=engine)
     assert allowed is True
     assert reason == "emergency_flatten_or_cancel_allowed"
 
 
 @pytest.mark.unit
 def test_inspect_and_live_qty_fail_closed_on_bad_metadata() -> None:
-    assert inspect_order_flags(None) == (False, "", "")
-    odd = SimpleNamespace(side="BUY", metadata="not-a-dict")
-    reduce_only, reason, side = inspect_order_flags(cast(Order, odd))
+    assert inspect_order_flags(None) == (False, "", "", None)
+    odd = SimpleNamespace(side="BUY", metadata="not-a-dict", quantity=1)
+    reduce_only, reason, side, qty = inspect_order_flags(cast(Order, odd))
     assert reduce_only is False
     assert reason == ""
     assert side == "BUY"
+    assert qty == 1
     bad_qty = Order(symbol="MES", side="SELL", quantity=1, metadata={"live_position_qty": "x"})
     assert live_qty_from_order_or_engine(bad_qty, None, None) == 0
     app = SimpleNamespace(sim_position_qty="nope")
