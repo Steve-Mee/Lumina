@@ -19,6 +19,7 @@ from lumina_research.agents.frozen import Frozen
 from lumina_research.agents.payloads import (
     dsr_payload,
     dump_json,
+    integrity_fields,
     json_float,
     oos_payload,
     pbo_payload,
@@ -47,6 +48,7 @@ class ValidationAgent(Frozen):
     _audit_path: Path
     _pending: list[HypothesisProposed]
     _evaluate: _Evaluate
+    _equity: float
 
     def __init_subclass__(cls) -> None:
         raise TypeError("ValidationAgent cannot be subclassed")
@@ -60,6 +62,7 @@ class ValidationAgent(Frozen):
         experiment_log_path: Path,
         blackboard: AgentBlackboard | None = None,
         audit_path: Path | None = None,
+        equity: float = 100_000.0,
     ) -> None:
         self._bus = bus
         self._registry = registry
@@ -69,21 +72,27 @@ class ValidationAgent(Frozen):
         self._audit_path = audit_path if audit_path is not None else registry.audit_path
         self._pending = []
         self._evaluate = evaluate_candidate
+        self._equity = float(equity)
         self._freeze()
+        bus.register_topic_guard(RESEARCH_VALIDATION_TOPIC, self._guard_validation)
+        if blackboard is not None:
+            blackboard.register_topic_guard(RESEARCH_VALIDATION_TOPIC, self._guard_validation)
         bus.subscribe(RESEARCH_HYPOTHESIS_TOPIC, self._on_hypothesis)
 
     def _on_hypothesis(self, event: DomainEvent) -> None:
         self._pending.append(event.typed_payload(HypothesisProposed))
 
     def pending(self) -> tuple[HypothesisProposed, ...]:
+        """Hypotheses buffered since the last ``flush`` (empty after a flush)."""
         return tuple(self._pending)
 
     def flush(self) -> tuple[ValidationResult, ...]:
+        """Run the full Phase 1 pipeline for every pending hypothesis and publish."""
         batch = tuple(self._pending)
         self._pending.clear()
         if not batch:
             return ()
-        nets = _peer_nets(batch)
+        nets = _peer_nets(batch, equity=self._equity)
         results: list[ValidationResult] = []
         for index, hypothesis in enumerate(batch):
             peers = tuple(nets[j] for j in range(len(nets)) if j != index)
@@ -107,6 +116,7 @@ class ValidationAgent(Frozen):
                 registry=self._registry,
                 peer_net_returns=peers,
                 audit_path=self._audit_path,
+                equity=self._equity,
             )
         except Exception:
             evaluation = missing_evaluation(
@@ -163,6 +173,7 @@ class ValidationAgent(Frozen):
             "regimes": dump_json(regime_payload(report.regimes)),
             "n_oos_windows": report.n_oos_windows,
             "median_oos_after_costs": json_float(report.median_oos_after_costs),
+            **integrity_fields(report),
         }
         digest, mac = self._authority.seal_validation(fields)
         median_raw = fields["median_oos_after_costs"]
@@ -170,6 +181,7 @@ class ValidationAgent(Frozen):
             median_value: float | None = None
         else:
             median_value = float(median_raw)
+        integrity = integrity_fields(report)
         return ValidationResult(
             hypothesis_id=hypothesis.hypothesis_id,
             config_id=hypothesis.config_id,
@@ -184,12 +196,25 @@ class ValidationAgent(Frozen):
             regimes=regime_payload(report.regimes),
             n_oos_windows=report.n_oos_windows,
             median_oos_after_costs=median_value,
+            purge_applied=bool(integrity["purge_applied"]),
+            embargo_applied=bool(integrity["embargo_applied"]),
+            cost_applied=bool(integrity["cost_applied"]),
+            cost_contract_root=str(integrity["cost_contract_root"]),
+            cost_model_id=str(integrity["cost_model_id"]),
+            regimes_complete=bool(integrity["regimes_complete"]),
             report_sha256=digest,
             provenance_mac=mac,
         )
 
+    def _guard_validation(self, producer: str, payload: dict[str, object]) -> bool:
+        return self._authority.guard_validation(producer, payload)
 
-def _peer_nets(batch: tuple[HypothesisProposed, ...]) -> tuple[tuple[float, ...], ...]:
+
+def _peer_nets(
+    batch: tuple[HypothesisProposed, ...],
+    *,
+    equity: float,
+) -> tuple[tuple[float, ...], ...]:
     nets: list[tuple[float, ...]] = []
     for hypothesis in batch:
         try:
@@ -197,7 +222,7 @@ def _peer_nets(batch: tuple[HypothesisProposed, ...]) -> tuple[tuple[float, ...]
             costed = apply_costs(
                 gross_returns=gross,
                 positions=positions,
-                equity=100_000.0,
+                equity=equity,
                 spec=hypothesis.instrument,
                 markets=markets,
             )

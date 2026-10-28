@@ -63,6 +63,7 @@ class HypothesisAgent(Frozen):
         self._freeze()
 
     def generate(self, *, seed: int, counts: Sequence[int]) -> tuple[HypothesisProposed, ...]:
+        """Publish exactly ``sum(counts)`` variants. A missing rationale is a refuse."""
         if len(counts) != len(self._generators):
             raise HypothesisRefused("counts must align with generators")
         rng = random.Random(seed)
@@ -87,9 +88,7 @@ class HypothesisAgent(Frozen):
             metrics={"phase": "generate", "kind": draft.kind, "generator_id": draft.generator_id},
         )
         hypothesis_id = f"hyp-{draft.config_id}"
-        kind: Literal["noise", "planted_edge"] = (
-            "planted_edge" if draft.kind == "planted_edge" else "noise"
-        )
+        kind: Literal["noise", "planted_edge"] = "planted_edge" if draft.kind == "planted_edge" else "noise"
         payload = HypothesisProposed(
             hypothesis_id=hypothesis_id,
             config_id=draft.config_id,

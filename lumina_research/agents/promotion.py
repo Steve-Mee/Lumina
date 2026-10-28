@@ -7,6 +7,7 @@ A PromotionCandidate is a proposal for a later phase.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping, assert_never
@@ -29,6 +30,9 @@ from lumina_research.agents.payloads import dump_json
 from lumina_research.agents.provenance import ProvenanceAuthority
 from lumina_research.risk_core.engine import RiskCore
 from lumina_research.risk_core.types import Decision, DecisionKind, OrderProposal, cluster_for
+from lumina_research.validation.cost_model import COST_MODEL_ID
+from lumina_research.validation.dsr import DSR_FORMULATION
+from lumina_research.validation.pbo import PBO_FORMULATION
 from lumina_research.validation.thresholds import (
     FLOOR_DSR_PROBABILITY_MIN,
     FLOOR_MIN_OOS_WINDOWS,
@@ -53,6 +57,7 @@ class PromotionAgent(Frozen):
     _hypotheses: dict[str, object]
     _blackboard: AgentBlackboard | None
     _issued: list[PromotionCandidate]
+    _consume_trial: Callable[[int], bool]
 
     def __init_subclass__(cls) -> None:
         raise TypeError("PromotionAgent cannot be subclassed")
@@ -74,6 +79,15 @@ class PromotionAgent(Frozen):
         self._hypotheses = dict(hypotheses or {})
         self._blackboard = blackboard
         self._issued = []
+        seen: set[int] = set()
+
+        def consume(trial_id: int) -> bool:
+            if trial_id in seen:
+                return False
+            seen.add(trial_id)
+            return True
+
+        self._consume_trial = consume
         self._freeze()
         bus.register_topic_guard(RESEARCH_PROMOTION_TOPIC, self._guard_issue)
         if blackboard is not None:
@@ -82,15 +96,18 @@ class PromotionAgent(Frozen):
         bus.subscribe(RESEARCH_VALIDATION_TOPIC, self._on_validation)
 
     def remember_hypothesis(self, hypothesis_id: str, payload: Mapping[str, object]) -> None:
+        """Index a hypothesis so a later sealed ValidationResult can be bound to it."""
         self._hypotheses[hypothesis_id] = dict(payload)
 
     def issued(self) -> tuple[PromotionCandidate, ...]:
+        """PromotionCandidates actually published on the bus (empty if none survived)."""
         return tuple(self._issued)
 
     def emit_candidate(self, candidate: PromotionCandidate) -> None:
         raise PromotionRefused("direct emission of PromotionCandidate is forbidden")
 
     def consider(self, event: DomainEvent | ValidationResult) -> PromotionCandidate | None:
+        """Promote only a first-seen, MAC-valid PASS that research Risk Core approves."""
         payload = _payload_dict(event)
         verified = self._authority.verify_validation(payload)
         if verified is None:
@@ -102,6 +119,9 @@ class PromotionAgent(Frozen):
             return None
         if payload.get("trial_id") != trial_id:
             self._log_kill(payload, "trial_id_replay", ("trial_id_replay",))
+            return None
+        if not self._consume_trial(trial_id):
+            self._log_kill(payload, "validation_replay", ("validation_replay",))
             return None
         if not _gate_pass(verified):
             reasons = _as_reasons(verified.get("reject_reasons"))
@@ -219,7 +239,7 @@ class PromotionAgent(Frozen):
             event="kill",
             hypothesis_id=hypothesis_id,
             rationale=None,
-            metrics={"payload_trial_id": payload.get("trial_id"), "passed": payload.get("passed")},
+            metrics=_kill_metrics(payload),
             reject_reason=reason,
             failed_checks=checks,
         )
@@ -250,17 +270,55 @@ def _as_float(value: object) -> float | None:
     return float(value)
 
 
+def _kill_metrics(payload: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "payload_trial_id": payload.get("trial_id"),
+        "passed": payload.get("passed"),
+        "oos_distribution": payload.get("oos_distribution"),
+        "dsr": payload.get("dsr"),
+        "pbo": payload.get("pbo"),
+        "wfe": payload.get("wfe"),
+        "regimes": payload.get("regimes"),
+        "n_oos_windows": payload.get("n_oos_windows"),
+        "median_oos_after_costs": payload.get("median_oos_after_costs"),
+        "purge_applied": payload.get("purge_applied"),
+        "embargo_applied": payload.get("embargo_applied"),
+        "cost_applied": payload.get("cost_applied"),
+        "cost_contract_root": payload.get("cost_contract_root"),
+        "cost_model_id": payload.get("cost_model_id"),
+        "regimes_complete": payload.get("regimes_complete"),
+        "reject_reasons": payload.get("reject_reasons"),
+    }
+
+
 def _gate_pass(verified: Mapping[str, object]) -> bool:
     """Read pass/fail only from MAC-authenticated fields. Independent floor re-check."""
     if verified.get("passed") is not True:
         return False
     if _as_reasons(verified.get("reject_reasons")):
         return False
+    if verified.get("purge_applied") is not True:
+        return False
+    if verified.get("embargo_applied") is not True:
+        return False
+    if verified.get("cost_applied") is not True:
+        return False
+    if verified.get("regimes_complete") is not True:
+        return False
+    root = mapping_get(verified, "cost_contract_root")
+    if not isinstance(root, str) or root.strip() not in {"ES", "NQ", "MES", "MNQ"}:
+        return False
+    if mapping_get(verified, "cost_model_id") != COST_MODEL_ID:
+        return False
     dsr = as_object_dict(mapping_get(verified, "dsr"))
     pbo = as_object_dict(mapping_get(verified, "pbo"))
     wfe = as_object_dict(mapping_get(verified, "wfe"))
     oos = as_object_dict(mapping_get(verified, "oos_distribution"))
     if dsr is None or pbo is None or wfe is None or oos is None:
+        return False
+    if mapping_get(dsr, "formulation") != DSR_FORMULATION:
+        return False
+    if mapping_get(pbo, "formulation") != PBO_FORMULATION:
         return False
     dsr_p = mapping_get(dsr, "probability")
     pbo_p = mapping_get(pbo, "pbo")

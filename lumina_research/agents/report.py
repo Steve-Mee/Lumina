@@ -43,6 +43,66 @@ class KillRateReport:
     candidates: tuple[CandidateSnapshot, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class SeedKillRate:
+    seed: int
+    instrument: str
+    n_hypotheses: int
+    n_killed: int
+    n_promoted: int
+    kill_rate: float
+    n_planted: int
+    n_planted_killed: int
+    n_noise: int
+    n_noise_survived: int
+    reject_reason_counts: Mapping[str, int]
+    candidates: tuple[CandidateSnapshot, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class MultiSeedKillRateReport:
+    seeds: tuple[SeedKillRate, ...]
+    n_hypotheses: int
+    n_killed: int
+    n_promoted: int
+    kill_rate: float
+    n_planted: int
+    n_planted_killed: int
+    false_kill_rate: float
+    n_noise: int
+    n_noise_survived: int
+    false_survivor_rate: float
+    reject_reason_counts: Mapping[str, int]
+
+    @classmethod
+    def from_seeds(cls, seeds: tuple[SeedKillRate, ...]) -> MultiSeedKillRateReport:
+        n_hypotheses = sum(row.n_hypotheses for row in seeds)
+        n_killed = sum(row.n_killed for row in seeds)
+        n_promoted = sum(row.n_promoted for row in seeds)
+        n_planted = sum(row.n_planted for row in seeds)
+        n_planted_killed = sum(row.n_planted_killed for row in seeds)
+        n_noise = sum(row.n_noise for row in seeds)
+        n_noise_survived = sum(row.n_noise_survived for row in seeds)
+        reasons: dict[str, int] = {}
+        for row in seeds:
+            for name, count in row.reject_reason_counts.items():
+                reasons[name] = reasons.get(name, 0) + count
+        return cls(
+            seeds=seeds,
+            n_hypotheses=n_hypotheses,
+            n_killed=n_killed,
+            n_promoted=n_promoted,
+            kill_rate=(n_killed / n_hypotheses) if n_hypotheses else 0.0,
+            n_planted=n_planted,
+            n_planted_killed=n_planted_killed,
+            false_kill_rate=(n_planted_killed / n_planted) if n_planted else 0.0,
+            n_noise=n_noise,
+            n_noise_survived=n_noise_survived,
+            false_survivor_rate=(n_noise_survived / n_noise) if n_noise else 0.0,
+            reject_reason_counts=reasons,
+        )
+
+
 def build_kill_rate_report(
     *,
     seed: int,
@@ -102,6 +162,18 @@ def build_kill_rate_report(
         reject_reason_counts=dict(reason_counts),
         candidates=tuple(snapshots),
     )
+
+
+def write_multiseed_kill_rate_reports(
+    report: MultiSeedKillRateReport,
+    directory: Path,
+) -> tuple[Path, Path]:
+    directory.mkdir(parents=True, exist_ok=True)
+    json_path = directory / "phase2_kill_rate_multiseed.json"
+    md_path = directory / "phase2_kill_rate_multiseed.md"
+    json_path.write_text(json.dumps(_as_multiseed_json(report), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    md_path.write_text(_as_multiseed_markdown(report), encoding="utf-8")
+    return md_path, json_path
 
 
 def write_kill_rate_reports(report: KillRateReport, directory: Path) -> tuple[Path, Path]:
@@ -211,3 +283,102 @@ def _fmt(value: float | None) -> str:
     if value is None:
         return "n/a"
     return f"{value:.4f}"
+
+
+def _as_multiseed_json(report: MultiSeedKillRateReport) -> dict[str, object]:
+    return {
+        "n_hypotheses": report.n_hypotheses,
+        "n_killed": report.n_killed,
+        "n_promoted": report.n_promoted,
+        "kill_rate": report.kill_rate,
+        "n_planted": report.n_planted,
+        "n_planted_killed": report.n_planted_killed,
+        "false_kill_rate": report.false_kill_rate,
+        "n_noise": report.n_noise,
+        "n_noise_survived": report.n_noise_survived,
+        "false_survivor_rate": report.false_survivor_rate,
+        "reject_reason_counts": dict(report.reject_reason_counts),
+        "seeds": [
+            {
+                "seed": row.seed,
+                "instrument": row.instrument,
+                "n_hypotheses": row.n_hypotheses,
+                "n_killed": row.n_killed,
+                "n_promoted": row.n_promoted,
+                "kill_rate": row.kill_rate,
+                "n_planted": row.n_planted,
+                "n_planted_killed": row.n_planted_killed,
+                "n_noise": row.n_noise,
+                "n_noise_survived": row.n_noise_survived,
+                "reject_reason_counts": dict(row.reject_reason_counts),
+                "candidates": [
+                    {
+                        "hypothesis_id": item.hypothesis_id,
+                        "planted": item.planted,
+                        "passed_gate": item.passed_gate,
+                        "promoted": item.promoted,
+                        "reject_reasons": list(item.reject_reasons),
+                        "oos_distribution": {
+                            "values": list(item.oos_values),
+                            "median": item.oos_median,
+                            "worst": item.oos_worst,
+                            "pct_positive": item.oos_pct_positive,
+                        },
+                        "dsr": item.dsr,
+                        "pbo": item.pbo,
+                        "wfe": item.wfe,
+                        "n_oos_windows": item.n_oos_windows,
+                    }
+                    for item in row.candidates
+                ],
+            }
+            for row in report.seeds
+        ],
+    }
+
+
+def _as_multiseed_markdown(report: MultiSeedKillRateReport) -> str:
+    lines = [
+        "# Phase 2 research loop — multi-seed kill-rate report",
+        "",
+        "Independent seeds. Generators and gate floors were not retuned for this run.",
+        "",
+        f"- seeds: **{len(report.seeds)}**",
+        f"- hypotheses: **{report.n_hypotheses}**",
+        f"- killed: **{report.n_killed}**",
+        f"- promoted: **{report.n_promoted}**",
+        f"- overall kill rate: **{report.kill_rate:.4f}**",
+        f"- planted (designed edges): **{report.n_planted}**",
+        f"- false-kill rate (planted killed / planted): **{report.false_kill_rate:.4f}**",
+        f"- noise / nulls: **{report.n_noise}**",
+        f"- false-survivor rate (noise promoted / noise): **{report.false_survivor_rate:.4f}**",
+        "",
+        "## Per seed",
+        "",
+        "| seed | instrument | n | kill rate | planted killed | noise survived |",
+        "|---|---|---|---|---|---|",
+    ]
+    for row in report.seeds:
+        lines.append(
+            f"| `{row.seed}` | `{row.instrument}` | {row.n_hypotheses} | "
+            f"{row.kill_rate:.4f} | {row.n_planted_killed}/{row.n_planted} | "
+            f"{row.n_noise_survived}/{row.n_noise} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Why ideas die (pooled gate checks)",
+            "",
+            "| check | count |",
+            "|---|---|",
+        ]
+    )
+    if report.reject_reason_counts:
+        for name, count in sorted(report.reject_reason_counts.items(), key=lambda item: (-item[1], item[0])):
+            lines.append(f"| `{name}` | {count} |")
+    else:
+        lines.append("| _(none)_ | 0 |")
+    lines.append("")
+    lines.append("Each candidate's full OOS path values are in `phase2_kill_rate_multiseed.json`.")
+    lines.append("")
+    return "\n".join(lines)

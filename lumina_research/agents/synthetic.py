@@ -10,6 +10,7 @@ from lumina_research.validation.cost_model import MarketSnapshot
 
 
 def gauss(rng: random.Random) -> float:
+    """Standard normal draw from a seeded ``random.Random`` (no numpy)."""
     return rng.gauss(0.0, 1.0)
 
 

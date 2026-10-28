@@ -14,6 +14,7 @@ from lumina_core.agent_orchestration.schemas_research import (
     RegimePayload,
     WFEPayload,
 )
+from lumina_research.validation.cost_model import COST_MODEL_ID
 from lumina_research.validation.types import (
     DSRSnapshot,
     GateReport,
@@ -25,6 +26,7 @@ from lumina_research.validation.types import (
 
 
 def dump_json(model: BaseModel) -> dict[str, object]:
+    """JSON-mode dump with stable ``str`` keys for HMAC and the experiment log."""
     dumped = model.model_dump(mode="json", exclude_none=False)
     out: dict[str, object] = {}
     for key in dumped:
@@ -33,6 +35,7 @@ def dump_json(model: BaseModel) -> dict[str, object]:
 
 
 def json_float(value: float) -> float | None:
+    """Finite floats only. NaN/inf become ``None`` so JSON HMAC cannot lie."""
     if not math.isfinite(value):
         return None
     return float(value)
@@ -97,7 +100,27 @@ def regime_payload(snapshot: RegimeSnapshot) -> RegimePayload:
     )
 
 
+def integrity_fields(report: GateReport) -> dict[str, object]:
+    """MAC-bound copies of purge, embargo, cost provenance and regime completeness."""
+    provenance = report.cost_provenance
+    applied = provenance is not None and provenance.applied
+    model_id = "" if provenance is None else str(provenance.model_id)
+    if applied and model_id != COST_MODEL_ID:
+        applied = False
+        model_id = ""
+    return {
+        "purge_applied": bool(report.purge_applied),
+        "embargo_applied": bool(report.embargo_applied),
+        "cost_applied": bool(applied),
+        "cost_contract_root": "" if provenance is None else str(provenance.contract_root),
+        "cost_model_id": model_id,
+        "regimes_complete": report.regimes.is_complete(),
+    }
+
+
 def report_metric_fields(report: GateReport) -> Mapping[str, object]:
+    """Full gate snapshot for the experiment log (OOS distribution included)."""
+    integrity = integrity_fields(report)
     return {
         "oos_distribution": dump_json(oos_payload(report.oos_distribution)),
         "dsr": dump_json(dsr_payload(report.dsr)),
@@ -108,5 +131,6 @@ def report_metric_fields(report: GateReport) -> Mapping[str, object]:
         "median_oos_after_costs": json_float(report.median_oos_after_costs),
         "reject_reasons": list(report.reject_reasons),
         "passed": report.passed,
+        **integrity,
         "full_audit": report.to_audit_metrics(),
     }

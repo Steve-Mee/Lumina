@@ -6,6 +6,7 @@ from typing import Mapping, cast
 
 
 def as_object_dict(value: object) -> dict[str, object] | None:
+    """Narrow a JSON object to ``dict[str, object]``. Lists and scalars return None."""
     if not isinstance(value, dict):
         return None
     typed = cast(dict[object, object], value)
@@ -13,6 +14,7 @@ def as_object_dict(value: object) -> dict[str, object] | None:
 
 
 def as_object_list(value: object) -> list[object] | None:
+    """Narrow a JSON array to ``list[object]``. Dicts and scalars return None."""
     if isinstance(value, list):
         return list(cast(list[object], value))
     if isinstance(value, tuple):
@@ -21,6 +23,7 @@ def as_object_list(value: object) -> list[object] | None:
 
 
 def mapping_get(mapping: Mapping[str, object], key: str) -> object:
+    """Return ``mapping[key]`` or ``None`` when the key is absent (no default other than None)."""
     if key not in mapping:
         return None
     return mapping[key]

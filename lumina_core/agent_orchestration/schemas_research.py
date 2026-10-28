@@ -28,8 +28,8 @@ EVENT_BUS_TOPIC_PRODUCERS: dict[str, frozenset[str]] = {
     RESEARCH_PROMOTION_TOPIC: frozenset({PROMOTION_AGENT_ID}),
 }
 
-# PromotionCandidate may only be issued by PromotionAgent (HMAC guard on the bus).
-EVENT_BUS_GUARDED_TOPICS: frozenset[str] = frozenset({RESEARCH_PROMOTION_TOPIC})
+# HMAC issuer guards. Existing (non-research) topics cannot register a guard.
+EVENT_BUS_GUARDED_TOPICS: frozenset[str] = frozenset({RESEARCH_PROMOTION_TOPIC, RESEARCH_VALIDATION_TOPIC})
 
 _RATIONALE_MIN = 8
 
@@ -150,7 +150,11 @@ class RegimePayload(BaseModel):
 
 
 class ValidationResult(BaseModel):
-    """Gate outcome. Always carries OOS distribution, DSR, PBO, WFE and reject reasons."""
+    """Gate outcome. Always carries OOS distribution, DSR, PBO, WFE and reject reasons.
+
+    ``purge_applied`` / ``embargo_applied`` / ``cost_applied`` / ``regimes_complete``
+    default to False so an incomplete payload cannot look like a PASS.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -168,6 +172,12 @@ class ValidationResult(BaseModel):
     regimes: RegimePayload
     n_oos_windows: int = Field(ge=0)
     median_oos_after_costs: float | None
+    purge_applied: bool = False
+    embargo_applied: bool = False
+    cost_applied: bool = False
+    cost_contract_root: str = ""
+    cost_model_id: str = ""
+    regimes_complete: bool = False
     report_sha256: str = Field(min_length=64, max_length=64)
     provenance_mac: str = Field(min_length=64, max_length=64)
 

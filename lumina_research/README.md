@@ -34,7 +34,7 @@ Thresholds (`validation/gate_thresholds.toml`): DSR probability â‰¥ 0.95, WFE â‰
 | `agents/experiment_log.py` | Append-only JSONL via the Phase 1 audit writer (`flock` + `fsync`) |
 | `agents/loop.py` | `run_phase2_loop` on synthetic data |
 
-Typed events `HypothesisProposed`, `ValidationResult`, `PromotionCandidate` are additive on the Event Bus / Blackboard (`research.*` topics). Existing topics are unchanged. A `PromotionCandidate` is a **proposal**; this layer never writes the live `PromotionGate` or `lumina_core/risk`.
+Typed events `HypothesisProposed`, `ValidationResult`, `PromotionCandidate` are additive on the Event Bus / Blackboard (`research.*` topics). Existing topics are unchanged. `ValidationResult` and `PromotionCandidate` carry HMAC provenance and are issuer-guarded on the bus; a forged, edited, or replayed `ValidationResult` cannot become a `PromotionCandidate`. A `PromotionCandidate` is a **proposal**; this layer never writes the live `PromotionGate` or `lumina_core/risk`.
 
 ## This layer may only propose
 

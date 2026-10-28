@@ -1,7 +1,9 @@
 """HMAC provenance for ValidationResult and PromotionCandidate.
 
 The key lives in a closure. Agents read ``passed`` only from MAC-authenticated
-canonical bytes. Forged, edited, or replayed-under-another-trial-id events fail.
+canonical bytes. Forged, edited, replayed-under-another-trial-id, or unsigned
+bus payloads fail. Identical replay of a verified trial is refused by
+``PromotionAgent`` (one trial → one promotion decision).
 """
 
 from __future__ import annotations
@@ -106,6 +108,16 @@ class ProvenanceAuthority(Frozen):
             return False
         return self.verify_issue(payload)
 
+    def guard_validation(self, producer: str, payload: dict[str, object]) -> bool:
+        """Bus/blackboard issuer guard: only a MAC-valid ValidationResult may land."""
+        if producer.strip() != "validation_agent":
+            return False
+        try:
+            ValidationResult.model_validate(payload)
+        except Exception:
+            return False
+        return self.verify_validation(payload) is not None
+
 
 def validation_fields_from_result(result: ValidationResult) -> dict[str, object]:
     dumped = dump_json(result)
@@ -130,6 +142,12 @@ def _canonical_validation(fields: Mapping[str, object]) -> bytes:
         "regimes": fields["regimes"],
         "n_oos_windows": fields["n_oos_windows"],
         "median_oos_after_costs": fields["median_oos_after_costs"],
+        "purge_applied": fields["purge_applied"],
+        "embargo_applied": fields["embargo_applied"],
+        "cost_applied": fields["cost_applied"],
+        "cost_contract_root": fields["cost_contract_root"],
+        "cost_model_id": fields["cost_model_id"],
+        "regimes_complete": fields["regimes_complete"],
     }
     return _dumps(body)
 
