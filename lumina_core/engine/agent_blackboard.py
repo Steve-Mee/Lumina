@@ -14,6 +14,7 @@ from typing import Any, Callable
 
 from pydantic import BaseModel
 
+from lumina_core.agent_orchestration.schemas_research import EVENT_BUS_GUARDED_TOPICS
 from lumina_core.engine.agent_blackboard_metrics import AgentBlackboardMetricsMixin
 from lumina_core.engine.agent_blackboard_publish import AgentBlackboardPublishMixin
 from lumina_core.engine.agent_blackboard_types import (
@@ -81,6 +82,7 @@ class AgentBlackboard(
         # Respect LUMINA_STATE_DIR for test isolation (set in conftest.py).
         _state_dir = Path(os.getenv("LUMINA_STATE_DIR", "state"))
         self._thought_log_path = _state_dir / "thought_log.jsonl"
+        self._topic_guards: dict[str, Callable[[str, dict[str, Any]], bool]] = {}
 
     async def publish(
         self,
@@ -102,6 +104,16 @@ class AgentBlackboard(
             correlation_id=correlation_id,
             payload_model=payload_model,
         )
+
+    def register_topic_guard(self, topic: str, guard: Callable[[str, dict[str, Any]], bool]) -> None:
+        """Issuer guard for new guarded research topics only. Existing topics stay unguarded."""
+        topic_key = str(topic).strip().lower()
+        if topic_key not in EVENT_BUS_GUARDED_TOPICS:
+            raise ValueError(
+                f"topic guards cannot be attached to {topic_key!r}; existing Blackboard topics stay unguarded"
+            )
+        with self._lock:
+            self._topic_guards[topic_key] = guard
 
     def subscribe(self, topic: str, callback: Callable[[BlackboardEvent], None]) -> str:
         topic_key = str(topic).strip().lower()

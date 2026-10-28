@@ -17,6 +17,7 @@ from lumina_core.agent_orchestration.schemas import (
     BLACKBOARD_TOPIC_MODELS,
     model_validate_payload_with_instance,
 )
+from lumina_core.agent_orchestration.schemas_research import EVENT_BUS_GUARDED_TOPICS
 from lumina_core.engine.agent_blackboard_types import BlackboardEvent, TopicPolicy
 from lumina_core.state.state_manager import safe_append_jsonl
 
@@ -67,6 +68,13 @@ class AgentBlackboardPublishMixin:
                     exc.errors(),
                 )
                 raise
+
+        if topic_key in EVENT_BUS_GUARDED_TOPICS:
+            guards: dict[str, Any] = getattr(self, "_topic_guards", {})
+            guard = guards.get(topic_key)
+            if guard is None or not bool(guard(str(producer), dict(safe_payload))):
+                self._record_reject(topic=topic_key, producer=producer, reason="issuer_guard")
+                raise PermissionError(f"topic {topic_key!r} rejected: missing or invalid issuer guard")
 
         event = self._build_event(
             topic=topic_key,

@@ -24,6 +24,18 @@ Every task starts with the Validation Gate. No strategy, signal, or mutant work 
 
 Thresholds (`validation/gate_thresholds.toml`): DSR probability ≥ 0.95, WFE ≥ 0.5, PBO warning ≥ 0.25, PBO hard reject > 0.50, ≥ 6 OOS windows, costs required.
 
+## Phase 2 — multi-agent research loop
+
+| Path | Role |
+|------|------|
+| `agents/hypothesis.py` | `HypothesisAgent` — pluggable, seeded generators; rationale required; every variant is a `TrialRegistry` trial |
+| `agents/validation_agent.py` | `ValidationAgent` — full Phase 1 `evaluate_candidate` pipeline; always publishes `ValidationResult` (OOS / DSR / PBO / WFE / reject reasons) |
+| `agents/promotion.py` | `PromotionAgent` — `PromotionCandidate` only after sealed PASS + research Risk Core (`Approved` or `Scaled`) |
+| `agents/experiment_log.py` | Append-only JSONL via the Phase 1 audit writer (`flock` + `fsync`) |
+| `agents/loop.py` | `run_phase2_loop` on synthetic data |
+
+Typed events `HypothesisProposed`, `ValidationResult`, `PromotionCandidate` are additive on the Event Bus / Blackboard (`research.*` topics). Existing topics are unchanged. `ValidationResult` and `PromotionCandidate` carry HMAC provenance and are issuer-guarded on the bus; a forged, edited, or replayed `ValidationResult` cannot become a `PromotionCandidate`. A `PromotionCandidate` is a **proposal**; this layer never writes the live `PromotionGate` or `lumina_core/risk`.
+
 ## This layer may only propose
 
 `lumina_research` may generate hypotheses, reports, and Validation Gate evidence. It **must never**:

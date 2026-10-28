@@ -6,6 +6,15 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from lumina_core.agent_orchestration.schemas_research import (
+    HYPOTHESIS_AGENT_ID,
+    PROMOTION_AGENT_ID,
+    RESEARCH_HYPOTHESIS_TOPIC,
+    RESEARCH_PROMOTION_TOPIC,
+    RESEARCH_VALIDATION_TOPIC,
+    VALIDATION_AGENT_ID,
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +66,9 @@ DEFAULT_ALLOWED_PRODUCERS: dict[str, set[str]] = {
     "meta.evolution_result": {"meta_agent_orchestrator", "evolution_orchestrator", "test"},
     "meta.dna_lineage": {"meta_agent_orchestrator", "test"},
     "agent.meta.proposal": {"self_evolution_meta_agent", "test"},
+    RESEARCH_HYPOTHESIS_TOPIC: {HYPOTHESIS_AGENT_ID},
+    RESEARCH_VALIDATION_TOPIC: {VALIDATION_AGENT_ID},
+    RESEARCH_PROMOTION_TOPIC: {PROMOTION_AGENT_ID},
 }
 
 
@@ -76,6 +88,9 @@ DEFAULT_TOPIC_POLICIES: dict[str, TopicPolicy] = {
     "meta.evolution_result": TopicPolicy(critical=False, overflow_strategy="drop"),
     "meta.dna_lineage": TopicPolicy(critical=False, overflow_strategy="drop"),
     "agent.meta.proposal": TopicPolicy(critical=False, overflow_strategy="drop"),
+    RESEARCH_HYPOTHESIS_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
+    RESEARCH_VALIDATION_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
+    RESEARCH_PROMOTION_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
 }
 
 

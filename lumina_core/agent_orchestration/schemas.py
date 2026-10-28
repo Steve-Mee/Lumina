@@ -6,7 +6,8 @@ Contract policy is intentionally split in two tiers:
 
 Domain modules (re-exported here for stable imports):
 ``schemas_trading``, ``schemas_risk``, ``schemas_evolution``,
-``schemas_safety_meta``, ``schemas_birth``, ``schemas_runtime``.
+``schemas_safety_meta``, ``schemas_birth``, ``schemas_runtime``,
+``schemas_research`` (additive Phase 2 research topics only).
 """
 from __future__ import annotations
 
@@ -88,6 +89,14 @@ from lumina_core.agent_orchestration.schemas_safety_meta import (
     MetaHyperparametersPayload,
     MetaRetrainingPayload,
 )
+from lumina_core.agent_orchestration.schemas_research import (
+    RESEARCH_HYPOTHESIS_TOPIC,
+    RESEARCH_PROMOTION_TOPIC,
+    RESEARCH_VALIDATION_TOPIC,
+    HypothesisProposed,
+    PromotionCandidate,
+    ValidationResult,
+)
 from lumina_core.agent_orchestration.schemas_trading import (
     EXECUTION_FILL_RECEIVED_TOPIC,
     DreamStateEventPayload,
@@ -157,6 +166,9 @@ EVENT_BUS_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     "runtime.config.reloaded": RuntimeConfigReloaded,
     "runtime.config.reload_failed": RuntimeConfigReloadFailed,
     "runtime.config.reload_requested": RuntimeConfigReloadRequested,
+    RESEARCH_HYPOTHESIS_TOPIC: HypothesisProposed,
+    RESEARCH_VALIDATION_TOPIC: ValidationResult,
+    RESEARCH_PROMOTION_TOPIC: PromotionCandidate,
 }
 
 CRITICAL_EVENT_BUS_TOPICS: frozenset[str] = frozenset(
@@ -178,6 +190,9 @@ CRITICAL_EVENT_BUS_TOPICS: frozenset[str] = frozenset(
         "birth.curriculum.stage.completed",
         "birth.curriculum.aborted",
         EXECUTION_FILL_RECEIVED_TOPIC,
+        RESEARCH_HYPOTHESIS_TOPIC,
+        RESEARCH_VALIDATION_TOPIC,
+        RESEARCH_PROMOTION_TOPIC,
     }
 )
 
@@ -197,6 +212,9 @@ BLACKBOARD_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     "meta.evolution_result": MetaEvolutionResultPayload,
     "meta.dna_lineage": MetaDnaLineagePayload,
     "agent.meta.proposal": AgentMetaProposalPayload,
+    RESEARCH_HYPOTHESIS_TOPIC: HypothesisProposed,
+    RESEARCH_VALIDATION_TOPIC: ValidationResult,
+    RESEARCH_PROMOTION_TOPIC: PromotionCandidate,
 }
 
 

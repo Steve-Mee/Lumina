@@ -396,3 +396,7 @@ _perf_*.txt
 .coverage*
 
 tmp_module_cov_art/
+
+# Phase 2 research experiment log (append-only runtime; reports are tracked)
+experiments/log/*.jsonl
+!experiments/log/.gitkeep

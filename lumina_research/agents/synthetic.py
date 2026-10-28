@@ -1,0 +1,54 @@
+"""Deterministic synthetic tapes for research hypotheses. No network."""
+
+from __future__ import annotations
+
+import random
+from typing import Literal
+
+from lumina_core.agent_orchestration.schemas_research import HypothesisProposed
+from lumina_research.validation.cost_model import MarketSnapshot
+
+
+def gauss(rng: random.Random) -> float:
+    """Standard normal draw from a seeded ``random.Random`` (no numpy)."""
+    return rng.gauss(0.0, 1.0)
+
+
+def materialize(
+    hypothesis: HypothesisProposed,
+) -> tuple[tuple[float, ...], tuple[float, ...], tuple[MarketSnapshot, ...]]:
+    """Map a sealed hypothesis to gross returns, positions and markets."""
+    rng = random.Random(hypothesis.seed)
+    n = hypothesis.n_obs
+    if hypothesis.kind == "planted_edge":
+        gross = _planted_gross(n, hypothesis.mu, hypothesis.sigma, rng)
+    else:
+        gross = tuple(hypothesis.mu + hypothesis.sigma * gauss(rng) for _ in range(n))
+    positions = _positions(hypothesis.kind, n, hypothesis.seed)
+    snap = MarketSnapshot(volume=10_000.0, average_volume=10_000.0, volatility_price=2.0)
+    markets = tuple(snap for _ in range(n))
+    return gross, positions, markets
+
+
+def _planted_gross(n: int, mu: float, sigma: float, rng: random.Random) -> tuple[float, ...]:
+    """Positive-drift tape with explicit vol and trend blocks so regimes are computable.
+
+    Six blocks: four positive-drift and two milder negative-drift, alternating
+    high/low volatility. Net expected drift stays positive after four-leg costs.
+    """
+    drifts = (mu * 1.6, mu * 1.6, -mu * 0.35, mu * 1.6, mu * 1.6, -mu * 0.35)
+    sigmas = (sigma * 1.8, sigma * 0.55, sigma * 1.8, sigma * 0.55, sigma * 1.8, sigma * 0.55)
+    block = n // 6
+    out: list[float] = []
+    for index, (drift, noise) in enumerate(zip(drifts, sigmas, strict=True)):
+        length = block if index < 5 else n - 5 * block
+        for _ in range(length):
+            out.append(drift + noise * gauss(rng))
+    return tuple(out)
+
+
+def _positions(kind: Literal["noise", "planted_edge"], n: int, seed: int) -> tuple[float, ...]:
+    if kind == "planted_edge":
+        return tuple(1.0 for _ in range(n))
+    rng = random.Random(seed + 17)
+    return tuple(float(rng.choice((-1.0, 1.0))) for _ in range(n))
