@@ -28,6 +28,9 @@ class HypothesisDraft:
     proposed_price: float
     proposed_notional: float
     rationale: EconomicRationale
+    is_size: int = 60
+    oos_size: int = 30
+    parent_config_id: str = ""
 
 
 class HypothesisGenerator(ABC):

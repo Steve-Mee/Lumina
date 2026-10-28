@@ -49,6 +49,7 @@ class ValidationAgent(Frozen):
     _pending: list[HypothesisProposed]
     _evaluate: _Evaluate
     _equity: float
+    _evaluations: list[CandidateEvaluation]
 
     def __init_subclass__(cls) -> None:
         raise TypeError("ValidationAgent cannot be subclassed")
@@ -71,6 +72,7 @@ class ValidationAgent(Frozen):
         self._blackboard = blackboard
         self._audit_path = audit_path if audit_path is not None else registry.audit_path
         self._pending = []
+        self._evaluations = []
         self._evaluate = evaluate_candidate
         self._equity = float(equity)
         self._freeze()
@@ -90,6 +92,7 @@ class ValidationAgent(Frozen):
         """Run the full Phase 1 pipeline for every pending hypothesis and publish."""
         batch = tuple(self._pending)
         self._pending.clear()
+        self._evaluations.clear()
         if not batch:
             return ()
         nets = _peer_nets(batch, equity=self._equity)
@@ -98,6 +101,10 @@ class ValidationAgent(Frozen):
             peers = tuple(nets[j] for j in range(len(nets)) if j != index)
             results.append(self._evaluate_one(hypothesis, peers))
         return tuple(results)
+
+    def evaluations(self) -> tuple[CandidateEvaluation, ...]:
+        """Phase 1 evaluations from the last ``flush`` (fitness uses GateReport only)."""
+        return tuple(self._evaluations)
 
     def _evaluate_one(
         self,
@@ -117,6 +124,8 @@ class ValidationAgent(Frozen):
                 peer_net_returns=peers,
                 audit_path=self._audit_path,
                 equity=self._equity,
+                is_size=int(hypothesis.is_size),
+                oos_size=int(hypothesis.oos_size),
             )
         except Exception:
             evaluation = missing_evaluation(
@@ -124,6 +133,7 @@ class ValidationAgent(Frozen):
                 audit_path=self._audit_path,
                 registry=self._registry,
             )
+        self._evaluations.append(evaluation)
         trial_id = _latest_trial_id(self._registry, hypothesis.config_id)
         result = self._seal(hypothesis, evaluation.report, trial_id)
         dumped = dump_json(result)

@@ -36,6 +36,19 @@ Thresholds (`validation/gate_thresholds.toml`): DSR probability ≥ 0.95, WFE �
 
 Typed events `HypothesisProposed`, `ValidationResult`, `PromotionCandidate` are additive on the Event Bus / Blackboard (`research.*` topics). Existing topics are unchanged. `ValidationResult` and `PromotionCandidate` carry HMAC provenance and are issuer-guarded on the bus; a forged, edited, or replayed `ValidationResult` cannot become a `PromotionCandidate`. A `PromotionCandidate` is a **proposal**; this layer never writes the live `PromotionGate` or `lumina_core/risk`.
 
+## Phase 3 — self-evolution within bounds
+
+| Path | Role |
+|------|------|
+| `evolution/birth.py` | `BirthPhase` — open new walk-forward windows and tune parameters (propose-only) |
+| `evolution/reflector.py` | `ReflectorAgent` — can only propose; apply/promote/skip-trial raise |
+| `evolution/governance.py` | ADR file + HMAC-signed human review for Risk Core / threshold changes; never auto-applied |
+| `evolution/regime.py` | Volatility/trend → size multiplier only; strategy switches refused |
+| `evolution/loop.py` | `run_phase3_evolution` — every mutation is a `TrialRegistry` trial, then the Phase 2 event flow |
+| `evolution/integrity.py` | Snapshot hashes of Risk Core, floors, and the bound Validation Gate |
+
+Fitness remains `lumina_research/fitness.py` (median OOS Sharpe after costs, 1−PBO, WFE, regime robustness, turnover and low-DSR penalties). In-sample PnL is refused. Additive topics: `research.mutation.proposed`, `research.governance.decision`.
+
 ## This layer may only propose
 
 `lumina_research` may generate hypotheses, reports, and Validation Gate evidence. It **must never**:
