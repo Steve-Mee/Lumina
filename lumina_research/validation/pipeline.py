@@ -28,6 +28,10 @@ from lumina_research.validation.types import (
 )
 from lumina_research.validation.walk_forward import WalkForwardConfig, run_walk_forward, static_return_scorer
 
+# Bound at import so a later monkeypatch of the public name cannot skip the gate.
+BOUND_GATE = passes_validation_gate
+BOUND_FITNESS = compute_fitness
+
 
 @dataclass(frozen=True, slots=True)
 class CandidateEvaluation:
@@ -122,10 +126,10 @@ def evaluate_candidate(
         purge_applied=cpcv.purge_applied,
         embargo_applied=cpcv.embargo_applied,
     )
-    passed, report = passes_validation_gate(results, registry=registry)
+    passed, report = BOUND_GATE(results, registry=registry)
     fitness: FitnessScore | None
     try:
-        fitness = compute_fitness(report, turnover=turnover)
+        fitness = BOUND_FITNESS(report, turnover=turnover)
     except FitnessRefused:
         fitness = None
     return CandidateEvaluation(
@@ -161,7 +165,7 @@ def missing_evaluation(
         purge_applied=False,
         embargo_applied=False,
     )
-    passed, report = passes_validation_gate(results, registry=registry)
+    passed, report = BOUND_GATE(results, registry=registry)
     return CandidateEvaluation(
         passed=passed,
         report=report,

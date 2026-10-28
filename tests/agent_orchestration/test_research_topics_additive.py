@@ -11,7 +11,9 @@ from lumina_core.agent_orchestration import event_bus as event_bus_mod
 from lumina_core.agent_orchestration.event_bus import EventBus
 from lumina_core.agent_orchestration.schemas import (
     EVENT_BUS_TOPIC_MODELS,
+    RESEARCH_GOVERNANCE_TOPIC,
     RESEARCH_HYPOTHESIS_TOPIC,
+    RESEARCH_MUTATION_TOPIC,
     RESEARCH_PROMOTION_TOPIC,
     RESEARCH_VALIDATION_TOPIC,
 )
@@ -60,7 +62,16 @@ def test_research_topics_are_registered_and_guarded_additively() -> None:
     assert RESEARCH_HYPOTHESIS_TOPIC in EVENT_BUS_TOPIC_MODELS
     assert RESEARCH_VALIDATION_TOPIC in EVENT_BUS_TOPIC_MODELS
     assert RESEARCH_PROMOTION_TOPIC in EVENT_BUS_TOPIC_MODELS
-    assert EVENT_BUS_GUARDED_TOPICS == frozenset({RESEARCH_PROMOTION_TOPIC, RESEARCH_VALIDATION_TOPIC})
+    assert RESEARCH_MUTATION_TOPIC in EVENT_BUS_TOPIC_MODELS
+    assert RESEARCH_GOVERNANCE_TOPIC in EVENT_BUS_TOPIC_MODELS
+    assert EVENT_BUS_GUARDED_TOPICS == frozenset(
+        {
+            RESEARCH_PROMOTION_TOPIC,
+            RESEARCH_VALIDATION_TOPIC,
+            RESEARCH_MUTATION_TOPIC,
+            RESEARCH_GOVERNANCE_TOPIC,
+        }
+    )
 
 
 @pytest.mark.unit

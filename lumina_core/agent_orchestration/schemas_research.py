@@ -13,23 +13,50 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 RESEARCH_HYPOTHESIS_TOPIC = "research.hypothesis.proposed"
 RESEARCH_VALIDATION_TOPIC = "research.validation.result"
 RESEARCH_PROMOTION_TOPIC = "research.promotion.candidate"
+RESEARCH_MUTATION_TOPIC = "research.mutation.proposed"
+RESEARCH_GOVERNANCE_TOPIC = "research.governance.decision"
 
 HYPOTHESIS_AGENT_ID = "hypothesis_agent"
 VALIDATION_AGENT_ID = "validation_agent"
 PROMOTION_AGENT_ID = "promotion_agent"
+REFLECTOR_AGENT_ID = "reflector_agent"
+BIRTH_AGENT_ID = "birth_agent"
+GOVERNANCE_AGENT_ID = "governance_agent"
 
 HYPOTHESIS_SCHEMA_VERSION: Literal["research.hypothesis.proposed.v1"] = "research.hypothesis.proposed.v1"
 VALIDATION_SCHEMA_VERSION: Literal["research.validation.result.v1"] = "research.validation.result.v1"
 PROMOTION_SCHEMA_VERSION: Literal["research.promotion.candidate.v1"] = "research.promotion.candidate.v1"
+MUTATION_SCHEMA_VERSION: Literal["research.mutation.proposed.v1"] = "research.mutation.proposed.v1"
+GOVERNANCE_SCHEMA_VERSION: Literal["research.governance.decision.v1"] = "research.governance.decision.v1"
+
+MutationKind = Literal[
+    "parameter_tune",
+    "open_window",
+    "noise",
+    "threshold_change",
+    "risk_core_change",
+    "strategy_switch",
+    "skip_gate",
+    "direct_promotion",
+]
 
 EVENT_BUS_TOPIC_PRODUCERS: dict[str, frozenset[str]] = {
     RESEARCH_HYPOTHESIS_TOPIC: frozenset({HYPOTHESIS_AGENT_ID}),
     RESEARCH_VALIDATION_TOPIC: frozenset({VALIDATION_AGENT_ID}),
     RESEARCH_PROMOTION_TOPIC: frozenset({PROMOTION_AGENT_ID}),
+    RESEARCH_MUTATION_TOPIC: frozenset({REFLECTOR_AGENT_ID}),
+    RESEARCH_GOVERNANCE_TOPIC: frozenset({GOVERNANCE_AGENT_ID}),
 }
 
 # HMAC issuer guards. Existing (non-research) topics cannot register a guard.
-EVENT_BUS_GUARDED_TOPICS: frozenset[str] = frozenset({RESEARCH_PROMOTION_TOPIC, RESEARCH_VALIDATION_TOPIC})
+EVENT_BUS_GUARDED_TOPICS: frozenset[str] = frozenset(
+    {
+        RESEARCH_PROMOTION_TOPIC,
+        RESEARCH_VALIDATION_TOPIC,
+        RESEARCH_MUTATION_TOPIC,
+        RESEARCH_GOVERNANCE_TOPIC,
+    }
+)
 
 _RATIONALE_MIN = 8
 
@@ -85,6 +112,10 @@ class HypothesisProposed(BaseModel):
     proposed_quantity: float = Field(gt=0.0)
     proposed_price: float = Field(gt=0.0)
     proposed_notional: float = Field(gt=0.0)
+    is_size: int = Field(default=60, ge=2)
+    oos_size: int = Field(default=30, ge=2)
+    parent_config_id: str = ""
+    overfit_in_sample: bool = False
     rationale: EconomicRationale
 
 
@@ -201,3 +232,72 @@ class PromotionCandidate(BaseModel):
     validation_report_sha256: str = Field(min_length=64, max_length=64)
     validation_mac: str = Field(min_length=64, max_length=64)
     issue_mac: str = Field(min_length=64, max_length=64)
+
+
+class ParameterGenome(BaseModel):
+    """Tunable research parameters. Not Risk Core limits and not gate floors."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    instrument: Literal["ES", "NQ", "MES", "MNQ"]
+    n_obs: int = Field(ge=241)
+    mu: float
+    sigma: float = Field(gt=0.0)
+    quantity: float = Field(gt=0.0)
+    price: float = Field(gt=0.0)
+    is_size: int = Field(default=60, ge=2)
+    oos_size: int = Field(default=30, ge=2)
+    planted: bool
+    kind: Literal["noise", "planted_edge"]
+    overfit_in_sample: bool = False
+
+
+class SignedReview(BaseModel):
+    """HMAC-signed human review. Agent ids cannot be the reviewer."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    reviewer_id: str = Field(min_length=2)
+    adr_sha256: str = Field(min_length=64, max_length=64)
+    mutation_sha256: str = Field(min_length=64, max_length=64)
+    verdict: Literal["approve", "reject"]
+    signature: str = Field(min_length=64, max_length=64)
+
+
+class MutationProposed(BaseModel):
+    """Reflector/birth proposal only. Governance admits or rejects; this event never promotes."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["research.mutation.proposed.v1"] = MUTATION_SCHEMA_VERSION
+    mutation_id: str = Field(min_length=1)
+    parent_config_id: str
+    config_id: str = Field(min_length=1)
+    trial_id: int = Field(ge=1)
+    agent_id: str = Field(min_length=1)
+    kind: MutationKind
+    target: str = Field(min_length=1)
+    seed: int
+    genome: ParameterGenome
+    rationale: EconomicRationale
+    adr_path: str = ""
+    review: SignedReview | None = None
+    provenance_mac: str = Field(min_length=64, max_length=64)
+
+
+class GovernanceDecision(BaseModel):
+    """Deterministic admit/reject. Protected surfaces are never applied by evolution."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["research.governance.decision.v1"] = GOVERNANCE_SCHEMA_VERSION
+    mutation_id: str = Field(min_length=1)
+    config_id: str = Field(min_length=1)
+    trial_id: int = Field(ge=1)
+    agent_id: str = Field(min_length=1)
+    kind: MutationKind
+    admitted: bool
+    recorded_for_human: bool
+    applied: bool
+    reasons: tuple[str, ...]
+    provenance_mac: str = Field(min_length=64, max_length=64)

@@ -90,10 +90,14 @@ from lumina_core.agent_orchestration.schemas_safety_meta import (
     MetaRetrainingPayload,
 )
 from lumina_core.agent_orchestration.schemas_research import (
+    RESEARCH_GOVERNANCE_TOPIC,
     RESEARCH_HYPOTHESIS_TOPIC,
+    RESEARCH_MUTATION_TOPIC,
     RESEARCH_PROMOTION_TOPIC,
     RESEARCH_VALIDATION_TOPIC,
+    GovernanceDecision,
     HypothesisProposed,
+    MutationProposed,
     PromotionCandidate,
     ValidationResult,
 )
@@ -169,6 +173,8 @@ EVENT_BUS_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     RESEARCH_HYPOTHESIS_TOPIC: HypothesisProposed,
     RESEARCH_VALIDATION_TOPIC: ValidationResult,
     RESEARCH_PROMOTION_TOPIC: PromotionCandidate,
+    RESEARCH_MUTATION_TOPIC: MutationProposed,
+    RESEARCH_GOVERNANCE_TOPIC: GovernanceDecision,
 }
 
 CRITICAL_EVENT_BUS_TOPICS: frozenset[str] = frozenset(
@@ -193,6 +199,8 @@ CRITICAL_EVENT_BUS_TOPICS: frozenset[str] = frozenset(
         RESEARCH_HYPOTHESIS_TOPIC,
         RESEARCH_VALIDATION_TOPIC,
         RESEARCH_PROMOTION_TOPIC,
+        RESEARCH_MUTATION_TOPIC,
+        RESEARCH_GOVERNANCE_TOPIC,
     }
 )
 
@@ -215,6 +223,8 @@ BLACKBOARD_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     RESEARCH_HYPOTHESIS_TOPIC: HypothesisProposed,
     RESEARCH_VALIDATION_TOPIC: ValidationResult,
     RESEARCH_PROMOTION_TOPIC: PromotionCandidate,
+    RESEARCH_MUTATION_TOPIC: MutationProposed,
+    RESEARCH_GOVERNANCE_TOPIC: GovernanceDecision,
 }
 
 

@@ -33,6 +33,8 @@ Phase 1 lives in `lumina_research/validation/` (`walk_forward`, `cpcv`, `dsr`, `
 - Propose-only research lives in `lumina_research/`. It may never modify or bypass the Risk Core.
 - Archived Birth-v1 code is experimental: insufficient Validation Gate rigor.
 
+Phase 3 (`lumina_research/evolution/`): birth may open new windows and tune parameters. Every mutation is a `TrialRegistry` trial and must pass the Phase 1 gate via the Phase 2 event flow. Regime detection may size or throttle, never hard-switch strategy. Risk Core and gate thresholds cannot be changed by evolution without an ADR plus a signed human review, and even then the evolutionary path does not apply the write.
+
 ## Independent Risk Core (untouchable)
 - Position sizing, max drawdown limits, leverage caps, correlation exposure, kill switches and Dead Man’s Switch live outside the evolutionary path.
 - Agents may only *propose*. The Risk Core decides and can always reject.

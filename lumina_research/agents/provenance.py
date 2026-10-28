@@ -118,6 +118,15 @@ class ProvenanceAuthority(Frozen):
             return False
         return self.verify_validation(payload) is not None
 
+    def mac(self, message: bytes) -> str:
+        """HMAC-SHA256 hex digest over canonical bytes (mutation / governance)."""
+        return self._sign(message)
+
+    def mac_ok(self, message: bytes, digest: str) -> bool:
+        if len(digest) != _HEX:
+            return False
+        return self._verify(message, digest)
+
 
 def validation_fields_from_result(result: ValidationResult) -> dict[str, object]:
     dumped = dump_json(result)
