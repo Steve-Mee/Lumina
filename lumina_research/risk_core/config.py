@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
@@ -46,8 +47,8 @@ class RiskConfig:
             ("heartbeat_timeout_sec", self.heartbeat_timeout_sec),
             ("min_quantity", self.min_quantity),
         ):
-            if value <= 0.0:
-                raise RiskConfigError(f"{name} must be > 0")
+            if not math.isfinite(value) or value <= 0.0:
+                raise RiskConfigError(f"{name} must be a finite number > 0")
         if self.max_position_pct > 1.0:
             raise RiskConfigError("max_position_pct cannot exceed 1")
         if self.max_daily_loss_pct > 1.0 or self.max_total_drawdown_pct > 1.0:
@@ -104,6 +105,6 @@ def _positive_float(value: object, name: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise RiskConfigError(f"{name} must be a number")
     number = float(value)
-    if number <= 0.0:
-        raise RiskConfigError(f"{name} must be > 0")
+    if not math.isfinite(number) or number <= 0.0:
+        raise RiskConfigError(f"{name} must be a finite number > 0")
     return number

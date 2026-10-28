@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,13 +31,16 @@ class TrialRegistry:
 
     def __init__(self, audit_path: Path) -> None:
         self._audit_path = audit_path
-        self._count = 0
-        self._records: list[TrialRecord] = []
+        self._records: tuple[TrialRecord, ...] = ()
         self._lock = threading.Lock()
 
     @property
     def n_trials(self) -> int:
-        return self._count
+        """High-water of in-memory records and durable trial events on the audit path.
+
+        Lowering the in-memory counter cannot deflate N below what was already logged.
+        """
+        return max(len(self._records), _count_trial_events(self._audit_path))
 
     @property
     def audit_path(self) -> Path:
@@ -57,7 +61,7 @@ class TrialRegistry:
         if not agent_id:
             raise TrialRegistryError("agent_id is required")
         with self._lock:
-            next_id = self._count + 1
+            next_id = self.n_trials + 1
             snapshot = {
                 "trial_id": next_id,
                 "config_id": config_id,
@@ -70,21 +74,45 @@ class TrialRegistry:
                 event="trial",
                 metrics=snapshot,
             )
-            self._count = next_id
-            self._records.append(
-                TrialRecord(
-                    trial_id=next_id,
-                    config_id=config_id,
-                    agent_id=agent_id,
-                    metrics=dict(metrics),
-                )
+            object.__setattr__(
+                self,
+                "_records",
+                self._records
+                + (
+                    TrialRecord(
+                        trial_id=next_id,
+                        config_id=config_id,
+                        agent_id=agent_id,
+                        metrics=dict(metrics),
+                    ),
+                ),
             )
-            return self._count
+            return self.n_trials
 
     def records(self) -> tuple[TrialRecord, ...]:
-        return tuple(self._records)
+        return self._records
 
     def __setattr__(self, name: str, value: object) -> None:
-        if name == "n_trials":
+        if name in {"n_trials", "_records"} and name in self.__dict__:
             raise AttributeError("n_trials is monotonic and comes only from record()")
         object.__setattr__(self, name, value)
+
+
+def _count_trial_events(path: Path) -> int:
+    if not path.is_file():
+        return 0
+    count = 0
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                text = line.strip()
+                if not text:
+                    continue
+                payload = json.loads(text)
+                if payload.get("event") == "trial":
+                    count += 1
+    except json.JSONDecodeError as exc:
+        raise TrialRegistryError("audit log corrupt; trial count cannot be lowered") from exc
+    except OSError as exc:
+        raise TrialRegistryError("audit log unreadable; trial count cannot be lowered") from exc
+    return count

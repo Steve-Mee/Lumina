@@ -2,16 +2,34 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import assert_never
+from typing import Mapping, assert_never
 
 
 class DecisionKind(str, Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
     SCALED = "scaled"
+
+
+# Canonical correlation clusters. Agent-supplied cluster_id must match.
+INSTRUMENT_CLUSTERS: Mapping[str, str] = {
+    "ES": "es_family",
+    "MES": "es_family",
+    "NQ": "nq_family",
+    "MNQ": "nq_family",
+}
+
+
+def cluster_for(instrument: str) -> str:
+    key = instrument.strip().upper()
+    cluster = INSTRUMENT_CLUSTERS.get(key)
+    if cluster is None:
+        raise ValueError(f"unknown instrument {instrument!r}")
+    return cluster
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,12 +50,17 @@ class OrderProposal:
             raise ValueError("instrument is required")
         if self.side not in {"buy", "sell"}:
             raise ValueError("side must be buy or sell")
-        if self.quantity <= 0.0:
-            raise ValueError("quantity must be positive")
-        if self.price <= 0.0 or self.notional <= 0.0:
-            raise ValueError("price and notional must be positive")
+        if not math.isfinite(self.quantity) or self.quantity <= 0.0:
+            raise ValueError("quantity must be a finite positive number")
+        if not math.isfinite(self.price) or self.price <= 0.0:
+            raise ValueError("price must be a finite positive number")
+        if not math.isfinite(self.notional) or self.notional <= 0.0:
+            raise ValueError("notional must be a finite positive number")
         if not self.cluster_id:
             raise ValueError("cluster_id is required")
+        expected = cluster_for(self.instrument)
+        if self.cluster_id != expected:
+            raise ValueError("cluster_id must match the instrument correlation cluster")
 
     def __init_subclass__(cls) -> None:
         raise TypeError("OrderProposal cannot be subclassed")

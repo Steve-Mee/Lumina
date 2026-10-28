@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 from dataclasses import dataclass
@@ -48,6 +49,7 @@ class AuditLog:
     def append(self, record: AuditRecord, **kwargs: object) -> None:
         if kwargs:
             raise TypeError("AuditLog.append does not accept skip flags")
+        _require_utc(record.timestamp)
         payload = {
             "timestamp": record.timestamp,
             "agent_id": record.agent_id,
@@ -57,9 +59,13 @@ class AuditLog:
         line = json.dumps(payload, sort_keys=True, default=_json_default) + "\n"
         try:
             with self._path.open("a", encoding="utf-8") as handle:
-                handle.write(line)
-                handle.flush()
-                os.fsync(handle.fileno())
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                try:
+                    handle.write(line)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                finally:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
         except OSError as exc:
             raise AuditError(f"failed to append validation audit to {self._path}") from exc
 
@@ -72,16 +78,29 @@ def write_event(
     metrics: Mapping[str, object],
     timestamp: str | None = None,
 ) -> None:
-    """The only write helper. Always constructs an AuditLog and appends."""
+    """The only write helper. Always stamps UTC now; caller timestamps are refused."""
+    if timestamp is not None:
+        raise TypeError("timestamp is assigned by the audit log in UTC")
     log = AuditLog(path)
     log.append(
         AuditRecord(
-            timestamp=timestamp if timestamp is not None else utc_now_iso(),
+            timestamp=utc_now_iso(),
             agent_id=agent_id,
             event=event,
             metrics=metrics,
         )
     )
+
+
+def _require_utc(stamp: str) -> None:
+    try:
+        parsed = datetime.fromisoformat(stamp)
+    except ValueError as exc:
+        raise AuditError("audit timestamp must be ISO-8601 UTC") from exc
+    if parsed.tzinfo is None:
+        raise AuditError("audit timestamp must be timezone-aware UTC")
+    if parsed.utcoffset() != timezone.utc.utcoffset(parsed):
+        raise AuditError("audit timestamp must be UTC")
 
 
 def _json_default(value: object) -> str:

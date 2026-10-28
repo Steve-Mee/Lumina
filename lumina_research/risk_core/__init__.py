@@ -8,14 +8,22 @@ from __future__ import annotations
 from lumina_research.risk_core.config import RiskConfig, load_default_config
 from lumina_research.risk_core.engine import RiskCore, propose_order
 from lumina_research.risk_core.seal import install_module_seal
-from lumina_research.risk_core.types import Decision, DecisionKind, OrderProposal
+from lumina_research.risk_core.types import (
+    INSTRUMENT_CLUSTERS,
+    Decision,
+    DecisionKind,
+    OrderProposal,
+    cluster_for,
+)
 
 __all__ = [
+    "INSTRUMENT_CLUSTERS",
     "Decision",
     "DecisionKind",
     "OrderProposal",
     "RiskConfig",
     "RiskCore",
+    "cluster_for",
     "load_default_config",
     "propose_order",
 ]
@@ -25,9 +33,11 @@ install_module_seal(
     (
         "Decision",
         "DecisionKind",
+        "INSTRUMENT_CLUSTERS",
         "OrderProposal",
         "RiskConfig",
         "RiskCore",
+        "cluster_for",
         "load_default_config",
         "propose_order",
     ),
