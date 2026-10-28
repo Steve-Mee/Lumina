@@ -10,7 +10,7 @@ description: >
 
 Bron van de regels: [`RESEARCH_CHARTER.md`](../../../RESEARCH_CHARTER.md). Bij conflict wint het charter.
 
-Phase 1 freeze: agents mogen geen nieuwe signalen schrijven tot Phase 1 van `lumina_research/` klaar is. Bouw niet verder op `archive/birth-v1/`.
+Elke taak begint bij de Validation Gate (`lumina_research/validation/`). Geen strategy-werk tot die gate bestaat en getest is. Phase 1 freeze: geen nieuwe signalen tot dat zo is. Bouw niet verder op `archive/birth-v1/`.
 
 ## Triggers
 strategy, backtest, evolution, promotion, birth, signal, fitness.

@@ -296,6 +296,7 @@ Legenda: ✅ volbracht in kern · 🔄 actief · 📋 gepland / kritiek pad
 |-----|-----|
 | `tauri-app/` | Neural Command Deck — Tauri v2 + React 19 native operator-UI |
 | `lumina_core/` | Engine, birth, maturity, risk, evolution, safety, intelligence (organs) |
+| `lumina_research/` | Propose-only research layer: Validation Gate, fitness, extra research Risk Core |
 | `lumina_bible/` | Bible-engine integratie |
 | `lumina_os/backend/` | FastAPI operator-API (`:8000`) |
 | `lumina_launcher/` | Bootstrap, birth runner, onboarding |

@@ -1,0 +1,9 @@
+{
+  "include": ["."],
+  "extraPaths": [".."],
+  "pythonVersion": "3.13",
+  "typeCheckingMode": "strict",
+  "reportMissingImports": true,
+  "reportMissingModuleSource": true,
+  "exclude": ["**/__pycache__"]
+}

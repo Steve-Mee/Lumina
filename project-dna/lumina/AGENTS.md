@@ -26,9 +26,15 @@ signal writing, the charter wins.
 
 Skill index: [`.cursor/skills/SKILL.md`](../../.cursor/skills/SKILL.md) and [`operating-system/skills/README.md`](operating-system/skills/README.md).
 
+## Validation Gate (mandatory first step)
+
+Every task starts with the Validation Gate in `lumina_research/validation/`. No strategy, signal, birth curriculum, fitness search, or mutant work until that gate exists and its tests pass. After Phase 1, new candidates are still propose-only and must pass `passes_validation_gate` before KEEP `PromotionGate`.
+
+Doubt = reject. The live Risk Core (`lumina_core/risk/`) stays untouchable; `lumina_research/risk_core/` is an additional research-time filter.
+
 ## Phase 1 freeze
 
-Agents **may not write new signals**, strategy mutants, or birth curricula until Phase 1 of `lumina_research/` is complete. Do not build on `archive/birth-v1/`. Research may only propose; the Risk Core and `PromotionGate` remain the only promotion path.
+Agents **may not write new signals**, strategy mutants, or birth curricula until the Validation Gate in `lumina_research/validation/` exists and is tested. Do not build on `archive/birth-v1/`. Research may only propose; the live Risk Core and `PromotionGate` remain the only promotion path.
 
 ## Bounded contexts (canonical under `lumina_core/`)
 
