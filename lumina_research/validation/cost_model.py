@@ -65,12 +65,14 @@ class CostModel:
         quantity: float,
         market: MarketSnapshot,
     ) -> CostBreakdown:
-        if quantity <= 0.0:
-            raise CostModelError("quantity must be positive")
-        if market.average_volume <= 0.0 or market.volume < 0.0:
-            raise CostModelError("volume must be non-negative and average_volume > 0")
-        if market.volatility_price < 0.0:
-            raise CostModelError("volatility must be >= 0")
+        if not math.isfinite(quantity) or quantity <= 0.0:
+            raise CostModelError("quantity must be a finite positive number")
+        if not math.isfinite(market.average_volume) or market.average_volume <= 0.0:
+            raise CostModelError("average_volume must be a finite number > 0")
+        if not math.isfinite(market.volume) or market.volume < 0.0:
+            raise CostModelError("volume must be a finite number >= 0")
+        if not math.isfinite(market.volatility_price) or market.volatility_price < 0.0:
+            raise CostModelError("volatility must be a finite number >= 0")
         volatility_ticks = market.volatility_price / spec.tick_size
         volume_ratio = market.volume / market.average_volume if market.average_volume > 0.0 else 0.0
         slip_scale = 1.0 / max(volume_ratio, 1e-6)
@@ -105,8 +107,8 @@ def apply_costs(
     n = len(gross_returns)
     if n == 0 or n != len(positions) or n != len(markets):
         raise CostModelError("gross_returns, positions and markets must be same non-zero length")
-    if equity <= 0.0:
-        raise CostModelError("equity must be positive")
+    if not math.isfinite(equity) or equity <= 0.0:
+        raise CostModelError("equity must be a finite positive number")
     net: list[float] = []
     costs: list[float] = []
     previous = 0.0

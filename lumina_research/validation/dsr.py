@@ -57,8 +57,8 @@ def sharpe_standard_error(*, sr: float, n_observations: int, skew: float, kurtos
     if not math.isfinite(sr) or not math.isfinite(skew) or not math.isfinite(kurtosis):
         raise DSRError("SR, skew and kurtosis must be finite")
     variance = (1.0 - skew * sr + ((kurtosis - 1.0) / 4.0) * sr * sr) / float(n_observations - 1)
-    if variance <= 0.0:
-        return 0.0
+    if not math.isfinite(variance) or variance <= 0.0:
+        raise DSRError("SR variance is non-positive; DSR is undefined")
     return math.sqrt(variance)
 
 
@@ -71,12 +71,6 @@ def probabilistic_sharpe_ratio(
     kurtosis: float,
 ) -> float:
     se = sharpe_standard_error(sr=sr, n_observations=n_observations, skew=skew, kurtosis=kurtosis)
-    if se <= 1e-18:
-        if sr > sr_star:
-            return 1.0
-        if sr < sr_star:
-            return 0.0
-        return 0.5
     return float(_NORM.cdf((sr - sr_star) / se))
 
 

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from lumina_research.validation.metrics import annualized_sharpe
+from lumina_research.validation.purge import purge_train_indices
 from lumina_research.validation.types import OOSDistribution
 
 
@@ -147,8 +148,16 @@ def run_cpcv(
     for combo_index, test_groups in enumerate(combos):
         test_index = tuple(index for group in test_groups for index in groups[group].index)
         test_set = set(test_index)
-        raw_train = tuple(index for group in range(config.n_groups) if group not in test_groups for index in groups[group].index)
-        train_index = _purge_train(raw_train, test_set, horizons, config.embargo, n_obs)
+        raw_train = tuple(
+            index for group in range(config.n_groups) if group not in test_groups for index in groups[group].index
+        )
+        train_index = purge_train_indices(
+            raw_train,
+            tuple(test_set),
+            horizons,
+            config.embargo,
+            n_obs,
+        )
         folds.append(
             CombinationFold(
                 combination_index=combo_index,
@@ -181,7 +190,7 @@ def run_cpcv(
         folds=tuple(folds),
         groups=groups,
         purge_applied=True,
-        embargo_applied=True,
+        embargo_applied=config.embargo >= 0,
     )
 
 
@@ -208,26 +217,3 @@ def _t1(n_obs: int, horizon: int, t1: Sequence[int] | None) -> tuple[int, ...]:
     if len(t1) != n_obs:
         raise CPCVError("t1 must match n_obs")
     return tuple(int(value) for value in t1)
-
-
-def _purge_train(
-    train_index: tuple[int, ...],
-    test_set: set[int],
-    t1: Sequence[int],
-    embargo: int,
-    n_obs: int,
-) -> tuple[int, ...]:
-    if not test_set:
-        return train_index
-    test_min = min(test_set)
-    test_max = max(test_set)
-    embargo_end = min(n_obs, test_max + 1 + embargo)
-    kept: list[int] = []
-    for index in train_index:
-        label_end = t1[index]
-        overlaps = index <= test_max and label_end >= test_min
-        in_embargo = test_max < index < embargo_end
-        if overlaps or in_embargo:
-            continue
-        kept.append(index)
-    return tuple(kept)

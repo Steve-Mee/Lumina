@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Literal, Mapping, Protocol, Sequence
 
 from lumina_research.validation.metrics import annualized_sharpe
+from lumina_research.validation.purge import purge_train_indices
 from lumina_research.validation.types import WFESnapshot, freeze_params
 
 
@@ -33,8 +34,7 @@ class WindowScore:
 
 
 class WindowScorer(Protocol):
-    def __call__(self, window: WalkForwardWindow) -> WindowScore:
-        ...
+    def __call__(self, window: WalkForwardWindow) -> WindowScore: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +68,9 @@ class WalkForwardResult:
     parameter_rows: tuple[Mapping[str, float], ...]
 
 
-def split_walk_forward(n_obs: int, config: WalkForwardConfig, t1: Sequence[int] | None = None) -> tuple[WalkForwardWindow, ...]:
+def split_walk_forward(
+    n_obs: int, config: WalkForwardConfig, t1: Sequence[int] | None = None
+) -> tuple[WalkForwardWindow, ...]:
     if n_obs < config.is_size + config.min_oos_windows * config.oos_size:
         raise WalkForwardError(
             f"need at least {config.is_size + config.min_oos_windows * config.oos_size} observations "
@@ -88,7 +90,13 @@ def split_walk_forward(n_obs: int, config: WalkForwardConfig, t1: Sequence[int] 
         if is_start < 0 or is_end <= is_start:
             raise WalkForwardError("invalid IS bounds")
         oos_index = tuple(range(oos_start, oos_end))
-        is_index = _purge_train(range(is_start, is_end), oos_start, oos_end, horizons, config.embargo)
+        is_index = purge_train_indices(
+            range(is_start, is_end),
+            oos_index,
+            horizons,
+            config.embargo,
+            n_obs,
+        )
         if len(is_index) < 2 or len(oos_index) < 2:
             raise WalkForwardError("purge/embargo left an empty IS or OOS window")
         windows.append(
@@ -217,22 +225,3 @@ def _t1(n_obs: int, horizon: int, t1: Sequence[int] | None) -> tuple[int, ...]:
     if len(t1) != n_obs:
         raise WalkForwardError("t1 must match n_obs")
     return tuple(int(value) for value in t1)
-
-
-def _purge_train(
-    train: range,
-    test_start: int,
-    test_end: int,
-    t1: Sequence[int],
-    embargo: int,
-) -> tuple[int, ...]:
-    embargo_end = min(len(t1), test_end + embargo)
-    kept: list[int] = []
-    for index in train:
-        label_end = t1[index]
-        overlaps_test = not (label_end < test_start or index >= test_end)
-        in_embargo = test_end <= index < embargo_end
-        if overlaps_test or in_embargo:
-            continue
-        kept.append(index)
-    return tuple(kept)

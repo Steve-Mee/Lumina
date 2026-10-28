@@ -45,7 +45,17 @@ class OOSDistribution:
         cleaned = tuple(float(item) for item in values)
         if not cleaned:
             return cls.missing()
-        stdev = float(statistics.stdev(cleaned)) if len(cleaned) >= 2 else 0.0
+        if any(not math.isfinite(item) for item in cleaned):
+            return cls(
+                values=cleaned,
+                median=math.nan,
+                mean=math.nan,
+                stdev=math.nan,
+                worst=math.nan,
+                best=math.nan,
+                pct_positive=math.nan,
+            )
+        stdev = float(statistics.pstdev(cleaned)) if len(cleaned) >= 2 else 0.0
         return cls(
             values=cleaned,
             median=float(statistics.median(cleaned)),
@@ -57,7 +67,13 @@ class OOSDistribution:
         )
 
     def is_complete(self) -> bool:
-        return len(self.values) > 0 and math.isfinite(self.median)
+        return (
+            len(self.values) > 0
+            and math.isfinite(self.median)
+            and math.isfinite(self.mean)
+            and math.isfinite(self.worst)
+            and all(math.isfinite(item) for item in self.values)
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +180,18 @@ class RegimeSnapshot:
     trend_down_sharpe: float
     robustness: float
 
+    def is_complete(self) -> bool:
+        return all(
+            math.isfinite(part)
+            for part in (
+                self.vol_high_sharpe,
+                self.vol_low_sharpe,
+                self.trend_up_sharpe,
+                self.trend_down_sharpe,
+                self.robustness,
+            )
+        )
+
     @classmethod
     def missing(cls) -> RegimeSnapshot:
         return cls(
@@ -200,6 +228,8 @@ class GateReport:
     regimes: RegimeSnapshot
     thresholds: Thresholds
     agent_id: str
+    purge_applied: bool = True
+    embargo_applied: bool = True
 
     def to_audit_metrics(self) -> dict[str, object]:
         provenance: dict[str, object] | None
@@ -276,6 +306,8 @@ class GateReport:
                 "min_oos_windows": self.thresholds.min_oos_windows,
             },
             "agent_id": self.agent_id,
+            "purge_applied": self.purge_applied,
+            "embargo_applied": self.embargo_applied,
         }
 
     def as_promotion_fragments(self) -> dict[str, dict[str, object]]:
@@ -289,8 +321,8 @@ class GateReport:
                 "sharpe_positive_pct": _json_float(self.oos_distribution.pct_positive),
                 "pbo": _json_float(pbo_value),
                 "dsr": _json_float(dsr_value),
-                "purge_applied": True,
-                "embargo_applied": True,
+                "purge_applied": self.purge_applied,
+                "embargo_applied": self.embargo_applied,
                 "regime_volatility_checked": math.isfinite(self.regimes.vol_high_sharpe),
                 "regime_trend_checked": math.isfinite(self.regimes.trend_up_sharpe),
             },
@@ -298,8 +330,8 @@ class GateReport:
                 "windows": self.n_oos_windows,
                 "n_windows": self.n_oos_windows,
                 "sharpe_positive_pct": _json_float(self.oos_distribution.pct_positive),
-                "purge_applied": True,
-                "embargo_applied": True,
+                "purge_applied": self.purge_applied,
+                "embargo_applied": self.embargo_applied,
                 "regime_volatility_checked": math.isfinite(self.regimes.vol_high_sharpe),
                 "regime_trend_checked": math.isfinite(self.regimes.trend_up_sharpe),
                 "wfe": _json_float(self.wfe.wfe),
@@ -322,6 +354,8 @@ class ValidationResults:
     n_oos_windows: int
     regimes: RegimeSnapshot
     n_trials_registry: int
+    purge_applied: bool = True
+    embargo_applied: bool = True
 
 
 def freeze_params(params: Mapping[str, float]) -> Mapping[str, float]:

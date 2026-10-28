@@ -42,6 +42,8 @@ def probability_of_backtest_overfitting(
         raise PBOError("CSCV requires an even n_slices >= 4")
     if any(len(row) != width for row in matrix):
         raise PBOError("all configs must have the same number of slices")
+    if any(not math.isfinite(value) for row in matrix for value in row):
+        raise PBOError("PBO scores must be finite")
     if n_slices is not None and n_slices != width:
         raise PBOError("n_slices does not match the score matrix")
     k = width // 2
@@ -57,7 +59,8 @@ def probability_of_backtest_overfitting(
         omega = _relative_rank(oos_scores, best_is)
         logit = math.log(omega / (1.0 - omega))
         logits.append(logit)
-        if logit < 0.0:
+        oos_median = float(statistics.median(oos_scores))
+        if oos_scores[best_is] < oos_median:
             n_below += 1
     n_combinations = len(combinations)
     pbo = n_below / float(n_combinations)
