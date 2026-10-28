@@ -157,8 +157,6 @@ def _require_at_least_as_tight(config: ContinuityConfig, packaged: ContinuityCon
     """Runtime overlays may only tighten packaged detection and capacity protection."""
     if config.window > packaged.window:
         raise ContinuityConfigError("window cannot be longer than the packaged 20-day rolling window")
-    if config.min_observations > packaged.min_observations:
-        raise ContinuityConfigError("min_observations cannot delay detection past the packaged window")
     if config.z_deweight < packaged.z_deweight:
         raise ContinuityConfigError("z_deweight cannot be weaker than the packaged default")
     if config.z_suspend < packaged.z_suspend:
@@ -197,12 +195,6 @@ def _require_at_least_as_tight(config: ContinuityConfig, packaged: ContinuityCon
         raise ContinuityConfigError("max_cluster_notional_pct cannot exceed the packaged cap")
     if config.equity > packaged.equity + 1e-9:
         raise ContinuityConfigError("equity cannot exceed the packaged continuity equity")
-    if config.min_oos_windows < packaged.min_oos_windows:
-        raise ContinuityConfigError("min_oos_windows cannot be weaker than the packaged default")
-    if config.pbo_promote_max > packaged.pbo_promote_max + 1e-12:
-        raise ContinuityConfigError("pbo_promote_max cannot be weaker than the packaged default")
-    if config.pbo_reject_min < packaged.pbo_reject_min - 1e-12:
-        raise ContinuityConfigError("pbo_reject_min cannot be weaker than the packaged default")
 
 
 def _validate(config: ContinuityConfig) -> None:

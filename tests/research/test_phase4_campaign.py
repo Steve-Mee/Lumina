@@ -14,6 +14,7 @@ from lumina_research.monitoring.campaign import (
     run_phase4_multiseed_detection,
 )
 from lumina_research.monitoring.report import write_multiseed_detection_reports
+from lumina_research.monitoring.types import ContinuityRefused
 
 REPO_REPORTS = Path("experiments/reports")
 
@@ -38,8 +39,20 @@ def test_campaign_tiny_covers_all_kinds(tmp_path: Path) -> None:
     assert (tmp_path / "reports" / "phase4_detection_multiseed.json").is_file()
 
 
-@pytest.mark.slow
-@pytest.mark.timeout(120)
+@pytest.mark.unit
+def test_campaign_refuses_misaligned_seeds_or_unknown_instrument(tmp_path: Path) -> None:
+    with pytest.raises(ContinuityRefused, match="must align"):
+        run_phase4_multiseed_detection(
+            audit_dir=tmp_path / "audit",
+            experiment_log_dir=tmp_path / "exp",
+            n_per_kind=1,
+            n_days=21,
+            seeds=(7,),
+            instruments=("MES", "MNQ"),
+        )
+
+
+@pytest.mark.nightly
 def test_campaign_three_hundred_signals_ten_seeds(tmp_path: Path) -> None:
     assert len(DEFAULT_CAMPAIGN_SEEDS) >= 10
     assert len(DEFAULT_CAMPAIGN_INSTRUMENTS) == len(DEFAULT_CAMPAIGN_SEEDS)

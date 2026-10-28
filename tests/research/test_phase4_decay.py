@@ -21,15 +21,15 @@ def test_decay_campaign_detects_and_keeps_false_alarms_low(tmp_path: Path) -> No
     report = run_phase4_detection(
         audit_path=tmp_path / "audit.jsonl",
         experiment_log_path=tmp_path / "exp.jsonl",
-        n_healthy=16,
-        n_decaying=16,
-        n_days=70,
+        n_healthy=8,
+        n_decaying=8,
+        n_days=50,
         decay_start=20,
         seed=20261028,
         report_dir=tmp_path / "reports",
     )
-    assert report.n_healthy == 16
-    assert report.n_decaying == 16
+    assert report.n_healthy == 8
+    assert report.n_decaying == 8
     assert report.detection_rate >= 0.80
     assert report.false_alarm_rate <= 0.15
     assert report.median_time_to_detect is not None

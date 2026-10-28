@@ -98,6 +98,7 @@ jobs:
       - name: lumina_research coverage (line + branch)
         run: |
           pytest tests/research \
+            -m "not slow and not nightly" \
             --cov=lumina_research \
             --cov-branch \
             --cov-report=term-missing \

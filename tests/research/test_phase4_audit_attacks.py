@@ -44,6 +44,36 @@ def test_sizer_refuses_quantity_or_notional_above_promoted_base(tmp_path: Path) 
 
 
 @pytest.mark.unit
+def test_packaged_tightness_matrix_refuses_every_looser_knob() -> None:
+    packaged = asdict(load_default_config())
+    weaker: tuple[tuple[str, object], ...] = (
+        ("percentile_deweight", 0.05),
+        ("percentile_suspend", 0.02),
+        ("percentile_retire", 0.0),
+        ("cusum_k", packaged["cusum_k"] + 0.5),
+        ("cusum_h_deweight", packaged["cusum_h_deweight"] + 1.0),
+        ("cusum_h_suspend", packaged["cusum_h_suspend"] + 1.0),
+        ("cusum_h_retire", packaged["cusum_h_retire"] + 1.0),
+        ("sprt_delta", packaged["sprt_delta"] + 0.5),
+        ("sprt_beta", 0.3),
+        ("deweight_multiplier", 0.9),
+        ("max_instrument_notional_pct", 1.0),
+        ("max_family_notional_pct", 1.0),
+        ("max_cluster_notional_pct", 1.0),
+    )
+    for key, value in weaker:
+        raw = dict(packaged)
+        raw[key] = value
+        with pytest.raises(ContinuityConfigError):
+            config_from_mapping(raw)
+    z_raw = dict(packaged)
+    z_raw["z_suspend"] = packaged["z_suspend"] - 1.0
+    z_raw["z_retire"] = packaged["z_retire"] - 1.0
+    with pytest.raises(ContinuityConfigError, match="z_suspend"):
+        config_from_mapping(z_raw)
+
+
+@pytest.mark.unit
 def test_weak_continuity_config_without_adr_is_refused() -> None:
     raw = asdict(load_default_config())
     raw["z_deweight"] = -100.0
