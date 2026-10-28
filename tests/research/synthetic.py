@@ -97,6 +97,8 @@ def assemble_results(
         n_oos_windows=len(wf.windows),
         regimes=regimes,
         n_trials_registry=registry.n_trials,
+        purge_applied=cpcv.purge_applied,
+        embargo_applied=cpcv.embargo_applied,
     )
 
 

@@ -45,7 +45,7 @@ def test_dummy_overfit_random_search_is_rejected(tmp_path: Path) -> None:
         registry=registry,
         configs_net=nets,
     )
-    passed, report = passes_validation_gate(results)
+    passed, report = passes_validation_gate(results, registry=registry)
     assert passed is False
     assert report.reject_reasons
     metrics = report.to_audit_metrics()
@@ -79,7 +79,7 @@ def test_synthetic_edge_after_costs_can_pass(tmp_path: Path) -> None:
         registry=registry,
         configs_net=nets,
     )
-    passed, report = passes_validation_gate(results)
+    passed, report = passes_validation_gate(results, registry=registry)
     assert report.oos_distribution.is_complete()
     assert report.dsr.n_trials == 5
     assert report.wfe.n_windows >= 6

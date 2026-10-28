@@ -8,12 +8,14 @@ import pytest
 
 from lumina_research.validation.cpcv import (
     CPCVConfig,
+    CPCVError,
     assign_groups,
     combination_count,
     path_count,
     reconstruct_paths,
     run_cpcv,
 )
+from lumina_research.validation.purge import contiguous_segments, purge_train_indices
 
 
 @pytest.mark.unit
@@ -62,3 +64,44 @@ def test_run_cpcv_stitches_full_paths() -> None:
         assert train_set.isdisjoint(test_set)
         for index in fold.train_index:
             assert index not in test_set
+
+
+@pytest.mark.unit
+def test_purge_uses_per_segment_overlap_not_minmax_span() -> None:
+    n_obs, horizon, embargo = 60, 8, 3
+    t1 = tuple(min(n_obs, index + horizon) for index in range(n_obs))
+    # Non-contiguous test: groups 0 and 3 (bars 0-9 and 30-39 if 6 groups of 10).
+    test_index = tuple(list(range(0, 10)) + list(range(30, 40)))
+    train_index = tuple(i for i in range(n_obs) if i not in set(test_index))
+    kept = set(purge_train_indices(train_index, test_index, t1, embargo, n_obs))
+    # Mid-group bars 13-18 sit between the two test segments and do not overlap
+    # labels or embargo; min-max span would over-purge them.
+    for index in range(13, 19):
+        assert index in kept
+    # Label overlap into the second test segment must still be purged (t1[22]=30).
+    assert 22 not in kept
+    for index in kept:
+        label_end = t1[index]
+        assert not any(index <= test_i <= label_end for test_i in test_index)
+        for _start, end in contiguous_segments(test_index):
+            embargo_end = min(n_obs, end + 1 + embargo)
+            assert not (end < index < embargo_end)
+
+
+@pytest.mark.unit
+def test_cpcv_noncontiguous_folds_have_no_label_leakage() -> None:
+    returns = tuple(0.01 * ((index % 5) - 2) for index in range(60))
+    result = run_cpcv(returns, CPCVConfig(n_groups=6, n_test_groups=2, embargo=3, label_horizon=8))
+    n_obs = 60
+    t1 = tuple(min(n_obs, index + 8) for index in range(n_obs))
+    for fold in result.folds:
+        for index in fold.train_index:
+            label_end = t1[index]
+            for test_i in fold.test_index:
+                assert not (index <= test_i <= label_end)
+
+
+@pytest.mark.unit
+def test_cpcv_rejects_too_few_groups() -> None:
+    with pytest.raises(CPCVError):
+        CPCVConfig(n_groups=2, n_test_groups=1)

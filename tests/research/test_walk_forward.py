@@ -46,3 +46,35 @@ def test_wfe_and_parameter_stability() -> None:
     assert result.wfe.parameter_stability == pytest.approx(1.0)
     rows = ({"k": 1.0}, {"k": 1.1}, {"k": 0.9})
     assert 0.0 < parameter_stability(rows) < 1.0
+
+
+@pytest.mark.unit
+def test_wfe_undefined_when_mean_is_sharpe_non_positive() -> None:
+    from lumina_research.validation.walk_forward import WindowScore, WalkForwardWindow
+
+    def negative_is(window: WalkForwardWindow) -> WindowScore:
+        n_is = len(window.is_index)
+        n_oos = len(window.oos_index)
+        is_rets = tuple(-0.02 + 0.01 * ((i % 3) - 1) for i in range(n_is))
+        oos_rets = tuple(0.01 * ((i % 3) - 1) for i in range(n_oos))
+        return WindowScore(is_returns=is_rets, oos_returns=oos_rets, parameters={"k": 1.0})
+
+    config = WalkForwardConfig(is_size=40, oos_size=20, mode="rolling")
+    result = run_walk_forward(200, config, negative_is)
+    assert result.wfe.mean_is_sharpe <= 0.0 or result.wfe.wfe != result.wfe.wfe
+    assert result.wfe.wfe != result.wfe.wfe  # NaN
+
+
+@pytest.mark.unit
+def test_walk_forward_is_labels_do_not_overlap_oos() -> None:
+    config = WalkForwardConfig(is_size=20, oos_size=10, mode="rolling", embargo=2, label_horizon=5)
+    windows = split_walk_forward(20 + 6 * 10 + 10, config)
+    n_obs = 20 + 6 * 10 + 10
+    t1 = tuple(min(n_obs, index + 5) for index in range(n_obs))
+    for window in windows:
+        oos = set(window.oos_index)
+        for index in window.is_index:
+            assert index not in oos
+            label_end = t1[index]
+            for test_i in window.oos_index:
+                assert not (index <= test_i <= label_end)

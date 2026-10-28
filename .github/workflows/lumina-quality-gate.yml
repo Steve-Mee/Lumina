@@ -95,6 +95,16 @@ jobs:
             --junit-xml=reports/unit-tests.xml \
             -n auto
 
+      - name: lumina_research coverage (line + branch)
+        run: |
+          pytest tests/research \
+            --cov=lumina_research \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-fail-under=90 \
+            --timeout=30 \
+            -q
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4

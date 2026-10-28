@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from lumina_research.validation import audit as audit_mod
-from lumina_research.validation.audit import AuditLog
+from lumina_research.validation.audit import AuditLog, utc_now_iso
 from lumina_research.validation.gate import passes_validation_gate
 from lumina_research.validation.trial_registry import TrialRegistry
 from lumina_research.validation.types import (
@@ -78,7 +78,7 @@ def test_skip_flags_are_rejected(tmp_path: Path) -> None:
     log = AuditLog(tmp_path / "a.jsonl")
     with pytest.raises(TypeError):
         log.append(
-            audit_mod.AuditRecord(timestamp="t", agent_id="a", event="gate", metrics={}),
+            audit_mod.AuditRecord(timestamp=utc_now_iso(), agent_id="a", event="gate", metrics={}),
             skip_audit=True,
         )
     registry = TrialRegistry(tmp_path / "b.jsonl")
@@ -101,3 +101,58 @@ def test_gate_source_writes_in_finally() -> None:
     assert "finally:" in source
     assert "_audit_decision" in source
     assert "write_event" in inspect.getsource(audit_mod)
+
+
+@pytest.mark.unit
+def test_concurrent_appends_are_valid_jsonl(tmp_path: Path) -> None:
+    import threading
+
+    path = tmp_path / "conc.jsonl"
+    log = AuditLog(path)
+    errors: list[BaseException] = []
+
+    def writer(agent: str) -> None:
+        try:
+            for index in range(20):
+                log.append(
+                    audit_mod.AuditRecord(
+                        timestamp=utc_now_iso(),
+                        agent_id=agent,
+                        event="trial",
+                        metrics={"i": index},
+                    )
+                )
+        except BaseException as exc:  # noqa: BLE001 — collect worker failures
+            errors.append(exc)
+
+    threads = [threading.Thread(target=writer, args=(f"a{n}",)) for n in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert errors == []
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 80
+    for line in lines:
+        payload = json.loads(line)
+        assert payload["event"] == "trial"
+        assert "timestamp" in payload
+        assert payload["agent_id"].startswith("a")
+
+
+@pytest.mark.unit
+def test_forged_timestamp_is_rejected(tmp_path: Path) -> None:
+    from lumina_research.validation.audit import write_event
+
+    with pytest.raises(TypeError, match="UTC"):
+        write_event(path=tmp_path / "t.jsonl", agent_id="a", event="gate", metrics={}, timestamp="now")
+
+
+@pytest.mark.unit
+def test_trial_count_uses_audit_high_water(tmp_path: Path) -> None:
+    path = tmp_path / "hw.jsonl"
+    registry = TrialRegistry(path)
+    registry.record(config_id="a", agent_id="x", metrics={})
+    registry.record(config_id="b", agent_id="x", metrics={})
+    object.__setattr__(registry, "_records", ())
+    assert registry.n_trials == 2
