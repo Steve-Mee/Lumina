@@ -229,12 +229,8 @@ def repair_next_hole(
 
 
 def _archive_symbol(root: Path) -> str:
-    try:
-        from lumina_core.maturity.playground.learning_book import read_header
-
-        return str(read_header(root).get("symbol") or "").strip()
-    except ImportError:
-        return ""
+    del root
+    return ""
 
 
 def _nt_fetcher(symbol: str) -> Fetcher:

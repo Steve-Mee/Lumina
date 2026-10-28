@@ -74,19 +74,6 @@ def enrich_observability_snapshot_for_react_dashboard(
 
     birth_certificate_ok = False
     birth_oos_sharpe = 0.0
-    try:
-        from lumina_core.birth.birth_certificate import validate_certificate_artifacts
-        from lumina_core.birth.config import load_birth_v2_config
-
-        cert_ok, _, cert = validate_certificate_artifacts(
-            sd.parent,
-            thresholds=load_birth_v2_config(sd.parent).certificate_thresholds,
-        )
-        birth_certificate_ok = bool(cert_ok)
-        if cert is not None:
-            birth_oos_sharpe = float(cert.oos_sharpe)
-    except Exception:
-        pass
 
     try:
         ppo_fb = float(

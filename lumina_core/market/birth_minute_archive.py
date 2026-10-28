@@ -210,23 +210,7 @@ def stream_birth_cache(workspace_root: Path | str) -> dict[str, int]:
         temporary.unlink(missing_ok=True)
         raise BirthArchiveError("holdout_tick_missing")
     temporary.replace(destination)
-    try:
-        from lumina_core.maturity.playground.learning_book import record_archive_fact
-    except ImportError:
-        record_archive_fact = None  # type: ignore[assignment]
-
     tail_end = last_minute + MINUTE_NS
-    if record_archive_fact is None:
-        pass
-    else:
-        record_archive_fact(
-            root,
-            tape_count=counted,
-            minute_count=minutes,
-            holdout_start_ns=int(holdout_start_ns) - (int(holdout_start_ns) % MINUTE_NS),
-            tail_end_ns=tail_end,
-            symbol=root_symbol,
-        )
     manifest = _cache_manifest_path(root)
     seed = 1
     if manifest.is_file():
@@ -270,77 +254,9 @@ def _archive_root(manifest: dict[str, Any]) -> str:
 
 
 def ensure_school_from_birth(workspace_root: Path | str) -> dict[str, Any]:
-    """Turn the saved Birth tape into the school archive and seal the first period."""
-    try:
-        from lumina_core.maturity.playground.learning_book import read_header
-        from lumina_core.maturity.playground.progress import load_playground_progress, merge_playground_progress
-        from lumina_core.maturity.playground.research_kit import write_period
-    except ImportError:
-        return {"ok": False, "reason": "BIRTH_V1_ARCHIVED"}
-
-    root = Path(workspace_root)
-    header = read_header(root)
-    symbol = str(header.get("symbol") or "")
-    if not symbol:
-        manifest_path = _cache_manifest_path(root)
-        try:
-            raw = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
-            symbol = _archive_root(raw if isinstance(raw, dict) else {})
-        except (OSError, json.JSONDecodeError, BirthArchiveError):
-            return {"ok": False, "reason": "symbol_missing"}
-    archive = archive_path(root, symbol)
-    if not archive.is_file() or int(header.get("minute_count") or 0) <= 0:
-        try:
-            built = stream_birth_cache(root)
-        except BirthArchiveError as exc:
-            return {"ok": False, "reason": str(exc)}
-        header = read_header(root)
-    else:
-        built = {
-            "tape_count": int(header.get("tape_count") or 0),
-            "minute_count": int(header.get("minute_count") or 0),
-            "holdout_start_ns": int(header.get("holdout_start_ns") or 0),
-            "tail_end_ns": int(header.get("tail_end_ns") or 0),
-            "seed": _seed_from_manifest(root),
-        }
-    if not header.get("periods"):
-        now = datetime.now(timezone.utc)
-        write_period(
-            root,
-            period_id="birth-holdout",
-            budget=1,
-            seed=int(built.get("seed") or 1),
-            cutoff_ns=int(header["tail_end_ns"]),
-            tape_count=int(header["tape_count"]),
-            tail_start_ns=int(header["holdout_start_ns"]),
-            tail_end_ns=int(header["tail_end_ns"]),
-            now=now,
-        )
-    from lumina_core.order_gatekeeper.contract_symbols import live_listing
-
-    progress = load_playground_progress(root)
-    listing = str(progress.get("chart_listing") or "")
-    rolled = live_listing(listing or symbol)
-    if rolled and rolled != listing:
-        merge_playground_progress(root, {"chart_listing": rolled})
-    return {"ok": True, "reason": "ready", "minute_count": int(header.get("minute_count") or built["minute_count"])}
-
-
-def _seed_from_manifest(workspace_root: Path) -> int:
-    path = _cache_manifest_path(workspace_root)
-    if not path.is_file():
-        return 1
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return 1
-    token = str(raw.get("raw_ticks_hash") or "")[:8]
-    if not token:
-        return 1
-    try:
-        return int(token, 16)
-    except ValueError:
-        return 1
+    """Birth-v1 school seal is archived. The minute tape itself stays readable."""
+    del workspace_root
+    return {"ok": False, "reason": "BIRTH_V1_ARCHIVED"}
 
 
 def write_birth_minutes(
@@ -359,19 +275,6 @@ def write_birth_minutes(
     if bars:
         stitch_front(workspace_root, symbol, bars)
     tail_end = tail[-1].ts_ns + MINUTE_NS if tail else int(holdout_start_ns)
-    try:
-        from lumina_core.maturity.playground.learning_book import record_archive_fact
-
-        record_archive_fact(
-            workspace_root,
-            tape_count=counted,
-            minute_count=len(bars),
-            holdout_start_ns=int(holdout_start_ns),
-            tail_end_ns=tail_end,
-            symbol=symbol,
-        )
-    except ImportError:
-        pass
     return {
         "tape_count": counted,
         "minute_count": len(bars),

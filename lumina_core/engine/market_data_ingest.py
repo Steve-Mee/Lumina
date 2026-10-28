@@ -214,18 +214,6 @@ class MarketDataIngestCore:
             if not live:
                 continue
             try:
-                from lumina_core.maturity.playground.live_hand import on_closed_candle
-
-                on_closed_candle(
-                    workspace,
-                    self.engine,
-                    app,
-                    closed,
-                    mode=str(getattr(self.engine.config, "trade_mode", "sim")),
-                )
-            except Exception:
-                app.logger.debug("playground.candle_hand_failed", exc_info=True)
-            try:
                 stamp = iso_z(ts) if ts is not None else ""
             except Exception:
                 stamp = str(ts)
@@ -480,30 +468,6 @@ class MarketDataIngestCore:
                     self._hydrate_native_periods(app, client, instrument)
                 except Exception:
                     app.logger.debug("fabric.live.htf_hydrate_failed", exc_info=True)
-            try:
-                from lumina_core.maturity.playground.portfolio_seal import maintain_sim_floor
-
-                sentence = maintain_sim_floor(self.engine, workspace)
-                from lumina_core.maturity.playground.live_hand import note_market_view
-
-                last_px = None
-                quotes = getattr(self.engine, "live_quotes", None)
-                if quotes:
-                    try:
-                        last_px = float(quotes[-1].get("last") or 0.0)
-                    except (AttributeError, TypeError, ValueError):
-                        last_px = None
-                note_market_view(
-                    workspace,
-                    charts=list(observed),
-                    listing=str(instrument or ""),
-                    source=str(chart_source or ""),
-                    seal_note=str(sentence or ""),
-                    last_px=last_px,
-                )
-            except Exception:
-                app.logger.debug("fabric.live.portfolio_floor_failed", exc_info=True)
-
         try:
             _sync_charts(True)
         except Exception:

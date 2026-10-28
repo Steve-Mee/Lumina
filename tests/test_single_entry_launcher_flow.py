@@ -31,10 +31,12 @@ def test_resolve_app_surface_returns_known_values() -> None:
     assert isinstance(reason, str)
 
 
-def test_process_manager_stops_birth_service() -> None:
+def test_process_manager_stop_all_activities_stops_the_bot() -> None:
     root = Path(__file__).resolve().parents[1]
     source = (root / "lumina_launcher" / "core" / "process_manager.py").read_text(encoding="utf-8")
-    assert "birth_service.stop_birth" in source
+    assert "def stop_all_activities" in source
+    assert "self.stop_bot()" in source
+    assert "lumina_launcher.services.birth_service" not in source
 
 
 def test_run_backend_uses_venv_python_not_system_python() -> None:

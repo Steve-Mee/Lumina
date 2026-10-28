@@ -141,23 +141,10 @@ def flatten_timeout_message() -> str:
 
 
 def notify_flatten_or_abort(workspace: Path | str) -> dict[str, Any]:
-    try:
-        from lumina_core.evolution.council import compose_dossier
-        from lumina_core.evolution.council_notify import notify_council
-
-        dossier = compose_dossier(
-            question=flatten_timeout_message(),
-            twin_values_ok=True,
-            constitution_violations=0,
-            risk_dd=0.0,
-            swarm_fitness_delta=0.0,
-            evolution_proof_passed=True,
-        )
-        return notify_council(workspace, "sim", dossier)
-    except ImportError:
-        return {
-            "hub_visible": False,
-            "telegram_sent": False,
-            "kind": "sim",
-            "reason": "BIRTH_V1_ARCHIVED",
-        }
+    return {
+        "hub_path": str(Path(workspace) / "state" / "council_pending_sim.json"),
+        "hub_visible": False,
+        "telegram_sent": False,
+        "kind": "sim",
+        "reason": "BIRTH_V1_ARCHIVED",
+    }

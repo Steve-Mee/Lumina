@@ -40,7 +40,7 @@ def reset_operator_mode_override() -> None:
 def no_live_nt_equity(monkeypatch: pytest.MonkeyPatch) -> None:
     """This PC's DEMO account must not replace the fixture file equity."""
     monkeypatch.setattr(
-        "lumina_core.maturity.playground.portfolio_seal.cached_sim_account",
+        "backend.core_websocket_telemetry._live_sim_net_liquidation",
         lambda: None,
     )
 

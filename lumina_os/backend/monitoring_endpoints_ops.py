@@ -61,13 +61,7 @@ async def get_ops_data(
         }
     except Exception:
         twin_observability = {}
-    phase2_metrics: dict[str, Any] = {}
-    try:
-        from lumina_core.birth.phase2_autonomy.metrics import compute_phase2_metrics_snapshot
-
-        phase2_metrics = compute_phase2_metrics_snapshot(window_hours=24)
-    except Exception:
-        phase2_metrics = {"empty": True, "phase2_proposals_total": 0}
+    phase2_metrics: dict[str, Any] = {"empty": True, "phase2_proposals_total": 0}
     capital_aperture: dict[str, Any] = {}
     try:
         from lumina_core.risk.capital_aperture_lineage import (

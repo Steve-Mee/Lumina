@@ -495,16 +495,13 @@ def test_build_onboarding_payload_exposes_certificate_fields(
     with patch.object(se, "_workspace_root", return_value=tmp_path):
         with patch.object(se, "_probe_backend", return_value={"reachable": True, "url": "http://127.0.0.1:8000"}):
             with patch.object(se, "_model_catalog_payload", return_value=[]):
-                with patch(
-                    "lumina_core.birth.birth_certificate.validate_certificate_artifacts",
-                    return_value=(False, "holdout_regimes_insufficient", None),
-                ):
-                    payload = se.build_onboarding_payload(serving_request=True)
+                payload = se.build_onboarding_payload(serving_request=True)
 
     assert payload["birth"]["certificate_ok"] is False
-    assert payload["birth"]["certificate_reason"] == "holdout_regimes_insufficient"
-    assert payload["app_surface"] == "birth"
-    assert payload["app_surface_reason"] == "certificate_failed"
+    assert payload["birth"]["certificate_reason"] == "BIRTH_V1_ARCHIVED"
+    assert payload["birth"]["status"] == "archived"
+    assert payload["app_surface"] == "hub"
+    assert payload["app_surface_reason"] == "maturation_hub"
 
 
 @pytest.mark.unit

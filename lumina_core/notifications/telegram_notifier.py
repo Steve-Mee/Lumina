@@ -265,58 +265,16 @@ class TelegramNotifier:
         return processed
 
     def _try_champion_freeze_reply(self, raw_text: str) -> dict[str, Any] | None:
-        """Handle champion freeze ACCEPT/WIPE replies; returns None if not applicable."""
-        try:
-            from pathlib import Path
-
-            from lumina_core.birth.champion_freeze_telegram import (
-                try_handle_telegram_freeze_text,
-            )
-
-            root = getattr(self, "_workspace_root", None) or Path.cwd()
-            return try_handle_telegram_freeze_text(root, raw_text, apply=True)
-        except Exception as exc:
-            logger.debug("Telegram champion freeze handle failed: %s", exc)
-            return None
+        del raw_text
+        return None
 
     def _try_playground_command(self, raw_text: str) -> dict[str, Any] | None:
-        """Playground STATUS / PAUSE / SEAL / … . None when it is not that verb."""
-        try:
-            from pathlib import Path
-
-            from lumina_core.maturity.playground.telegram_commands import (
-                try_handle_playground_command,
-            )
-
-            root = getattr(self, "_workspace_root", None) or Path.cwd()
-            return try_handle_playground_command(root, raw_text)
-        except Exception as exc:
-            logger.debug("Telegram playground command failed: %s", exc)
-            return None
+        del raw_text
+        return None
 
     def _try_phase_advance_reply(self, raw_text: str) -> dict[str, Any] | None:
-        """Handle maturation advance replies; returns None if not applicable."""
-        try:
-            from pathlib import Path
-
-            from lumina_core.maturity.advance_policy import try_handle_telegram_text
-
-            root = getattr(self, "_workspace_root", None) or Path.cwd()
-            result = try_handle_telegram_text(root, raw_text)
-            if result is None:
-                return None
-            if result.get("ok"):
-                phase = result.get("phase") or result.get("start_phase") or "next"
-                self._send_telegram_message(f"Lumina: starting phase `{phase}` from Telegram confirm.")
-            else:
-                err = result.get("error") or "advance failed"
-                self._send_telegram_message(
-                    f"Lumina: phase advance failed ({err}). Open Phase Hub or check token."
-                )
-            return result
-        except Exception as exc:
-            logger.debug("Telegram phase advance handle failed: %s", exc)
-            return None
+        del raw_text
+        return None
 
     def _parse_reply(self, text: str) -> tuple[str | None, str | None]:
         parts = text.split()

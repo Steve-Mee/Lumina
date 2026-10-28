@@ -259,16 +259,8 @@ class CoreLiveTelemetryReader:
         }
 
 def _live_sim_net_liquidation() -> float | None:
-    """NinjaTrader net liquidation. A stale metrics file is not this number."""
-    try:
-        from lumina_core.maturity.playground.portfolio_seal import cached_sim_account
-
-        account = cached_sim_account()
-    except Exception:
-        return None
-    if account is None or account.equity is None or account.equity <= 0.0:
-        return None
-    return float(account.equity)
+    """Playground SIM cache is archived. Metrics file equity remains the fallback."""
+    return None
 
 
 def _bar_book_block(raw: dict[str, Any]) -> dict[str, Any] | None:

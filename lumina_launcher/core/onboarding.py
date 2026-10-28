@@ -157,21 +157,13 @@ def should_skip_wizard(
         required_steps=required_steps,
         workspace_root=workspace_root,
     )
-    return surface in ("hub", "deck", "awakening", "playground", "apprenticeship", "proving_ground")
+    return surface in ("hub", "deck")
 
 
 def _has_pending_setup_steps(required_steps: list[OnboardingStepId]) -> bool:
     # configuration is post-birth Risk Envelope — not a pre-birth setup blocker.
     setup_steps = {"backend", "ollama", "model", "credentials"}
     return any(step in setup_steps for step in required_steps)
-
-
-def _awakening_surface_reason(why: str) -> AppSurfaceReason:
-    if why == "awakening_running":
-        return "awakening_running"
-    if why == "awakening_pending":
-        return "awakening_pending"
-    return "awakening_incomplete"
 
 
 def resolve_app_surface(
@@ -192,6 +184,9 @@ def resolve_app_surface(
     if not setup_complete or _has_pending_setup_steps(required_steps):
         return "setup", "setup_incomplete" if setup_complete else "fresh_install"
 
+    if birth_status == "archived":
+        return "hub", "maturation_hub"
+
     birth_ready = bool(birth_exit_ok)
     _ = artifacts_ok
     _ = certificate_ok
@@ -208,59 +203,6 @@ def resolve_app_surface(
             return "birth", "certificate_failed"
         return "birth", "birth_pending"
 
-    if workspace_root is not None:
-        try:
-            from lumina_core.maturity.awakening.surface import awakening_cinematic_wanted
-
-            wanted, why = awakening_cinematic_wanted(workspace_root)
-            if wanted:
-                reason = _awakening_surface_reason(why)
-                return "awakening", reason
-        except Exception:
-            pass
-        try:
-            from lumina_core.maturity.playground.surface import playground_habitat_wanted
-
-            wanted_pg, why_pg = playground_habitat_wanted(workspace_root)
-            if wanted_pg:
-                reason_pg: AppSurfaceReason = (
-                    "playground_running"
-                    if why_pg == "playground_running"
-                    else "playground_incomplete"
-                )
-                return "playground", reason_pg
-        except Exception:
-            pass
-        try:
-            from lumina_core.maturity.apprenticeship.surface import (
-                apprenticeship_cinematic_wanted,
-            )
-
-            wanted_a, why_a = apprenticeship_cinematic_wanted(workspace_root)
-            if wanted_a:
-                reason_a: AppSurfaceReason = (
-                    "apprenticeship_running"
-                    if why_a == "apprenticeship_running"
-                    else "apprenticeship_incomplete"
-                )
-                return "apprenticeship", reason_a
-        except Exception:
-            pass
-        try:
-            from lumina_core.maturity.proving_ground.surface import (
-                proving_ground_cinematic_wanted,
-            )
-
-            wanted_p, why_p = proving_ground_cinematic_wanted(workspace_root)
-            if wanted_p:
-                reason_p: AppSurfaceReason = (
-                    "proving_ground_running"
-                    if why_p == "proving_ground_running"
-                    else "proving_ground_incomplete"
-                )
-                return "proving_ground", reason_p
-        except Exception:
-            pass
     return "hub", "maturation_hub"
 
 

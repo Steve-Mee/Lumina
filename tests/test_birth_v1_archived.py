@@ -37,6 +37,9 @@ ARCHIVE_MARKERS = (
     "lumina_core.maturity.phase_runners",
     "lumina_core.maturity.birth_exit",
     "lumina_core.maturity.maturity_service",
+    "lumina_launcher.services.birth_service",
+    "lumina_core.evolution.council",
+    "lumina_core.evolution.council_notify",
 )
 
 
@@ -83,9 +86,6 @@ def test_live_tree_has_no_hard_imports_of_archived_birth_v1() -> None:
             continue
         for node in ast.walk(tree):
             if not isinstance(node, (ast.Import, ast.ImportFrom)):
-                continue
-            if not isinstance(node, ast.Module) and getattr(node, "col_offset", 0) > 0:
-                # Nested import: only allowed inside try/except ImportError at the call site.
                 continue
             module = _module_from_import(node)
             if any(module == marker or module.startswith(f"{marker}.") for marker in ARCHIVE_MARKERS):

@@ -268,21 +268,26 @@ def test_seal_with_floor_writes_numeric_envelope(tmp_path: Path, monkeypatch: py
 
 @pytest.mark.unit
 def test_boolean_writer_does_not_replace_a_numeric_seal(tmp_path: Path) -> None:
-    from lumina_launcher.services.setup_persist_sim import write_sim_envelope_sealed
+    from lumina_launcher.services.setup_persist_sim import (
+        is_numeric_sim_seal,
+        write_sim_envelope_sealed,
+    )
 
-    try:
-        from lumina_core.maturity.playground.envelope import envelope_sealed_for_pass, write_operator_seal
-    except ImportError:
-        pytest.skip("playground envelope archived with Birth-v1")
-
-    write_operator_seal(
-        tmp_path,
-        daily_loss_cap=-150.0,
-        max_total_open_risk=3000.0,
-        source="telegram",
+    seal_path = tmp_path / "state" / "lumina_sim_envelope_sealed.json"
+    seal_path.parent.mkdir(parents=True, exist_ok=True)
+    seal_path.write_text(
+        json.dumps(
+            {
+                "sealed": True,
+                "source": "telegram",
+                "daily_loss_cap": -150.0,
+                "max_total_open_risk": 3000.0,
+            }
+        ),
+        encoding="utf-8",
     )
     write_sim_envelope_sealed(tmp_path, sealed=True, source="bot_config_seal")
-    raw = json.loads((tmp_path / "state" / "lumina_sim_envelope_sealed.json").read_text(encoding="utf-8"))
+    raw = json.loads(seal_path.read_text(encoding="utf-8"))
     assert raw["daily_loss_cap"] == -150.0
     assert raw["source"] == "telegram"
-    assert envelope_sealed_for_pass(tmp_path) is True
+    assert is_numeric_sim_seal(raw) is True
