@@ -31,7 +31,7 @@ async def post_attention_report(body: AttentionReportRequest) -> dict[str, Any]:
         setup_incomplete_event,
     )
     from lumina_core.notifications.operator_notifier import notify_problem
-    from lumina_launcher.services.birth_service import birth_service
+    from lumina_launcher.core.workspace_root import resolve_birth_workspace_root
 
     detail = str(body.detail or "").strip()
     ctx = body.context if isinstance(body.context, dict) else {}
@@ -52,7 +52,7 @@ async def post_attention_report(body: AttentionReportRequest) -> dict[str, Any]:
     if event is None:
         return {"ok": False, "sent": False, "reason": "unknown_reason_code"}
 
-    sent = notify_problem(event, workspace_root=birth_service.workspace_root)
+    sent = notify_problem(event, workspace_root=resolve_birth_workspace_root())
     return {"ok": True, "sent": bool(sent), "reason_code": body.reason_code}
 
 
@@ -62,7 +62,7 @@ async def get_telegram_log(
 ) -> dict[str, Any]:
     """Chronological Telegram I/O list with Twin question→answer threads (ADR-0043)."""
     from lumina_core.notifications.telegram_journal import list_threads
-    from lumina_launcher.services.birth_service import birth_service
+    from lumina_launcher.core.workspace_root import resolve_birth_workspace_root
 
-    messages = list_threads(limit=limit, workspace_root=birth_service.workspace_root)
+    messages = list_threads(limit=limit, workspace_root=resolve_birth_workspace_root())
     return {"ok": True, "count": len(messages), "messages": messages}

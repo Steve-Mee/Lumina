@@ -24,11 +24,9 @@ __all__ = [
 
 def __getattr__(name: str):
     if name == "maturity_service":
-        from lumina_core.maturity.maturity_service import maturity_service
-
-        return maturity_service
-    if name in ("evaluate_birth_exit", "is_birth_exit_sufficient"):
-        from lumina_core.maturity import birth_exit as _be
-
-        return getattr(_be, name)
+        raise AttributeError("maturity_service archived with Birth-v1")
+    if name == "evaluate_birth_exit":
+        return lambda *_a, **_k: {"ok": False, "reason": "BIRTH_V1_ARCHIVED"}
+    if name == "is_birth_exit_sufficient":
+        return lambda *_a, **_k: False
     raise AttributeError(name)

@@ -79,19 +79,23 @@ async def save_bot_config(body: BotConfigRequest) -> dict[str, object]:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     root = _workspace_root()
-    from lumina_core.maturity.playground.envelope import (
-        envelope_sealed_for_pass,
-        write_operator_seal,
-    )
-
-    if body.seal_sim_envelope:
-        write_operator_seal(
-            root,
-            daily_loss_cap=float(body.risk.daily_loss_cap or 0.0),
-            max_total_open_risk=float(body.risk.max_total_open_risk),
-            source="bot_config_seal",
+    playground_sealed = False
+    try:
+        from lumina_core.maturity.playground.envelope import (
+            envelope_sealed_for_pass,
+            write_operator_seal,
         )
-    playground_sealed = envelope_sealed_for_pass(root)
+
+        if body.seal_sim_envelope:
+            write_operator_seal(
+                root,
+                daily_loss_cap=float(body.risk.daily_loss_cap or 0.0),
+                max_total_open_risk=float(body.risk.max_total_open_risk),
+                source="bot_config_seal",
+            )
+        playground_sealed = envelope_sealed_for_pass(root)
+    except ImportError:
+        playground_sealed = False
 
     config = config_manager.load_yaml_config()
     env_values = config_manager.parse_env_file()

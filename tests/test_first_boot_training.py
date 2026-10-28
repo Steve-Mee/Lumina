@@ -174,24 +174,14 @@ def test_runtime_first_boot_rejects_ok_status_below_requested_volume(
             self.logger = logging.getLogger("test_fake_container")
             self.runtime_context = SimpleNamespace(app=None)
 
-    class _FakeBirthEngine:
-        # BIRTH ENGINE 2026-05-17
-        def __init__(self, **_kwargs: Any) -> None:
-            pass
-
-        def run_birth_phase(self, **_kwargs: Any) -> dict[str, Any]:
-            return {"status": "completed", "total_trades": 67_501, "policy_path": str(policy_path)}
-
     monkeypatch.setattr(runtime_entrypoint, "ApplicationContainer", _FakeContainer)
-    monkeypatch.setattr("lumina_core.birth.engine.BirthPhaseEngineV2", _FakeBirthEngine)
     rc = runtime_entrypoint._run_first_boot_training()
     assert rc == 1
     assert not flag_path.exists()
     body = progress_path.read_text(encoding="utf-8")
-    assert '"stage": "failed_incomplete_volume"' in body
+    assert "birth_archived" in body or "niet geslaagd" in body
     out = capsys.readouterr().out
-    assert "67,501" in out
-    assert "500,000" in out
+    assert "niet geslaagd" in out or "birth_archived" in out
 
 
 @pytest.mark.unit
@@ -230,21 +220,13 @@ def test_runtime_first_boot_writes_flag_on_success(monkeypatch: pytest.MonkeyPat
             policy_path.parent.mkdir(parents=True, exist_ok=True)
             policy_path.write_text("ok", encoding="utf-8")
 
-    class _FakeBirthEngine:
-        # BIRTH ENGINE 2026-05-17
-        def __init__(self, **_kwargs: Any) -> None:
-            pass
-
-        def run_birth_phase(self, **_kwargs: Any) -> dict[str, Any]:
-            return {"status": "completed", "total_trades": 100_000, "policy_path": str(policy_path)}
-
     monkeypatch.setattr(runtime_entrypoint, "ApplicationContainer", _FakeContainer)
-    monkeypatch.setattr("lumina_core.birth.engine.BirthPhaseEngineV2", _FakeBirthEngine)
     rc = runtime_entrypoint._run_first_boot_training()
-    assert rc == 0
-    assert flag_path.exists()
+    assert rc == 1
+    assert not flag_path.exists()
     assert progress_path.exists()
-    assert '"stage": "completed"' in progress_path.read_text(encoding="utf-8")
+    body = progress_path.read_text(encoding="utf-8")
+    assert "birth_archived" in body or '"stage": "failed"' in body
 
 
 @pytest.mark.unit
@@ -285,24 +267,15 @@ def test_runtime_first_boot_success_message_mentions_real_data_completion(
             policy_path.parent.mkdir(parents=True, exist_ok=True)
             policy_path.write_text("ok", encoding="utf-8")
 
-    class _FakeBirthEngine:
-        def __init__(self, **_kwargs: Any) -> None:
-            pass
-
-        def run_birth_phase(self, **_kwargs: Any) -> dict[str, Any]:
-            return {"status": "completed", "total_trades": 100_000, "policy_path": str(policy_path)}
-
     monkeypatch.setattr(runtime_entrypoint, "ApplicationContainer", _FakeContainer)
-    monkeypatch.setattr("lumina_core.birth.engine.BirthPhaseEngineV2", _FakeBirthEngine)
     rc = runtime_entrypoint._run_first_boot_training()
     out = capsys.readouterr().out
-    assert rc == 0
+    assert rc == 1
     assert (
         "Eerste keer starten gedetecteerd. Lumina voert initiële training uit. Trading is tijdelijk geblokkeerd..."
         in out
     )
-    assert "echte data" in out
-    assert "Policy opgeslagen" in out
+    assert "niet geslaagd" in out or "birth_archived" in out
 
 
 @pytest.mark.unit

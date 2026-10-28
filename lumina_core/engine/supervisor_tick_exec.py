@@ -90,6 +90,8 @@ def run_tick_exec(sm: Any, ctx: SupervisorTickCtx) -> None:
                         Path(__file__).resolve().parents[2],
                         str(trade_mode),
                     )
+                except ImportError:
+                    playground_owns = False
                 except Exception as exc:
                     # Unknown ownership does not send a second SIM order.
                     log_structured(

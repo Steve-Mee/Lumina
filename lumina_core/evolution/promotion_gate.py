@@ -228,14 +228,25 @@ class PromotionGate:
         pbo = float(cpcv.get("pbo", 1.0) or 1.0)
         dsr = float(cpcv.get("dsr", -1.0) or -1.0)
         pwf_pos = float(pwf.get("sharpe_positive_pct", 0.0) or 0.0)
+        windows = int(pwf.get("windows") or pwf.get("n_windows") or cpcv.get("windows") or 0)
+        purge_applied = bool(cpcv.get("purge_applied") or pwf.get("purge_applied"))
+        embargo_applied = bool(cpcv.get("embargo_applied") or pwf.get("embargo_applied"))
+        regime_vol = bool(cpcv.get("regime_volatility_checked") or pwf.get("regime_volatility_checked"))
+        regime_trend = bool(cpcv.get("regime_trend_checked") or pwf.get("regime_trend_checked"))
+        pbo_hard_ok = pbo <= min(self._max_pbo, 0.50)
 
         checks = (
             combinations >= 5,
+            windows >= 5,
+            purge_applied,
+            embargo_applied,
             mean_oos_sharpe >= self._min_oos_sharpe,
             cpcv_pos >= self._min_sharpe_positive_pct,
-            pbo <= self._max_pbo,
+            pbo_hard_ok,
             dsr >= self._min_dsr,
             pwf_pos >= self._min_sharpe_positive_pct,
+            regime_vol,
+            regime_trend,
         )
         passed = all(checks)
         score = sum(1.0 for item in checks if item) / len(checks)
@@ -249,10 +260,16 @@ class PromotionGate:
             reason=reason,
             metadata={
                 "combinations": combinations,
+                "walk_forward_windows": windows,
+                "purge_applied": purge_applied,
+                "embargo_applied": embargo_applied,
                 "cpcv_sharpe_positive_pct": cpcv_pos,
                 "purged_sharpe_positive_pct": pwf_pos,
                 "pbo": pbo,
                 "dsr": dsr,
+                "regime_volatility_checked": regime_vol,
+                "regime_trend_checked": regime_trend,
+                "validation_gate": "RESEARCH_CHARTER",
             },
         )
 

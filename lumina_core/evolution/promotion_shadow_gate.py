@@ -5,9 +5,8 @@ import logging
 from typing import Any
 
 
+from .clock import utcnow
 from .dna_registry import PolicyDNA
-from .fitness_evaluator import utcnow
-from .multi_day_sim_runner import MultiDaySimRunner
 from .promotion_gate import PromotionGateDecision
 from .rollout import EvolutionRolloutFramework
 
@@ -23,7 +22,7 @@ class PromotionShadowGateMixin:
         nightly_report: dict[str, Any],
         signed: bool,
         generation_ok: bool,
-        shadow_runner: MultiDaySimRunner,
+        shadow_runner: Any,
     ) -> dict[str, Any]:
         if not signed or not generation_ok:
             return {

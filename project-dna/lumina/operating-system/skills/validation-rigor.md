@@ -1,14 +1,16 @@
 ---
 name: validation-rigor
 description: >
-  Dwingt de Validation Gate uit project-dna/lumina/RESEARCH_CHARTER.md af.
+  Dwingt de Validation Gate uit RESEARCH_CHARTER.md (repo-root SSOT) af.
   Gebruik bij strategy, backtest, evolution, promotion, birth, signal of fitness.
   Rapporteert DSR, PBO, walk-forward efficiency en de OOS-distributie. Bij twijfel: reject.
 ---
 
 # Validation Rigor Skill (v1.0, 2026-10-28)
 
-Bron van de regels: [`RESEARCH_CHARTER.md`](../../RESEARCH_CHARTER.md). Bij conflict wint het charter.
+Bron van de regels: [`RESEARCH_CHARTER.md`](../../../RESEARCH_CHARTER.md). Bij conflict wint het charter.
+
+Phase 1 freeze: agents mogen geen nieuwe signalen schrijven tot Phase 1 van `lumina_research/` klaar is. Bouw niet verder op `archive/birth-v1/`.
 
 ## Triggers
 strategy, backtest, evolution, promotion, birth, signal, fitness.

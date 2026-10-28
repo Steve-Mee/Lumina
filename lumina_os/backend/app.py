@@ -13,7 +13,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app_auth import check_rate_limit, configure_app_security, verify_admin_role, verify_api_key
 from backend.app_lifespan import app_lifespan
-from backend.birth_endpoints import router as birth_router
 from backend.community_endpoints import configure_community_security
 from backend.community_endpoints import router as community_router
 from backend.config_endpoints import router as config_router
@@ -25,7 +24,6 @@ from backend.emergency_order_endpoints import router as emergency_router
 from backend.evolution_endpoints import router as evolution_router
 from backend.evolution_endpoints import set_observability_service as set_evolution_obs_service
 from backend.evolution_endpoints import set_security_module as set_evolution_security_module
-from backend.maturity_endpoints import router as maturity_router
 from backend.monitoring_endpoints import router as monitoring_router, set_observability_service
 from backend.ninjatrader_websocket import router as ninjatrader_ws_router
 from backend.notifications_endpoints import router as notifications_router
@@ -36,7 +34,7 @@ from backend.twin_endpoints import router as twin_router
 from backend.twin_endpoints import set_security_module as set_twin_security_module
 from lumina_core.monitoring import ObservabilityService
 from lumina_core.security import get_security_module
-from lumina_launcher.services.birth_service import configure_birth_workspace
+from lumina_launcher.core.workspace_root import resolve_birth_workspace_root
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +44,7 @@ _LUMINA_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 load_dotenv(_LUMINA_REPO_ROOT / ".env")
 load_dotenv()
 
-configure_birth_workspace(_LUMINA_REPO_ROOT)
+_ = resolve_birth_workspace_root(_LUMINA_REPO_ROOT)
 
 # Load config
 CONFIG_PATH = os.getenv("LUMINA_CONFIG", "config.yaml")
@@ -82,8 +80,6 @@ set_evolution_obs_service(_obs)
 app.include_router(monitoring_router)
 app.include_router(evolution_router)
 app.include_router(twin_router)
-app.include_router(birth_router)
-app.include_router(maturity_router)
 app.include_router(notifications_router)
 app.include_router(setup_router)
 app.include_router(config_router)

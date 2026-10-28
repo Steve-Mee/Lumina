@@ -149,13 +149,6 @@ def _autopilot_loop(workspace_root: Path) -> None:
         if last_tick and (now - last_tick) < interval:
             continue
         try:
-            from lumina_launcher.services.birth_service import BirthService
-
-            svc = BirthService()
-            svc.configure_workspace(workspace_root)
-            if not svc.artifacts_ok():
-                last_tick = time.monotonic()
-                continue
             tick = run_maturation_autopilot_tick(workspace_root)
             logger.info(
                 "maturity.autopilot.tick eligible=%s shadow=%s",

@@ -1,5 +1,5 @@
-# archive/birth-v1
+Archived – insufficient validation rigor. Reuse Risk Core, Execution Fabric, Event Bus, Constitution.
 
-Birth-v1 experiment runners that fail the Research Charter Validation Gate and had **no** import or test dependents.
-
-Everything else that fails the gate remains in the live tree as **blocked: dependency**. See [`INVENTORY.md`](INVENTORY.md).
+See [`INVENTORY.md`](INVENTORY.md) for every archived module and the Validation Gate shortfall.
+Do not import this tree from live `lumina_core/`, `lumina_os/`, or `lumina_launcher/`.
+New research belongs in `lumina_research/` under [`RESEARCH_CHARTER.md`](../../RESEARCH_CHARTER.md).

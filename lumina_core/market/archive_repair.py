@@ -24,7 +24,7 @@ from lumina_core.market.minute_bars import (
 )
 from lumina_core.market.nt_fees import CostCardError, contract_root, spec_for
 from lumina_core.order_gatekeeper.contract_symbols import front_month_symbol
-from lumina_core.maturity.playground.sentence_window import MINUTE_NS
+MINUTE_NS = 60_000_000_000
 
 logger = get_logger("lumina.market.archive_repair")
 
@@ -229,9 +229,12 @@ def repair_next_hole(
 
 
 def _archive_symbol(root: Path) -> str:
-    from lumina_core.maturity.playground.learning_book import read_header
+    try:
+        from lumina_core.maturity.playground.learning_book import read_header
 
-    return str(read_header(root).get("symbol") or "").strip()
+        return str(read_header(root).get("symbol") or "").strip()
+    except ImportError:
+        return ""
 
 
 def _nt_fetcher(symbol: str) -> Fetcher:

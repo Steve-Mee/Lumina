@@ -19,7 +19,7 @@ logger = get_logger("lumina.rl.ppo")
 
 def _sb3_ppo_load(path: str | Path) -> Any | None:
     try:
-        from lumina_core.birth.physics_preflight import import_sb3_ppo
+        from lumina_core.rl.training_defaults import import_sb3_ppo
 
         return import_sb3_ppo().load(str(path))
     except ModuleNotFoundError:
@@ -208,7 +208,7 @@ class PPOTrainerEvalMixin:
             if active is not None:
                 return active
 
-        from lumina_core.birth.physics_preflight import import_sb3_ppo
+        from lumina_core.rl.training_defaults import import_sb3_ppo
 
         PPO = import_sb3_ppo()
         hyperparams = self._get_training_hyperparams(birth_phase=True)
@@ -262,12 +262,9 @@ class PPOTrainerEvalMixin:
         qty = max(1, int(1 + np.clip(action_arr[1], 0.0, 1.0) * 9))
         # Align with birth geometry floor so learned micro-stops are not re-widened
         # on inference. Cap still respects capital band at 2% hard / risk elsewhere.
-        try:
-            from lumina_core.birth.birth_constitution_guard import BIRTH_MIN_STOP_PCT
+        from lumina_core.rl.training_defaults import MIN_STOP_PCT
 
-            _lo = float(BIRTH_MIN_STOP_PCT)
-        except Exception:
-            _lo = 0.0004
+        _lo = float(MIN_STOP_PCT)
         stop_pct = float(np.clip(action_arr[2], _lo, 0.02))
         target_pct = float(np.clip(action_arr[3], _lo * 1.25, 0.05))
 

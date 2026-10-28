@@ -199,7 +199,10 @@ def _disable_birth_meta_controller_for_root_birth_tests(
     if module_name.endswith(("test_meta_controller", "test_meta_self_eval")):
         return
 
-    import lumina_core.birth.config as birth_config
+    try:
+        import lumina_core.birth.config as birth_config
+    except ImportError:
+        return
 
     _orig_curriculum = birth_config.BirthCurriculumConfig
     _orig_load = birth_config.load_birth_v2_config

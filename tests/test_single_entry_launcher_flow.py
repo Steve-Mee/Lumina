@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from lumina_launcher.core.birth_actions import persist_first_boot_settings, start_birth_training
 from lumina_launcher.core.onboarding import resolve_app_surface
 
 
@@ -67,42 +66,3 @@ def test_tauri_onboarding_gate_uses_app_surface() -> None:
     assert "mapAppPhase" in source
 
 
-def test_birth_actions_save_does_not_start_training(tmp_path: Path) -> None:
-    from unittest.mock import MagicMock
-
-    from lumina_launcher.core.first_boot import FirstBootManager
-    from lumina_launcher.services.birth_service import BirthService
-
-    manager = FirstBootManager(tmp_path)
-    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
-    birth_service = MagicMock(spec=BirthService)
-    birth_service.is_running.return_value = False
-
-    persist_first_boot_settings(
-        manager,
-        training_trades=25_000,
-        prefer_real_data_only=True,
-        max_real_days=365,
-        allow_minimal_synthetic_fallback=False,
-        require_real_simulator_data=True,
-    )
-    birth_service.start_birth.assert_not_called()
-
-
-def test_birth_actions_requires_explicit_start(tmp_path: Path) -> None:
-    from unittest.mock import MagicMock
-
-    from lumina_launcher.services.birth_service import BirthService
-
-    birth_service = MagicMock(spec=BirthService)
-    birth_service.is_running.return_value = False
-
-    ok, msg = start_birth_training(
-        birth_service=birth_service,
-        workspace_root=tmp_path,
-        target_trades=25_000,
-        explicit_user_start=False,
-    )
-    assert ok is False
-    assert "expliciete" in msg.lower()
-    birth_service.start_birth.assert_not_called()

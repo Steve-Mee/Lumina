@@ -268,8 +268,12 @@ def test_seal_with_floor_writes_numeric_envelope(tmp_path: Path, monkeypatch: py
 
 @pytest.mark.unit
 def test_boolean_writer_does_not_replace_a_numeric_seal(tmp_path: Path) -> None:
-    from lumina_core.maturity.playground.envelope import envelope_sealed_for_pass, write_operator_seal
     from lumina_launcher.services.setup_persist_sim import write_sim_envelope_sealed
+
+    try:
+        from lumina_core.maturity.playground.envelope import envelope_sealed_for_pass, write_operator_seal
+    except ImportError:
+        pytest.skip("playground envelope archived with Birth-v1")
 
     write_operator_seal(
         tmp_path,

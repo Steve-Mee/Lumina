@@ -1,35 +1,1596 @@
-# Phase 0 Validation Gate inventory
+# archive/birth-v1 inventory
 
-Binding law: [`project-dna/lumina/RESEARCH_CHARTER.md`](../../project-dna/lumina/RESEARCH_CHARTER.md).
+All listed paths are **experimental**.
 
-Gate points: **WF** = walk-forward 5–8 non-overlapping OOS windows; **CPCV** = combinatorial purged CV with purge + embargo and OOS distribution; **DSR** = trial-corrected deflated Sharpe; **PBO** = probability of backtest overfitting (preferred `< 0.25`, hard reject `> 0.50`); **Costs** = commissions + half-spread + dynamic slippage + market impact; **Regime** = volatility + trend robustness.
+**Reason:** Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
 
-Scope for this PR (owner): `git mv` only. No shims, no import/test/config edits, no new research layer. A component that fails the gate but cannot be moved without breaking an import or a test is left in place as **blocked: dependency**.
+Previously `blocked: dependency`, now archived after importer untangle:
+`lumina_core/birth`, evolution strategy-search (`strategy_generator`, `neuroevolution`, `genetic_operators` original mutate, `fitness_evaluator`, `dream`, `generation_*`, `multi_day_sim_*`, `mutation_*`, `orchestrator_core`, `meta_swarm`/`nightly`, `research_lab`, `challenger_venue`), `reports/birth_cloud_run`, launcher birth services, OS birth/maturity endpoints, maturity awakening/playground/apprenticeship/proving_ground, and tests of those trees.
 
-| Component | WF | CPCV | DSR | PBO | Costs | Regime | Decision | Notes |
-|-----------|----|------|-----|-----|-------|--------|----------|-------|
-| `lumina_core/risk`, `lumina_core/safety` | n/a | n/a | n/a | n/a | n/a | n/a | **KEEP** | Independent Risk Core. Untouchable. |
-| Event Bus (`agent_orchestration`) | n/a | n/a | n/a | n/a | n/a | n/a | **KEEP** | Execution fabric. |
-| Trading engine (`engine/`, `trading_engine/`) | tooling | tooling | tooling | tooling | tooling | partial | **KEEP** | `engine/backtest` has purged walk-forward + CPCV + PBO/DSR primitives. Not a strategy book. |
-| Constitution | n/a | n/a | n/a | n/a | n/a | n/a | **KEEP** | Binding law. |
-| Evolution PromotionGate / shadow / veto / rollout / Twin / DNA registry / policy DNA / canary / cutover | evidence consumer (`combinations≥5`) | consumes CPCV dict | required | max 0.40 | slippage ratio vs live | no | **KEEP** | REAL promotion fabric (ADR-0007/0032). Does not generate strategies. Incomplete vs the full charter as a *producer*; it is not a birth/evolution experiment. |
-| `lumina_core/birth` (Birth phase v2, awakening, genesis, certificates) | single ~20% holdout | no | no | no | not a fee gate | curriculum stages ≠ result matrix | **blocked: dependency** | 399 external dependents (`tests/` 275, `lumina_core/` 59, `scripts/`, `lumina_launcher/`, `lumina_os/`, docs). Moving would break imports and tests. |
-| Evolution strategy search (`strategy_generator`, `neuroevolution`, `genetic_operators`, `fitness_evaluator`, dream, generation_*, multi_day_sim_*, mutation_*, meta_*, orchestrator*, `research_lab`, `challenger_venue`, …) | no | optional fitness args, not run | optional | optional (defaults 0) | no | no | **blocked: dependency** | 65/65 experiment modules have importers (package `__init__.py`, KEEP fabric, engine, tests). |
-| `reports/birth_cloud_run` + awakening/genesis run dumps | no | no | no | no | no | no | **blocked: dependency** | Path-read by birth runners and tests (`tests/birth/test_awakening_*`, launcher reset). Live birth code (unmoved) still writes these paths. |
-| `scripts/run_birth_cloud_shadow.py` | no | no | no | no | no | no | **blocked: dependency** | `tests/birth/test_birth_cloud_runner.py`. |
-| `scripts/run_birth_cloud_fault_inject.py` | no | no | no | no | no | no | **blocked: dependency** | Sibling import of `run_birth_cloud_shadow`. |
-| `scripts/validation/birth_zero_human_cadence.py` | no | no | no | no | no | no | **blocked: dependency** | `tests/ops/test_birth_zero_human_cadence.py`. |
-| `scripts/validation/declare_perfect_birth.py` | no | no | no | no | no | no | **blocked: dependency** | Imported from `lumina_core/birth` + tests. |
-| `scripts/validation/perfect_birth_campaign.py` | no | no | no | no | no | no | **blocked: dependency** | Imported from `lumina_core/birth` + tests. |
-| `scripts/extract_birth_phase_model.py`, `extract_birth_phase_orchestrator.py` | n/a | n/a | n/a | n/a | n/a | n/a | **blocked: dependency** | One-shot extractors listed in `ruff.toml` per-file ignores (config cannot be edited in this PR). |
-| `scripts/verify-birth-deploy.ps1`, `scripts/validation/run_sim_birth_twin_validation.py` | n/a | n/a | n/a | n/a | n/a | n/a | **KEEP** (ops) | Deploy/harness helpers, not strategy search. |
-| `scripts/install_birth_physics_stack.py`, `requirements-birth-physics.txt` | n/a | n/a | n/a | n/a | n/a | n/a | **KEEP** | Lungs / physics venv. |
-| `scripts/run_awakening_grind.py` | no | no | no | no | no | no | **ARCHIVE** | No import/test dependents. |
-| `scripts/run_awakening_select.py` | no | no | no | no | no | no | **ARCHIVE** | No import/test dependents. |
-| `scripts/run_awakening_hole_tax.py` | no | no | no | no | no | no | **ARCHIVE** | No import/test dependents. |
-| `scripts/run_genesis_cloud_ladder.py` | no | no | no | no | no | no | **ARCHIVE** | No import/test dependents. |
-| `scripts/harvest_birth_exit_pi_star.py` | no | no | no | no | no | no | **ARCHIVE** | No import/test dependents. |
-| `scripts/birth_runtime_fingerprint.py` | no | no | no | no | no | no | **ARCHIVE** | No import/test dependents. |
-| `scripts/validation/birth_resume_exhaust_check.py` | no | no | no | no | no | no | **ARCHIVE** | No import/test dependents. |
+KEEP (not in this archive): Risk Core, Safety, Execution Fabric behaviour, Event Bus, constitution content, PromotionGate/Twin/shadow/rollout, live/NinjaTrader data and config.
 
-Archived paths: `archive/birth-v1/scripts/…` (history preserved via `git mv`). No deletes. Risk Core, Event Bus, trading engine, and constitution are unchanged.
+Count: 1428 files.
+
+## `lumina_core/audit`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `lumina_core/audit/d4_birth_prereq.py`
+
+## `lumina_core/birth`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `lumina_core/birth/__init__.py`
+- `lumina_core/birth/adaptation_recovery_engine.py`
+- `lumina_core/birth/adaptive_parameter_manager.py`
+- `lumina_core/birth/awakening_band_eval.py`
+- `lumina_core/birth/awakening_band_flags.py`
+- `lumina_core/birth/awakening_band_report.py`
+- `lumina_core/birth/awakening_band_run.py`
+- `lumina_core/birth/awakening_band_tables.py`
+- `lumina_core/birth/awakening_band_tape.py`
+- `lumina_core/birth/awakening_band_train.py`
+- `lumina_core/birth/awakening_conv_enrich.py`
+- `lumina_core/birth/awakening_conv_eval.py`
+- `lumina_core/birth/awakening_conv_flags.py`
+- `lumina_core/birth/awakening_conv_report.py`
+- `lumina_core/birth/awakening_conv_run.py`
+- `lumina_core/birth/awakening_conv_tables.py`
+- `lumina_core/birth/awakening_conv_tape.py`
+- `lumina_core/birth/awakening_conv_train.py`
+- `lumina_core/birth/awakening_coupling_diagnose.py`
+- `lumina_core/birth/awakening_coupling_eval.py`
+- `lumina_core/birth/awakening_coupling_fix.py`
+- `lumina_core/birth/awakening_coupling_flags.py`
+- `lumina_core/birth/awakening_coupling_report.py`
+- `lumina_core/birth/awakening_coupling_run.py`
+- `lumina_core/birth/awakening_coupling_tables.py`
+- `lumina_core/birth/awakening_coupling_train.py`
+- `lumina_core/birth/awakening_drift_eval.py`
+- `lumina_core/birth/awakening_drift_flags.py`
+- `lumina_core/birth/awakening_drift_report.py`
+- `lumina_core/birth/awakening_drift_run.py`
+- `lumina_core/birth/awakening_drift_tables.py`
+- `lumina_core/birth/awakening_drift_tape.py`
+- `lumina_core/birth/awakening_drift_train.py`
+- `lumina_core/birth/awakening_edge.py`
+- `lumina_core/birth/awakening_edge_path.py`
+- `lumina_core/birth/awakening_entry_autopsy.py`
+- `lumina_core/birth/awakening_entry_autopsy_path.py`
+- `lumina_core/birth/awakening_entry_autopsy_report.py`
+- `lumina_core/birth/awakening_entry_autopsy_run.py`
+- `lumina_core/birth/awakening_entry_autopsy_tables.py`
+- `lumina_core/birth/awakening_geom_eval.py`
+- `lumina_core/birth/awakening_geom_flags.py`
+- `lumina_core/birth/awakening_geom_report.py`
+- `lumina_core/birth/awakening_geom_reward.py`
+- `lumina_core/birth/awakening_geom_run.py`
+- `lumina_core/birth/awakening_geom_tables.py`
+- `lumina_core/birth/awakening_geom_tape.py`
+- `lumina_core/birth/awakening_geom_touch.py`
+- `lumina_core/birth/awakening_geom_train.py`
+- `lumina_core/birth/awakening_grind.py`
+- `lumina_core/birth/awakening_grind_run.py`
+- `lumina_core/birth/awakening_holdout_capacity.py`
+- `lumina_core/birth/awakening_hole_tax.py`
+- `lumina_core/birth/awakening_hole_tax_path.py`
+- `lumina_core/birth/awakening_hole_tax_run.py`
+- `lumina_core/birth/awakening_mark_eyes.py`
+- `lumina_core/birth/awakening_mark_eyes_env.py`
+- `lumina_core/birth/awakening_mark_eyes_eval.py`
+- `lumina_core/birth/awakening_mark_eyes_flags.py`
+- `lumina_core/birth/awakening_mark_eyes_obs.py`
+- `lumina_core/birth/awakening_mark_eyes_path.py`
+- `lumina_core/birth/awakening_mark_eyes_polish.py`
+- `lumina_core/birth/awakening_mark_eyes_polish_eval.py`
+- `lumina_core/birth/awakening_mark_eyes_polish_flags.py`
+- `lumina_core/birth/awakening_mark_eyes_polish_report.py`
+- `lumina_core/birth/awakening_mark_eyes_polish_run.py`
+- `lumina_core/birth/awakening_mark_eyes_polish_tables.py`
+- `lumina_core/birth/awakening_mark_eyes_polish_train.py`
+- `lumina_core/birth/awakening_mark_eyes_report.py`
+- `lumina_core/birth/awakening_mark_eyes_run.py`
+- `lumina_core/birth/awakening_mark_eyes_tables.py`
+- `lumina_core/birth/awakening_mark_eyes_train.py`
+- `lumina_core/birth/awakening_mark_eyes_v2.py`
+- `lumina_core/birth/awakening_mark_eyes_v2_env.py`
+- `lumina_core/birth/awakening_mark_eyes_v2_eval.py`
+- `lumina_core/birth/awakening_mark_eyes_v2_flags.py`
+- `lumina_core/birth/awakening_mark_eyes_v2_obs.py`
+- `lumina_core/birth/awakening_mark_eyes_v2_report.py`
+- `lumina_core/birth/awakening_mark_eyes_v2_run.py`
+- `lumina_core/birth/awakening_mark_eyes_v2_tables.py`
+- `lumina_core/birth/awakening_mark_eyes_v2_train.py`
+- `lumina_core/birth/awakening_mech.py`
+- `lumina_core/birth/awakening_mech_path.py`
+- `lumina_core/birth/awakening_obj_eval.py`
+- `lumina_core/birth/awakening_obj_flags.py`
+- `lumina_core/birth/awakening_obj_report.py`
+- `lumina_core/birth/awakening_obj_run.py`
+- `lumina_core/birth/awakening_obj_tables.py`
+- `lumina_core/birth/awakening_obj_tape.py`
+- `lumina_core/birth/awakening_obj_train.py`
+- `lumina_core/birth/awakening_occupancy_eval.py`
+- `lumina_core/birth/awakening_occupancy_flags.py`
+- `lumina_core/birth/awakening_occupancy_report.py`
+- `lumina_core/birth/awakening_occupancy_run.py`
+- `lumina_core/birth/awakening_occupancy_tables.py`
+- `lumina_core/birth/awakening_occupancy_tape.py`
+- `lumina_core/birth/awakening_occupancy_train.py`
+- `lumina_core/birth/awakening_open_policy_signal.py`
+- `lumina_core/birth/awakening_open_policy_signal_flags.py`
+- `lumina_core/birth/awakening_open_policy_signal_path.py`
+- `lumina_core/birth/awakening_open_policy_signal_report.py`
+- `lumina_core/birth/awakening_open_policy_signal_run.py`
+- `lumina_core/birth/awakening_open_policy_signal_tables.py`
+- `lumina_core/birth/awakening_open_split.py`
+- `lumina_core/birth/awakening_open_split_flags.py`
+- `lumina_core/birth/awakening_open_split_path.py`
+- `lumina_core/birth/awakening_open_split_report.py`
+- `lumina_core/birth/awakening_open_split_run.py`
+- `lumina_core/birth/awakening_open_split_tables.py`
+- `lumina_core/birth/awakening_path_early.py`
+- `lumina_core/birth/awakening_path_early_flags.py`
+- `lumina_core/birth/awakening_path_early_path.py`
+- `lumina_core/birth/awakening_path_early_report.py`
+- `lumina_core/birth/awakening_path_early_run.py`
+- `lumina_core/birth/awakening_path_early_tables.py`
+- `lumina_core/birth/awakening_path_exit_k3.py`
+- `lumina_core/birth/awakening_path_exit_k3_eval.py`
+- `lumina_core/birth/awakening_path_exit_k3_flags.py`
+- `lumina_core/birth/awakening_path_exit_k3_hook.py`
+- `lumina_core/birth/awakening_path_exit_k3_path.py`
+- `lumina_core/birth/awakening_path_exit_k3_report.py`
+- `lumina_core/birth/awakening_path_exit_k3_run.py`
+- `lumina_core/birth/awakening_path_exit_k3_t025.py`
+- `lumina_core/birth/awakening_path_exit_k3_t025_eval.py`
+- `lumina_core/birth/awakening_path_exit_k3_t025_flags.py`
+- `lumina_core/birth/awakening_path_exit_k3_t025_path.py`
+- `lumina_core/birth/awakening_path_exit_k3_t025_report.py`
+- `lumina_core/birth/awakening_path_exit_k3_t025_run.py`
+- `lumina_core/birth/awakening_path_exit_k3_t025_tables.py`
+- `lumina_core/birth/awakening_path_exit_k3_tables.py`
+- `lumina_core/birth/awakening_path_shape_k3_dead.py`
+- `lumina_core/birth/awakening_path_shape_k3_dead_eval.py`
+- `lumina_core/birth/awakening_path_shape_k3_dead_flags.py`
+- `lumina_core/birth/awakening_path_shape_k3_dead_path.py`
+- `lumina_core/birth/awakening_path_shape_k3_dead_peek.py`
+- `lumina_core/birth/awakening_path_shape_k3_dead_report.py`
+- `lumina_core/birth/awakening_path_shape_k3_dead_run.py`
+- `lumina_core/birth/awakening_path_shape_k3_dead_tables.py`
+- `lumina_core/birth/awakening_path_unreal_k3.py`
+- `lumina_core/birth/awakening_path_unreal_k3_eval.py`
+- `lumina_core/birth/awakening_path_unreal_k3_flags.py`
+- `lumina_core/birth/awakening_path_unreal_k3_path.py`
+- `lumina_core/birth/awakening_path_unreal_k3_report.py`
+- `lumina_core/birth/awakening_path_unreal_k3_run.py`
+- `lumina_core/birth/awakening_path_unreal_k3_tables.py`
+- `lumina_core/birth/awakening_physics_eval.py`
+- `lumina_core/birth/awakening_physics_flags.py`
+- `lumina_core/birth/awakening_physics_report.py`
+- `lumina_core/birth/awakening_physics_run.py`
+- `lumina_core/birth/awakening_physics_tables.py`
+- `lumina_core/birth/awakening_physics_tape.py`
+- `lumina_core/birth/awakening_physics_train.py`
+- `lumina_core/birth/awakening_scale_enrich.py`
+- `lumina_core/birth/awakening_scale_eval.py`
+- `lumina_core/birth/awakening_scale_flags.py`
+- `lumina_core/birth/awakening_scale_report.py`
+- `lumina_core/birth/awakening_scale_run.py`
+- `lumina_core/birth/awakening_scale_tables.py`
+- `lumina_core/birth/awakening_scale_tape.py`
+- `lumina_core/birth/awakening_scale_train.py`
+- `lumina_core/birth/awakening_select.py`
+- `lumina_core/birth/awakening_select_env.py`
+- `lumina_core/birth/awakening_select_obj_bounce.py`
+- `lumina_core/birth/awakening_select_obj_bounce_flags.py`
+- `lumina_core/birth/awakening_select_obj_bounce_path.py`
+- `lumina_core/birth/awakening_select_obj_bounce_report.py`
+- `lumina_core/birth/awakening_select_obj_bounce_run.py`
+- `lumina_core/birth/awakening_select_obj_bounce_tables.py`
+- `lumina_core/birth/awakening_select_path.py`
+- `lumina_core/birth/awakening_select_run.py`
+- `lumina_core/birth/awakening_strat_eval.py`
+- `lumina_core/birth/awakening_strat_flags.py`
+- `lumina_core/birth/awakening_strat_report.py`
+- `lumina_core/birth/awakening_strat_run.py`
+- `lumina_core/birth/awakening_strat_split.py`
+- `lumina_core/birth/awakening_strat_tables.py`
+- `lumina_core/birth/awakening_strat_tape.py`
+- `lumina_core/birth/awakening_strat_train.py`
+- `lumina_core/birth/awakening_train_reward.py`
+- `lumina_core/birth/bible_meta.py`
+- `lumina_core/birth/bible_observation.py`
+- `lumina_core/birth/birth_bus_choreography.py`
+- `lumina_core/birth/birth_bus_client.py`
+- `lumina_core/birth/birth_bus_meta.py`
+- `lumina_core/birth/birth_bus_serde.py`
+- `lumina_core/birth/birth_certificate.py`
+- `lumina_core/birth/birth_constitution_guard.py`
+- `lumina_core/birth/birth_control_plane.py`
+- `lumina_core/birth/birth_exit_policy_export.py`
+- `lumina_core/birth/birth_handler_registry.py`
+- `lumina_core/birth/birth_phase_bootstrap.py`
+- `lumina_core/birth/birth_phase_certificate_gate.py`
+- `lumina_core/birth/birth_phase_certificate_resume.py`
+- `lumina_core/birth/birth_phase_data_policy.py`
+- `lumina_core/birth/birth_phase_orchestrator.py`
+- `lumina_core/birth/birth_phase_train_complete.py`
+- `lumina_core/birth/birth_trade_geometry.py`
+- `lumina_core/birth/buffer_persist.py`
+- `lumina_core/birth/cache_resume.py`
+- `lumina_core/birth/certificate_evaluate.py`
+- `lumina_core/birth/certificate_evaluator.py`
+- `lumina_core/birth/certificate_patch_bridge.py`
+- `lumina_core/birth/certificate_pipeline.py`
+- `lumina_core/birth/certificate_preflight.py`
+- `lumina_core/birth/certificate_preflight_window.py`
+- `lumina_core/birth/certificate_remediation.py`
+- `lumina_core/birth/certificate_runway.py`
+- `lumina_core/birth/champion_freeze_ops.py`
+- `lumina_core/birth/champion_freeze_telegram.py`
+- `lumina_core/birth/checkpoint.py`
+- `lumina_core/birth/checkpoint_coordinator.py`
+- `lumina_core/birth/config.py`
+- `lumina_core/birth/config_coercion.py`
+- `lumina_core/birth/config_coercion_budget.py`
+- `lumina_core/birth/config_coercion_curriculum.py`
+- `lumina_core/birth/config_coercion_curriculum_core.py`
+- `lumina_core/birth/config_coercion_curriculum_mid.py`
+- `lumina_core/birth/config_coercion_curriculum_tail.py`
+- `lumina_core/birth/config_coercion_helpers.py`
+- `lumina_core/birth/config_coercion_sections.py`
+- `lumina_core/birth/config_curriculum.py`
+- `lumina_core/birth/constitution_enforcer.py`
+- `lumina_core/birth/control_plane_yield.py`
+- `lumina_core/birth/curriculum.py`
+- `lumina_core/birth/curriculum_intra.py`
+- `lumina_core/birth/curriculum_orchestrator.py`
+- `lumina_core/birth/curriculum_pass.py`
+- `lumina_core/birth/curriculum_stage_handler.py`
+- `lumina_core/birth/curriculum_types.py`
+- `lumina_core/birth/data_expansion.py`
+- `lumina_core/birth/data_pipeline.py`
+- `lumina_core/birth/data_pipeline_enrich.py`
+- `lumina_core/birth/data_pipeline_helpers.py`
+- `lumina_core/birth/data_pipeline_load.py`
+- `lumina_core/birth/data_pipeline_resume.py`
+- `lumina_core/birth/data_pipeline_types.py`
+- `lumina_core/birth/data_source_honesty.py`
+- `lumina_core/birth/death_spiral_guard.py`
+- `lumina_core/birth/dna_handoff.py`
+- `lumina_core/birth/engine.py`
+- `lumina_core/birth/engine_graduation.py`
+- `lumina_core/birth/engine_lifecycle.py`
+- `lumina_core/birth/engine_lifecycle_certificate.py`
+- `lumina_core/birth/engine_lifecycle_core.py`
+- `lumina_core/birth/engine_lifecycle_event.py`
+- `lumina_core/birth/engine_lifecycle_ops.py`
+- `lumina_core/birth/engine_trajectory.py`
+- `lumina_core/birth/enrichment_cache.py`
+- `lumina_core/birth/evolution_proof_gate.py`
+- `lumina_core/birth/expectancy_stall.py`
+- `lumina_core/birth/fabric_foundation_bundle.py`
+- `lumina_core/birth/fitness_vector.py`
+- `lumina_core/birth/force_open_plant.py`
+- `lumina_core/birth/foundation_complete.py`
+- `lumina_core/birth/foundation_epochs.py`
+- `lumina_core/birth/foundation_history.py`
+- `lumina_core/birth/foundation_metrics.py`
+- `lumina_core/birth/foundation_occupancy_envelope.py`
+- `lumina_core/birth/foundation_pass.py`
+- `lumina_core/birth/foundation_skill_clock.py`
+- `lumina_core/birth/foundation_stages.py`
+- `lumina_core/birth/genesis_autopsy.py`
+- `lumina_core/birth/genesis_charter.py`
+- `lumina_core/birth/genesis_cloud_birth.py`
+- `lumina_core/birth/genesis_cloud_const.py`
+- `lumina_core/birth/genesis_cloud_protocol.py`
+- `lumina_core/birth/genesis_cloud_run.py`
+- `lumina_core/birth/genesis_cloud_workspace.py`
+- `lumina_core/birth/genesis_eyes_budget.py`
+- `lumina_core/birth/genesis_eyes_budget_eval.py`
+- `lumina_core/birth/genesis_eyes_budget_flags.py`
+- `lumina_core/birth/genesis_eyes_budget_report.py`
+- `lumina_core/birth/genesis_eyes_budget_run.py`
+- `lumina_core/birth/genesis_eyes_budget_tables.py`
+- `lumina_core/birth/genesis_hold_compare.py`
+- `lumina_core/birth/genesis_hold_compare_report.py`
+- `lumina_core/birth/genesis_hold_compare_run.py`
+- `lumina_core/birth/genesis_hold_compare_tables.py`
+- `lumina_core/birth/genesis_mark_eyes_eval.py`
+- `lumina_core/birth/genesis_mark_eyes_train.py`
+- `lumina_core/birth/genesis_real_door.py`
+- `lumina_core/birth/genesis_reports.py`
+- `lumina_core/birth/graduation_result.py`
+- `lumina_core/birth/history_loader.py`
+- `lumina_core/birth/holdout_capacity_refusal.py`
+- `lumina_core/birth/maturity_readiness.py`
+- `lumina_core/birth/meta_controller.py`
+- `lumina_core/birth/meta_controller_decisions.py`
+- `lumina_core/birth/meta_controller_decisions_core.py`
+- `lumina_core/birth/meta_controller_handler.py`
+- `lumina_core/birth/meta_controller_mixin_base.py`
+- `lumina_core/birth/meta_controller_self_eval_ops.py`
+- `lumina_core/birth/meta_controller_signals.py`
+- `lumina_core/birth/meta_controller_types.py`
+- `lumina_core/birth/meta_decide_adaptation.py`
+- `lumina_core/birth/meta_decide_after_rollout.py`
+- `lumina_core/birth/meta_decide_periodic.py`
+- `lumina_core/birth/meta_decide_pre_rollout.py`
+- `lumina_core/birth/meta_decide_stage_quality.py`
+- `lumina_core/birth/meta_self_eval.py`
+- `lumina_core/birth/news_enricher.py`
+- `lumina_core/birth/notional_cap.py`
+- `lumina_core/birth/oos_proxy.py`
+- `lumina_core/birth/organism_autonomy.py`
+- `lumina_core/birth/organism_autonomy_handler.py`
+- `lumina_core/birth/organism_autonomy_phoenix.py`
+- `lumina_core/birth/organism_autonomy_types.py`
+- `lumina_core/birth/pattern_miner.py`
+- `lumina_core/birth/perfect_birth_campaign.py`
+- `lumina_core/birth/perfect_birth_gate.py`
+- `lumina_core/birth/perfect_birth_gather.py`
+- `lumina_core/birth/perfect_birth_types.py`
+- `lumina_core/birth/phase2_autonomy/__init__.py`
+- `lumina_core/birth/phase2_autonomy/contracts.py`
+- `lumina_core/birth/phase2_autonomy/dynamic_wall.py`
+- `lumina_core/birth/phase2_autonomy/execution_mode.py`
+- `lumina_core/birth/phase2_autonomy/features.py`
+- `lumina_core/birth/phase2_autonomy/gates.py`
+- `lumina_core/birth/phase2_autonomy/handler_hooks.py`
+- `lumina_core/birth/phase2_autonomy/instance_adapter.py`
+- `lumina_core/birth/phase2_autonomy/metrics.py`
+- `lumina_core/birth/phase2_autonomy/orchestrator.py`
+- `lumina_core/birth/phase2_autonomy/orchestrator_instance.py`
+- `lumina_core/birth/phase2_autonomy/orchestrator_param.py`
+- `lumina_core/birth/phase2_autonomy/orchestrator_publish.py`
+- `lumina_core/birth/phase2_autonomy/orchestrator_wall.py`
+- `lumina_core/birth/phase2_autonomy/param_catalog.py`
+- `lumina_core/birth/phase2_autonomy/sim_campaign.py`
+- `lumina_core/birth/phoenix_handler.py`
+- `lumina_core/birth/phoenix_loop.py`
+- `lumina_core/birth/physics_preflight.py`
+- `lumina_core/birth/physics_stack_install.py`
+- `lumina_core/birth/plateau_enter.py`
+- `lumina_core/birth/plateau_escalator.py`
+- `lumina_core/birth/plateau_evolution_actions.py`
+- `lumina_core/birth/plateau_evolution_advance.py`
+- `lumina_core/birth/plateau_evolution_detect.py`
+- `lumina_core/birth/plateau_evolution_handler.py`
+- `lumina_core/birth/plateau_evolution_ladder.py`
+- `lumina_core/birth/plateau_evolution_loop.py`
+- `lumina_core/birth/plateau_handler.py`
+- `lumina_core/birth/plateau_rolling.py`
+- `lumina_core/birth/plateau_telemetry.py`
+- `lumina_core/birth/plateau_terminal.py`
+- `lumina_core/birth/plateau_terminal_ladder.py`
+- `lumina_core/birth/plateau_terminal_traps.py`
+- `lumina_core/birth/pnl_units.py`
+- `lumina_core/birth/policy_signal_extract.py`
+- `lumina_core/birth/policy_swarm.py`
+- `lumina_core/birth/preflight.py`
+- `lumina_core/birth/progress.py`
+- `lumina_core/birth/progress_reporter.py`
+- `lumina_core/birth/purged_split.py`
+- `lumina_core/birth/quality_score.py`
+- `lumina_core/birth/recovery_compress.py`
+- `lumina_core/birth/remediation.py`
+- `lumina_core/birth/remediation_handler.py`
+- `lumina_core/birth/runtime_diagnostics.py`
+- `lumina_core/birth/runway.py`
+- `lumina_core/birth/s5_close_ledger_archive.py`
+- `lumina_core/birth/s5_close_ledger_trace.py`
+- `lumina_core/birth/s5_occupancy_continuity.py`
+- `lumina_core/birth/s5_process_decomp.py`
+- `lumina_core/birth/self_play/__init__.py`
+- `lumina_core/birth/self_play/gates.py`
+- `lumina_core/birth/self_play/report.py`
+- `lumina_core/birth/self_play/scorer.py`
+- `lumina_core/birth/self_play/types.py`
+- `lumina_core/birth/sim_runner.py`
+- `lumina_core/birth/sim_runner_actions.py`
+- `lumina_core/birth/sim_runner_entry_telem.py`
+- `lumina_core/birth/stage1_foundation.py`
+- `lumina_core/birth/stage2_participation_envelope.py`
+- `lumina_core/birth/stage2_pass_vector.py`
+- `lumina_core/birth/stage2_peak_capture.py`
+- `lumina_core/birth/stage2_policy_bootstrap.py`
+- `lumina_core/birth/stage2_skill_metric.py`
+- `lumina_core/birth/stage2_transfer_handoff.py`
+- `lumina_core/birth/stage3_inband_gym.py`
+- `lumina_core/birth/stage3_inband_idle.py`
+- `lumina_core/birth/stage3_inband_ssot.py`
+- `lumina_core/birth/stage3_occupancy_meta.py`
+- `lumina_core/birth/stage4_mean_r_meta.py`
+- `lumina_core/birth/stage_blocker.py`
+- `lumina_core/birth/stage_blocker_foundation.py`
+- `lumina_core/birth/stage_loop_context.py`
+- `lumina_core/birth/stage_loop_data_cache.py`
+- `lumina_core/birth/stage_loop_data_enrich.py`
+- `lumina_core/birth/stage_loop_data_enrich_core.py`
+- `lumina_core/birth/stage_loop_data_ops.py`
+- `lumina_core/birth/stage_loop_enrich_swarm.py`
+- `lumina_core/birth/stage_loop_iteration.py`
+- `lumina_core/birth/stage_loop_iteration_core.py`
+- `lumina_core/birth/stage_loop_iteration_helpers.py`
+- `lumina_core/birth/stage_loop_iteration_pass.py`
+- `lumina_core/birth/stage_loop_iteration_stagnation.py`
+- `lumina_core/birth/stage_loop_iteration_stall.py`
+- `lumina_core/birth/stage_loop_iteration_swarm.py`
+- `lumina_core/birth/stage_loop_meta.py`
+- `lumina_core/birth/stage_loop_mixin_base.py`
+- `lumina_core/birth/stage_loop_progress.py`
+- `lumina_core/birth/stage_loop_progress_metrics.py`
+- `lumina_core/birth/stage_loop_progress_write.py`
+- `lumina_core/birth/stage_loop_progress_write_enrich.py`
+- `lumina_core/birth/stage_loop_progress_write_starship.py`
+- `lumina_core/birth/stage_loop_recovery.py`
+- `lumina_core/birth/stage_loop_recovery_adaptation.py`
+- `lumina_core/birth/stage_loop_recovery_blocker.py`
+- `lumina_core/birth/stage_loop_recovery_mixin.py`
+- `lumina_core/birth/stage_loop_recovery_phoenix.py`
+- `lumina_core/birth/stage_loop_recovery_remediation.py`
+- `lumina_core/birth/stage_loop_recovery_terminal.py`
+- `lumina_core/birth/stage_loop_rollout.py`
+- `lumina_core/birth/stage_loop_rollout_cycle.py`
+- `lumina_core/birth/stage_loop_rollout_post.py`
+- `lumina_core/birth/stage_loop_rollout_pre.py`
+- `lumina_core/birth/stage_loop_rollout_pre_caps.py`
+- `lumina_core/birth/stage_loop_rollout_tail.py`
+- `lumina_core/birth/stage_loop_rollout_types.py`
+- `lumina_core/birth/stage_loop_session.py`
+- `lumina_core/birth/stage_loop_session_phase_init.py`
+- `lumina_core/birth/stage_loop_session_phase_prepare.py`
+- `lumina_core/birth/stage_loop_session_phase_prepare_init.py`
+- `lumina_core/birth/stage_loop_session_phase_prepare_plateau.py`
+- `lumina_core/birth/stage_loop_session_phase_prepare_restore.py`
+- `lumina_core/birth/stage_loop_session_phase_resume.py`
+- `lumina_core/birth/stage_loop_session_runner.py`
+- `lumina_core/birth/stage_pass_receipt.py`
+- `lumina_core/birth/stage_pass_receipt_build.py`
+- `lumina_core/birth/stage_pass_receipt_types.py`
+- `lumina_core/birth/stage_pass_receipt_verify.py`
+- `lumina_core/birth/stage_rollout_executor.py`
+- `lumina_core/birth/stage_sample_reset.py`
+- `lumina_core/birth/stage_scorecard.py`
+- `lumina_core/birth/stage_scorecard_criteria.py`
+- `lumina_core/birth/stage_scorecard_enrich.py`
+- `lumina_core/birth/stage_training_loop.py`
+- `lumina_core/birth/stall_remediation.py`
+- `lumina_core/birth/starship_birth.py`
+- `lumina_core/birth/starship_edgescore.py`
+- `lumina_core/birth/starship_edgescore_champion.py`
+- `lumina_core/birth/starship_edgescore_core.py`
+- `lumina_core/birth/starship_edgescore_stage1.py`
+- `lumina_core/birth/starship_edgescore_stage2.py`
+- `lumina_core/birth/starship_edgescore_stage3.py`
+- `lumina_core/birth/starship_swarm_gates.py`
+- `lumina_core/birth/synthetic_cloud_fixture.py`
+- `lumina_core/birth/synthetic_cloud_fixture_persist.py`
+- `lumina_core/birth/terminal_freeze.py`
+- `lumina_core/birth/tick_cache_guard.py`
+- `lumina_core/birth/tick_cache_persist.py`
+- `lumina_core/birth/tick_cache_split_codec.py`
+- `lumina_core/birth/tick_enricher.py`
+- `lumina_core/birth/training_window_sla.py`
+- `lumina_core/birth/wall_adaptation_handler.py`
+- `lumina_core/birth/wall_adaptation_recovery.py`
+- `lumina_core/birth/wall_adaptation_triggers.py`
+- `lumina_core/birth/wall_trigger_engine.py`
+
+## `lumina_core/evolution`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `lumina_core/evolution/birth_gen0_bootstrap.py`
+- `lumina_core/evolution/challenger_nightly.py`
+- `lumina_core/evolution/challenger_venue/__init__.py`
+- `lumina_core/evolution/challenger_venue/admission.py`
+- `lumina_core/evolution/challenger_venue/attach.py`
+- `lumina_core/evolution/challenger_venue/card.py`
+- `lumina_core/evolution/challenger_venue/dna_namespace.py`
+- `lumina_core/evolution/challenger_venue/fills.py`
+- `lumina_core/evolution/challenger_venue/imports_guard.py`
+- `lumina_core/evolution/challenger_venue/isolation.py`
+- `lumina_core/evolution/challenger_venue/journal.py`
+- `lumina_core/evolution/challenger_venue/mds_fanout.py`
+- `lumina_core/evolution/challenger_venue/proof.py`
+- `lumina_core/evolution/challenger_venue/replay.py`
+- `lumina_core/evolution/challenger_venue/runtime.py`
+- `lumina_core/evolution/challenger_venue/slot.py`
+- `lumina_core/evolution/council.py`
+- `lumina_core/evolution/council_notify.py`
+- `lumina_core/evolution/dream_engine.py`
+- `lumina_core/evolution/dream_integration.py`
+- `lumina_core/evolution/evolution_dashboard.py`
+- `lumina_core/evolution/evolution_metrics_loaders.py`
+- `lumina_core/evolution/evolution_orchestrator.py`
+- `lumina_core/evolution/evolution_tree.py`
+- `lumina_core/evolution/fitness_evaluator.py`
+- `lumina_core/evolution/fitness_ssot.py`
+- `lumina_core/evolution/generation_neuro_cycle.py`
+- `lumina_core/evolution/generation_nightly.py`
+- `lumina_core/evolution/generation_runner.py`
+- `lumina_core/evolution/generation_runner_phases.py`
+- `lumina_core/evolution/generation_runner_promotion.py`
+- `lumina_core/evolution/generation_strategy_cycle.py`
+- `lumina_core/evolution/generation_types.py`
+- `lumina_core/evolution/genetic_operators.py`
+- `lumina_core/evolution/meta_agent.py`
+- `lumina_core/evolution/meta_agent_config.py`
+- `lumina_core/evolution/meta_agent_core.py`
+- `lumina_core/evolution/meta_milestones.py`
+- `lumina_core/evolution/meta_swarm.py`
+- `lumina_core/evolution/multi_day_sim_backtest.py`
+- `lumina_core/evolution/multi_day_sim_day.py`
+- `lumina_core/evolution/multi_day_sim_evaluate.py`
+- `lumina_core/evolution/multi_day_sim_runner.py`
+- `lumina_core/evolution/multi_day_sim_types.py`
+- `lumina_core/evolution/mutation_executor.py`
+- `lumina_core/evolution/mutation_pipeline.py`
+- `lumina_core/evolution/neuroevolution.py`
+- `lumina_core/evolution/nightly_cycle.py`
+- `lumina_core/evolution/orchestrator.py`
+- `lumina_core/evolution/orchestrator_core.py`
+- `lumina_core/evolution/orchestrator_generation.py`
+- `lumina_core/evolution/orchestrator_promotion.py`
+- `lumina_core/evolution/playground_reentry.py`
+- `lumina_core/evolution/reality_generator.py`
+- `lumina_core/evolution/research_lab/__init__.py`
+- `lumina_core/evolution/research_lab/catalog.py`
+- `lumina_core/evolution/research_lab/champion_challenger.py`
+- `lumina_core/evolution/research_lab/cycle.py`
+- `lumina_core/evolution/strategy_generator.py`
+
+## `lumina_core/maturity`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `lumina_core/maturity/advance_policy.py`
+- `lumina_core/maturity/apprenticeship/__init__.py`
+- `lumina_core/maturity/apprenticeship/days.py`
+- `lumina_core/maturity/apprenticeship/heal.py`
+- `lumina_core/maturity/apprenticeship/law.py`
+- `lumina_core/maturity/apprenticeship/progress.py`
+- `lumina_core/maturity/apprenticeship/recovery.py`
+- `lumina_core/maturity/apprenticeship/runner.py`
+- `lumina_core/maturity/apprenticeship/surface.py`
+- `lumina_core/maturity/apprenticeship/tape.py`
+- `lumina_core/maturity/apprenticeship_sim.py`
+- `lumina_core/maturity/awakening/__init__.py`
+- `lumina_core/maturity/awakening/baseline.py`
+- `lumina_core/maturity/awakening/clock.py`
+- `lumina_core/maturity/awakening/cycle_journal.py`
+- `lumina_core/maturity/awakening/cycle_report.py`
+- `lumina_core/maturity/awakening/freeze_pin.py`
+- `lumina_core/maturity/awakening/heal.py`
+- `lumina_core/maturity/awakening/keep_best.py`
+- `lumina_core/maturity/awakening/law.py`
+- `lumina_core/maturity/awakening/progress.py`
+- `lumina_core/maturity/awakening/recovery.py`
+- `lumina_core/maturity/awakening/regime.py`
+- `lumina_core/maturity/awakening/runner.py`
+- `lumina_core/maturity/awakening/select.py`
+- `lumina_core/maturity/awakening/surface.py`
+- `lumina_core/maturity/awakening/twin_watch.py`
+- `lumina_core/maturity/awakening/weight_sha.py`
+- `lumina_core/maturity/birth_exit.py`
+- `lumina_core/maturity/continuum_honesty.py`
+- `lumina_core/maturity/maturity_service.py`
+- `lumina_core/maturity/phase_runners/__init__.py`
+- `lumina_core/maturity/phase_runners/apprenticeship.py`
+- `lumina_core/maturity/phase_runners/awakening.py`
+- `lumina_core/maturity/phase_runners/awakening_shot.py`
+- `lumina_core/maturity/phase_runners/awakening_shot_io.py`
+- `lumina_core/maturity/phase_runners/common.py`
+- `lumina_core/maturity/phase_runners/playground.py`
+- `lumina_core/maturity/phase_runners/proving_ground.py`
+- `lumina_core/maturity/phase_specs.py`
+- `lumina_core/maturity/playground/__init__.py`
+- `lumina_core/maturity/playground/clock.py`
+- `lumina_core/maturity/playground/crawl.py`
+- `lumina_core/maturity/playground/demo_cash.py`
+- `lumina_core/maturity/playground/envelope.py`
+- `lumina_core/maturity/playground/fills.py`
+- `lumina_core/maturity/playground/globex_gap.py`
+- `lumina_core/maturity/playground/habitat.py`
+- `lumina_core/maturity/playground/heal.py`
+- `lumina_core/maturity/playground/journal.py`
+- `lumina_core/maturity/playground/law.py`
+- `lumina_core/maturity/playground/learning_book.py`
+- `lumina_core/maturity/playground/live_hand.py`
+- `lumina_core/maturity/playground/portfolio_seal.py`
+- `lumina_core/maturity/playground/progress.py`
+- `lumina_core/maturity/playground/recovery.py`
+- `lumina_core/maturity/playground/research_kit.py`
+- `lumina_core/maturity/playground/rule_exam.py`
+- `lumina_core/maturity/playground/runner.py`
+- `lumina_core/maturity/playground/school_days.py`
+- `lumina_core/maturity/playground/select.py`
+- `lumina_core/maturity/playground/sense_audit.py`
+- `lumina_core/maturity/playground/sense_brief.py`
+- `lumina_core/maturity/playground/sense_brief_fields.py`
+- `lumina_core/maturity/playground/sense_candles.py`
+- `lumina_core/maturity/playground/sense_clock.py`
+- `lumina_core/maturity/playground/sense_lab.py`
+- `lumina_core/maturity/playground/sense_slots.py`
+- `lumina_core/maturity/playground/sentence_window.py`
+- `lumina_core/maturity/playground/session_flat.py`
+- `lumina_core/maturity/playground/shadow_promote.py`
+- `lumina_core/maturity/playground/surface.py`
+- `lumina_core/maturity/playground/tape.py`
+- `lumina_core/maturity/playground/telegram_commands.py`
+- `lumina_core/maturity/post_birth_skill_gates.py`
+- `lumina_core/maturity/proving_ground/__init__.py`
+- `lumina_core/maturity/proving_ground/evidence.py`
+- `lumina_core/maturity/proving_ground/exam.py`
+- `lumina_core/maturity/proving_ground/heal.py`
+- `lumina_core/maturity/proving_ground/law.py`
+- `lumina_core/maturity/proving_ground/progress.py`
+- `lumina_core/maturity/proving_ground/recovery.py`
+- `lumina_core/maturity/proving_ground/runner.py`
+- `lumina_core/maturity/proving_ground/shadow.py`
+- `lumina_core/maturity/proving_ground/surface.py`
+- `lumina_core/maturity/proving_ground/tape.py`
+
+## `lumina_launcher/birth`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `lumina_launcher/birth/__init__.py`
+- `lumina_launcher/birth/status_cli.py`
+
+## `lumina_launcher/core`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `lumina_launcher/core/birth_actions.py`
+- `lumina_launcher/core/birth_reset.py`
+
+## `lumina_launcher/services`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `lumina_launcher/services/birth_history_skip.py`
+- `lumina_launcher/services/birth_maturity_wiring.py`
+- `lumina_launcher/services/birth_residual_cleanup.py`
+- `lumina_launcher/services/birth_runner_lock.py`
+- `lumina_launcher/services/birth_runner_preflight.py`
+- `lumina_launcher/services/birth_runner_recovery.py`
+- `lumina_launcher/services/birth_runner_retry_stage.py`
+- `lumina_launcher/services/birth_runner_start.py`
+- `lumina_launcher/services/birth_runner_wipe.py`
+- `lumina_launcher/services/birth_service.py`
+- `lumina_launcher/services/birth_service_recovery.py`
+- `lumina_launcher/services/birth_status_diagnostics.py`
+- `lumina_launcher/services/birth_status_enricher.py`
+- `lumina_launcher/services/birth_status_mapper.py`
+- `lumina_launcher/services/birth_status_mapper_get.py`
+- `lumina_launcher/services/birth_status_plateau_risk.py`
+
+## `lumina_os/backend`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `lumina_os/backend/birth_endpoints.py`
+- `lumina_os/backend/birth_endpoints_actions.py`
+- `lumina_os/backend/birth_endpoints_enrich.py`
+- `lumina_os/backend/maturity_endpoints.py`
+
+## `lumina_os/tests`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `lumina_os/tests/test_birth_endpoints.py`
+
+## `reports`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `reports/awakening_band_run/AWAKENING_BAND_AUDIT.md`
+- `reports/awakening_band_run/AWAKENING_BAND_VERDICT.md`
+- `reports/awakening_band_run/LUMINA_BAND_EXPERIMENT_LOG.md`
+- `reports/awakening_band_run/artifacts/01_band_fixture_manifest.json`
+- `reports/awakening_band_run/artifacts/awakening_band_flags.json`
+- `reports/awakening_band_run/artifacts/baseline_a9ffa852_pi_star.zip`
+- `reports/awakening_band_run/artifacts/baseline_a9ffa852_pi_star.zip.sha256`
+- `reports/awakening_band_run/artifacts/g0_recon.json`
+- `reports/awakening_band_run/artifacts/g6_real_door.json`
+- `reports/awakening_conv_run/AWAKENING_CONV_AUDIT.md`
+- `reports/awakening_conv_run/AWAKENING_CONV_VERDICT.md`
+- `reports/awakening_conv_run/LUMINA_CONV_EXPERIMENT_LOG.md`
+- `reports/awakening_conv_run/artifacts/01_conv_fixture_manifest.json`
+- `reports/awakening_conv_run/artifacts/awakening_conv_flags.json`
+- `reports/awakening_conv_run/artifacts/awakening_conv_v1_pi_star.json`
+- `reports/awakening_conv_run/artifacts/awakening_conv_v1_pi_star.zip`
+- `reports/awakening_conv_run/artifacts/awakening_conv_v1_pi_star.zip.sha256`
+- `reports/awakening_conv_run/artifacts/baseline_a9ffa852_pi_star.zip`
+- `reports/awakening_conv_run/artifacts/baseline_a9ffa852_pi_star.zip.sha256`
+- `reports/awakening_conv_run/artifacts/conv_base_A_close_ledger.jsonl`
+- `reports/awakening_conv_run/artifacts/conv_base_A_close_ledger.sha256`
+- `reports/awakening_conv_run/artifacts/conv_base_B_close_ledger.jsonl`
+- `reports/awakening_conv_run/artifacts/conv_base_B_close_ledger.sha256`
+- `reports/awakening_conv_run/artifacts/conv_child_A_close_ledger.jsonl`
+- `reports/awakening_conv_run/artifacts/conv_child_A_close_ledger.sha256`
+- `reports/awakening_conv_run/artifacts/conv_child_B_close_ledger.jsonl`
+- `reports/awakening_conv_run/artifacts/conv_child_B_close_ledger.sha256`
+- `reports/awakening_conv_run/artifacts/g0_recon.json`
+- `reports/awakening_conv_run/artifacts/g6_real_door.json`
+- `reports/awakening_coupling_run/AWAKENING_COUPLING_AUDIT.md`
+- `reports/awakening_coupling_run/AWAKENING_COUPLING_VERDICT.md`
+- `reports/awakening_coupling_run/LUMINA_COUPLING_EXPERIMENT_LOG.md`
+- `reports/awakening_coupling_run/artifacts/awakening_coupling_flags.json`
+- `reports/awakening_coupling_run/artifacts/baseline_a9ffa852_pi_star.zip`
+- `reports/awakening_coupling_run/artifacts/baseline_a9ffa852_pi_star.zip.sha256`
+- `reports/awakening_coupling_run/artifacts/g0_recon.json`
+- `reports/awakening_coupling_run/artifacts/g1_cause.json`
+- `reports/awakening_coupling_run/artifacts/g1_confusion.json`
+- `reports/awakening_coupling_run/artifacts/g6_real_door.json`
+- `reports/awakening_drift_run/AWAKENING_DRIFT_AUDIT.md`
+- `reports/awakening_drift_run/AWAKENING_DRIFT_VERDICT.md`
+- `reports/awakening_drift_run/LUMINA_DRIFT_EXPERIMENT_LOG.md`
+- `reports/awakening_drift_run/artifacts/01_drift_fixture_manifest.json`
+- `reports/awakening_drift_run/artifacts/awakening_drift_flags.json`
+- `reports/awakening_drift_run/artifacts/baseline_a9ffa852_pi_star.zip.sha256`
+- `reports/awakening_drift_run/artifacts/g0_recon.json`
+- `reports/awakening_drift_run/artifacts/g6_real_door.json`
+- `reports/awakening_eyes_v2_run/AWAKENING_MARK_EYES_V2_AUDIT.md`
+- `reports/awakening_eyes_v2_run/AWAKENING_MARK_EYES_V2_VERDICT.md`
+- `reports/awakening_eyes_v2_run/LUMINA_BIRTH_EXPERIMENT_LOG.md`
+- `reports/awakening_eyes_v2_run/artifacts/01_v2_fixture_manifest.json`
+- `reports/awakening_eyes_v2_run/artifacts/awakening_mark_eyes_v2_flags.json`
+- `reports/awakening_eyes_v2_run/artifacts/awakening_mark_eyes_v2_pi_star.json`
+- `reports/awakening_eyes_v2_run/artifacts/awakening_mark_eyes_v2_pi_star.zip`
+- `reports/awakening_eyes_v2_run/artifacts/awakening_mark_eyes_v2_pi_star.zip.sha256`
+- `reports/awakening_eyes_v2_run/artifacts/baseline_mark_eyes_v1_pi_star.zip`
+- `reports/awakening_eyes_v2_run/artifacts/baseline_mark_eyes_v1_pi_star.zip.sha256`
+- `reports/awakening_eyes_v2_run/artifacts/g0_recon.json`
+- `reports/awakening_eyes_v2_run/artifacts/g6_real_door.json`
+- `reports/awakening_eyes_v2_run/artifacts/v2_base_A_close_ledger.jsonl`
+- `reports/awakening_eyes_v2_run/artifacts/v2_base_A_close_ledger.sha256`
+- `reports/awakening_eyes_v2_run/artifacts/v2_base_B_close_ledger.jsonl`
+- `reports/awakening_eyes_v2_run/artifacts/v2_base_B_close_ledger.sha256`
+- `reports/awakening_eyes_v2_run/artifacts/v2_child_A_close_ledger.jsonl`
+- `reports/awakening_eyes_v2_run/artifacts/v2_child_A_close_ledger.sha256`
+- `reports/awakening_eyes_v2_run/artifacts/v2_child_B_close_ledger.jsonl`
+- `reports/awakening_eyes_v2_run/artifacts/v2_child_B_close_ledger.sha256`
+- `reports/awakening_geom_run/AWAKENING_GEOM_AUDIT.md`
+- `reports/awakening_geom_run/AWAKENING_GEOM_VERDICT.md`
+- `reports/awakening_geom_run/LUMINA_GEOM_EXPERIMENT_LOG.md`
+- `reports/awakening_geom_run/artifacts/01_geom_fixture_manifest.json`
+- `reports/awakening_geom_run/artifacts/awakening_geom_flags.json`
+- `reports/awakening_geom_run/artifacts/awakening_geom_v1_pi_star.json`
+- `reports/awakening_geom_run/artifacts/awakening_geom_v1_pi_star.zip`
+- `reports/awakening_geom_run/artifacts/awakening_geom_v1_pi_star.zip.sha256`
+- `reports/awakening_geom_run/artifacts/baseline_a9ffa852_pi_star.zip`
+- `reports/awakening_geom_run/artifacts/baseline_a9ffa852_pi_star.zip.sha256`
+- `reports/awakening_geom_run/artifacts/g0_recon.json`
+- `reports/awakening_geom_run/artifacts/g2_first_touch.json`
+- `reports/awakening_geom_run/artifacts/g6_real_door.json`
+- `reports/awakening_geom_run/artifacts/geom_base_A_close_ledger.jsonl`
+- `reports/awakening_geom_run/artifacts/geom_base_A_close_ledger.sha256`
+- `reports/awakening_geom_run/artifacts/geom_base_B_close_ledger.jsonl`
+- `reports/awakening_geom_run/artifacts/geom_base_B_close_ledger.sha256`
+- `reports/awakening_geom_run/artifacts/geom_child_A_close_ledger.jsonl`
+- `reports/awakening_geom_run/artifacts/geom_child_A_close_ledger.sha256`
+- `reports/awakening_geom_run/artifacts/geom_child_B_close_ledger.jsonl`
+- `reports/awakening_geom_run/artifacts/geom_child_B_close_ledger.sha256`
+- `reports/awakening_obj_run/AWAKENING_OBJ_AUDIT.md`
+- `reports/awakening_obj_run/AWAKENING_OBJ_VERDICT.md`
+- `reports/awakening_obj_run/LUMINA_OBJ_EXPERIMENT_LOG.md`
+- `reports/awakening_obj_run/artifacts/01_obj_fixture_manifest.json`
+- `reports/awakening_obj_run/artifacts/awakening_obj_flags.json`
+- `reports/awakening_obj_run/artifacts/awakening_obj_v1_pi_star.json`
+- `reports/awakening_obj_run/artifacts/awakening_obj_v1_pi_star.zip`
+- `reports/awakening_obj_run/artifacts/awakening_obj_v1_pi_star.zip.sha256`
+- `reports/awakening_obj_run/artifacts/baseline_a9ffa852_pi_star.zip`
+- `reports/awakening_obj_run/artifacts/baseline_a9ffa852_pi_star.zip.sha256`
+- `reports/awakening_obj_run/artifacts/g0_recon.json`
+- `reports/awakening_obj_run/artifacts/g6_real_door.json`
+- `reports/awakening_obj_run/artifacts/obj_base_A_close_ledger.jsonl`
+- `reports/awakening_obj_run/artifacts/obj_base_A_close_ledger.sha256`
+- `reports/awakening_obj_run/artifacts/obj_base_B_close_ledger.jsonl`
+- `reports/awakening_obj_run/artifacts/obj_base_B_close_ledger.sha256`
+- `reports/awakening_obj_run/artifacts/obj_child_A_close_ledger.jsonl`
+- `reports/awakening_obj_run/artifacts/obj_child_A_close_ledger.sha256`
+- `reports/awakening_obj_run/artifacts/obj_child_B_close_ledger.jsonl`
+- `reports/awakening_obj_run/artifacts/obj_child_B_close_ledger.sha256`
+- `reports/awakening_occupancy_run/AWAKENING_OCCUPANCY_AUDIT.md`
+- `reports/awakening_occupancy_run/AWAKENING_OCCUPANCY_VERDICT.md`
+- `reports/awakening_occupancy_run/LUMINA_OCCUPANCY_EXPERIMENT_LOG.md`
+- `reports/awakening_occupancy_run/artifacts/01_occupancy_fixture_manifest.json`
+- `reports/awakening_occupancy_run/artifacts/awakening_occupancy_flags.json`
+- `reports/awakening_occupancy_run/artifacts/baseline_a9ffa852_pi_star.zip`
+- `reports/awakening_occupancy_run/artifacts/baseline_a9ffa852_pi_star.zip.sha256`
+- `reports/awakening_occupancy_run/artifacts/g0_recon.json`
+- `reports/awakening_occupancy_run/artifacts/g6_real_door.json`
+- `reports/awakening_occupancy_run/artifacts/occupancy_run.log`
+- `reports/awakening_physics_run/AWAKENING_PHYSICS_TAPE_AUDIT.md`
+- `reports/awakening_physics_run/AWAKENING_PHYSICS_TAPE_VERDICT.md`
+- `reports/awakening_physics_run/LUMINA_PHYSICS_EXPERIMENT_LOG.md`
+- `reports/awakening_physics_run/artifacts/01_physics_fixture_manifest.json`
+- `reports/awakening_physics_run/artifacts/awakening_physics_flags.json`
+- `reports/awakening_physics_run/artifacts/baseline_a9ffa852_pi_star.zip`
+- `reports/awakening_physics_run/artifacts/baseline_a9ffa852_pi_star.zip.sha256`
+- `reports/awakening_physics_run/artifacts/g0_recon.json`
+- `reports/awakening_physics_run/artifacts/g6_real_door.json`
+- `reports/awakening_polish_run/AWAKENING_MARK_EYES_POLISH_AUDIT.md`
+- `reports/awakening_polish_run/AWAKENING_MARK_EYES_POLISH_VERDICT.md`
+- `reports/awakening_polish_run/LUMINA_AWAKENING_POLISH_EXPERIMENT_LOG.md`
+- `reports/awakening_polish_run/artifacts/01_polish_fixture_manifest.json`
+- `reports/awakening_polish_run/artifacts/awakening_mark_eyes_polish_flags.json`
+- `reports/awakening_polish_run/artifacts/awakening_mark_eyes_polish_pi_star.json`
+- `reports/awakening_polish_run/artifacts/awakening_mark_eyes_polish_pi_star.zip`
+- `reports/awakening_polish_run/artifacts/awakening_mark_eyes_polish_pi_star.zip.sha256`
+- `reports/awakening_polish_run/artifacts/g0_recon.json`
+- `reports/awakening_polish_run/artifacts/g6_real_door.json`
+- `reports/awakening_polish_run/artifacts/init_mark_eyes_pi_star.zip`
+- `reports/awakening_polish_run/artifacts/init_mark_eyes_pi_star.zip.sha256`
+- `reports/awakening_polish_run/artifacts/polish_base_A_close_ledger.jsonl`
+- `reports/awakening_polish_run/artifacts/polish_base_A_close_ledger.sha256`
+- `reports/awakening_polish_run/artifacts/polish_base_B_close_ledger.jsonl`
+- `reports/awakening_polish_run/artifacts/polish_base_B_close_ledger.sha256`
+- `reports/awakening_polish_run/artifacts/polish_child_A_close_ledger.jsonl`
+- `reports/awakening_polish_run/artifacts/polish_child_A_close_ledger.sha256`
+- `reports/awakening_polish_run/artifacts/polish_child_B_close_ledger.jsonl`
+- `reports/awakening_polish_run/artifacts/polish_child_B_close_ledger.sha256`
+- `reports/awakening_scale_run/AWAKENING_SCALE_AUDIT.md`
+- `reports/awakening_scale_run/AWAKENING_SCALE_VERDICT.md`
+- `reports/awakening_scale_run/LUMINA_SCALE_EXPERIMENT_LOG.md`
+- `reports/awakening_scale_run/artifacts/01_scale_fixture_manifest.json`
+- `reports/awakening_scale_run/artifacts/awakening_scale_flags.json`
+- `reports/awakening_scale_run/artifacts/awakening_scale_v1_pi_star.json`
+- `reports/awakening_scale_run/artifacts/awakening_scale_v1_pi_star.zip`
+- `reports/awakening_scale_run/artifacts/awakening_scale_v1_pi_star.zip.sha256`
+- `reports/awakening_scale_run/artifacts/baseline_a9ffa852_pi_star.zip`
+- `reports/awakening_scale_run/artifacts/baseline_a9ffa852_pi_star.zip.sha256`
+- `reports/awakening_scale_run/artifacts/g0_recon.json`
+- `reports/awakening_scale_run/artifacts/g6_real_door.json`
+- `reports/awakening_scale_run/artifacts/scale_base_A_close_ledger.jsonl`
+- `reports/awakening_scale_run/artifacts/scale_base_A_close_ledger.sha256`
+- `reports/awakening_scale_run/artifacts/scale_base_B_close_ledger.jsonl`
+- `reports/awakening_scale_run/artifacts/scale_base_B_close_ledger.sha256`
+- `reports/awakening_scale_run/artifacts/scale_child_A_close_ledger.jsonl`
+- `reports/awakening_scale_run/artifacts/scale_child_A_close_ledger.sha256`
+- `reports/awakening_scale_run/artifacts/scale_child_B_close_ledger.jsonl`
+- `reports/awakening_scale_run/artifacts/scale_child_B_close_ledger.sha256`
+- `reports/awakening_strat_run/AWAKENING_STRAT_AUDIT.md`
+- `reports/awakening_strat_run/AWAKENING_STRAT_VERDICT.md`
+- `reports/awakening_strat_run/LUMINA_STRAT_EXPERIMENT_LOG.md`
+- `reports/awakening_strat_run/artifacts/01_strat_fixture_manifest.json`
+- `reports/awakening_strat_run/artifacts/awakening_strat_flags.json`
+- `reports/awakening_strat_run/artifacts/baseline_a9ffa852_pi_star.zip`
+- `reports/awakening_strat_run/artifacts/baseline_a9ffa852_pi_star.zip.sha256`
+- `reports/awakening_strat_run/artifacts/g0_recon.json`
+- `reports/awakening_strat_run/artifacts/g6_real_door.json`
+- `reports/awakening_strat_run/artifacts/strat_run.log`
+- `reports/birth_cloud_run/00_recon.md`
+- `reports/birth_cloud_run/01_fixture_manifest.json`
+- `reports/birth_cloud_run/01_fixture_manifest_B.json`
+- `reports/birth_cloud_run/AWAKENING_EDGE_AUDIT.md`
+- `reports/birth_cloud_run/AWAKENING_EDGE_VERDICT.md`
+- `reports/birth_cloud_run/AWAKENING_ENTRY_AUTOPSY_AUDIT.md`
+- `reports/birth_cloud_run/AWAKENING_ENTRY_AUTOPSY_VERDICT.md`
+- `reports/birth_cloud_run/AWAKENING_GRIND_AUDIT.md`
+- `reports/birth_cloud_run/AWAKENING_GRIND_VERDICT.md`
+- `reports/birth_cloud_run/AWAKENING_HOLE_TAX_AUDIT.md`
+- `reports/birth_cloud_run/AWAKENING_HOLE_TAX_VERDICT.md`
+- `reports/birth_cloud_run/AWAKENING_MARK_EYES_AUDIT.md`
+- `reports/birth_cloud_run/AWAKENING_MARK_EYES_VERDICT.md`
+- `reports/birth_cloud_run/AWAKENING_MECH_AUDIT.md`
+- `reports/birth_cloud_run/AWAKENING_MECH_VERDICT.md`
+- `reports/birth_cloud_run/AWAKENING_OPEN_POLICY_SIGNAL_AUDIT.md`
+- `reports/birth_cloud_run/AWAKENING_OPEN_POLICY_SIGNAL_VERDICT.md`
+- `reports/birth_cloud_run/AWAKENING_OPEN_SPLIT_AUDIT.md`
+- `reports/birth_cloud_run/AWAKENING_OPEN_SPLIT_VERDICT.md`
+- `reports/birth_cloud_run/AWAKENING_PATH_EARLY_AUDIT.md`
+- `reports/birth_cloud_run/AWAKENING_PATH_EARLY_VERDICT.md`
+- `reports/birth_cloud_run/AWAKENING_PATH_EXIT_K3_AUDIT.md`
+- `reports/birth_cloud_run/AWAKENING_PATH_EXIT_K3_T025_AUDIT.md`
+- `reports/birth_cloud_run/AWAKENING_PATH_EXIT_K3_T025_VERDICT.md`
+- `reports/birth_cloud_run/AWAKENING_PATH_EXIT_K3_VERDICT.md`
+- `reports/birth_cloud_run/AWAKENING_PATH_UNREAL_K3_AUDIT.md`
+- `reports/birth_cloud_run/AWAKENING_PATH_UNREAL_K3_VERDICT.md`
+- `reports/birth_cloud_run/AWAKENING_SELECT_AUDIT.md`
+- `reports/birth_cloud_run/AWAKENING_SELECT_OBJ_BOUNCE_AUDIT.md`
+- `reports/birth_cloud_run/AWAKENING_SELECT_OBJ_BOUNCE_VERDICT.md`
+- `reports/birth_cloud_run/AWAKENING_SELECT_VERDICT.md`
+- `reports/birth_cloud_run/LUMINA_BIRTH_EXPERIMENT_LOG.md`
+- `reports/birth_cloud_run/PI_STAR_HARVEST_AUDIT.md`
+- `reports/birth_cloud_run/S2_IMU_VERDICT.md`
+- `reports/birth_cloud_run/S2_RERUN_VERDICT.md`
+- `reports/birth_cloud_run/S3_INBAND_IDLE_VERDICT.md`
+- `reports/birth_cloud_run/S3_LIVE_EXAM_VERDICT.md`
+- `reports/birth_cloud_run/S3_SKILL_SPLIT_VERDICT.md`
+- `reports/birth_cloud_run/S4_LIVE_EXAM_VERDICT.md`
+- `reports/birth_cloud_run/S5_DD_YARDSTICK_AUDIT.md`
+- `reports/birth_cloud_run/S5_INSTRUMENT_SSOT_AUDIT.md`
+- `reports/birth_cloud_run/S5_INSTRUMENT_SSOT_VERDICT.md`
+- `reports/birth_cloud_run/S5_LEDGER_PERSIST_AUDIT.md`
+- `reports/birth_cloud_run/S5_LEDGER_PERSIST_VERDICT.md`
+- `reports/birth_cloud_run/S5_LIVE_EXAM_VERDICT.md`
+- `reports/birth_cloud_run/S5_NOTIONAL_AUDIT.md`
+- `reports/birth_cloud_run/S5_NOTIONAL_REARM_VERDICT.md`
+- `reports/birth_cloud_run/S5_PROCESS_DECOMP_AUDIT.md`
+- `reports/birth_cloud_run/S5_PROCESS_DECOMP_VERDICT.md`
+- `reports/birth_cloud_run/S5_YARDSTICK_VERDICT.md`
+- `reports/birth_cloud_run/VERDICT.md`
+- `reports/birth_cloud_run/artifacts/LUMINA_BIRTH_EXPERIMENT_LOG.md`
+- `reports/birth_cloud_run/artifacts/S3_INBAND_IDLE_VERDICT.md`
+- `reports/birth_cloud_run/artifacts/S3_LIVE_EXAM_VERDICT.md`
+- `reports/birth_cloud_run/artifacts/S4_LIVE_EXAM_VERDICT.md`
+- `reports/birth_cloud_run/artifacts/S5_DD_YARDSTICK_AUDIT.md`
+- `reports/birth_cloud_run/artifacts/S5_INSTRUMENT_SSOT_AUDIT.md`
+- `reports/birth_cloud_run/artifacts/S5_INSTRUMENT_SSOT_VERDICT.md`
+- `reports/birth_cloud_run/artifacts/S5_LIVE_EXAM_VERDICT.md`
+- `reports/birth_cloud_run/artifacts/S5_NOTIONAL_AUDIT.md`
+- `reports/birth_cloud_run/artifacts/S5_NOTIONAL_REARM_VERDICT.md`
+- `reports/birth_cloud_run/artifacts/S5_PROCESS_DECOMP_AUDIT.md`
+- `reports/birth_cloud_run/artifacts/S5_PROCESS_DECOMP_VERDICT.md`
+- `reports/birth_cloud_run/artifacts/S5_YARDSTICK_VERDICT.md`
+- `reports/birth_cloud_run/artifacts/awakening_entry_autopsy_flags.json`
+- `reports/birth_cloud_run/artifacts/awakening_hole_tax_evolution_proof.json`
+- `reports/birth_cloud_run/artifacts/awakening_hole_tax_pi_star.json`
+- `reports/birth_cloud_run/artifacts/awakening_hole_tax_pi_star.zip`
+- `reports/birth_cloud_run/artifacts/awakening_mark_eyes_flags.json`
+- `reports/birth_cloud_run/artifacts/awakening_mark_eyes_pi_star.json`
+- `reports/birth_cloud_run/artifacts/awakening_mark_eyes_pi_star.zip`
+- `reports/birth_cloud_run/artifacts/awakening_open_policy_signal_flags.json`
+- `reports/birth_cloud_run/artifacts/awakening_open_split_flags.json`
+- `reports/birth_cloud_run/artifacts/awakening_path_early_flags.json`
+- `reports/birth_cloud_run/artifacts/awakening_path_exit_k3_flags.json`
+- `reports/birth_cloud_run/artifacts/awakening_path_exit_k3_t025_flags.json`
+- `reports/birth_cloud_run/artifacts/awakening_path_shape_k3_dead_flags.json`
+- `reports/birth_cloud_run/artifacts/awakening_select_evolution_proof.json`
+- `reports/birth_cloud_run/artifacts/awakening_select_obj_bounce_flags.json`
+- `reports/birth_cloud_run/artifacts/awakening_select_pi_star.json`
+- `reports/birth_cloud_run/artifacts/awakening_select_pi_star.zip`
+- `reports/birth_cloud_run/artifacts/baseline_pre_rerun/S2_IMU_VERDICT.md`
+- `reports/birth_cloud_run/artifacts/baseline_pre_rerun/VERDICT.md`
+- `reports/birth_cloud_run/artifacts/baseline_pre_rerun/exit_snapshot.json`
+- `reports/birth_cloud_run/artifacts/baseline_pre_rerun/s1_receipt.json`
+- `reports/birth_cloud_run/artifacts/baseline_pre_rerun/s2_receipt.json`
+- `reports/birth_cloud_run/artifacts/birth_exit_pi_star.json`
+- `reports/birth_cloud_run/artifacts/birth_exit_pi_star.zip`
+- `reports/birth_cloud_run/artifacts/entry_autopsy_A_close_ledger.jsonl`
+- `reports/birth_cloud_run/artifacts/entry_autopsy_A_close_ledger.sha256`
+- `reports/birth_cloud_run/artifacts/entry_autopsy_B_close_ledger.jsonl`
+- `reports/birth_cloud_run/artifacts/entry_autopsy_B_close_ledger.sha256`
+- `reports/birth_cloud_run/artifacts/exit_snapshot.json`
+- `reports/birth_cloud_run/artifacts/grind_A_close_ledger.jsonl`
+- `reports/birth_cloud_run/artifacts/grind_B_close_ledger.jsonl`
+- `reports/birth_cloud_run/artifacts/hole_tax_A_close_ledger.jsonl`
+- `reports/birth_cloud_run/artifacts/hole_tax_B_close_ledger.jsonl`
+- `reports/birth_cloud_run/artifacts/lumina_birth_cache_manifest.json`
+- `reports/birth_cloud_run/artifacts/lumina_birth_checkpoint.json`
+- `reports/birth_cloud_run/artifacts/lumina_birth_fitness_vector.json`
+- `reports/birth_cloud_run/artifacts/lumina_birth_progress.json`
+- `reports/birth_cloud_run/artifacts/mark_eyes_A_close_ledger.jsonl`
+- `reports/birth_cloud_run/artifacts/mark_eyes_A_close_ledger.sha256`
+- `reports/birth_cloud_run/artifacts/mark_eyes_B_close_ledger.jsonl`
+- `reports/birth_cloud_run/artifacts/mark_eyes_B_close_ledger.sha256`
+- `reports/birth_cloud_run/artifacts/open_split_A_close_ledger.jsonl`
+- `reports/birth_cloud_run/artifacts/open_split_A_close_ledger.sha256`
+- `reports/birth_cloud_run/artifacts/open_split_B_close_ledger.jsonl`
+- `reports/birth_cloud_run/artifacts/open_split_B_close_ledger.sha256`
+- `reports/birth_cloud_run/artifacts/path_early_A_close_ledger.jsonl`
+- `reports/birth_cloud_run/artifacts/path_early_A_close_ledger.sha256`
+- `reports/birth_cloud_run/artifacts/path_early_B_close_ledger.jsonl`
+- `reports/birth_cloud_run/artifacts/path_early_B_close_ledger.sha256`
+- `reports/birth_cloud_run/artifacts/path_exit_k3_A_close_ledger.jsonl`
+- `reports/birth_cloud_run/artifacts/path_exit_k3_A_close_ledger.sha256`
+- `reports/birth_cloud_run/artifacts/path_exit_k3_B_close_ledger.jsonl`
+- `reports/birth_cloud_run/artifacts/path_exit_k3_B_close_ledger.sha256`
+- `reports/birth_cloud_run/artifacts/path_exit_k3_t025_A_close_ledger.jsonl`
+- `reports/birth_cloud_run/artifacts/path_exit_k3_t025_A_close_ledger.sha256`
+- `reports/birth_cloud_run/artifacts/path_exit_k3_t025_B_close_ledger.jsonl`
+- `reports/birth_cloud_run/artifacts/path_exit_k3_t025_B_close_ledger.sha256`
+- `reports/birth_cloud_run/artifacts/path_unreal_k3_flags.json`
+- `reports/birth_cloud_run/artifacts/policy_signal_A_close_ledger.jsonl`
+- `reports/birth_cloud_run/artifacts/policy_signal_A_close_ledger.sha256`
+- `reports/birth_cloud_run/artifacts/policy_signal_B_close_ledger.jsonl`
+- `reports/birth_cloud_run/artifacts/policy_signal_B_close_ledger.sha256`
+- `reports/birth_cloud_run/artifacts/s1_receipt.json`
+- `reports/birth_cloud_run/artifacts/s2_receipt.json`
+- `reports/birth_cloud_run/artifacts/s3_live_exam.log`
+- `reports/birth_cloud_run/artifacts/s3_live_exam_b2_pre_followup.json`
+- `reports/birth_cloud_run/artifacts/s3_live_exam_rerun.log`
+- `reports/birth_cloud_run/artifacts/s3_receipt.json`
+- `reports/birth_cloud_run/artifacts/s4_b2_pre_followup_lumina_birth_checkpoint.json`
+- `reports/birth_cloud_run/artifacts/s4_b2_pre_followup_lumina_birth_progress.json`
+- `reports/birth_cloud_run/artifacts/s4_gate_b2_monitor.jsonl`
+- `reports/birth_cloud_run/artifacts/s4_live_exam.log`
+- `reports/birth_cloud_run/artifacts/s4_live_exam_b2_pre_followup.json`
+- `reports/birth_cloud_run/artifacts/s4_live_exam_resume.log`
+- `reports/birth_cloud_run/artifacts/s4_receipt.json`
+- `reports/birth_cloud_run/artifacts/s5_close_ledger_worst5.json`
+- `reports/birth_cloud_run/artifacts/s5_exam_snapshot.json`
+- `reports/birth_cloud_run/artifacts/s5_instrument_ssot_close_ledger_worst5.json`
+- `reports/birth_cloud_run/artifacts/s5_instrument_ssot_shadow.log`
+- `reports/birth_cloud_run/artifacts/s5_instrument_ssot_snapshot.json`
+- `reports/birth_cloud_run/artifacts/s5_live_exam.log`
+- `reports/birth_cloud_run/artifacts/s5_live_exam_tail.log`
+- `reports/birth_cloud_run/artifacts/s5_notional_shadow.log`
+- `reports/birth_cloud_run/artifacts/s5_notional_snapshot.json`
+- `reports/birth_cloud_run/artifacts/s5_process_decomp_shadow.log`
+- `reports/birth_cloud_run/artifacts/s5_process_decomp_snapshot.json`
+- `reports/birth_cloud_run/artifacts/s5_receipt.json`
+- `reports/birth_cloud_run/artifacts/s5_yardstick_shadow.log`
+- `reports/birth_cloud_run/artifacts/s5_yardstick_snapshot.json`
+- `reports/birth_cloud_run/artifacts/select_A_close_ledger.jsonl`
+- `reports/birth_cloud_run/artifacts/select_B_close_ledger.jsonl`
+- `reports/birth_cloud_run/defects.json`
+- `reports/birth_cloud_run/engine_identity.txt`
+- `reports/birth_cloud_run/exit_snapshot.json`
+- `reports/birth_cloud_run/fixture_gen.log`
+- `reports/birth_cloud_run/fixture_gen_rerun.log`
+- `reports/birth_cloud_run/grind_rerun.log`
+- `reports/birth_cloud_run/lumina_birth_fitness_vector.json`
+- `reports/birth_cloud_run/pytest_birth.log`
+- `reports/birth_cloud_run/run1.log`
+- `reports/birth_cloud_run/run2.log`
+- `reports/birth_cloud_run/run2_resume_evidence.json`
+- `reports/birth_cloud_run/s1_receipt.json`
+- `reports/birth_cloud_run/s2_receipt.json`
+- `reports/birth_cloud_run/s2_rerun.log`
+- `reports/birth_cloud_run/s2_rerun_monitor.jsonl`
+- `reports/birth_cloud_run/s3_inband_idle.log`
+- `reports/birth_cloud_run/s3_live_exam.log`
+- `reports/birth_cloud_run/s3_live_exam_b2_pre_followup.json`
+- `reports/birth_cloud_run/s3_live_exam_rerun.log`
+- `reports/birth_cloud_run/s3_receipt.json`
+- `reports/birth_cloud_run/s3_skill_split_shadow.log`
+- `reports/birth_cloud_run/s4_gate_b2_monitor.jsonl`
+- `reports/birth_cloud_run/s4_live_exam.log`
+- `reports/birth_cloud_run/s4_live_exam_b2_pre_followup.json`
+- `reports/birth_cloud_run/s4_live_exam_resume.log`
+- `reports/birth_cloud_run/s4_monitor.py`
+- `reports/birth_cloud_run/s4_receipt.json`
+- `reports/birth_cloud_run/s5_exam_snapshot.json`
+- `reports/birth_cloud_run/s5_fixture_gen.log`
+- `reports/birth_cloud_run/s5_instrument_ssot_shadow.log`
+- `reports/birth_cloud_run/s5_instrument_ssot_snapshot.json`
+- `reports/birth_cloud_run/s5_live_exam.log`
+- `reports/birth_cloud_run/s5_notional_shadow.log`
+- `reports/birth_cloud_run/s5_notional_snapshot.json`
+- `reports/birth_cloud_run/s5_process_decomp_shadow.log`
+- `reports/birth_cloud_run/s5_process_decomp_snapshot.json`
+- `reports/birth_cloud_run/s5_receipt.json`
+- `reports/birth_cloud_run/s5_yardstick_shadow.log`
+- `reports/birth_cloud_run/s5_yardstick_snapshot.json`
+- `reports/birth_cloud_run/workspace/config.yaml`
+- `reports/genesis_budget_run/GENESIS_EYES_BUDGET_AUDIT.md`
+- `reports/genesis_budget_run/GENESIS_EYES_BUDGET_VERDICT.md`
+- `reports/genesis_budget_run/LUMINA_GENESIS_BUDGET_EXPERIMENT_LOG.md`
+- `reports/genesis_budget_run/artifacts/01_budget_fixture_manifest.json`
+- `reports/genesis_budget_run/artifacts/budget_birth_A_close_ledger.jsonl`
+- `reports/genesis_budget_run/artifacts/budget_birth_A_close_ledger.sha256`
+- `reports/genesis_budget_run/artifacts/budget_birth_B_close_ledger.jsonl`
+- `reports/genesis_budget_run/artifacts/budget_birth_B_close_ledger.sha256`
+- `reports/genesis_budget_run/artifacts/budget_eyes_A_close_ledger.jsonl`
+- `reports/genesis_budget_run/artifacts/budget_eyes_A_close_ledger.sha256`
+- `reports/genesis_budget_run/artifacts/budget_eyes_B_close_ledger.jsonl`
+- `reports/genesis_budget_run/artifacts/budget_eyes_B_close_ledger.sha256`
+- `reports/genesis_budget_run/artifacts/g0_recon.json`
+- `reports/genesis_budget_run/artifacts/g6_real_door.json`
+- `reports/genesis_budget_run/artifacts/genesis_eyes_budget_flags.json`
+- `reports/genesis_budget_run/artifacts/student_birth_exit_pi_star.zip`
+- `reports/genesis_budget_run/artifacts/student_birth_exit_pi_star.zip.sha256`
+- `reports/genesis_budget_run/artifacts/student_mark_eyes_pi_star.zip`
+- `reports/genesis_budget_run/artifacts/student_mark_eyes_pi_star.zip.sha256`
+- `reports/genesis_cloud_run/GENESIS_CLOUD_AUDIT.md`
+- `reports/genesis_cloud_run/GENESIS_CLOUD_VERDICT.md`
+- `reports/genesis_cloud_run/GENESIS_HOLD_COMPARE_AUDIT.md`
+- `reports/genesis_cloud_run/GENESIS_HOLD_COMPARE_VERDICT.md`
+- `reports/genesis_cloud_run/LUMINA_GENESIS_EXPERIMENT_LOG.md`
+- `reports/genesis_cloud_run/artifacts/01_genesis_fixture_manifest.json`
+- `reports/genesis_cloud_run/artifacts/GENESIS_LADDER_AUTOPSY.md`
+- `reports/genesis_cloud_run/artifacts/GENESIS_NEXT_EXPERIMENTS.md`
+- `reports/genesis_cloud_run/artifacts/LUMINA_GENESIS_EXPERIMENT_LOG.md`
+- `reports/genesis_cloud_run/artifacts/g0_recon.json`
+- `reports/genesis_cloud_run/artifacts/g2_birth_engine_result.json`
+- `reports/genesis_cloud_run/artifacts/g3_birth_exit_exam.json`
+- `reports/genesis_cloud_run/artifacts/g4_mark_eyes_train.json`
+- `reports/genesis_cloud_run/artifacts/g5_eval.json`
+- `reports/genesis_cloud_run/artifacts/g6_real_door.json`
+- `reports/genesis_cloud_run/artifacts/genesis_autopsy_rows.json`
+- `reports/genesis_cloud_run/artifacts/genesis_birth_A_close_ledger.jsonl`
+- `reports/genesis_cloud_run/artifacts/genesis_birth_A_close_ledger.sha256`
+- `reports/genesis_cloud_run/artifacts/genesis_birth_B_close_ledger.jsonl`
+- `reports/genesis_cloud_run/artifacts/genesis_birth_B_close_ledger.sha256`
+- `reports/genesis_cloud_run/artifacts/genesis_birth_exit_pi_star.json`
+- `reports/genesis_cloud_run/artifacts/genesis_birth_exit_pi_star.zip`
+- `reports/genesis_cloud_run/artifacts/genesis_cloud_flags.json`
+- `reports/genesis_cloud_run/artifacts/genesis_hold_compare_A.json`
+- `reports/genesis_cloud_run/artifacts/genesis_hold_compare_B.json`
+- `reports/genesis_cloud_run/artifacts/genesis_hold_compare_flags.json`
+- `reports/genesis_cloud_run/artifacts/genesis_mark_eyes_A_close_ledger.jsonl`
+- `reports/genesis_cloud_run/artifacts/genesis_mark_eyes_A_close_ledger.sha256`
+- `reports/genesis_cloud_run/artifacts/genesis_mark_eyes_B_close_ledger.jsonl`
+- `reports/genesis_cloud_run/artifacts/genesis_mark_eyes_B_close_ledger.sha256`
+- `reports/genesis_cloud_run/artifacts/genesis_mark_eyes_pi_star.json`
+- `reports/genesis_cloud_run/artifacts/genesis_mark_eyes_pi_star.zip`
+- `reports/genesis_cloud_run/artifacts/lumina_birth_fitness_vector.json`
+- `reports/genesis_cloud_run/artifacts/s1_receipt.json`
+- `reports/genesis_cloud_run/artifacts/s2_receipt.json`
+- `reports/genesis_cloud_run/artifacts/s3_receipt.json`
+- `reports/genesis_cloud_run/artifacts/s4_receipt.json`
+- `reports/genesis_cloud_run/artifacts/s5_receipt.json`
+
+## `scripts`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `scripts/birth_runtime_fingerprint.py`
+- `scripts/birth_stage_forensics.py`
+- `scripts/extract_birth_phase_model.py`
+- `scripts/extract_birth_phase_orchestrator.py`
+- `scripts/extract_meta_agent_core.py`
+- `scripts/extract_orchestrator_core.py`
+- `scripts/fix_generation_runner.py`
+- `scripts/force_plateau_evolution_step.py`
+- `scripts/harvest_birth_exit_pi_star.py`
+- `scripts/install_birth_physics_stack.py`
+- `scripts/migrate_stage_rollout_executor.py`
+- `scripts/patch_orchestrator_core.py`
+- `scripts/run_awakening_grind.py`
+- `scripts/run_awakening_hole_tax.py`
+- `scripts/run_awakening_select.py`
+- `scripts/run_birth_cloud_fault_inject.py`
+- `scripts/run_birth_cloud_shadow.py`
+- `scripts/run_genesis_cloud_ladder.py`
+- `scripts/validation/birth_resume_exhaust_check.py`
+- `scripts/validation/birth_zero_human_cadence.py`
+- `scripts/validation/champion_freeze_gate.py`
+- `scripts/validation/champion_freeze_ops.py`
+- `scripts/validation/declare_perfect_birth.py`
+- `scripts/validation/perfect_birth_campaign.py`
+- `scripts/validation/phase2_shadow_campaign.py`
+- `scripts/validation/recovery_theater_gate.py`
+- `scripts/validation/run_sim_birth_twin_validation.py`
+- `scripts/validation/self_play_lab_gate.py`
+
+## `tests/birth`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/birth/__init__.py`
+- `tests/birth/conftest.py`
+- `tests/birth/honest_settlement.py`
+- `tests/birth/preflight_helpers.py`
+- `tests/birth/test_adaptation_decision.py`
+- `tests/birth/test_adaptation_escalation_ladder.py`
+- `tests/birth/test_adaptation_recovery_engine.py`
+- `tests/birth/test_adaptation_stall_loop.py`
+- `tests/birth/test_adaptive_parameter_manager.py`
+- `tests/birth/test_artifacts_ok_v2.py`
+- `tests/birth/test_autonomous_loop_golden_paths.py`
+- `tests/birth/test_autonomous_recovery_no_human_restart.py`
+- `tests/birth/test_awakening_band.py`
+- `tests/birth/test_awakening_conv.py`
+- `tests/birth/test_awakening_coupling.py`
+- `tests/birth/test_awakening_drift.py`
+- `tests/birth/test_awakening_edge.py`
+- `tests/birth/test_awakening_entry_autopsy.py`
+- `tests/birth/test_awakening_entry_autopsy_coverage.py`
+- `tests/birth/test_awakening_geom.py`
+- `tests/birth/test_awakening_grind.py`
+- `tests/birth/test_awakening_holdout_capacity.py`
+- `tests/birth/test_awakening_hole_tax.py`
+- `tests/birth/test_awakening_hole_tax_coverage.py`
+- `tests/birth/test_awakening_mark_eyes.py`
+- `tests/birth/test_awakening_mark_eyes_coverage.py`
+- `tests/birth/test_awakening_mark_eyes_polish.py`
+- `tests/birth/test_awakening_mark_eyes_v2.py`
+- `tests/birth/test_awakening_mech.py`
+- `tests/birth/test_awakening_obj.py`
+- `tests/birth/test_awakening_obj_coverage.py`
+- `tests/birth/test_awakening_occupancy.py`
+- `tests/birth/test_awakening_open_policy_signal.py`
+- `tests/birth/test_awakening_open_policy_signal_coverage.py`
+- `tests/birth/test_awakening_open_split.py`
+- `tests/birth/test_awakening_open_split_coverage.py`
+- `tests/birth/test_awakening_path_early.py`
+- `tests/birth/test_awakening_path_early_coverage.py`
+- `tests/birth/test_awakening_path_exit_k3.py`
+- `tests/birth/test_awakening_path_exit_k3_coverage.py`
+- `tests/birth/test_awakening_path_exit_k3_t025.py`
+- `tests/birth/test_awakening_path_exit_k3_t025_coverage.py`
+- `tests/birth/test_awakening_path_shape_k3_dead.py`
+- `tests/birth/test_awakening_path_shape_k3_dead_coverage.py`
+- `tests/birth/test_awakening_path_unreal_k3.py`
+- `tests/birth/test_awakening_path_unreal_k3_coverage.py`
+- `tests/birth/test_awakening_physics_tape.py`
+- `tests/birth/test_awakening_scale.py`
+- `tests/birth/test_awakening_select.py`
+- `tests/birth/test_awakening_select_coverage.py`
+- `tests/birth/test_awakening_select_obj_bounce.py`
+- `tests/birth/test_awakening_select_obj_bounce_coverage.py`
+- `tests/birth/test_awakening_strat.py`
+- `tests/birth/test_awakening_train_lift.py`
+- `tests/birth/test_beat_random_quality.py`
+- `tests/birth/test_bible_observation.py`
+- `tests/birth/test_birth_bus_choreography.py`
+- `tests/birth/test_birth_bus_client.py`
+- `tests/birth/test_birth_bus_client_coverage.py`
+- `tests/birth/test_birth_bus_client_fallbacks.py`
+- `tests/birth/test_birth_bus_serde.py`
+- `tests/birth/test_birth_cloud_runner.py`
+- `tests/birth/test_birth_constitution_guard.py`
+- `tests/birth/test_birth_engine_god_surfaces.py`
+- `tests/birth/test_birth_exit_pi_star.py`
+- `tests/birth/test_birth_handler_import_boundaries.py`
+- `tests/birth/test_birth_handler_registry.py`
+- `tests/birth/test_birth_launcher_god_surfaces.py`
+- `tests/birth/test_birth_maturity_wiring.py`
+- `tests/birth/test_birth_phase_orchestrator_god_surfaces.py`
+- `tests/birth/test_birth_progress_merge.py`
+- `tests/birth/test_birth_reset_preserve_tick_cache.py`
+- `tests/birth/test_birth_reset_scope.py`
+- `tests/birth/test_birth_service_god_surfaces.py`
+- `tests/birth/test_birth_service_module_boundaries.py`
+- `tests/birth/test_birth_service_sanitize.py`
+- `tests/birth/test_birth_settlement_honesty.py`
+- `tests/birth/test_birth_stage_forensics.py`
+- `tests/birth/test_birth_status_diagnostics.py`
+- `tests/birth/test_birth_status_lightweight.py`
+- `tests/birth/test_birth_trade_geometry.py`
+- `tests/birth/test_birth_v2_config.py`
+- `tests/birth/test_bro_engine_integration.py`
+- `tests/birth/test_cache_manifest.py`
+- `tests/birth/test_certificate_evaluator.py`
+- `tests/birth/test_certificate_fast_path.py`
+- `tests/birth/test_certificate_pipeline_god_surfaces.py`
+- `tests/birth/test_certificate_runway.py`
+- `tests/birth/test_certificate_schema.py`
+- `tests/birth/test_certified_no_oracle_soft_pass.py`
+- `tests/birth/test_champion_freeze_ops.py`
+- `tests/birth/test_champion_freeze_recovery.py`
+- `tests/birth/test_champion_freeze_telegram.py`
+- `tests/birth/test_checkpoint_coordinator.py`
+- `tests/birth/test_checkpoint_resumable.py`
+- `tests/birth/test_checkpoint_resume.py`
+- `tests/birth/test_constitution_enforcer.py`
+- `tests/birth/test_constitution_graduation_gate.py`
+- `tests/birth/test_constitution_soft_blocks_not_graduation.py`
+- `tests/birth/test_constitution_soft_vs_hard_abort.py`
+- `tests/birth/test_contiguous_intra_windows.py`
+- `tests/birth/test_cost_aware_geometry.py`
+- `tests/birth/test_create_birth_policy_binding.py`
+- `tests/birth/test_curriculum.py`
+- `tests/birth/test_curriculum_aperture.py`
+- `tests/birth/test_curriculum_learning.py`
+- `tests/birth/test_curriculum_stage_handler_boundaries.py`
+- `tests/birth/test_curriculum_train_complete_import_scope.py`
+- `tests/birth/test_data_expansion.py`
+- `tests/birth/test_data_pipeline.py`
+- `tests/birth/test_data_source_honesty.py`
+- `tests/birth/test_death_spiral_guard.py`
+- `tests/birth/test_deep_resume_certified_exhaust.py`
+- `tests/birth/test_dna_handoff.py`
+- `tests/birth/test_edgescore_blocker_humanize.py`
+- `tests/birth/test_empty_data_guards.py`
+- `tests/birth/test_enrichment_cache.py`
+- `tests/birth/test_evolution_expand_noop.py`
+- `tests/birth/test_evolution_proof_gate.py`
+- `tests/birth/test_exam_start_protocol.py`
+- `tests/birth/test_expectancy_hygiene_alignment.py`
+- `tests/birth/test_expectancy_quality_ladder.py`
+- `tests/birth/test_expectancy_stall.py`
+- `tests/birth/test_fabric_foundation_bundle.py`
+- `tests/birth/test_finalize_stall_no_keyerror.py`
+- `tests/birth/test_foundation_gap_closure_audit.py`
+- `tests/birth/test_foundation_history.py`
+- `tests/birth/test_foundation_hud_ssot.py`
+- `tests/birth/test_foundation_loopholes.py`
+- `tests/birth/test_foundation_pass.py`
+- `tests/birth/test_genesis_charter.py`
+- `tests/birth/test_genesis_cloud_protocol.py`
+- `tests/birth/test_genesis_eyes_budget.py`
+- `tests/birth/test_genesis_hold_compare.py`
+- `tests/birth/test_genesis_ssot_sync.py`
+- `tests/birth/test_geometry_plan_gaps.py`
+- `tests/birth/test_gym_expectancy_reward.py`
+- `tests/birth/test_hardware_profile_integration.py`
+- `tests/birth/test_history_load_progress.py`
+- `tests/birth/test_history_loader_prefer_daysback.py`
+- `tests/birth/test_holdout_capacity_refusal.py`
+- `tests/birth/test_hygiene_wr_honesty.py`
+- `tests/birth/test_intra_difficulty_stamps.py`
+- `tests/birth/test_m5_modularization.py`
+- `tests/birth/test_maturation_autopilot.py`
+- `tests/birth/test_maturity_readiness.py`
+- `tests/birth/test_meta_controller.py`
+- `tests/birth/test_meta_controller_god_surfaces.py`
+- `tests/birth/test_meta_controller_handler_bus.py`
+- `tests/birth/test_meta_controller_handler_signals.py`
+- `tests/birth/test_meta_expectancy_ownership.py`
+- `tests/birth/test_meta_milestones.py`
+- `tests/birth/test_meta_pre_rollout_quality_owns.py`
+- `tests/birth/test_meta_self_eval.py`
+- `tests/birth/test_never_stop_budget.py`
+- `tests/birth/test_news_enricher.py`
+- `tests/birth/test_observation_builder.py`
+- `tests/birth/test_occupancy_exam_settle.py`
+- `tests/birth/test_oos_proxy.py`
+- `tests/birth/test_organism_autonomy.py`
+- `tests/birth/test_organism_autonomy_handler_bus.py`
+- `tests/birth/test_over_trading_trap.py`
+- `tests/birth/test_partial_dna_handoff.py`
+- `tests/birth/test_pattern_miner.py`
+- `tests/birth/test_pattern_miner_adaptive.py`
+- `tests/birth/test_perfect_birth_gate.py`
+- `tests/birth/test_phase2_autonomy_bus_schemas.py`
+- `tests/birth/test_phase2_autonomy_dynamic_wall.py`
+- `tests/birth/test_phase2_autonomy_gates.py`
+- `tests/birth/test_phase2_autonomy_instance_adapter.py`
+- `tests/birth/test_phase2_autonomy_metrics.py`
+- `tests/birth/test_phase2_autonomy_orchestrator.py`
+- `tests/birth/test_phase2_autonomy_param_catalog.py`
+- `tests/birth/test_phase2_closed_loop_golden.py`
+- `tests/birth/test_phase2_execution_mode.py`
+- `tests/birth/test_phase2_sim_campaign.py`
+- `tests/birth/test_phase2_slice_e_boundaries.py`
+- `tests/birth/test_phoenix_handler_bus.py`
+- `tests/birth/test_phoenix_loop.py`
+- `tests/birth/test_physics_preflight.py`
+- `tests/birth/test_plateau_certified_ladder_deadzone.py`
+- `tests/birth/test_plateau_dead_zone_beyond_gate.py`
+- `tests/birth/test_plateau_escalator.py`
+- `tests/birth/test_plateau_escalator_god_surfaces.py`
+- `tests/birth/test_plateau_handler_bus.py`
+- `tests/birth/test_plateau_phantom_step_cap.py`
+- `tests/birth/test_plateau_quarantine.py`
+- `tests/birth/test_policy_swarm.py`
+- `tests/birth/test_post_gate_chunk_target.py`
+- `tests/birth/test_ppo_birth_policy.py`
+- `tests/birth/test_ppo_buffer_rows.py`
+- `tests/birth/test_predict_actions_batch.py`
+- `tests/birth/test_preflight.py`
+- `tests/birth/test_preflight_engine_integration.py`
+- `tests/birth/test_process_r_physics.py`
+- `tests/birth/test_progress_geometry_telemetry.py`
+- `tests/birth/test_progress_reporter.py`
+- `tests/birth/test_purged_split.py`
+- `tests/birth/test_range_patience_reward.py`
+- `tests/birth/test_raptor_v10_adaptation_debounce.py`
+- `tests/birth/test_raptor_v11_prefer_train.py`
+- `tests/birth/test_raptor_v12_stage3_skill.py`
+- `tests/birth/test_raptor_v13_rolling_chunks.py`
+- `tests/birth/test_raptor_v14_stage3_temperament.py`
+- `tests/birth/test_raptor_v3_terminal_hard_stop.py`
+- `tests/birth/test_recovery_compress.py`
+- `tests/birth/test_remediation.py`
+- `tests/birth/test_remediation_handler_bus.py`
+- `tests/birth/test_resume_tier_classify.py`
+- `tests/birth/test_retry_fast_path_engine.py`
+- `tests/birth/test_reward_shaper.py`
+- `tests/birth/test_reward_stage_aware_quality.py`
+- `tests/birth/test_rollout_releases_control_plane.py`
+- `tests/birth/test_runtime_birth_gate.py`
+- `tests/birth/test_runtime_diagnostics.py`
+- `tests/birth/test_s3_inband_idle.py`
+- `tests/birth/test_s3_snapshot_skill_split.py`
+- `tests/birth/test_s5_dd_yardstick.py`
+- `tests/birth/test_s5_eval_only_no_recovery.py`
+- `tests/birth/test_s5_ledger_persist.py`
+- `tests/birth/test_s5_mes_ssot.py`
+- `tests/birth/test_s5_notional_cap.py`
+- `tests/birth/test_s5_process_decomp.py`
+- `tests/birth/test_s5_shared_imu.py`
+- `tests/birth/test_safety_guard_coverage.py`
+- `tests/birth/test_self_play_lab.py`
+- `tests/birth/test_sim_runner_stall.py`
+- `tests/birth/test_stage1_foundation.py`
+- `tests/birth/test_stage1_intra_curriculum.py`
+- `tests/birth/test_stage1_rolling_pass.py`
+- `tests/birth/test_stage1_stagnation.py`
+- `tests/birth/test_stage2_action_head_reinit.py`
+- `tests/birth/test_stage2_blocker_flat_polarity.py`
+- `tests/birth/test_stage2_bounded.py`
+- `tests/birth/test_stage2_intra_curriculum.py`
+- `tests/birth/test_stage2_intra_quality_ramp.py`
+- `tests/birth/test_stage2_occupancy_dwell_protect.py`
+- `tests/birth/test_stage2_oracle_min_net_scope.py`
+- `tests/birth/test_stage2_participation_envelope.py`
+- `tests/birth/test_stage2_pass_vector.py`
+- `tests/birth/test_stage2_pass_vector_controller.py`
+- `tests/birth/test_stage2_peak_capture.py`
+- `tests/birth/test_stage2_plateau_flat_band.py`
+- `tests/birth/test_stage2_quality_ownership_failclosed.py`
+- `tests/birth/test_stage2_receipt_integrity.py`
+- `tests/birth/test_stage2_roundtrip_metric.py`
+- `tests/birth/test_stage2_skill_metric.py`
+- `tests/birth/test_stage2_skill_receipt_integrity.py`
+- `tests/birth/test_stage2_stage3_graduation_honest.py`
+- `tests/birth/test_stage3_foundation_floor.py`
+- `tests/birth/test_stage4_mean_r_meta.py`
+- `tests/birth/test_stage_blocker.py`
+- `tests/birth/test_stage_edgescore_quality_lock.py`
+- `tests/birth/test_stage_learning_loop.py`
+- `tests/birth/test_stage_loop_iteration_c3.py`
+- `tests/birth/test_stage_loop_recovery_blocker.py`
+- `tests/birth/test_stage_loop_split.py`
+- `tests/birth/test_stage_pass_gate.py`
+- `tests/birth/test_stage_pass_integrity.py`
+- `tests/birth/test_stage_scorecard.py`
+- `tests/birth/test_stage_scorecard_regime.py`
+- `tests/birth/test_stage_stalled_manual_resume_resets_budget.py`
+- `tests/birth/test_stage_training_loop_god_surfaces.py`
+- `tests/birth/test_stall_remediation.py`
+- `tests/birth/test_starship_birth.py`
+- `tests/birth/test_strong_recovery_mode.py`
+- `tests/birth/test_synthetic_cloud_fixture.py`
+- `tests/birth/test_tick_cache_persist_windows.py`
+- `tests/birth/test_tick_enricher_batch.py`
+- `tests/birth/test_tick_enricher_trend.py`
+- `tests/birth/test_training_window_sla.py`
+- `tests/birth/test_trend_features.py`
+- `tests/birth/test_twin_accept_champion.py`
+- `tests/birth/test_under_activity_trap.py`
+- `tests/birth/test_velocity_stall_detection.py`
+- `tests/birth/test_wall_adaptation_handler_bus.py`
+- `tests/birth/test_wall_adaptation_handler_signals.py`
+- `tests/birth/test_wall_trigger_engine.py`
+- `tests/birth/test_wipe_all.py`
+
+## `tests/evolution`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/evolution/test_challenger_ladder_closeout.py`
+- `tests/evolution/test_challenger_ladder_k.py`
+- `tests/evolution/test_dream_birth_prior.py`
+- `tests/evolution/test_evolution_tree.py`
+- `tests/evolution/test_meta_agent_god_surfaces.py`
+- `tests/evolution/test_orchestrator_birth_gen0.py`
+- `tests/evolution/test_orchestrator_god_surfaces.py`
+- `tests/evolution/test_research_lab.py`
+- `tests/evolution/test_strategy_providers_windows.py`
+- `tests/evolution/test_wave0_honesty.py`
+
+## `tests/launcher`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/launcher/test_birth_orphan_honesty.py`
+- `tests/launcher/test_birth_physics_gate.py`
+- `tests/launcher/test_birth_preflight_history_msg.py`
+- `tests/launcher/test_birth_residual_cleanup.py`
+- `tests/launcher/test_birth_residual_ui_predicates.py`
+- `tests/launcher/test_birth_resume_pause_flags.py`
+
+## `tests/maturity`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/maturity/test_apprenticeship_law.py`
+- `tests/maturity/test_apprenticeship_live_runner.py`
+- `tests/maturity/test_apprenticeship_sim.py`
+- `tests/maturity/test_awakening_cycle_report.py`
+- `tests/maturity/test_awakening_exam_truth.py`
+- `tests/maturity/test_awakening_law.py`
+- `tests/maturity/test_awakening_live_runner.py`
+- `tests/maturity/test_awakening_live_shot.py`
+- `tests/maturity/test_awakening_surface.py`
+- `tests/maturity/test_birth_exit.py`
+- `tests/maturity/test_continuum_honesty.py`
+- `tests/maturity/test_globex_gap.py`
+- `tests/maturity/test_hub_birth_exit_heal.py`
+- `tests/maturity/test_hub_named_wipes.py`
+- `tests/maturity/test_phase_continuum.py`
+- `tests/maturity/test_playground_clock_and_operator.py`
+- `tests/maturity/test_playground_crawl.py`
+- `tests/maturity/test_playground_first_order.py`
+- `tests/maturity/test_playground_law.py`
+- `tests/maturity/test_playground_live_runner.py`
+- `tests/maturity/test_playground_portfolio_seal.py`
+- `tests/maturity/test_playground_sense_brief.py`
+- `tests/maturity/test_playground_sense_lab.py`
+- `tests/maturity/test_playground_shadow_school.py`
+- `tests/maturity/test_playground_surface.py`
+- `tests/maturity/test_proving_ground_law.py`
+- `tests/maturity/test_proving_ground_surface.py`
+- `tests/maturity/test_research_kit.py`
+- `tests/maturity/test_school_path.py`
+- `tests/maturity/test_telegram_ttl_m7.py`
+- `tests/maturity/test_wipe_confirm.py`
+
+## `tests/ops`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/ops/test_birth_zero_human_cadence.py`
+
+## `tests/test_birth_policy_observation.py`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/test_birth_policy_observation.py`
+
+## `tests/test_birth_real_data_training_mode.py`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/test_birth_real_data_training_mode.py`
+
+## `tests/test_birth_routing.py`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/test_birth_routing.py`
+
+## `tests/test_birth_service_workspace.py`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/test_birth_service_workspace.py`
+
+## `tests/test_birth_stale_loading.py`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/test_birth_stale_loading.py`
+
+## `tests/test_birth_ui_sync.py`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/test_birth_ui_sync.py`
+
+## `tests/test_dream_engine.py`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/test_dream_engine.py`
+
+## `tests/test_evolution_orchestrator_bootstrap.py`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/test_evolution_orchestrator_bootstrap.py`
+
+## `tests/test_first_boot_save_start_guard.py`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/test_first_boot_save_start_guard.py`
+
+## `tests/test_first_boot_stop_training.py`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/test_first_boot_stop_training.py`
+
+## `tests/test_launcher_birth_status_cli.py`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/test_launcher_birth_status_cli.py`
+
+## `tests/test_lumina_birth_engine.py`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/test_lumina_birth_engine.py`
+
+## `tests/test_meta_swarm.py`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/test_meta_swarm.py`
+
+## `tests/test_multi_day_sim_runner.py`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/test_multi_day_sim_runner.py`
+
+## `tests/test_strategy_generator.py`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/test_strategy_generator.py`
+

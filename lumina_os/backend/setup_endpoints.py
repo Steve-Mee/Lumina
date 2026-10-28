@@ -16,7 +16,10 @@ from lumina_launcher.services.setup_persist import (
     scan_missing_credentials,
     seed_sim_runtime_and_mark_setup,
 )
-from lumina_launcher.services.birth_service import birth_service
+try:
+    from lumina_launcher.services.birth_service import birth_service
+except ImportError:
+    birth_service = None  # type: ignore[assignment]
 from lumina_launcher.services.smart_setup_service import SmartSetupOptions
 
 from lumina_launcher.core.onboarding import resolve_app_surface

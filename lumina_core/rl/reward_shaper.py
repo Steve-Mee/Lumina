@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from lumina_core.birth.config import BirthRewardConfig
+from lumina_core.rl.training_defaults import BirthRewardConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -284,24 +284,15 @@ def range_patience_step_reward(
     shift from flat keep-alive to **quality** (R-multiple on close) so Stage-2 can
     graduate on the WR−0.50 expectancy gate without re-entering the 95% flat trap.
     """
-    from lumina_core.birth.stage3_inband_idle import s3_inband_hold_tax
-
+    del participation_mode, position, policy_trades, band_lo, band_hi, action_side
     tax_flat = (
         float(cumulative_flat)
         if cumulative_flat is not None
         else float(stage_flat_ratio if stage_flat_ratio is not None else 0.5)
     )
-    idle_tax = s3_inband_hold_tax(
-        curriculum_regime=str(curriculum_regime or ""),
-        participation_mode=str(participation_mode or ""),
-        position=int(position),
-        cumulative_flat=tax_flat,
-        band_lo=float(band_lo),
-        band_hi=float(band_hi),
-        policy_trades=int(policy_trades),
-        action_side=int(action_side),
-        tax=float(getattr(cfg, "s3_inband_hold_tax", 0.01) or 0.01),
-    )
+    idle_tax = 0.0
+    if str(curriculum_regime or "").lower().startswith("range"):
+        idle_tax = float(getattr(cfg, "s3_inband_hold_tax", 0.01) or 0.01) * max(0.0, tax_flat)
     if not cfg.enabled or not _is_range_regime(regime):
         return float(idle_tax)
     flat_bonus = float(cfg.range_flat_bonus_coeff)

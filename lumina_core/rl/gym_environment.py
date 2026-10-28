@@ -9,7 +9,7 @@ from typing import Any
 
 import numpy as np
 
-from lumina_core.birth.config import BirthRewardConfig
+from lumina_core.rl.training_defaults import BirthRewardConfig, MES_POINT_VALUE_USD, MIN_STOP_PCT
 from lumina_core.engine.valuation_engine import ValuationEngine
 from lumina_core.rl.observation_builder import OBSERVATION_DIM, build_observation_vector
 from lumina_core.rl.gym_environment_step import RLTradingEnvironmentStepMixin
@@ -97,13 +97,7 @@ class RLTradingEnvironment(RLTradingEnvironmentStepMixin, gym.Env):
             .lower()
         )
 
-        # Stop/target lows match constitution + birth geometry floor (not legacy 0.1%).
-        try:
-            from lumina_core.birth.birth_constitution_guard import BIRTH_MIN_STOP_PCT
-
-            _stop_lo = float(BIRTH_MIN_STOP_PCT)
-        except Exception:
-            _stop_lo = 0.0004
+        _stop_lo = float(MIN_STOP_PCT)
         self.action_space = spaces.Box(
             low=np.array([0.0, 0.0, _stop_lo, _stop_lo * 1.25], dtype=np.float32),
             high=np.array([2.0, 1.0, 0.02, 0.05], dtype=np.float32),
@@ -213,9 +207,7 @@ class RLTradingEnvironment(RLTradingEnvironmentStepMixin, gym.Env):
         Non-birth keeps ``valuation_engine.point_value(instrument)``.
         """
         if self.is_birth_mode():
-            from lumina_core.birth.notional_cap import birth_gym_point_value
-
-            return birth_gym_point_value()
+            return float(MES_POINT_VALUE_USD)
         return float(self.valuation_engine.point_value(self.instrument))
 
     def _fees_usd(self, *, quantity: int, sides: int) -> float:

@@ -55,11 +55,22 @@ class OperationsOrdersMixin:
                                      session + risk enforcement for production-parity validation.
           real   – real money; full SessionGuard + HardRiskController enforcement.
         """
-        from lumina_core.maturity.playground.crawl import (
-            crawl_order_intent,
-            note_order_reject,
-            resolve_crawl_submission,
-        )
+        try:
+            from lumina_core.maturity.playground.crawl import (
+                crawl_order_intent,
+                note_order_reject,
+                resolve_crawl_submission,
+            )
+        except ImportError:
+
+            def crawl_order_intent() -> None:
+                return None
+
+            def note_order_reject(_reason: str) -> None:
+                return None
+
+            def resolve_crawl_submission(_order: object) -> None:
+                return None
 
         app = self._app()
         trade_mode = self.engine.config.trade_mode
@@ -149,8 +160,6 @@ class OperationsOrdersMixin:
 
         try:
             dream_snapshot = self.engine.get_current_dream_snapshot()
-            from lumina_core.maturity.playground.crawl import crawl_order_intent
-
             intent = crawl_order_intent()
             stop_loss = float(dream_snapshot.get("stop", 0) or 0)
             take_profit = float(dream_snapshot.get("target", 0) or 0)
@@ -249,7 +258,6 @@ class OperationsOrdersMixin:
                     from lumina_core.maturity.milestone_hooks import try_record_milestone
                     from lumina_core.maturity.playground.crawl import (
                         crawl_order_intent,
-                        note_order_reject,
                         note_venue_fill,
                     )
                     from lumina_core.maturity.playground.fills import record_orderpath_fill

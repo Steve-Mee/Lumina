@@ -42,8 +42,6 @@ def _ep() -> Any:
 
 
 def _write_first_boot_progress(stage: str, message: str, **extra: object) -> None:
-    from lumina_core.birth.stage_scorecard import enrich_progress_scorecard
-
     ep = _ep()
     progress_path: Path = ep.FIRST_BOOT_PROGRESS_PATH
     prev: dict[str, object] = {}
@@ -62,8 +60,6 @@ def _write_first_boot_progress(stage: str, message: str, **extra: object) -> Non
     payload["stage"] = str(stage).strip().lower()
     payload["message"] = str(message)
     payload.update(extra)
-    enriched = enrich_progress_scorecard({k: v for k, v in payload.items()})
-    payload.update(enriched)
     try:
         progress_path.parent.mkdir(parents=True, exist_ok=True)
         encoded = json.dumps(payload, ensure_ascii=True)
@@ -156,34 +152,15 @@ def _run_first_boot_training() -> int:
         progress_pct=26,
         phase="pipeline_boot",
     )
-    if not birth_phase_enabled:
-        logging.warning("first_boot.birth_phase=false is ignored; LuminaBirthEngine is mandatory for first boot.")
-    from lumina_core.birth.engine import BirthPhaseEngineV2 as LuminaBirthEngine
-
-    engine = LuminaBirthEngine(
-        runtime=container.engine,
-        ppo_trainer=container.ppo_trainer,
-        market_data_service=container.market_data_service,
-        config={"first_boot": cfg},
-        workspace_root=ep.ROOT_DIR,
+    logging.warning(
+        "Birth-v1 first-boot engine is archived; Validation Gate required before any birth path."
     )
-    birth_result = engine.run_birth_phase(
-        target_trades=target,
-        max_real_days=max_days,
-        prefer_real_data_only=prefer_real,
-    )
-    birth_status = str(birth_result.get("status", "error")).strip().lower()
-    if birth_status == "completed":
-        mapped_status = "ok_birth_phase"
-    elif birth_status == "paused":
-        mapped_status = "paused"
-    else:
-        mapped_status = "birth_failed"
     report = {
-        "status": mapped_status,
-        "trades": int(birth_result.get("total_trades", 0) or 0),
+        "status": "birth_archived",
+        "trades": 0,
         "synthetic_ticks": 0,
-        "policy_path": str(birth_result.get("policy_path") or ep.FIRST_BOOT_POLICY_PATH),
+        "policy_path": str(ep.FIRST_BOOT_POLICY_PATH),
+        "reason": "BIRTH_V1_ARCHIVED",
     }
     status = str(report.get("status", "error"))
     trades = int(report.get("trades", 0) or 0)

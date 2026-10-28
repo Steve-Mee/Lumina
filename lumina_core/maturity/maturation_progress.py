@@ -202,32 +202,5 @@ def maturation_eligible_for_real(workspace_root: Path | str) -> tuple[bool, list
 
 
 def sync_maturation_from_birth_state(workspace_root: Path | str) -> MaturationProgress:
-    """Best-effort sync of maturation milestones from birth artifacts."""
-    from lumina_core.birth.evolution_proof_gate import evolution_proof_passed, load_evolution_proof_record
-    from lumina_launcher.services.birth_service import BirthService
-
-    progress = load_maturation_progress(workspace_root)
-    svc = BirthService()
-    svc.configure_workspace(Path(workspace_root))
-
-    if svc.certificate_ok():
-        if "birth_certificate_issued" not in progress.milestones_reached:
-            progress.milestones_reached.append("birth_certificate_issued")
-    if evolution_proof_passed(workspace_root):
-        proof = load_evolution_proof_record(workspace_root)
-        if proof and "evolution_proof_passed" not in progress.milestones_reached:
-            progress.milestones_reached.append("evolution_proof_passed")
-    elif "evolution_proof_passed" in progress.milestones_reached:
-        progress.milestones_reached = [
-            m for m in progress.milestones_reached if m != "evolution_proof_passed"
-        ]
-        progress.metadata.pop("evolution_proof_passed", None)
-    if svc.artifacts_ok():
-        from lumina_core.maturity.birth_exit import is_birth_exit_sufficient
-
-        if is_birth_exit_sufficient(workspace_root):
-            if "deck_unlocked" not in progress.milestones_reached:
-                progress.milestones_reached.append("deck_unlocked")
-    progress.current_phase = resolve_current_phase(progress)
-    save_maturation_progress(workspace_root, progress)
-    return progress
+    """Load stored milestones only. Birth-v1 artifact sync is archived."""
+    return load_maturation_progress(workspace_root)

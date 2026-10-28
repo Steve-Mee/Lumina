@@ -13,11 +13,16 @@ from pathlib import Path
 from statistics import median
 from typing import Literal
 
-from lumina_core.birth.foundation_history import (
-    FOUNDATION_HISTORY_MAX_DAYS,
-    foundation_history_max_days,
-    foundation_history_start_days,
-)
+FOUNDATION_HISTORY_MAX_DAYS = 365
+
+
+def foundation_history_max_days() -> int:
+    return FOUNDATION_HISTORY_MAX_DAYS
+
+
+def foundation_history_start_days() -> int:
+    return FOUNDATION_HISTORY_MAX_DAYS
+
 
 # Wall-clock duration heuristic only — never a Birth history sizer.
 FIRST_BOOT_EST_TRADES_PER_REAL_DAY = 450

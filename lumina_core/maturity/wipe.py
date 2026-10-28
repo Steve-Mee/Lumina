@@ -123,77 +123,10 @@ def wipe_awakening_generated(workspace_root: Path | str) -> list[str]:
     """Delete generated Awakening shot/proof files. Frozen π* and Birth plant stay."""
     root = Path(workspace_root)
     removed: list[str] = []
-    live_paths: list[Path] = []
-    try:
-        from lumina_core.maturity.phase_runners.awakening_shot import (
-            CHILD_META_NAME,
-            artifacts_dir,
-            live_child_zip,
-            live_ledger_path,
-        )
-
-        from lumina_core.birth.awakening_select_env import (
-            BIRTH_TAPE_A_BOOK_NAME,
-            BIRTH_TAPE_A_DAYS_NAME,
-            PARENT_TAPE_A_WR_NAME,
-        )
-        from lumina_core.maturity.awakening.keep_best import STUDENT_ZIP_NAME
-        from lumina_core.maturity.phase_runners.awakening_shot import (
-            INCUMBENT_LEDGER_NAME,
-            INCUMBENT_PARENT_LEDGER_NAME,
-        )
-
-        art = artifacts_dir(root)
-        live_paths = [
-            live_child_zip(root),
-            art / CHILD_META_NAME,
-            live_ledger_path(root),
-            live_ledger_path(root).with_suffix(".sha256"),
-            art / "awakening_incumbent_pi_star.zip",
-            art / STUDENT_ZIP_NAME,
-            art / INCUMBENT_LEDGER_NAME,
-            art / INCUMBENT_LEDGER_NAME.replace(".jsonl", ".sha256"),
-            art / INCUMBENT_PARENT_LEDGER_NAME,
-            art / INCUMBENT_PARENT_LEDGER_NAME.replace(".jsonl", ".sha256"),
-            art / "awakening_parent_holdout.jsonl",
-            art / "awakening_parent_holdout.frozen_sha",
-            art / "awakening_parent_holdout.sha256",
-            art / BIRTH_TAPE_A_DAYS_NAME,
-            art / BIRTH_TAPE_A_BOOK_NAME,
-            art / PARENT_TAPE_A_WR_NAME,
-        ]
-    except Exception:
-        art = root / "reports" / "birth_cloud_run" / "artifacts"
-        live_paths = [
-            art / "awakening_live_pi_star.zip",
-            art / "awakening_live_pi_star.json",
-            art / "awakening_live_holdout.jsonl",
-            art / "awakening_incumbent_pi_star.zip",
-            art / "awakening_student_pi_star.zip",
-            art / "awakening_incumbent_holdout.jsonl",
-            art / "awakening_incumbent_parent_holdout.jsonl",
-            art / "awakening_parent_holdout.jsonl",
-            art / "awakening_parent_holdout.frozen_sha",
-            art / "awakening_birth_tape_a_days.json",
-            art / "awakening_birth_tape_a_book.json",
-            art / "awakening_parent_tape_a_wr.json",
-        ]
-    frozen = {"birth_exit_pi_star.zip", "birth_exit_pi_star.json"}
-    for path in live_paths:
-        if path.name in frozen:
-            logger.error("maturity.wipe.awakening.refused_frozen path=%s", path)
-            continue
-        rel = _unlink(path, root)
-        if rel:
-            removed.append(rel)
     for relative in _AWAKENING_STATE_TARGETS:
         rel = _unlink(root / relative, root)
         if rel:
             removed.append(rel)
-    # Rule exams are scored against this baseline. The Playground journal stays.
-    rel = _unlink(root / "reports" / "playground_rule_exams", root)
-    if rel:
-        removed.append(rel)
     removed.extend(wipe_playground_generated(root))
     return removed
 
@@ -238,18 +171,21 @@ def _clear_birth_keep_setup(
     *,
     preserve_tick_cache: bool,
 ) -> dict[str, Any]:
-    from lumina_launcher.core.birth_reset import clear_birth_training_state
-
-    result = clear_birth_training_state(
-        root,
-        wipe_genesis=False,
-        preserve_tick_cache=preserve_tick_cache,
-    )
+    del preserve_tick_cache
+    removed: list[str] = []
+    for relative in (
+        "state/lumina_birth_progress.json",
+        "state/lumina_birth_checkpoint.json",
+        "state/birth_runner.json",
+    ):
+        rel = _unlink(root / relative, root)
+        if rel:
+            removed.append(rel)
     return {
-        "status": "wiped" if result.success else "error",
-        "message": result.message,
-        "removed": list(result.removed),
-        "preserved": list(result.preserved),
+        "status": "wiped",
+        "message": "Birth-v1 training state cleared locally (launcher reset archived).",
+        "removed": removed,
+        "preserved": [],
     }
 
 

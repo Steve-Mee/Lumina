@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from lumina_core.birth.curriculum import CurriculumStage
-from lumina_core.birth.stage_pass_receipt import StagePassReceipt
 from lumina_core.notifications.milestone_event_types import (
     MilestoneCategory,
     MilestoneEvent,
@@ -117,10 +115,10 @@ def curriculum_stage4_polish_passed_event(
 
 
 def curriculum_stage_passed_event(
-    stage: CurriculumStage | str,
-    receipt: StagePassReceipt,
+    stage: Any,
+    receipt: Any,
 ) -> MilestoneEvent:
-    stage_value = stage.value if isinstance(stage, CurriculumStage) else str(stage).strip().lower()
+    stage_value = str(getattr(stage, "value", stage) or "").strip().lower()
     milestone_id = _STAGE_MILESTONE_IDS.get(stage_value, f"curriculum_{stage_value}_passed")
     label = _STAGE_LABELS.get(stage_value, stage_value)
     provisional_note = " (provisional)" if receipt.provisional else ""

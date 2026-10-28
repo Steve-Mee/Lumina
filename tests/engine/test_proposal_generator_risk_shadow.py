@@ -97,29 +97,14 @@ class TestProposalGeneratorRiskShadow:
 
 
 def test_llm_generated_strategy_wiring_in_orchestrator(monkeypatch) -> None:
-    """LLM-generated strategy winners in the orchestrator now trigger the official risk shadow bridge (best-effort)."""
-    import inspect
-    from lumina_core.evolution import orchestrator_core
+    """Birth-v1 strategy search is archived; PromotionGate remains the only promotion path."""
+    del monkeypatch
+    from lumina_core.evolution.orchestrator import EvolutionOrchestrator
 
-    source = inspect.getsource(orchestrator_core.EvolutionOrchestrator._run_generated_strategy_cycle)
-    assert "risk-generated-strategy" in source or "Phase 2 Deliverable 5" in source
-    assert "validate_risk_proposal_in_shadow" in source
-
-    calls: list[dict] = []
-
-    def fake_validate(**kwargs):
-        calls.append(kwargs)
-        return None
-
-    monkeypatch.setattr(
-        "lumina_core.evolution.risk_shadow_bridge.validate_risk_proposal_in_shadow",
-        fake_validate,
-    )
-
-    # The wiring is confirmed by source + the fact that the module still imports cleanly
-    # (the actual call is inside a try after a mutate in a larger cycle that is hard to stub lightly).
-    # This test + the source hygiene is sufficient for the narrow slice per the approved plan.
-    assert "lumina_core.evolution.risk_shadow_bridge" in source or True  # wiring present
+    assert not hasattr(EvolutionOrchestrator, "_run_generated_strategy_cycle")
+    result = EvolutionOrchestrator().run_nightly_evolution_cycle()
+    assert result.get("mutation_applied") is False
+    assert result.get("reason") == "BIRTH_V1_ARCHIVED"
 
 
 def test_dna_registry_structural_hook_triggers_on_risk_content(monkeypatch) -> None:

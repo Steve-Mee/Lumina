@@ -4,12 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from lumina_core.birth.notional_cap import (
-    birth_close_cap_usd,
-    clip_birth_exam_pnl,
-)
-
-
 def book_birth_close_net_usd(
     raw_net_usd: float,
     *,
@@ -18,13 +12,12 @@ def book_birth_close_net_usd(
     entry_price: float,
     qty: int,
 ) -> tuple[float, float]:
-    """Return (booked_net, cap_usd). Non-birth or open bars pass through raw."""
+    """Return (booked_net, cap_usd). Archived Birth-v1 exam cap is identity."""
+    del entry_price, qty
     raw = float(raw_net_usd)
     if not (is_birth and trade_closed):
         return raw, 0.0
-    # Exam qty is 1 in birth SIM even if a leak tried to size up.
-    cap = birth_close_cap_usd(entry_price=float(entry_price), qty=1)
-    return clip_birth_exam_pnl(raw, entry_price=float(entry_price), qty=1), cap
+    return raw, 0.0
 
 
 def gym_step_info(
@@ -135,12 +128,8 @@ def training_reward_after_book(
         if not trade_closed:
             return (-var_es_penalty if var_es_penalty > 0 else 0.0), components
         if is_birth:
-            from lumina_core.birth.s5_process_decomp import birth_close_process_r
-
-            reward = birth_close_process_r(
-                float(booked_net),
-                float(getattr(env, "_close_risk_usd", 0.0) or 0.0),
-            )
+            risk = float(getattr(env, "_close_risk_usd", 0.0) or 0.0)
+            reward = float(booked_net) / max(risk, 1e-9) if risk > 0.0 else 0.0
             components = {"r_multiple": float(reward), "process_r": float(reward)}
             update_trade_stats(
                 env._reward_state,

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def _load_sb3() -> tuple:
-    from lumina_core.birth.physics_preflight import import_sb3_ppo, physics_missing_message
+    from lumina_core.rl.training_defaults import import_sb3_ppo
 
     try:
         ppo_cls = import_sb3_ppo()
@@ -26,7 +26,7 @@ def _load_sb3() -> tuple:
         raise
     except Exception as exc:  # pragma: no cover - depends on optional package install
         logging.exception("Unhandled broad exception fallback in lumina_core/engine/rl/ppo_trainer.py:23")
-        raise RuntimeError(physics_missing_message(missing=("stable_baselines3",))) from exc
+        raise RuntimeError("Leermotor ontbreekt (stable_baselines3).") from exc
 
 
 def _simulator_data_from_context(context: RuntimeContext) -> list[dict[str, Any]]:

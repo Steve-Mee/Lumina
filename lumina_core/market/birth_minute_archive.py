@@ -21,6 +21,18 @@ from lumina_core.market.nt_fees import spec_for
 MINUTE_NS = 60 * 1_000_000_000
 
 
+def _ticks_cache_path(root: Path) -> Path:
+    return Path(root) / "state" / "lumina_birth_ticks_cache.jsonl"
+
+
+def _split_cache_path(root: Path) -> Path:
+    return Path(root) / "state" / "lumina_birth_split_cache.json"
+
+
+def _cache_manifest_path(root: Path) -> Path:
+    return Path(root) / "state" / "lumina_birth_cache_manifest.json"
+
+
 class BirthArchiveError(ValueError):
     """The tick tape cannot become an honest minute archive."""
 
@@ -125,18 +137,13 @@ def split_search_and_tail(
 
 def stream_birth_cache(workspace_root: Path | str) -> dict[str, int]:
     """Build the minute archive from the saved Birth tick file. Does not load it all at once."""
-    from lumina_core.birth.tick_cache_persist import (
-        cache_manifest_path,
-        split_cache_path,
-        ticks_cache_path,
-    )
     from lumina_core.market.minute_bars import _RECORD
 
     root = Path(workspace_root)
-    ticks_path = ticks_cache_path(root)
+    ticks_path = _ticks_cache_path(root)
     if not ticks_path.is_file():
         raise BirthArchiveError("ticks_missing")
-    split_path = split_cache_path(root)
+    split_path = _split_cache_path(root)
     if not split_path.is_file():
         raise BirthArchiveError("split_missing")
     split = json.loads(split_path.read_text(encoding="utf-8"))
@@ -144,7 +151,7 @@ def stream_birth_cache(workspace_root: Path | str) -> dict[str, int]:
     if not isinstance(indices, list) or not indices:
         raise BirthArchiveError("holdout_index_missing")
     holdout_index = int(indices[0])
-    manifest_path = cache_manifest_path(root)
+    manifest_path = _cache_manifest_path(root)
     manifest_raw = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
     root_symbol = _archive_root(manifest_raw if isinstance(manifest_raw, dict) else {})
     spec = spec_for(root_symbol)
@@ -203,18 +210,24 @@ def stream_birth_cache(workspace_root: Path | str) -> dict[str, int]:
         temporary.unlink(missing_ok=True)
         raise BirthArchiveError("holdout_tick_missing")
     temporary.replace(destination)
-    from lumina_core.maturity.playground.learning_book import record_archive_fact
+    try:
+        from lumina_core.maturity.playground.learning_book import record_archive_fact
+    except ImportError:
+        record_archive_fact = None  # type: ignore[assignment]
 
     tail_end = last_minute + MINUTE_NS
-    record_archive_fact(
-        root,
-        tape_count=counted,
-        minute_count=minutes,
-        holdout_start_ns=int(holdout_start_ns) - (int(holdout_start_ns) % MINUTE_NS),
-        tail_end_ns=tail_end,
-        symbol=root_symbol,
-    )
-    manifest = cache_manifest_path(root)
+    if record_archive_fact is None:
+        pass
+    else:
+        record_archive_fact(
+            root,
+            tape_count=counted,
+            minute_count=minutes,
+            holdout_start_ns=int(holdout_start_ns) - (int(holdout_start_ns) % MINUTE_NS),
+            tail_end_ns=tail_end,
+            symbol=root_symbol,
+        )
+    manifest = _cache_manifest_path(root)
     seed = 1
     if manifest.is_file():
         raw = json.loads(manifest.read_text(encoding="utf-8"))
@@ -258,16 +271,18 @@ def _archive_root(manifest: dict[str, Any]) -> str:
 
 def ensure_school_from_birth(workspace_root: Path | str) -> dict[str, Any]:
     """Turn the saved Birth tape into the school archive and seal the first period."""
-    from lumina_core.birth.tick_cache_persist import cache_manifest_path
-    from lumina_core.maturity.playground.learning_book import read_header
-    from lumina_core.maturity.playground.progress import load_playground_progress, merge_playground_progress
-    from lumina_core.maturity.playground.research_kit import write_period
+    try:
+        from lumina_core.maturity.playground.learning_book import read_header
+        from lumina_core.maturity.playground.progress import load_playground_progress, merge_playground_progress
+        from lumina_core.maturity.playground.research_kit import write_period
+    except ImportError:
+        return {"ok": False, "reason": "BIRTH_V1_ARCHIVED"}
 
     root = Path(workspace_root)
     header = read_header(root)
     symbol = str(header.get("symbol") or "")
     if not symbol:
-        manifest_path = cache_manifest_path(root)
+        manifest_path = _cache_manifest_path(root)
         try:
             raw = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
             symbol = _archive_root(raw if isinstance(raw, dict) else {})
@@ -312,9 +327,7 @@ def ensure_school_from_birth(workspace_root: Path | str) -> dict[str, Any]:
 
 
 def _seed_from_manifest(workspace_root: Path) -> int:
-    from lumina_core.birth.tick_cache_persist import cache_manifest_path
-
-    path = cache_manifest_path(workspace_root)
+    path = _cache_manifest_path(workspace_root)
     if not path.is_file():
         return 1
     try:
@@ -338,8 +351,6 @@ def write_birth_minutes(
     holdout_start_ns: int,
 ) -> dict[str, int]:
     """Count the ticks, write the minutes, and record the cutoff. No search starts."""
-    from lumina_core.maturity.playground.learning_book import record_archive_fact
-
     counted = sum(1 for row in ticks if isinstance(row, dict))
     bars = minutes_from_ticks(ticks, symbol=symbol)
     if bars and int(holdout_start_ns) <= bars[0].ts_ns:
@@ -348,14 +359,19 @@ def write_birth_minutes(
     if bars:
         stitch_front(workspace_root, symbol, bars)
     tail_end = tail[-1].ts_ns + MINUTE_NS if tail else int(holdout_start_ns)
-    record_archive_fact(
-        workspace_root,
-        tape_count=counted,
-        minute_count=len(bars),
-        holdout_start_ns=int(holdout_start_ns),
-        tail_end_ns=tail_end,
-        symbol=symbol,
-    )
+    try:
+        from lumina_core.maturity.playground.learning_book import record_archive_fact
+
+        record_archive_fact(
+            workspace_root,
+            tape_count=counted,
+            minute_count=len(bars),
+            holdout_start_ns=int(holdout_start_ns),
+            tail_end_ns=tail_end,
+            symbol=symbol,
+        )
+    except ImportError:
+        pass
     return {
         "tape_count": counted,
         "minute_count": len(bars),

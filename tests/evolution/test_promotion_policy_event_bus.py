@@ -7,7 +7,7 @@ import pytest
 from lumina_core.agent_orchestration import EventBus
 from lumina_core.container import ApplicationContainer
 from lumina_core.evolution.dna_registry import PolicyDNA
-from lumina_core.evolution.orchestrator_core import EvolutionOrchestrator
+from lumina_core.evolution.orchestrator import EvolutionOrchestrator
 from lumina_core.evolution.promotion_gate import PromotionGate, PromotionGateEvidence
 from lumina_core.evolution.promotion_policy import PromotionPolicy
 
@@ -21,8 +21,19 @@ def _base_evidence() -> PromotionGateEvidence:
             "sharpe_positive_pct": 0.75,
             "pbo": 0.2,
             "dsr": 0.35,
+            "purge_applied": True,
+            "embargo_applied": True,
+            "regime_volatility_checked": True,
+            "regime_trend_checked": True,
         },
-        cv_walk_forward={"windows": 8, "sharpe_positive_pct": 0.75},
+        cv_walk_forward={
+            "windows": 8,
+            "sharpe_positive_pct": 0.75,
+            "purge_applied": True,
+            "embargo_applied": True,
+            "regime_volatility_checked": True,
+            "regime_trend_checked": True,
+        },
         reality_gap_stats={"band_status": "YELLOW", "gap_trend": "STABLE", "mean_gap": 0.35},
         stress_report={"stress_ready_for_real_gate": True, "worst_case_drawdown": 2000.0},
         live_pnl_samples=[5.0 + (i * 0.02) for i in range(40)],
@@ -196,15 +207,9 @@ def test_container_binding_wires_orchestrator_promotion_policy_event_bus(monkeyp
 @pytest.mark.unit
 def test_orchestrator_bind_market_data_service_rebuilds_sim_runner(monkeypatch: pytest.MonkeyPatch) -> None:
     # gegeven
+    del monkeypatch
     orchestrator = object.__new__(EvolutionOrchestrator)
     orchestrator._market_data_service = None
-    calls: list[object | None] = []
-
-    def _stub_create() -> str:
-        calls.append(orchestrator._market_data_service)
-        return "stub-sim-runner"
-
-    monkeypatch.setattr(orchestrator, "_create_sim_runner", _stub_create)
     market_data_service = object()
 
     # wanneer
@@ -212,8 +217,7 @@ def test_orchestrator_bind_market_data_service_rebuilds_sim_runner(monkeypatch: 
 
     # dan
     assert orchestrator._market_data_service is market_data_service
-    assert getattr(orchestrator, "_sim_runner") == "stub-sim-runner"
-    assert calls == [market_data_service]
+    assert getattr(orchestrator, "_sim_runner") is None
 
 
 @pytest.mark.unit

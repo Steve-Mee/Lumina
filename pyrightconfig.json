@@ -35,6 +35,7 @@
     "logs",
     "state",
     "journal",
-    "lumina_vector_db"
+    "lumina_vector_db",
+    "archive"
   ]
 }
