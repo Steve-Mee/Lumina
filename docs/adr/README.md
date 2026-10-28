@@ -69,6 +69,7 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0055 | One NinjaTrader all-in fee card for every phase; Free plan until a paid plan is on file | Accepted | 2026-10-04 | [0055-nt-execution-cost.md](./0055-nt-execution-cost.md) |
 | 0056 | Playground rewrite: her research, one hand, budget and first sentences closed. Supersedes 0050 on the policy hand and the 150-trade exam. Not implemented | Accepted | 2026-10-04 | [0056-playground-learning-book.md](./0056-playground-learning-book.md) |
 | 0057 | Research self-evolution within bounds (Phase 3 birth, parameter tuning, ADR+signed review) | Accepted | 2026-10-28 | [0057-research-self-evolution-within-bounds.md](./0057-research-self-evolution-within-bounds.md) |
+| 0058 | Research continuity and live monitoring (Phase 4 decay, capacity, guardian, replenish) | Accepted | 2026-10-28 | [0058-research-continuity-live-monitoring.md](./0058-research-continuity-live-monitoring.md) |
 
 ## Legacy notitie
 

@@ -7,14 +7,25 @@ from typing import Any
 from pydantic import BaseModel
 
 from lumina_core.agent_orchestration.schemas_research import (
+    CAPACITY_AGENT_ID,
     GOVERNANCE_AGENT_ID,
+    GUARDIAN_AGENT_ID,
     HYPOTHESIS_AGENT_ID,
+    MONITOR_AGENT_ID,
     PROMOTION_AGENT_ID,
     REFLECTOR_AGENT_ID,
+    REPLENISH_AGENT_ID,
+    RESEARCH_CAPACITY_TOPIC,
+    RESEARCH_DECAY_TOPIC,
+    RESEARCH_DEWEIGHT_TOPIC,
     RESEARCH_GOVERNANCE_TOPIC,
+    RESEARCH_GUARDIAN_TOPIC,
     RESEARCH_HYPOTHESIS_TOPIC,
     RESEARCH_MUTATION_TOPIC,
     RESEARCH_PROMOTION_TOPIC,
+    RESEARCH_REPLENISH_TOPIC,
+    RESEARCH_RETIRE_TOPIC,
+    RESEARCH_SUSPEND_TOPIC,
     RESEARCH_VALIDATION_TOPIC,
     VALIDATION_AGENT_ID,
 )
@@ -75,6 +86,13 @@ DEFAULT_ALLOWED_PRODUCERS: dict[str, set[str]] = {
     RESEARCH_PROMOTION_TOPIC: {PROMOTION_AGENT_ID},
     RESEARCH_MUTATION_TOPIC: {REFLECTOR_AGENT_ID},
     RESEARCH_GOVERNANCE_TOPIC: {GOVERNANCE_AGENT_ID},
+    RESEARCH_DECAY_TOPIC: {MONITOR_AGENT_ID},
+    RESEARCH_DEWEIGHT_TOPIC: {MONITOR_AGENT_ID},
+    RESEARCH_SUSPEND_TOPIC: {MONITOR_AGENT_ID},
+    RESEARCH_RETIRE_TOPIC: {MONITOR_AGENT_ID},
+    RESEARCH_CAPACITY_TOPIC: {CAPACITY_AGENT_ID},
+    RESEARCH_GUARDIAN_TOPIC: {GUARDIAN_AGENT_ID},
+    RESEARCH_REPLENISH_TOPIC: {REPLENISH_AGENT_ID},
 }
 
 
@@ -99,6 +117,13 @@ DEFAULT_TOPIC_POLICIES: dict[str, TopicPolicy] = {
     RESEARCH_PROMOTION_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
     RESEARCH_MUTATION_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
     RESEARCH_GOVERNANCE_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
+    RESEARCH_DECAY_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
+    RESEARCH_DEWEIGHT_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
+    RESEARCH_SUSPEND_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
+    RESEARCH_RETIRE_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
+    RESEARCH_CAPACITY_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
+    RESEARCH_GUARDIAN_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
+    RESEARCH_REPLENISH_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
 }
 
 
