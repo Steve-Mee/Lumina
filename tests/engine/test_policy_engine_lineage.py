@@ -39,7 +39,13 @@ def test_execute_order_recovers_ctx_from_typed_arb_metadata(monkeypatch: pytest.
         lambda *a, **k: (True, "ok"),
     )
 
-    order = Order(symbol="MES", side="BUY", quantity=1, order_type="MARKET")
+    order = Order(
+        symbol="MES",
+        side="SELL",
+        quantity=1,
+        order_type="MARKET",
+        metadata={"reduce_only": True, "live_position_qty": 1},
+    )
     policy = PolicyEngine(engine=engine, broker=broker)
     policy.execute_order(order)
 
@@ -80,7 +86,13 @@ def test_execute_order_uses_latest_arb_for_matching_symbol(monkeypatch: pytest.M
         lambda *a, **k: (True, "ok"),
     )
 
-    order = Order(symbol="MES", side="BUY", quantity=1, order_type="MARKET")
+    order = Order(
+        symbol="MES",
+        side="SELL",
+        quantity=1,
+        order_type="MARKET",
+        metadata={"reduce_only": True, "live_position_qty": 1},
+    )
     policy = PolicyEngine(engine=engine, broker=broker)
     policy.execute_order(order)
 

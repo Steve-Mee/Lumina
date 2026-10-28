@@ -7,6 +7,7 @@ from .execution import ExecutionPort
 from .market_data import MarketDataPort
 from .orchestration import OrchestrationPort
 from .reasoning import ReasoningPort
+from .research_execution import ResearchExecutionPort
 from .risk import RiskPort
 
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     "MarketDataPort",
     "OrchestrationPort",
     "ReasoningPort",
+    "ResearchExecutionPort",
     "RiskPort",
 ]

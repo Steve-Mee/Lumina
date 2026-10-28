@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
@@ -37,6 +38,9 @@ class OrderIntent(BaseModel):
     source_agent: str = Field(default="unknown", min_length=1, max_length=128)
     disable_risk_controller: bool = False
     metadata: OrderIntentMetadata = Field(default_factory=OrderIntentMetadata)
+    strategy_id: str = ""
+    expected_horizon_bars: int = Field(default=0, ge=0)
+    submitted_at_utc: datetime | None = None
 
 
 class ArbitrationState(BaseModel):

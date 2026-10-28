@@ -20,6 +20,7 @@ from typing import Any
 
 from lumina_core.engine.paper_trade_executor import PaperTradeExecutor
 from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
+from lumina_core.order_gatekeeper.ungated_place_block import assert_validation_gate_or_block
 from lumina_core.risk.mode_capabilities import resolve_mode_capabilities
 
 logger = logging.getLogger(__name__)
@@ -121,6 +122,16 @@ class EODForceCloseService:
                 continue
             symbol = str(getattr(pos, "symbol", getattr(self.app, "INSTRUMENT", self.app.engine.config.instrument)))
             close_side = "SELL" if qty > 0 else "BUY"
+            eod_ok, eod_reason = assert_validation_gate_or_block(
+                "eod_force_close",
+                emergency=True,
+                order_side=close_side,
+                live_position_qty=qty,
+                reason="eod_force_close",
+            )
+            if not eod_ok:
+                (self._logger or logger).error("EOD FORCE-CLOSE blocked: %s", eod_reason)
+                continue
             try:
                 # D2 sub-slice 6: use bounded EODForceCloseService (thin wrapper over sub4 executor for EOD).
                 # Prefer executor's build_and_submit_eod_close for cleanliness (sub4 "thin for the EOD site").
@@ -150,6 +161,8 @@ class EODForceCloseService:
                     )
                     eod_order.metadata["reason"] = "eod_force_close"
                     eod_order.metadata["mode"] = mode
+                    eod_order.metadata["reduce_only"] = True
+                    eod_order.metadata["live_position_qty"] = qty
                     result = self.executor.submit_paper_order(eod_order)
 
                 if bool(getattr(result, "accepted", False)):

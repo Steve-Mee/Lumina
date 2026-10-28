@@ -8,6 +8,9 @@ from dataclasses import dataclass
 
 from lumina_core.agent_orchestration.schemas_research import EconomicRationale
 
+# D6: generators state this horizon in code. Not oos_size (30) and not 20.
+GENERATOR_EXPLICIT_HORIZON_BARS = 8
+
 
 class GeneratorError(ValueError):
     """Generator refused to emit a variant."""
@@ -32,6 +35,7 @@ class HypothesisDraft:
     oos_size: int = 30
     parent_config_id: str = ""
     overfit_in_sample: bool = False
+    expected_horizon_bars: int | None = None
 
 
 class HypothesisGenerator(ABC):
@@ -106,6 +110,7 @@ class NoiseGenerator(HypothesisGenerator):
                     proposed_price=self._price,
                     proposed_notional=self._quantity * self._price,
                     rationale=rationale,
+                    expected_horizon_bars=GENERATOR_EXPLICIT_HORIZON_BARS,
                 )
             )
         return tuple(items)
@@ -175,6 +180,7 @@ class PlantedEdgeGenerator(HypothesisGenerator):
                     proposed_price=self._price,
                     proposed_notional=self._quantity * self._price,
                     rationale=rationale,
+                    expected_horizon_bars=GENERATOR_EXPLICIT_HORIZON_BARS,
                 )
             )
         return tuple(items)

@@ -15,9 +15,13 @@ from lumina_core.agent_orchestration.schemas_research import (
     PROMOTION_AGENT_ID,
     REFLECTOR_AGENT_ID,
     REPLENISH_AGENT_ID,
+    RESEARCH_BRIDGE_AGENT_ID,
     RESEARCH_CAPACITY_TOPIC,
     RESEARCH_DECAY_TOPIC,
     RESEARCH_DEWEIGHT_TOPIC,
+    RESEARCH_EXECUTION_FILL_TOPIC,
+    RESEARCH_EXECUTION_ORDER_TOPIC,
+    RESEARCH_EXECUTION_SIGNAL_TOPIC,
     RESEARCH_GOVERNANCE_TOPIC,
     RESEARCH_GUARDIAN_TOPIC,
     RESEARCH_HYPOTHESIS_TOPIC,
@@ -93,6 +97,9 @@ DEFAULT_ALLOWED_PRODUCERS: dict[str, set[str]] = {
     RESEARCH_CAPACITY_TOPIC: {CAPACITY_AGENT_ID},
     RESEARCH_GUARDIAN_TOPIC: {GUARDIAN_AGENT_ID},
     RESEARCH_REPLENISH_TOPIC: {REPLENISH_AGENT_ID},
+    RESEARCH_EXECUTION_SIGNAL_TOPIC: {RESEARCH_BRIDGE_AGENT_ID},
+    RESEARCH_EXECUTION_ORDER_TOPIC: {RESEARCH_BRIDGE_AGENT_ID},
+    RESEARCH_EXECUTION_FILL_TOPIC: {RESEARCH_BRIDGE_AGENT_ID},
 }
 
 
@@ -124,6 +131,9 @@ DEFAULT_TOPIC_POLICIES: dict[str, TopicPolicy] = {
     RESEARCH_CAPACITY_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
     RESEARCH_GUARDIAN_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
     RESEARCH_REPLENISH_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
+    RESEARCH_EXECUTION_SIGNAL_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
+    RESEARCH_EXECUTION_ORDER_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
+    RESEARCH_EXECUTION_FILL_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
 }
 
 

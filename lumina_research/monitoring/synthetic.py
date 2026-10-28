@@ -125,6 +125,8 @@ def seal_promotion_pair(
     regimes_complete: bool = True,
     passed: bool = True,
     reject_reasons: tuple[str, ...] = (),
+    expected_horizon_bars: int = 8,
+    direction: str = "BUY",
 ) -> tuple[PromotionCandidate, ValidationResult]:
     values = tuple(float(item) for item in oos)
     windows = n_oos_windows if n_oos_windows is not None else len(values)
@@ -200,11 +202,13 @@ def seal_promotion_pair(
         "trial_id": trial_id,
         "agent_id": "promotion_agent",
         "instrument": instrument,
+        "direction": direction,
         "decision_kind": "approved",
         "scaled": False,
         "quantity": float(quantity),
         "notional": float(notional),
         "risk_reason": "approved",
+        "expected_horizon_bars": int(expected_horizon_bars),
         "validation_report_sha256": digest,
         "validation_mac": mac,
     }

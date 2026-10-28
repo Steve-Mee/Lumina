@@ -357,11 +357,8 @@ def test_cross_trade_broker_and_operations_service_submit_via_bridge(monkeypatch
     service = OperationsService(cast(Any, engine), container)
     ok = service.place_order("BUY", 3)
 
-    assert ok is True
-    assert len(broker_spy.calls) == 1
-    submitted = broker_spy.calls[0]
-    assert submitted.symbol == "MES JUN26"
-    assert submitted.quantity == 3
+    assert ok is False
+    assert len(broker_spy.calls) == 0
 
 
 def test_paper_broker_rejects_when_engine_missing() -> None:
@@ -461,11 +458,13 @@ def test_downstream_lineage_first_link_on_order_after_authoritative_gate(monkeyp
     # Simulate an Order that has already passed the pre-trade gates
     order = Order(
         symbol="MES",
-        side="BUY",
+        side="SELL",
         quantity=1,
         metadata={
             "proposed_risk": 50.0,
             "regime": "NEUTRAL",
+            "reduce_only": True,
+            "live_position_qty": 1,
             # Note: no decision_context_id yet — the Slice 15 logic should recover + link it
         },
     )
@@ -532,11 +531,13 @@ def test_downstream_lineage_propagates_into_fill_and_order_result(monkeypatch) -
 
     order = Order(
         symbol="MES",
-        side="BUY",
+        side="SELL",
         quantity=1,
         metadata={
             "proposed_risk": 50.0,
             "regime": "NEUTRAL",
+            "reduce_only": True,
+            "live_position_qty": 1,
             # Slice 15 linkage will be populated by policy_engine
         },
     )
@@ -612,11 +613,13 @@ def test_fill_dataclass_now_has_first_class_lineage_fields(monkeypatch) -> None:
 
     order = Order(
         symbol="MES",
-        side="BUY",
+        side="SELL",
         quantity=1,
         metadata={
             "proposed_risk": 50.0,
             "regime": "NEUTRAL",
+            "reduce_only": True,
+            "live_position_qty": 1,
             "decision_context_id": "fill-fields-ctx-999",
             "prev_hash": "firstclasshash999",
             "prev_event_topic": "risk.final_arbitration.result",
@@ -688,11 +691,13 @@ def test_typed_execution_fill_event_published_with_lineage(monkeypatch) -> None:
 
     order = Order(
         symbol="MES",
-        side="BUY",
+        side="SELL",
         quantity=1,
         metadata={
             "proposed_risk": 50.0,
             "regime": "NEUTRAL",
+            "reduce_only": True,
+            "live_position_qty": 1,
             "decision_context_id": "fill-event-ctx-888",
             "prev_hash": "abc123prevhash",
             "prev_event_topic": "risk.final_arbitration.result",

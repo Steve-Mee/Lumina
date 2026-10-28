@@ -10,6 +10,20 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from lumina_core.agent_orchestration.schemas_research_execution import (  # noqa: F401
+    FILL_TRANSLATOR_AGENT_ID,
+    RESEARCH_BRIDGE_AGENT_ID,
+    RESEARCH_EXECUTION_FILL_TOPIC,
+    RESEARCH_EXECUTION_GUARDED_TOPICS,
+    RESEARCH_EXECUTION_ORDER_TOPIC,
+    RESEARCH_EXECUTION_SIGNAL_TOPIC,
+    RESEARCH_EXECUTION_TOPIC_PRODUCERS,
+    ResearchExecutionFill,
+    ResearchExecutionOrderIntent,
+    SignalIntent,
+    guard_research_execution,
+    guard_research_execution_fill,
+)
 from lumina_core.agent_orchestration.schemas_research_continuity import (  # noqa: F401
     CAPACITY_AGENT_ID,
     CAPACITY_SCHEMA_VERSION,
@@ -83,6 +97,7 @@ EVENT_BUS_TOPIC_PRODUCERS: dict[str, frozenset[str]] = {
     RESEARCH_MUTATION_TOPIC: frozenset({REFLECTOR_AGENT_ID}),
     RESEARCH_GOVERNANCE_TOPIC: frozenset({GOVERNANCE_AGENT_ID}),
     **CONTINUITY_TOPIC_PRODUCERS,
+    **RESEARCH_EXECUTION_TOPIC_PRODUCERS,
 }
 
 # HMAC issuer guards. Existing (non-research) topics cannot register a guard.
@@ -93,7 +108,7 @@ EVENT_BUS_GUARDED_TOPICS: frozenset[str] = frozenset(
         RESEARCH_MUTATION_TOPIC,
         RESEARCH_GOVERNANCE_TOPIC,
     }
-) | CONTINUITY_GUARDED_TOPICS
+) | CONTINUITY_GUARDED_TOPICS | RESEARCH_EXECUTION_GUARDED_TOPICS
 
 _RATIONALE_MIN = 8
 
@@ -153,6 +168,7 @@ class HypothesisProposed(BaseModel):
     oos_size: int = Field(default=30, ge=2)
     parent_config_id: str = ""
     overfit_in_sample: bool = False
+    expected_horizon_bars: int = Field(ge=1)
     rationale: EconomicRationale
 
 
@@ -261,11 +277,13 @@ class PromotionCandidate(BaseModel):
     trial_id: int = Field(ge=1)
     agent_id: str = Field(min_length=1)
     instrument: Literal["ES", "NQ", "MES", "MNQ"]
+    direction: Literal["BUY", "SELL"]
     decision_kind: Literal["approved", "scaled"]
     scaled: bool
     quantity: float = Field(gt=0.0)
     notional: float = Field(gt=0.0)
     risk_reason: str = Field(min_length=1)
+    expected_horizon_bars: int = Field(ge=1)
     validation_report_sha256: str = Field(min_length=64, max_length=64)
     validation_mac: str = Field(min_length=64, max_length=64)
     issue_mac: str = Field(min_length=64, max_length=64)
@@ -287,6 +305,7 @@ class ParameterGenome(BaseModel):
     planted: bool
     kind: Literal["noise", "planted_edge"]
     overfit_in_sample: bool = False
+    expected_horizon_bars: int = Field(ge=1)
 
 
 class SignedReview(BaseModel):

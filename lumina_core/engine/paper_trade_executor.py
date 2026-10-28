@@ -26,6 +26,7 @@ import uuid
 from typing import Any
 
 from lumina_core.broker.broker_bridge import Order
+from lumina_core.order_gatekeeper.ungated_place_block import blocked_order_result, gate_order
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,15 @@ class PaperTradeExecutor:
 
     def submit_paper_order(self, order: Order, **kwargs: Any) -> Any:
         """Submit (wrapper; optional typed publish for Phase 2 spine)."""
+        allowed, reason = gate_order(
+            "paper_trade_executor.submit_paper_order",
+            order,
+            engine=self.engine,
+            app=self.app,
+        )
+        if not allowed:
+            return blocked_order_result(reason)
+
         # Optional: publish typed intent if bus available (best-effort; use registered model if present)
         bus = None
         if self.container is not None:
@@ -152,6 +162,16 @@ class PaperTradeExecutor:
         # override metadata for EOD specificity (additive)
         order.metadata["reason"] = "eod_force_close"
         order.metadata["mode"] = mode
+        order.metadata["reduce_only"] = True
+        allowed, reason = gate_order(
+            "eod_force_close",
+            order,
+            emergency=True,
+            engine=self.engine,
+            app=self.app,
+        )
+        if not allowed:
+            return blocked_order_result(reason)
         return self.submit_paper_order(order)
 
 

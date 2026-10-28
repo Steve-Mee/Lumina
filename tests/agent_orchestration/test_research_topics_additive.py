@@ -14,6 +14,9 @@ from lumina_core.agent_orchestration.schemas import (
     RESEARCH_CAPACITY_TOPIC,
     RESEARCH_DECAY_TOPIC,
     RESEARCH_DEWEIGHT_TOPIC,
+    RESEARCH_EXECUTION_FILL_TOPIC,
+    RESEARCH_EXECUTION_ORDER_TOPIC,
+    RESEARCH_EXECUTION_SIGNAL_TOPIC,
     RESEARCH_GOVERNANCE_TOPIC,
     RESEARCH_GUARDIAN_TOPIC,
     RESEARCH_HYPOTHESIS_TOPIC,
@@ -78,6 +81,9 @@ def test_research_topics_are_registered_and_guarded_additively() -> None:
     assert RESEARCH_CAPACITY_TOPIC in EVENT_BUS_TOPIC_MODELS
     assert RESEARCH_GUARDIAN_TOPIC in EVENT_BUS_TOPIC_MODELS
     assert RESEARCH_REPLENISH_TOPIC in EVENT_BUS_TOPIC_MODELS
+    assert RESEARCH_EXECUTION_SIGNAL_TOPIC in EVENT_BUS_TOPIC_MODELS
+    assert RESEARCH_EXECUTION_ORDER_TOPIC in EVENT_BUS_TOPIC_MODELS
+    assert RESEARCH_EXECUTION_FILL_TOPIC in EVENT_BUS_TOPIC_MODELS
     assert EVENT_BUS_GUARDED_TOPICS == frozenset(
         {
             RESEARCH_PROMOTION_TOPIC,
@@ -91,6 +97,9 @@ def test_research_topics_are_registered_and_guarded_additively() -> None:
             RESEARCH_CAPACITY_TOPIC,
             RESEARCH_GUARDIAN_TOPIC,
             RESEARCH_REPLENISH_TOPIC,
+            RESEARCH_EXECUTION_SIGNAL_TOPIC,
+            RESEARCH_EXECUTION_ORDER_TOPIC,
+            RESEARCH_EXECUTION_FILL_TOPIC,
         }
     )
 
@@ -121,6 +130,7 @@ def test_unauthorized_producer_cannot_publish_hypothesis() -> None:
         proposed_quantity=1.0,
         proposed_price=5000.0,
         proposed_notional=5000.0,
+        expected_horizon_bars=8,
         rationale=rationale,
     ).model_dump(mode="json")
     with pytest.raises(PermissionError):
@@ -140,11 +150,13 @@ def test_promotion_candidate_without_guard_is_rejected() -> None:
                 "trial_id": 1,
                 "agent_id": PROMOTION_AGENT_ID,
                 "instrument": "MES",
+                "direction": "BUY",
                 "decision_kind": "approved",
                 "scaled": False,
                 "quantity": 1.0,
                 "notional": 1000.0,
                 "risk_reason": "approved",
+                "expected_horizon_bars": 8,
                 "validation_report_sha256": "a" * 64,
                 "validation_mac": "b" * 64,
                 "issue_mac": "c" * 64,

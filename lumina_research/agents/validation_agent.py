@@ -112,6 +112,8 @@ class ValidationAgent(Frozen):
         peers: Sequence[Sequence[float]],
     ) -> ValidationResult:
         try:
+            if int(hypothesis.expected_horizon_bars) < 1:
+                raise ValueError("expected_horizon_missing")
             gross, positions, markets = materialize(hypothesis)
             evaluation = self._evaluate(
                 agent_id=VALIDATION_AGENT_ID,

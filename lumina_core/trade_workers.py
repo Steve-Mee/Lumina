@@ -3,7 +3,7 @@
 from lumina_core.runtime_context import RuntimeContext
 from lumina_core.reasoning.agent_contracts import apply_agent_policy_gateway
 from lumina_core.broker.broker_bridge import Order, OrderResult
-from lumina_core.order_gatekeeper import enforce_pre_trade_gate, resolve_regime_snapshot
+from lumina_core.order_gatekeeper import enforce_pre_trade_gate, gate_order, resolve_regime_snapshot
 from lumina_core.risk.pnl_provenance import PnlProvenance
 
 from lumina_bible.workflows import dna_rewrite_daemon as _dna_rewrite_daemon
@@ -122,6 +122,16 @@ def submit_order_with_risk_check(
     Returns:
         OrderResult if check passes, None if blocked
     """
+    allowed_s0, block_reason = gate_order(
+        "trade_workers.submit_order_with_risk_check",
+        order,
+        engine=getattr(app, "engine", None),
+        app=app,
+    )
+    if not allowed_s0:
+        app.logger.warning("Order blocked by S0 ungated-place freeze: %s", block_reason)
+        return None
+
     allowed, reason = check_pre_trade_risk(app, symbol, regime, proposed_risk, order_side=str(order.side).upper())
 
     if not allowed:

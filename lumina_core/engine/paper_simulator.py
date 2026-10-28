@@ -1,17 +1,4 @@
-"""
-PaperSimulator — Bounded component owning paper sim state + execution (Phase 3 D2 sub-slice 5).
-
-Further firewall/decomp of runtime_workers trading paths god (the "or runtime_workers" per 05-31).
-Thin delegation from supervisor_inner; reuses PaperTradeExecutor (sub4) + _paper_* + valuation + EconomicPnLService + trade_workers + PnlProvenance.
-
-Owns/ref: paper trading execution decisions + relevant state muts (sim_position_qty, sim_entry_price, paper_ledger_*, open_pnl, pnl_history, equity_curve, sim_peak, realized, trade_log, performance_log) via app/engine facade for compat/persistence.
-Narrow API: try_open, check_close (hit + post), get_open_pnl, has_position, etc.
-Best-effort lineage (dream_snapshot ctx passed to executor per Phase 2/sub4); no behavior change on happy paths.
-
-Per 2026-05-31 SPF-006 + Phase 3 D2 "Decomposition or strict interface firewalling of at least one major concentration point (meta_agent_core or runtime_workers trading paths) such that changes inside it no longer require understanding the entire engine." + MC post-sub4 "full supervisor decomp in runtime_workers" + sub4 log "Next: ... full PaperSimulator owning state + daemons".
-
-Small additive; SIM/paper friendly; independently testable; reversible.
-"""
+"""PaperSimulator: paper open/close plus sim ledger state."""
 
 from __future__ import annotations
 
@@ -24,6 +11,7 @@ from lumina_core.engine.economic_pnl_service import EconomicPnLService
 from lumina_core.risk.pnl_provenance import PnlProvenance
 from lumina_core import trade_workers
 from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
+from lumina_core.order_gatekeeper.ungated_place_block import assert_validation_gate_or_block
 
 logger = logging.getLogger(__name__)
 
@@ -70,14 +58,17 @@ class PaperSimulator:
         regime: str | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """Paper open if no current sim pos (exact logic from supervisor 1209-1247 post-sub4, relocated).
-
-        Uses executor.build/submit (full lineage/ctx/metadata forced from dream_snapshot).
-        Calls _paper_sync + _paper_store on success.
-        Returns {"submit_ok": bool, "result": ...}
-        """
+        """Open a paper position when flat. S0 blocks risk-increasing opens."""
         submit_ok = True
         result = None
+        allowed, reason = assert_validation_gate_or_block(
+            "paper_simulator.try_open",
+            order_side=str(signal).upper(),
+            live_position_qty=int(getattr(self.app, "sim_position_qty", 0) or 0),
+        )
+        if not allowed:
+            (self._logger or logger).warning("PaperSimulator.try_open blocked: %s", reason)
+            return {"submit_ok": False, "result": None, "reason": reason}
         if self.broker is not None:
             executor = self.executor
             open_order = executor.build_paper_order(
@@ -196,6 +187,19 @@ class PaperSimulator:
                     take_profit=float((dream_snapshot or {}).get("target", 0.0) or 0.0),
                 )
                 close_order.metadata["regime"] = str((dream_snapshot or {}).get("regime", "NEUTRAL"))
+                close_order.metadata["reduce_only"] = True
+                close_order.metadata["live_position_qty"] = int(getattr(self.app, "sim_position_qty", 0) or 0)
+                qty_now = int(getattr(self.app, "sim_position_qty", 0) or 0)
+                close_ok, close_reason = assert_validation_gate_or_block(
+                    "paper_simulator.check_close",
+                    reduce_only=True,
+                    order_side=close_side,
+                    live_position_qty=qty_now,
+                    reason="paper_stop_or_target_close",
+                )
+                if not close_ok:
+                    (self._logger or logger).warning("PaperSimulator.check_close blocked: %s", close_reason)
+                    return False
                 cr = self.executor.submit_paper_order(close_order)
                 if getattr(cr, "accepted", False):
                     fn = getattr(broker, "last_fill_for_symbol", None)
@@ -378,16 +382,3 @@ def _paper_clear_round_ledger(app: Any) -> None:
 # ✅ logging + ctx + provenance (central in simulator + calls to PaperTradeExecutor + dream_snapshot fields in trade_log/perf)
 # ✅ paper sim state/execution encapsulated in bounded component (no direct state muts outside in the trading paths surface)
 # Risk: state storage still leaks via facade/persistence (future slice); dupe with pre_dream untouched (per granularity); paper intentionally lighter.
-# D2 sub-slice 8: now routes key muts via LivePositionManager (shared live_* owner + dupe reset resolution per MC "shared live_* manager" + sub7 Next).
-# Mitigated by: thin API + tests + Guardian + D1 artifact + small reversible slice + 05-31 re-anchor + MC forcing.
-# Per 2026-05-31 Phase 3 D2 + SPF-006 + sub4 + aperture-mission-control + sub8.
-
-# --- Constitution Guard (rules 1/3/4/5/7) ---
-# 1 Kapitaalbehoud: paper capital paths + full lineage/provenance now encapsulated + auditable in bounded simulator (D1 20min).
-# 3 Modulaire bounded contexts: new focused PaperSimulator; no god growth; thin delegation from supervisor_inner; aligns with meta D2 pattern.
-# 4 Typed contracts: narrow API; full metadata/ctx already forced via sub4 executor (decision_context_id etc on Orders).
-# 5 Veiligheid en observability vóór: central place for paper sim state + execution + provenance; no optimistic direct muts.
-# 7 Testbaar: given-when-then + monkeypatch/mocks + fail-closed paths explicit in tests (per scaffolding).
-# No violation of 2/6 (evolution small steps; SIM/paper = experiment, REAL=fort).
-
-# End of module. Per AGENTS + 05-31 + MC + Recursive Self-Improvement Protocol + all skills.

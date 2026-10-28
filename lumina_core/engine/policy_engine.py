@@ -7,7 +7,7 @@ from typing import Any
 from lumina_core.logging_utils import correlation_id, get_logger
 from lumina_core.reasoning.agent_contracts import apply_agent_policy_gateway
 from lumina_core.broker.broker_bridge import Order, OrderResult
-from lumina_core.order_gatekeeper import enforce_pre_trade_gate
+from lumina_core.order_gatekeeper import blocked_order_result, enforce_pre_trade_gate, gate_order
 from lumina_core.risk.decision_lineage import decision_context_id_from_event, event_metadata_from_event
 
 logger = get_logger("lumina.risk.gatekeeper")
@@ -74,6 +74,14 @@ class PolicyEngine:
         # The full authoritative gate now always runs for every order.
         # See evolution/log/2026-05-31-elon-phase1-3-2-hard-removal-proposal.md
         # (Executed under temporary user-authorized simulation for unblocking progress)
+
+        allowed_s0, block_reason = gate_order(
+            "policy_engine.execute_order",
+            order,
+            engine=self.engine,
+        )
+        if not allowed_s0:
+            return blocked_order_result(block_reason)
 
         metadata = order.metadata if isinstance(order.metadata, dict) else {}
         reference_price = float(metadata.get("reference_price", 0.0) or 0.0)

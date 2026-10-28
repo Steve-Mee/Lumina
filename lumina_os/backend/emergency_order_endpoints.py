@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from backend.app_auth import verify_admin_role
 from lumina_core.broker.broker_bridge import Order, broker_factory
 from lumina_core.engine.engine_config import EngineConfig
+from lumina_core.order_gatekeeper.ungated_place_block import assert_validation_gate_or_block
 
 logger = logging.getLogger(__name__)
 _EMERGENCY_LOCK = threading.Lock()
@@ -63,6 +64,18 @@ def _execute_emergency_flatten() -> dict[str, Any]:
                 if not symbol:
                     continue
                 close_side = "SELL" if qty > 0 else "BUY"
+                allowed, reason = assert_validation_gate_or_block(
+                    "emergency_order_endpoints",
+                    emergency=True,
+                    order_side=close_side,
+                    live_position_qty=qty,
+                    reason="api_emergency_stop",
+                )
+                if not allowed:
+                    raise HTTPException(
+                        status_code=503,
+                        detail=f"Emergency flatten blocked for {symbol}: {reason}",
+                    )
                 result = broker.submit_order(
                     Order(
                         symbol=symbol,
@@ -71,7 +84,7 @@ def _execute_emergency_flatten() -> dict[str, Any]:
                         order_type="MARKET",
                         stop_loss=0.0,
                         take_profit=0.0,
-                        metadata={"reason": "api_emergency_stop"},
+                        metadata={"reason": "api_emergency_stop", "reduce_only": True},
                     )
                 )
                 if not bool(getattr(result, "accepted", False)):

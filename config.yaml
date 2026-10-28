@@ -1,4 +1,7 @@
 mode: sim
+# Observability only (D1/D8). The S0 ungated-place freeze is a code tripwire.
+# Legal values: off | shadow | sim. Missing key = off. This key cannot reopen places.
+research_execution_mode: shadow
 telegram:
   token: ${TELEGRAM_BOT_TOKEN}
   chat_id: ${TELEGRAM_CHAT_ID}

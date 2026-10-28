@@ -93,6 +93,9 @@ from lumina_core.agent_orchestration.schemas_research import (
     RESEARCH_CAPACITY_TOPIC,
     RESEARCH_DECAY_TOPIC,
     RESEARCH_DEWEIGHT_TOPIC,
+    RESEARCH_EXECUTION_FILL_TOPIC,
+    RESEARCH_EXECUTION_ORDER_TOPIC,
+    RESEARCH_EXECUTION_SIGNAL_TOPIC,
     RESEARCH_GOVERNANCE_TOPIC,
     RESEARCH_GUARDIAN_TOPIC,
     RESEARCH_HYPOTHESIS_TOPIC,
@@ -110,7 +113,10 @@ from lumina_core.agent_orchestration.schemas_research import (
     MutationProposed,
     PromotionCandidate,
     ReplenishmentRequested,
+    ResearchExecutionFill,
+    ResearchExecutionOrderIntent,
     SignalDeweighted,
+    SignalIntent,
     SignalRetired,
     SignalSuspended,
     ValidationResult,
@@ -196,6 +202,9 @@ EVENT_BUS_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     RESEARCH_CAPACITY_TOPIC: CapacityScaled,
     RESEARCH_GUARDIAN_TOPIC: GuardianFinding,
     RESEARCH_REPLENISH_TOPIC: ReplenishmentRequested,
+    RESEARCH_EXECUTION_SIGNAL_TOPIC: SignalIntent,
+    RESEARCH_EXECUTION_ORDER_TOPIC: ResearchExecutionOrderIntent,
+    RESEARCH_EXECUTION_FILL_TOPIC: ResearchExecutionFill,
 }
 
 CRITICAL_EVENT_BUS_TOPICS: frozenset[str] = frozenset(
@@ -229,6 +238,9 @@ CRITICAL_EVENT_BUS_TOPICS: frozenset[str] = frozenset(
         RESEARCH_CAPACITY_TOPIC,
         RESEARCH_GUARDIAN_TOPIC,
         RESEARCH_REPLENISH_TOPIC,
+        RESEARCH_EXECUTION_SIGNAL_TOPIC,
+        RESEARCH_EXECUTION_ORDER_TOPIC,
+        RESEARCH_EXECUTION_FILL_TOPIC,
     }
 )
 
@@ -260,6 +272,9 @@ BLACKBOARD_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     RESEARCH_CAPACITY_TOPIC: CapacityScaled,
     RESEARCH_GUARDIAN_TOPIC: GuardianFinding,
     RESEARCH_REPLENISH_TOPIC: ReplenishmentRequested,
+    RESEARCH_EXECUTION_SIGNAL_TOPIC: SignalIntent,
+    RESEARCH_EXECUTION_ORDER_TOPIC: ResearchExecutionOrderIntent,
+    RESEARCH_EXECUTION_FILL_TOPIC: ResearchExecutionFill,
 }
 
 
