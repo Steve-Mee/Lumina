@@ -25,6 +25,7 @@ jobs:
             requirements-core.txt
             requirements-trading.txt
             requirements-dev.txt
+            requirements-audit.txt
 
       - name: Install audit tooling
         run: pip install --quiet -r requirements-dev.txt
@@ -43,8 +44,11 @@ jobs:
             --ignore-vuln PYSEC-2026-161
           pip-audit --requirement requirements-trading.txt
 
-      - name: safety audit (scan/check fallback)
-        run: python scripts/validation/run_safety_audit.py
+      - name: safety audit (isolated venv)
+        run: |
+          python -m venv "${RUNNER_TEMP}/safety-env"
+          "${RUNNER_TEMP}/safety-env/bin/pip" install --quiet -r requirements-audit.txt
+          "${RUNNER_TEMP}/safety-env/bin/python" scripts/validation/run_safety_audit.py
 
       - name: Generate SBOM (CycloneDX JSON)
         run: |

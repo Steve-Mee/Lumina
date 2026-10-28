@@ -19,8 +19,9 @@ grpcio-tools==1.73.1
 
 # -- Security & dependency audit -------------------------------------------
 pip-audit==2.9.0
-safety==3.7.0
 cyclonedx-bom==7.3.0        # SBOM generation (requires packaging>=25; aligns with requirements-core)
+# safety CLI lives in requirements-audit.txt: it still requires filelock<4.0
+# and must not share an env with production filelock 4.2.4.
 
 # -- Coverage ---------------------------------------------------------------
 coverage==7.13.5

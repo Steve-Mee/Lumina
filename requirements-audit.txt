@@ -1,0 +1,9 @@
+# Isolated Safety CLI — do not install into the same env as requirements-core.
+# safety 3.7.0 / 3.8.1 still require filelock<4.0; production pins filelock==4.2.4.
+#
+# Install in a dedicated venv:
+#   python -m venv .venv-audit
+#   .venv-audit/bin/pip install -r requirements-audit.txt
+#   .venv-audit/bin/python scripts/validation/run_safety_audit.py
+
+safety==3.7.0
