@@ -69,7 +69,7 @@ class OperationsOrdersMixin:
             def note_order_reject(_reason: str) -> None:
                 return None
 
-            def resolve_crawl_submission(_order: object) -> None:
+            def resolve_crawl_submission(_intent: object, _mode: str = "") -> None:
                 return None
 
         app = self._app()
