@@ -36,6 +36,8 @@ Phase 2 (`lumina_research/agents/`): hypotheses on the Event Bus → full Phase 
 
 Phase 3 (`lumina_research/evolution/`): birth/parameter mutations propose only. Reflector cannot apply. Governance requires ADR + signed human review for Risk Core / threshold changes and still does not auto-apply them. Every mutation increments `TrialRegistry` and goes through the Phase 2 event flow.
 
+Phase 4 (`lumina_research/monitoring/`): live vs OOS decay detection, staged de-weight/suspend/retire, capacity scale-back, guardian charter scan, replenishment via HypothesisAgent. Monitoring may only reduce exposure; all positive size still goes through research Risk Core `propose_order()`.
+
 ## Phase 1 freeze
 
 Agents **may not write new signals**, strategy mutants, or birth curricula until the Validation Gate in `lumina_research/validation/` exists and is tested. Do not build on `archive/birth-v1/`. Research may only propose; the live Risk Core and `PromotionGate` remain the only promotion path.

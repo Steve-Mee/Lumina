@@ -14,11 +14,15 @@ from typing import Literal, Mapping
 from lumina_core.agent_orchestration.event_bus import EventBus
 from lumina_core.agent_orchestration.schemas_research import (
     BIRTH_AGENT_ID,
+    CAPACITY_AGENT_ID,
     GOVERNANCE_AGENT_ID,
     GOVERNANCE_SCHEMA_VERSION,
+    GUARDIAN_AGENT_ID,
     HYPOTHESIS_AGENT_ID,
+    MONITOR_AGENT_ID,
     PROMOTION_AGENT_ID,
     REFLECTOR_AGENT_ID,
+    REPLENISH_AGENT_ID,
     RESEARCH_GOVERNANCE_TOPIC,
     VALIDATION_AGENT_ID,
     GovernanceDecision,
@@ -39,13 +43,13 @@ from lumina_research.evolution.seal import (
     mutation_fingerprint,
     review_binding,
 )
-from lumina_research.validation.trial_registry import TrialRegistry
 from lumina_research.evolution.types import (
     ALLOWED_KINDS,
     FORBIDDEN_KINDS,
     GENOME_TARGET,
     PROTECTED_KINDS,
 )
+from lumina_research.validation.trial_registry import TrialRegistry
 
 _HEX = 64
 _ADR_NAME = re.compile(r"^\d{4}-[a-z0-9-]+\.md$")
@@ -58,6 +62,10 @@ _AGENT_IDS = frozenset(
         REFLECTOR_AGENT_ID,
         BIRTH_AGENT_ID,
         GOVERNANCE_AGENT_ID,
+        MONITOR_AGENT_ID,
+        CAPACITY_AGENT_ID,
+        GUARDIAN_AGENT_ID,
+        REPLENISH_AGENT_ID,
     }
 )
 _Signer = Callable[[bytes], str]

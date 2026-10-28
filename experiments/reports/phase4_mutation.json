@@ -1,0 +1,348 @@
+{
+  "excluded": [],
+  "kill_rate": 0.825,
+  "n_excluded": 0,
+  "n_killed": 264,
+  "n_mutants": 320,
+  "n_non_equivalent": 320,
+  "n_survived": 56,
+  "raw_kill_rate": 0.825,
+  "survivors": [
+    {
+      "description": "guardian.py:const-int#0",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:const-int#0",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "guardian.py:raise-to-pass#3",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:const-float#3",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "sizing.py:boolop#6",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:compare#6",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "registry.py:binop#7",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "capacity.py:binop#7",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "guardian.py:compare#7",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "seal.py:return-bool#7",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/seal.py"
+    },
+    {
+      "description": "guardian.py:boolop#8",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "capacity.py:binop#9",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "guardian.py:not#9",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "guardian.py:compare#10",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:const-int#11",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "seal.py:raise-to-pass#12",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/seal.py"
+    },
+    {
+      "description": "guardian.py:const-int#13",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "seal.py:compare#13",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/seal.py"
+    },
+    {
+      "description": "capacity.py:const-float#14",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "replenish.py:const-float#14",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "loop.py:const-int#15",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/loop.py"
+    },
+    {
+      "description": "capacity.py:return-bool#16",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "replenish.py:return-bool#16",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "loop.py:const-int#16",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/loop.py"
+    },
+    {
+      "description": "capacity.py:return-bool#17",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "replenish.py:return-bool#17",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "loop.py:binop#17",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/loop.py"
+    },
+    {
+      "description": "monitor.py:compare#18",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "guardian.py:boolop#18",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "loop.py:compare#18",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/loop.py"
+    },
+    {
+      "description": "registry.py:raise-to-pass#19",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "capacity.py:return-bool#19",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "guardian.py:const-int#19",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "registry.py:raise-to-pass#21",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "monitor.py:const-int#21",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "loop.py:compare#21",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/loop.py"
+    },
+    {
+      "description": "monitor.py:const-float#22",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "loop.py:compare#22",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/loop.py"
+    },
+    {
+      "description": "monitor.py:const-float#23",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "guardian.py:boolop#23",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "loop.py:compare#23",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/loop.py"
+    },
+    {
+      "description": "registry.py:boolop#24",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "monitor.py:const-int#24",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "registry.py:raise-to-pass#25",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "monitor.py:const-int#25",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "capacity.py:binop#25",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "loop.py:raise-to-pass#25",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/loop.py"
+    },
+    {
+      "description": "monitor.py:const-int#26",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "guardian.py:boolop#28",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "registry.py:raise-to-pass#29",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "sizing.py:raise-to-pass#29",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "loop.py:const-int#29",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/loop.py"
+    },
+    {
+      "description": "sizing.py:binop#30",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:not#30",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "sizing.py:binop#31",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:not#31",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_research/monitoring/guardian.py"
+    }
+  ]
+}

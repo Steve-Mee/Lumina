@@ -90,15 +90,29 @@ from lumina_core.agent_orchestration.schemas_safety_meta import (
     MetaRetrainingPayload,
 )
 from lumina_core.agent_orchestration.schemas_research import (
+    RESEARCH_CAPACITY_TOPIC,
+    RESEARCH_DECAY_TOPIC,
+    RESEARCH_DEWEIGHT_TOPIC,
     RESEARCH_GOVERNANCE_TOPIC,
+    RESEARCH_GUARDIAN_TOPIC,
     RESEARCH_HYPOTHESIS_TOPIC,
     RESEARCH_MUTATION_TOPIC,
     RESEARCH_PROMOTION_TOPIC,
+    RESEARCH_REPLENISH_TOPIC,
+    RESEARCH_RETIRE_TOPIC,
+    RESEARCH_SUSPEND_TOPIC,
     RESEARCH_VALIDATION_TOPIC,
+    CapacityScaled,
+    DecayDetected,
     GovernanceDecision,
+    GuardianFinding,
     HypothesisProposed,
     MutationProposed,
     PromotionCandidate,
+    ReplenishmentRequested,
+    SignalDeweighted,
+    SignalRetired,
+    SignalSuspended,
     ValidationResult,
 )
 from lumina_core.agent_orchestration.schemas_trading import (
@@ -175,6 +189,13 @@ EVENT_BUS_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     RESEARCH_PROMOTION_TOPIC: PromotionCandidate,
     RESEARCH_MUTATION_TOPIC: MutationProposed,
     RESEARCH_GOVERNANCE_TOPIC: GovernanceDecision,
+    RESEARCH_DECAY_TOPIC: DecayDetected,
+    RESEARCH_DEWEIGHT_TOPIC: SignalDeweighted,
+    RESEARCH_SUSPEND_TOPIC: SignalSuspended,
+    RESEARCH_RETIRE_TOPIC: SignalRetired,
+    RESEARCH_CAPACITY_TOPIC: CapacityScaled,
+    RESEARCH_GUARDIAN_TOPIC: GuardianFinding,
+    RESEARCH_REPLENISH_TOPIC: ReplenishmentRequested,
 }
 
 CRITICAL_EVENT_BUS_TOPICS: frozenset[str] = frozenset(
@@ -201,6 +222,13 @@ CRITICAL_EVENT_BUS_TOPICS: frozenset[str] = frozenset(
         RESEARCH_PROMOTION_TOPIC,
         RESEARCH_MUTATION_TOPIC,
         RESEARCH_GOVERNANCE_TOPIC,
+        RESEARCH_DECAY_TOPIC,
+        RESEARCH_DEWEIGHT_TOPIC,
+        RESEARCH_SUSPEND_TOPIC,
+        RESEARCH_RETIRE_TOPIC,
+        RESEARCH_CAPACITY_TOPIC,
+        RESEARCH_GUARDIAN_TOPIC,
+        RESEARCH_REPLENISH_TOPIC,
     }
 )
 
@@ -225,6 +253,13 @@ BLACKBOARD_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     RESEARCH_PROMOTION_TOPIC: PromotionCandidate,
     RESEARCH_MUTATION_TOPIC: MutationProposed,
     RESEARCH_GOVERNANCE_TOPIC: GovernanceDecision,
+    RESEARCH_DECAY_TOPIC: DecayDetected,
+    RESEARCH_DEWEIGHT_TOPIC: SignalDeweighted,
+    RESEARCH_SUSPEND_TOPIC: SignalSuspended,
+    RESEARCH_RETIRE_TOPIC: SignalRetired,
+    RESEARCH_CAPACITY_TOPIC: CapacityScaled,
+    RESEARCH_GUARDIAN_TOPIC: GuardianFinding,
+    RESEARCH_REPLENISH_TOPIC: ReplenishmentRequested,
 }
 
 

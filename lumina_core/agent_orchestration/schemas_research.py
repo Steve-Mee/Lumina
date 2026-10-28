@@ -10,6 +10,42 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from lumina_core.agent_orchestration.schemas_research_continuity import (  # noqa: F401
+    CAPACITY_AGENT_ID,
+    CAPACITY_SCHEMA_VERSION,
+    CONTINUITY_GUARDED_TOPICS,
+    CONTINUITY_TOPIC_PRODUCERS,
+    DECAY_SCHEMA_VERSION,
+    DEWEIGHT_SCHEMA_VERSION,
+    GUARDIAN_AGENT_ID,
+    GUARDIAN_SCHEMA_VERSION,
+    MONITOR_AGENT_ID,
+    REPLENISH_AGENT_ID,
+    REPLENISH_SCHEMA_VERSION,
+    RESEARCH_CAPACITY_TOPIC,
+    RESEARCH_DECAY_TOPIC,
+    RESEARCH_DEWEIGHT_TOPIC,
+    RESEARCH_GUARDIAN_TOPIC,
+    RESEARCH_REPLENISH_TOPIC,
+    RESEARCH_RETIRE_TOPIC,
+    RESEARCH_SUSPEND_TOPIC,
+    RETIRE_SCHEMA_VERSION,
+    SUSPEND_SCHEMA_VERSION,
+    CapacityScaled,
+    DecayDetected,
+    DecayMethod,
+    GuardianCadence,
+    GuardianEvidence,
+    GuardianFinding,
+    GuardianSeverity,
+    ReplenishReason,
+    ReplenishmentRequested,
+    SignalDeweighted,
+    SignalRetired,
+    SignalStage,
+    SignalSuspended,
+)
+
 RESEARCH_HYPOTHESIS_TOPIC = "research.hypothesis.proposed"
 RESEARCH_VALIDATION_TOPIC = "research.validation.result"
 RESEARCH_PROMOTION_TOPIC = "research.promotion.candidate"
@@ -46,6 +82,7 @@ EVENT_BUS_TOPIC_PRODUCERS: dict[str, frozenset[str]] = {
     RESEARCH_PROMOTION_TOPIC: frozenset({PROMOTION_AGENT_ID}),
     RESEARCH_MUTATION_TOPIC: frozenset({REFLECTOR_AGENT_ID}),
     RESEARCH_GOVERNANCE_TOPIC: frozenset({GOVERNANCE_AGENT_ID}),
+    **CONTINUITY_TOPIC_PRODUCERS,
 }
 
 # HMAC issuer guards. Existing (non-research) topics cannot register a guard.
@@ -56,7 +93,7 @@ EVENT_BUS_GUARDED_TOPICS: frozenset[str] = frozenset(
         RESEARCH_MUTATION_TOPIC,
         RESEARCH_GOVERNANCE_TOPIC,
     }
-)
+) | CONTINUITY_GUARDED_TOPICS
 
 _RATIONALE_MIN = 8
 

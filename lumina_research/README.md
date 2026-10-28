@@ -49,6 +49,21 @@ Typed events `HypothesisProposed`, `ValidationResult`, `PromotionCandidate` are 
 
 Fitness remains `lumina_research/fitness.py` (median OOS Sharpe after costs, 1−PBO, WFE, regime robustness, turnover and low-DSR penalties). In-sample PnL is refused. Additive topics: `research.mutation.proposed`, `research.governance.decision`.
 
+## Phase 4 — continuity and live monitoring
+
+| Path | Role |
+|------|------|
+| `monitoring/monitor.py` | Compare live paper/shadow metrics to the sealed OOS distribution (z / percentile / CUSUM / SPRT) |
+| `monitoring/registry.py` | Admit-only live book from sealed `PromotionCandidate` + `ValidationResult` |
+| `monitoring/capacity.py` | Per-signal, instrument, family, and cluster caps; scale-back only |
+| `monitoring/sizing.py` | Weight × capacity × regime (all ≤ 1) then research Risk Core `propose_order()` |
+| `monitoring/guardian.py` | Daily/weekly Research Charter scan; violations propose suspend |
+| `monitoring/replenish.py` | Floor breach → `HypothesisAgent` only; no registry shortcut |
+| `monitoring/cli.py` | Scheduler entrypoint: `python -m lumina_research.monitoring daily\|weekly` |
+| `monitoring/loop.py` | `ContinuityRuntime` + `run_phase4_detection` |
+
+Staged reductions: `active → deweighted → suspended → retired`. Weights never rise. Additive topics: `research.decay.detected`, `research.signal.deweighted`, `research.signal.suspended`, `research.signal.retired`, `research.capacity.scaled`, `research.guardian.finding`, `research.replenishment.requested`. ADR-0058.
+
 ## This layer may only propose
 
 `lumina_research` may generate hypotheses, reports, and Validation Gate evidence. It **must never**:
