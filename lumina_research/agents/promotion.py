@@ -1,7 +1,7 @@
 """PromotionAgent: emit PromotionCandidate only after a sealed PASS and research Risk Core approval.
 
-Never writes the live PromotionGate (`lumina_core/evolution/promotion_gate.py`) or the
-live Risk Core (`lumina_core/risk/`). A PromotionCandidate is a proposal for a later phase.
+Never writes the live KEEP PromotionGate or the live Risk Core.
+A PromotionCandidate is a proposal for a later phase.
 """
 
 from __future__ import annotations
@@ -23,6 +23,9 @@ from lumina_core.agent_orchestration.schemas_research import (
 )
 from lumina_core.engine.agent_blackboard import AgentBlackboard
 from lumina_research.agents.experiment_log import log_experiment
+from lumina_research.agents.frozen import Frozen
+from lumina_research.agents.objects import as_object_dict, as_object_list, mapping_get
+from lumina_research.agents.payloads import dump_json
 from lumina_research.agents.provenance import ProvenanceAuthority
 from lumina_research.risk_core.engine import RiskCore
 from lumina_research.risk_core.types import Decision, DecisionKind, OrderProposal, cluster_for
@@ -40,8 +43,16 @@ class PromotionRefused(ValueError):
     """Direct emission or an unauthenticated / failing ValidationResult."""
 
 
-class PromotionAgent:
+class PromotionAgent(Frozen):
     """Fail-closed issuer. Scaled counts as approved, with the scaled size."""
+
+    _bus: EventBus
+    _core: RiskCore
+    _authority: ProvenanceAuthority
+    _log_path: Path
+    _hypotheses: dict[str, object]
+    _blackboard: AgentBlackboard | None
+    _issued: list[PromotionCandidate]
 
     def __init_subclass__(cls) -> None:
         raise TypeError("PromotionAgent cannot be subclassed")
@@ -56,42 +67,40 @@ class PromotionAgent:
         hypotheses: Mapping[str, object] | None = None,
         blackboard: AgentBlackboard | None = None,
     ) -> None:
-        object.__setattr__(self, "_bus", bus)
-        object.__setattr__(self, "_core", core)
-        object.__setattr__(self, "_authority", authority)
-        object.__setattr__(self, "_log_path", experiment_log_path)
-        object.__setattr__(self, "_hypotheses", dict(hypotheses or {}))
-        object.__setattr__(self, "_blackboard", blackboard)
-        object.__setattr__(self, "_issued", [])
+        self._bus = bus
+        self._core = core
+        self._authority = authority
+        self._log_path = experiment_log_path
+        self._hypotheses = dict(hypotheses or {})
+        self._blackboard = blackboard
+        self._issued = []
+        self._freeze()
         bus.register_topic_guard(RESEARCH_PROMOTION_TOPIC, self._guard_issue)
         if blackboard is not None:
             blackboard.register_topic_guard(RESEARCH_PROMOTION_TOPIC, self._guard_issue)
         bus.subscribe(RESEARCH_HYPOTHESIS_TOPIC, self._on_hypothesis)
         bus.subscribe(RESEARCH_VALIDATION_TOPIC, self._on_validation)
 
-    def __setattr__(self, name: str, value: object) -> None:
-        raise AttributeError("PromotionAgent attributes are frozen")
-
     def remember_hypothesis(self, hypothesis_id: str, payload: Mapping[str, object]) -> None:
-        store: dict[str, object] = self._hypotheses  # type: ignore[attr-defined]
-        store[hypothesis_id] = dict(payload)
+        self._hypotheses[hypothesis_id] = dict(payload)
 
     def issued(self) -> tuple[PromotionCandidate, ...]:
-        issued: list[PromotionCandidate] = self._issued  # type: ignore[attr-defined]
-        return tuple(issued)
+        return tuple(self._issued)
 
     def emit_candidate(self, candidate: PromotionCandidate) -> None:
         raise PromotionRefused("direct emission of PromotionCandidate is forbidden")
 
     def consider(self, event: DomainEvent | ValidationResult) -> PromotionCandidate | None:
         payload = _payload_dict(event)
-        authority: ProvenanceAuthority = self._authority  # type: ignore[attr-defined]
-        verified = authority.verify_validation(payload)
+        verified = self._authority.verify_validation(payload)
         if verified is None:
             self._log_kill(payload, "provenance_invalid", ("provenance_invalid",))
             return None
-        replayed = payload.get("trial_id") != verified.get("trial_id")
-        if replayed:
+        trial_id = _as_int(verified.get("trial_id"))
+        if trial_id is None:
+            self._log_kill(payload, "trial_id_invalid", ("trial_id_invalid",))
+            return None
+        if payload.get("trial_id") != trial_id:
             self._log_kill(payload, "trial_id_replay", ("trial_id_replay",))
             return None
         if not _gate_pass(verified):
@@ -104,6 +113,9 @@ class PromotionAgent:
             self._log_kill(payload, "hypothesis_unknown", ("hypothesis_unknown",))
             return None
         decision = self._risk_decide(hyp)
+        if decision is None:
+            self._log_kill(payload, "hypothesis_malformed", ("hypothesis_malformed",))
+            return None
         if decision.kind is DecisionKind.REJECTED:
             self._log_kill(payload, f"risk:{decision.reason}", (f"risk:{decision.reason}",))
             return None
@@ -113,11 +125,11 @@ class PromotionAgent:
             scaled = True
         else:
             assert_never(decision.kind)
-        unsigned = {
+        unsigned: dict[str, object] = {
             "schema_version": "research.promotion.candidate.v1",
             "hypothesis_id": hypothesis_id,
             "config_id": str(verified["config_id"]),
-            "trial_id": int(verified["trial_id"]),
+            "trial_id": trial_id,
             "agent_id": PROMOTION_AGENT_ID,
             "instrument": str(hyp["instrument"]),
             "decision_kind": "scaled" if scaled else "approved",
@@ -128,27 +140,24 @@ class PromotionAgent:
             "validation_report_sha256": str(payload["report_sha256"]),
             "validation_mac": str(payload["provenance_mac"]),
         }
-        issue_mac = authority.seal_issue(unsigned)
+        issue_mac = self._authority.seal_issue(unsigned)
         candidate = PromotionCandidate.model_validate({**unsigned, "issue_mac": issue_mac})
-        dumped = candidate.model_dump(mode="json", exclude_none=False)
-        bus: EventBus = self._bus  # type: ignore[attr-defined]
-        bus.publish(
+        dumped = dump_json(candidate)
+        self._bus.publish(
             topic=RESEARCH_PROMOTION_TOPIC,
             producer=PROMOTION_AGENT_ID,
-            payload=dumped,
+            payload=dict(dumped),
         )
-        board: AgentBlackboard | None = self._blackboard  # type: ignore[attr-defined]
-        if board is not None:
-            board.publish_sync(
+        if self._blackboard is not None:
+            self._blackboard.publish_sync(
                 topic=RESEARCH_PROMOTION_TOPIC,
                 producer=PROMOTION_AGENT_ID,
-                payload=dumped,
+                payload=dict(dumped),
                 confidence=1.0,
             )
-        issued: list[PromotionCandidate] = self._issued  # type: ignore[attr-defined]
-        issued.append(candidate)
+        self._issued.append(candidate)
         log_experiment(
-            path=self._log_path,  # type: ignore[attr-defined]
+            path=self._log_path,
             agent_id=PROMOTION_AGENT_ID,
             event="promotion",
             hypothesis_id=hypothesis_id,
@@ -161,7 +170,7 @@ class PromotionAgent:
 
     def _on_hypothesis(self, event: DomainEvent) -> None:
         hyp = event.typed_payload(HypothesisProposed)
-        self.remember_hypothesis(hyp.hypothesis_id, hyp.model_dump(mode="json"))
+        self.remember_hypothesis(hyp.hypothesis_id, dump_json(hyp))
 
     def _on_validation(self, event: DomainEvent) -> None:
         try:
@@ -171,39 +180,41 @@ class PromotionAgent:
             self._log_kill(event.payload, "consider_error", ("consider_error",))
 
     def _guard_issue(self, producer: str, payload: dict[str, object]) -> bool:
-        authority: ProvenanceAuthority = self._authority  # type: ignore[attr-defined]
-        return authority.guard_promotion(producer, payload)
+        return self._authority.guard_promotion(producer, payload)
 
     def _lookup(self, hypothesis_id: str) -> dict[str, object] | None:
-        store: dict[str, object] = self._hypotheses  # type: ignore[attr-defined]
-        raw = store.get(hypothesis_id)
-        if not isinstance(raw, dict):
-            return None
-        return raw
+        return as_object_dict(self._hypotheses.get(hypothesis_id))
 
-    def _risk_decide(self, hyp: Mapping[str, object]) -> Decision:
-        instrument = str(hyp["instrument"])
-        quantity = float(hyp["proposed_quantity"])
-        price = float(hyp["proposed_price"])
-        notional = float(hyp["proposed_notional"])
+    def _risk_decide(self, hyp: Mapping[str, object]) -> Decision | None:
+        instrument = hyp.get("instrument")
+        quantity = hyp.get("proposed_quantity")
+        price = hyp.get("proposed_price")
+        notional = hyp.get("proposed_notional")
+        if not isinstance(instrument, str):
+            return None
+        qty = _as_float(quantity)
+        px = _as_float(price)
+        notion = _as_float(notional)
+        if qty is None or px is None or notion is None:
+            return None
+        now = datetime.now(timezone.utc)
+        self._core.heartbeat(now)
         proposal = OrderProposal(
             agent_id=PROMOTION_AGENT_ID,
             instrument=instrument,
             side="buy",
-            quantity=quantity,
-            price=price,
-            notional=notional,
+            quantity=qty,
+            price=px,
+            notional=notion,
             cluster_id=cluster_for(instrument),
-            submitted_at_utc=datetime.now(timezone.utc),
+            submitted_at_utc=now,
         )
-        core: RiskCore = self._core  # type: ignore[attr-defined]
-        core.heartbeat(datetime.now(timezone.utc))
-        return core.propose_order(proposal)
+        return self._core.propose_order(proposal)
 
     def _log_kill(self, payload: Mapping[str, object], reason: str, checks: tuple[str, ...]) -> None:
         hypothesis_id = str(payload.get("hypothesis_id", "unknown"))
         log_experiment(
-            path=self._log_path,  # type: ignore[attr-defined]
+            path=self._log_path,
             agent_id=PROMOTION_AGENT_ID,
             event="kill",
             hypothesis_id=hypothesis_id,
@@ -216,14 +227,27 @@ class PromotionAgent:
 
 def _payload_dict(event: DomainEvent | ValidationResult) -> dict[str, object]:
     if isinstance(event, ValidationResult):
-        return event.model_dump(mode="json", exclude_none=False)
+        return dump_json(event)
     return dict(event.payload)
 
 
 def _as_reasons(value: object) -> tuple[str, ...]:
-    if isinstance(value, (list, tuple)):
-        return tuple(str(item) for item in value)
-    return ()
+    items = as_object_list(value)
+    if items is None:
+        return ()
+    return tuple(str(item) for item in items)
+
+
+def _as_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def _as_float(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
 
 
 def _gate_pass(verified: Mapping[str, object]) -> bool:
@@ -232,30 +256,28 @@ def _gate_pass(verified: Mapping[str, object]) -> bool:
         return False
     if _as_reasons(verified.get("reject_reasons")):
         return False
-    dsr = verified.get("dsr")
-    pbo = verified.get("pbo")
-    wfe = verified.get("wfe")
-    oos = verified.get("oos_distribution")
-    if not isinstance(dsr, dict) or not isinstance(pbo, dict) or not isinstance(wfe, dict):
+    dsr = as_object_dict(mapping_get(verified, "dsr"))
+    pbo = as_object_dict(mapping_get(verified, "pbo"))
+    wfe = as_object_dict(mapping_get(verified, "wfe"))
+    oos = as_object_dict(mapping_get(verified, "oos_distribution"))
+    if dsr is None or pbo is None or wfe is None or oos is None:
         return False
-    if not isinstance(oos, dict):
+    dsr_p = mapping_get(dsr, "probability")
+    pbo_p = mapping_get(pbo, "pbo")
+    wfe_v = mapping_get(wfe, "wfe")
+    values = as_object_list(mapping_get(oos, "values"))
+    if not isinstance(dsr_p, (int, float)) or isinstance(dsr_p, bool) or float(dsr_p) < FLOOR_DSR_PROBABILITY_MIN:
         return False
-    dsr_p = dsr.get("probability")
-    pbo_p = pbo.get("pbo")
-    wfe_v = wfe.get("wfe")
-    values = oos.get("values")
-    if not isinstance(dsr_p, (int, float)) or float(dsr_p) < FLOOR_DSR_PROBABILITY_MIN:
+    if not isinstance(pbo_p, (int, float)) or isinstance(pbo_p, bool) or float(pbo_p) > FLOOR_PBO_HARD_REJECT:
         return False
-    if not isinstance(pbo_p, (int, float)) or float(pbo_p) > FLOOR_PBO_HARD_REJECT:
+    if not isinstance(wfe_v, (int, float)) or isinstance(wfe_v, bool) or float(wfe_v) < FLOOR_WFE_MIN:
         return False
-    if not isinstance(wfe_v, (int, float)) or float(wfe_v) < FLOOR_WFE_MIN:
+    windows = mapping_get(verified, "n_oos_windows")
+    if not isinstance(windows, int) or isinstance(windows, bool) or windows < FLOOR_MIN_OOS_WINDOWS:
         return False
-    windows = verified.get("n_oos_windows")
-    if not isinstance(windows, int) or windows < FLOOR_MIN_OOS_WINDOWS:
+    if values is None or len(values) < 1:
         return False
-    if not isinstance(values, list) or len(values) < 1:
-        return False
-    median = verified.get("median_oos_after_costs")
-    if not isinstance(median, (int, float)) or float(median) < 0.0:
+    median = mapping_get(verified, "median_oos_after_costs")
+    if not isinstance(median, (int, float)) or isinstance(median, bool) or float(median) < 0.0:
         return False
     return True

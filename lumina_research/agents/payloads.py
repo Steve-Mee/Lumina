@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 from typing import Mapping
 
+from pydantic import BaseModel
+
 from lumina_core.agent_orchestration.schemas_research import (
     DSRPayload,
     OOSDistributionPayload,
@@ -20,6 +22,14 @@ from lumina_research.validation.types import (
     RegimeSnapshot,
     WFESnapshot,
 )
+
+
+def dump_json(model: BaseModel) -> dict[str, object]:
+    dumped = model.model_dump(mode="json", exclude_none=False)
+    out: dict[str, object] = {}
+    for key in dumped:
+        out[str(key)] = dumped[key]
+    return out
 
 
 def json_float(value: float) -> float | None:
@@ -89,11 +99,11 @@ def regime_payload(snapshot: RegimeSnapshot) -> RegimePayload:
 
 def report_metric_fields(report: GateReport) -> Mapping[str, object]:
     return {
-        "oos_distribution": oos_payload(report.oos_distribution).model_dump(mode="json"),
-        "dsr": dsr_payload(report.dsr).model_dump(mode="json"),
-        "pbo": pbo_payload(report.pbo).model_dump(mode="json"),
-        "wfe": wfe_payload(report.wfe).model_dump(mode="json"),
-        "regimes": regime_payload(report.regimes).model_dump(mode="json"),
+        "oos_distribution": dump_json(oos_payload(report.oos_distribution)),
+        "dsr": dump_json(dsr_payload(report.dsr)),
+        "pbo": dump_json(pbo_payload(report.pbo)),
+        "wfe": dump_json(wfe_payload(report.wfe)),
+        "regimes": dump_json(regime_payload(report.regimes)),
         "n_oos_windows": report.n_oos_windows,
         "median_oos_after_costs": json_float(report.median_oos_after_costs),
         "reject_reasons": list(report.reject_reasons),

@@ -10,7 +10,7 @@ import hashlib
 import hmac
 import json
 import os
-from typing import Mapping
+from collections.abc import Callable, Mapping
 
 from lumina_core.agent_orchestration.schemas_research import (
     PROMOTION_SCHEMA_VERSION,
@@ -18,16 +18,24 @@ from lumina_core.agent_orchestration.schemas_research import (
     PromotionCandidate,
     ValidationResult,
 )
+from lumina_research.agents.frozen import Frozen
+from lumina_research.agents.objects import as_object_dict, as_object_list
+from lumina_research.agents.payloads import dump_json
 
 _HEX = 64
+_Signer = Callable[[bytes], str]
+_Verifier = Callable[[bytes, str], bool]
 
 
 class ProvenanceError(ValueError):
     """Sealed payload failed authentication."""
 
 
-class ProvenanceAuthority:
+class ProvenanceAuthority(Frozen):
     """HMAC-SHA256 sealer. The key is not stored as a public attribute."""
+
+    _sign: _Signer
+    _verify: _Verifier
 
     def __init_subclass__(cls) -> None:
         raise TypeError("ProvenanceAuthority cannot be subclassed")
@@ -41,52 +49,53 @@ class ProvenanceAuthority:
             return hmac.new(material, message, hashlib.sha256).hexdigest()
 
         def verify(message: bytes, mac: str) -> bool:
-            if not isinstance(mac, str) or len(mac) != _HEX:
+            if len(mac) != _HEX:
                 return False
             expected = hmac.new(material, message, hashlib.sha256).hexdigest()
             return hmac.compare_digest(expected, mac)
 
-        object.__setattr__(self, "_sign", sign)
-        object.__setattr__(self, "_verify", verify)
-
-    def __setattr__(self, name: str, value: object) -> None:
-        raise AttributeError("ProvenanceAuthority attributes are frozen")
+        self._sign = sign
+        self._verify = verify
+        self._freeze()
 
     def seal_validation(self, fields: Mapping[str, object]) -> tuple[str, str]:
         canonical = _canonical_validation(fields)
         digest = hashlib.sha256(canonical).hexdigest()
-        mac: str = self._sign(canonical)  # type: ignore[attr-defined]
-        return digest, mac
+        return digest, self._sign(canonical)
 
     def verify_validation(self, payload: Mapping[str, object]) -> dict[str, object] | None:
         mac = payload.get("provenance_mac")
         if not isinstance(mac, str):
             return None
-        canonical = _canonical_validation(payload)
-        verify = self._verify  # type: ignore[attr-defined]
-        if not bool(verify(canonical, mac)):
+        try:
+            canonical = _canonical_validation(payload)
+        except KeyError:
+            return None
+        if not self._verify(canonical, mac):
             return None
         digest = hashlib.sha256(canonical).hexdigest()
         reported = payload.get("report_sha256")
         if reported != digest:
             return None
         trial_id = payload.get("trial_id")
-        if not isinstance(trial_id, int) or trial_id < 1:
+        if not isinstance(trial_id, int) or isinstance(trial_id, bool) or trial_id < 1:
             return None
-        return json.loads(canonical.decode("utf-8"))
+        parsed = as_object_dict(json.loads(canonical.decode("utf-8")))
+        return parsed
 
     def seal_issue(self, fields: Mapping[str, object]) -> str:
         canonical = _canonical_issue(fields)
-        mac: str = self._sign(canonical)  # type: ignore[attr-defined]
-        return mac
+        return self._sign(canonical)
 
     def verify_issue(self, payload: Mapping[str, object]) -> bool:
         mac = payload.get("issue_mac")
         if not isinstance(mac, str):
             return False
-        canonical = _canonical_issue(payload)
-        verify = self._verify  # type: ignore[attr-defined]
-        return bool(verify(canonical, mac))
+        try:
+            canonical = _canonical_issue(payload)
+        except KeyError:
+            return False
+        return self._verify(canonical, mac)
 
     def guard_promotion(self, producer: str, payload: dict[str, object]) -> bool:
         if producer.strip() != "promotion_agent":
@@ -99,7 +108,7 @@ class ProvenanceAuthority:
 
 
 def validation_fields_from_result(result: ValidationResult) -> dict[str, object]:
-    dumped = result.model_dump(mode="json", exclude_none=False)
+    dumped = dump_json(result)
     dumped.pop("provenance_mac", None)
     dumped.pop("report_sha256", None)
     return dumped
@@ -113,7 +122,7 @@ def _canonical_validation(fields: Mapping[str, object]) -> bytes:
         "trial_id": fields["trial_id"],
         "agent_id": fields["agent_id"],
         "passed": fields["passed"],
-        "reject_reasons": list(fields["reject_reasons"]),
+        "reject_reasons": _require_sequence(fields["reject_reasons"]),
         "oos_distribution": fields["oos_distribution"],
         "dsr": fields["dsr"],
         "pbo": fields["pbo"],
@@ -148,9 +157,18 @@ def _dumps(value: object) -> bytes:
     return json.dumps(_stable(value), sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
 
 
+def _require_sequence(value: object) -> list[object]:
+    items = as_object_list(value)
+    if items is None:
+        raise KeyError("reject_reasons")
+    return items
+
+
 def _stable(value: object) -> object:
-    if isinstance(value, dict):
-        return {str(key): _stable(value[key]) for key in sorted(value)}
-    if isinstance(value, (list, tuple)):
-        return [_stable(item) for item in value]
+    as_dict = as_object_dict(value)
+    if as_dict is not None:
+        return {key: _stable(as_dict[key]) for key in sorted(as_dict)}
+    as_list = as_object_list(value)
+    if as_list is not None:
+        return [_stable(item) for item in as_list]
     return value

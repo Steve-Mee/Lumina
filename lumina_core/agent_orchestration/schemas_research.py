@@ -78,7 +78,7 @@ class HypothesisProposed(BaseModel):
     kind: Literal["noise", "planted_edge"]
     instrument: Literal["ES", "NQ", "MES", "MNQ"]
     seed: int
-    n_obs: int = Field(ge=240)
+    n_obs: int = Field(ge=241)
     mu: float
     sigma: float = Field(gt=0.0)
     planted: bool

@@ -1,0 +1,26 @@
+"""Narrow untyped mappings (JSON / HMAC payloads) to ``dict[str, object]``."""
+
+from __future__ import annotations
+
+from typing import Mapping, cast
+
+
+def as_object_dict(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    typed = cast(dict[object, object], value)
+    return {str(key): item for key, item in typed.items()}
+
+
+def as_object_list(value: object) -> list[object] | None:
+    if isinstance(value, list):
+        return list(cast(list[object], value))
+    if isinstance(value, tuple):
+        return list(cast(tuple[object, ...], value))
+    return None
+
+
+def mapping_get(mapping: Mapping[str, object], key: str) -> object:
+    if key not in mapping:
+        return None
+    return mapping[key]

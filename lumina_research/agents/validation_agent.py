@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Sequence
 
 from lumina_core.agent_orchestration.event_bus import DomainEvent, EventBus
 from lumina_core.agent_orchestration.schemas_research import (
@@ -15,8 +15,10 @@ from lumina_core.agent_orchestration.schemas_research import (
 )
 from lumina_core.engine.agent_blackboard import AgentBlackboard
 from lumina_research.agents.experiment_log import log_experiment
+from lumina_research.agents.frozen import Frozen
 from lumina_research.agents.payloads import (
     dsr_payload,
+    dump_json,
     json_float,
     oos_payload,
     pbo_payload,
@@ -27,13 +29,24 @@ from lumina_research.agents.payloads import (
 from lumina_research.agents.provenance import ProvenanceAuthority
 from lumina_research.agents.synthetic import materialize
 from lumina_research.validation.cost_model import apply_costs
-from lumina_research.validation.pipeline import evaluate_candidate
+from lumina_research.validation.pipeline import CandidateEvaluation, evaluate_candidate, missing_evaluation
 from lumina_research.validation.trial_registry import TrialRegistry
 from lumina_research.validation.types import GateReport
 
+_Evaluate = Callable[..., CandidateEvaluation]
 
-class ValidationAgent:
+
+class ValidationAgent(Frozen):
     """Buffers HypothesisProposed events, then runs evaluate_candidate for every variant."""
+
+    _bus: EventBus
+    _registry: TrialRegistry
+    _authority: ProvenanceAuthority
+    _log_path: Path
+    _blackboard: AgentBlackboard | None
+    _audit_path: Path
+    _pending: list[HypothesisProposed]
+    _evaluate: _Evaluate
 
     def __init_subclass__(cls) -> None:
         raise TypeError("ValidationAgent cannot be subclassed")
@@ -48,31 +61,26 @@ class ValidationAgent:
         blackboard: AgentBlackboard | None = None,
         audit_path: Path | None = None,
     ) -> None:
-        object.__setattr__(self, "_bus", bus)
-        object.__setattr__(self, "_registry", registry)
-        object.__setattr__(self, "_authority", authority)
-        object.__setattr__(self, "_log_path", experiment_log_path)
-        object.__setattr__(self, "_blackboard", blackboard)
-        object.__setattr__(self, "_audit_path", audit_path if audit_path is not None else registry.audit_path)
-        object.__setattr__(self, "_pending", [])
-        object.__setattr__(self, "_evaluate", evaluate_candidate)
+        self._bus = bus
+        self._registry = registry
+        self._authority = authority
+        self._log_path = experiment_log_path
+        self._blackboard = blackboard
+        self._audit_path = audit_path if audit_path is not None else registry.audit_path
+        self._pending = []
+        self._evaluate = evaluate_candidate
+        self._freeze()
         bus.subscribe(RESEARCH_HYPOTHESIS_TOPIC, self._on_hypothesis)
 
-    def __setattr__(self, name: str, value: object) -> None:
-        raise AttributeError("ValidationAgent attributes are frozen")
-
     def _on_hypothesis(self, event: DomainEvent) -> None:
-        pending: list[HypothesisProposed] = self._pending  # type: ignore[attr-defined]
-        pending.append(event.typed_payload(HypothesisProposed))
+        self._pending.append(event.typed_payload(HypothesisProposed))
 
     def pending(self) -> tuple[HypothesisProposed, ...]:
-        pending: list[HypothesisProposed] = self._pending  # type: ignore[attr-defined]
-        return tuple(pending)
+        return tuple(self._pending)
 
     def flush(self) -> tuple[ValidationResult, ...]:
-        pending: list[HypothesisProposed] = self._pending  # type: ignore[attr-defined]
-        batch = tuple(pending)
-        pending.clear()
+        batch = tuple(self._pending)
+        self._pending.clear()
         if not batch:
             return ()
         nets = _peer_nets(batch)
@@ -87,44 +95,47 @@ class ValidationAgent:
         hypothesis: HypothesisProposed,
         peers: Sequence[Sequence[float]],
     ) -> ValidationResult:
-        gross, positions, markets = materialize(hypothesis)
-        evaluate = self._evaluate  # type: ignore[attr-defined]
-        registry: TrialRegistry = self._registry  # type: ignore[attr-defined]
-        evaluation = evaluate(
-            agent_id=VALIDATION_AGENT_ID,
-            config_id=hypothesis.config_id,
-            gross_returns=gross,
-            positions=positions,
-            markets=markets,
-            spec=hypothesis.instrument,
-            registry=registry,
-            peer_net_returns=peers,
-            audit_path=self._audit_path,  # type: ignore[attr-defined]
-        )
-        trial_id = _latest_trial_id(registry, hypothesis.config_id)
+        try:
+            gross, positions, markets = materialize(hypothesis)
+            evaluation = self._evaluate(
+                agent_id=VALIDATION_AGENT_ID,
+                config_id=hypothesis.config_id,
+                gross_returns=gross,
+                positions=positions,
+                markets=markets,
+                spec=hypothesis.instrument,
+                registry=self._registry,
+                peer_net_returns=peers,
+                audit_path=self._audit_path,
+            )
+        except Exception:
+            evaluation = missing_evaluation(
+                agent_id=VALIDATION_AGENT_ID,
+                audit_path=self._audit_path,
+                registry=self._registry,
+            )
+        trial_id = _latest_trial_id(self._registry, hypothesis.config_id)
         result = self._seal(hypothesis, evaluation.report, trial_id)
-        dumped = result.model_dump(mode="json", exclude_none=False)
-        bus: EventBus = self._bus  # type: ignore[attr-defined]
-        bus.publish(
+        dumped = dump_json(result)
+        self._bus.publish(
             topic=RESEARCH_VALIDATION_TOPIC,
             producer=VALIDATION_AGENT_ID,
-            payload=dumped,
+            payload=dict(dumped),
         )
-        board: AgentBlackboard | None = self._blackboard  # type: ignore[attr-defined]
-        if board is not None:
-            board.publish_sync(
+        if self._blackboard is not None:
+            self._blackboard.publish_sync(
                 topic=RESEARCH_VALIDATION_TOPIC,
                 producer=VALIDATION_AGENT_ID,
-                payload=dumped,
+                payload=dict(dumped),
                 confidence=1.0 if result.passed else 0.0,
             )
         reasons = result.reject_reasons
         log_experiment(
-            path=self._log_path,  # type: ignore[attr-defined]
+            path=self._log_path,
             agent_id=VALIDATION_AGENT_ID,
             event="validation",
             hypothesis_id=hypothesis.hypothesis_id,
-            rationale=hypothesis.rationale.model_dump(mode="json"),
+            rationale=dump_json(hypothesis.rationale),
             metrics=dict(report_metric_fields(evaluation.report)),
             reject_reason=reasons[0] if reasons else None,
             failed_checks=reasons,
@@ -145,22 +156,20 @@ class ValidationAgent:
             "agent_id": VALIDATION_AGENT_ID,
             "passed": report.passed,
             "reject_reasons": list(report.reject_reasons),
-            "oos_distribution": oos_payload(report.oos_distribution).model_dump(mode="json"),
-            "dsr": dsr_payload(report.dsr).model_dump(mode="json"),
-            "pbo": pbo_payload(report.pbo).model_dump(mode="json"),
-            "wfe": wfe_payload(report.wfe).model_dump(mode="json"),
-            "regimes": regime_payload(report.regimes).model_dump(mode="json"),
+            "oos_distribution": dump_json(oos_payload(report.oos_distribution)),
+            "dsr": dump_json(dsr_payload(report.dsr)),
+            "pbo": dump_json(pbo_payload(report.pbo)),
+            "wfe": dump_json(wfe_payload(report.wfe)),
+            "regimes": dump_json(regime_payload(report.regimes)),
             "n_oos_windows": report.n_oos_windows,
             "median_oos_after_costs": json_float(report.median_oos_after_costs),
         }
-        authority: ProvenanceAuthority = self._authority  # type: ignore[attr-defined]
-        digest, mac = authority.seal_validation(fields)
-        median = fields["median_oos_after_costs"]
-        median_value: float | None
-        if median is None or isinstance(median, float):
-            median_value = median
+        digest, mac = self._authority.seal_validation(fields)
+        median_raw = fields["median_oos_after_costs"]
+        if isinstance(median_raw, bool) or not isinstance(median_raw, (int, float)):
+            median_value: float | None = None
         else:
-            median_value = None
+            median_value = float(median_raw)
         return ValidationResult(
             hypothesis_id=hypothesis.hypothesis_id,
             config_id=hypothesis.config_id,
@@ -183,15 +192,18 @@ class ValidationAgent:
 def _peer_nets(batch: tuple[HypothesisProposed, ...]) -> tuple[tuple[float, ...], ...]:
     nets: list[tuple[float, ...]] = []
     for hypothesis in batch:
-        gross, positions, markets = materialize(hypothesis)
-        costed = apply_costs(
-            gross_returns=gross,
-            positions=positions,
-            equity=100_000.0,
-            spec=hypothesis.instrument,
-            markets=markets,
-        )
-        nets.append(costed.net_returns)
+        try:
+            gross, positions, markets = materialize(hypothesis)
+            costed = apply_costs(
+                gross_returns=gross,
+                positions=positions,
+                equity=100_000.0,
+                spec=hypothesis.instrument,
+                markets=markets,
+            )
+            nets.append(costed.net_returns)
+        except Exception:
+            nets.append(())
     return tuple(nets)
 
 

@@ -15,16 +15,31 @@ from lumina_core.agent_orchestration.schemas_research import (
 )
 from lumina_core.engine.agent_blackboard import AgentBlackboard
 from lumina_research.agents.experiment_log import log_experiment
+from lumina_research.agents.frozen import Frozen
 from lumina_research.agents.generators import HypothesisDraft, HypothesisGenerator
+from lumina_research.agents.payloads import dump_json
 from lumina_research.validation.trial_registry import TrialRegistry
+
+_INSTRUMENTS: dict[str, Literal["ES", "NQ", "MES", "MNQ"]] = {
+    "ES": "ES",
+    "NQ": "NQ",
+    "MES": "MES",
+    "MNQ": "MNQ",
+}
 
 
 class HypothesisRefused(ValueError):
     """A hypothesis without a complete rationale is refused and not published."""
 
 
-class HypothesisAgent:
+class HypothesisAgent(Frozen):
     """Pluggable generators only. No network. Every generated variant increments TrialRegistry."""
+
+    _bus: EventBus
+    _registry: TrialRegistry
+    _generators: tuple[HypothesisGenerator, ...]
+    _log_path: Path
+    _blackboard: AgentBlackboard | None
 
     def __init_subclass__(cls) -> None:
         raise TypeError("HypothesisAgent cannot be subclassed")
@@ -40,23 +55,20 @@ class HypothesisAgent:
     ) -> None:
         if not generators:
             raise HypothesisRefused("at least one generator is required")
-        object.__setattr__(self, "_bus", bus)
-        object.__setattr__(self, "_registry", registry)
-        object.__setattr__(self, "_generators", tuple(generators))
-        object.__setattr__(self, "_log_path", experiment_log_path)
-        object.__setattr__(self, "_blackboard", blackboard)
-
-    def __setattr__(self, name: str, value: object) -> None:
-        raise AttributeError("HypothesisAgent attributes are frozen")
+        self._bus = bus
+        self._registry = registry
+        self._generators = tuple(generators)
+        self._log_path = experiment_log_path
+        self._blackboard = blackboard
+        self._freeze()
 
     def generate(self, *, seed: int, counts: Sequence[int]) -> tuple[HypothesisProposed, ...]:
-        generators: tuple[HypothesisGenerator, ...] = self._generators  # type: ignore[attr-defined]
-        if len(counts) != len(generators):
+        if len(counts) != len(self._generators):
             raise HypothesisRefused("counts must align with generators")
         rng = random.Random(seed)
         published: list[HypothesisProposed] = []
         start = 0
-        for generator, count in zip(generators, counts, strict=True):
+        for generator, count in zip(self._generators, counts, strict=True):
             drafts = generator.drafts(rng=rng, count=int(count), start_index=start)
             if len(drafts) != int(count):
                 raise HypothesisRefused("generator dropped variants; every variant must be emitted")
@@ -69,20 +81,22 @@ class HypothesisAgent:
 
     def _accept(self, draft: HypothesisDraft) -> HypothesisProposed:
         rationale = _require_rationale(draft.rationale)
-        registry: TrialRegistry = self._registry  # type: ignore[attr-defined]
-        trial_id = registry.record(
+        trial_id = self._registry.record(
             config_id=draft.config_id,
             agent_id=HYPOTHESIS_AGENT_ID,
             metrics={"phase": "generate", "kind": draft.kind, "generator_id": draft.generator_id},
         )
         hypothesis_id = f"hyp-{draft.config_id}"
+        kind: Literal["noise", "planted_edge"] = (
+            "planted_edge" if draft.kind == "planted_edge" else "noise"
+        )
         payload = HypothesisProposed(
             hypothesis_id=hypothesis_id,
             config_id=draft.config_id,
             trial_id=trial_id,
             agent_id=HYPOTHESIS_AGENT_ID,
             generator_id=draft.generator_id,
-            kind="planted_edge" if draft.kind == "planted_edge" else "noise",
+            kind=kind,
             instrument=_instrument(draft.instrument),
             seed=draft.seed,
             n_obs=draft.n_obs,
@@ -94,27 +108,25 @@ class HypothesisAgent:
             proposed_notional=draft.proposed_notional,
             rationale=rationale,
         )
-        dumped = payload.model_dump(mode="json", exclude_none=False)
-        bus: EventBus = self._bus  # type: ignore[attr-defined]
-        bus.publish(
+        dumped = dump_json(payload)
+        self._bus.publish(
             topic=RESEARCH_HYPOTHESIS_TOPIC,
             producer=HYPOTHESIS_AGENT_ID,
-            payload=dumped,
+            payload=dict(dumped),
         )
-        board: AgentBlackboard | None = self._blackboard  # type: ignore[attr-defined]
-        if board is not None:
-            board.publish_sync(
+        if self._blackboard is not None:
+            self._blackboard.publish_sync(
                 topic=RESEARCH_HYPOTHESIS_TOPIC,
                 producer=HYPOTHESIS_AGENT_ID,
-                payload=dumped,
+                payload=dict(dumped),
                 confidence=1.0,
             )
         log_experiment(
-            path=self._log_path,  # type: ignore[attr-defined]
+            path=self._log_path,
             agent_id=HYPOTHESIS_AGENT_ID,
             event="hypothesis",
             hypothesis_id=hypothesis_id,
-            rationale=rationale.model_dump(mode="json"),
+            rationale=dump_json(rationale),
             metrics={"trial_id": trial_id, "kind": draft.kind, "config_id": draft.config_id},
             reject_reason=None,
             failed_checks=(),
@@ -136,13 +148,7 @@ def _require_rationale(rationale: object) -> EconomicRationale:
 
 
 def _instrument(root: str) -> Literal["ES", "NQ", "MES", "MNQ"]:
-    key = root.strip().upper()
-    if key == "ES":
-        return "ES"
-    if key == "NQ":
-        return "NQ"
-    if key == "MES":
-        return "MES"
-    if key == "MNQ":
-        return "MNQ"
-    raise HypothesisRefused(f"unsupported instrument {root!r}")
+    mapped = _INSTRUMENTS.get(root.strip().upper())
+    if mapped is None:
+        raise HypothesisRefused(f"unsupported instrument {root!r}")
+    return mapped

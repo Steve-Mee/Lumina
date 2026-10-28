@@ -36,11 +36,11 @@ class HypothesisGenerator(ABC):
     @property
     @abstractmethod
     def generator_id(self) -> str:
-        raise GeneratorError("generator_id is required")
+        """Stable id recorded on every trial this generator emits."""
 
     @abstractmethod
     def drafts(self, *, rng: random.Random, count: int, start_index: int) -> tuple[HypothesisDraft, ...]:
-        raise GeneratorError("drafts must be implemented by a concrete generator")
+        """Return exactly ``count`` drafts. Dropping a variant is a refuse."""
 
 
 class NoiseGenerator(HypothesisGenerator):
@@ -49,7 +49,7 @@ class NoiseGenerator(HypothesisGenerator):
     def __init__(
         self,
         *,
-        n_obs: int = 240,
+        n_obs: int = 360,
         sigma: float = 0.012,
         instrument: str = "MES",
         quantity: float = 1.0,
@@ -113,7 +113,7 @@ class PlantedEdgeGenerator(HypothesisGenerator):
     def __init__(
         self,
         *,
-        n_obs: int = 240,
+        n_obs: int = 360,
         mu: float = 0.0045,
         sigma: float = 0.008,
         instrument: str = "MES",

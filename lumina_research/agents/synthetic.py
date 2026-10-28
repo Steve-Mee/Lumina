@@ -19,11 +19,31 @@ def materialize(
     """Map a sealed hypothesis to gross returns, positions and markets."""
     rng = random.Random(hypothesis.seed)
     n = hypothesis.n_obs
-    gross = tuple(hypothesis.mu + hypothesis.sigma * gauss(rng) for _ in range(n))
+    if hypothesis.kind == "planted_edge":
+        gross = _planted_gross(n, hypothesis.mu, hypothesis.sigma, rng)
+    else:
+        gross = tuple(hypothesis.mu + hypothesis.sigma * gauss(rng) for _ in range(n))
     positions = _positions(hypothesis.kind, n, hypothesis.seed)
     snap = MarketSnapshot(volume=10_000.0, average_volume=10_000.0, volatility_price=2.0)
     markets = tuple(snap for _ in range(n))
     return gross, positions, markets
+
+
+def _planted_gross(n: int, mu: float, sigma: float, rng: random.Random) -> tuple[float, ...]:
+    """Positive-drift tape with explicit vol and trend blocks so regimes are computable.
+
+    Six blocks: four positive-drift and two milder negative-drift, alternating
+    high/low volatility. Net expected drift stays positive after four-leg costs.
+    """
+    drifts = (mu * 1.6, mu * 1.6, -mu * 0.35, mu * 1.6, mu * 1.6, -mu * 0.35)
+    sigmas = (sigma * 1.8, sigma * 0.55, sigma * 1.8, sigma * 0.55, sigma * 1.8, sigma * 0.55)
+    block = n // 6
+    out: list[float] = []
+    for index, (drift, noise) in enumerate(zip(drifts, sigmas, strict=True)):
+        length = block if index < 5 else n - 5 * block
+        for _ in range(length):
+            out.append(drift + noise * gauss(rng))
+    return tuple(out)
 
 
 def _positions(kind: Literal["noise", "planted_edge"], n: int, seed: int) -> tuple[float, ...]:
