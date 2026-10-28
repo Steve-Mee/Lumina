@@ -15,7 +15,7 @@ from lumina_research.agents.payloads import json_float
 from lumina_research.agents.provenance import ProvenanceAuthority
 from lumina_research.agents.report import _fmt, build_kill_rate_report
 from lumina_research.validation.trial_registry import TrialRegistry
-from tests.research.phase2_harness import make_agents
+from tests.research.phase2_harness import make_agents, with_integrity
 
 
 @pytest.mark.unit
@@ -81,7 +81,15 @@ def test_provenance_rejects_bad_mac() -> None:
         "agent_id": "validation_agent",
         "passed": False,
         "reject_reasons": ["doubt"],
-        "oos_distribution": {"values": [], "median": None, "mean": None, "stdev": None, "worst": None, "best": None, "pct_positive": None},
+        "oos_distribution": {
+            "values": [],
+            "median": None,
+            "mean": None,
+            "stdev": None,
+            "worst": None,
+            "best": None,
+            "pct_positive": None,
+        },
         "dsr": {
             "probability": None,
             "observed_sr": None,
@@ -120,6 +128,7 @@ def test_provenance_rejects_bad_mac() -> None:
         "n_oos_windows": 0,
         "median_oos_after_costs": None,
     }
+    fields = with_integrity(fields)
     digest, mac = authority.seal_validation(fields)
     payload = {**fields, "report_sha256": digest, "provenance_mac": mac}
     assert authority.verify_validation(payload) is not None
@@ -127,6 +136,8 @@ def test_provenance_rejects_bad_mac() -> None:
     assert authority.verify_validation(payload) is None
     assert authority.verify_issue({"issue_mac": "nope"}) is False
     assert authority.guard_promotion("rogue", {}) is False
+    assert authority.guard_validation("rogue", {}) is False
+    assert authority.guard_validation("validation_agent", {}) is False
 
 
 @pytest.mark.unit

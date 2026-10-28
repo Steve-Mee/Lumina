@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import random
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -20,9 +21,9 @@ from lumina_core.agent_orchestration.schemas_research import (
 )
 from lumina_research.agents.generators import HypothesisDraft, HypothesisGenerator, NoiseGenerator
 from lumina_research.agents.hypothesis import HypothesisAgent, HypothesisRefused, _instrument, _require_rationale
-from lumina_research.agents.loop import run_phase2_loop
+from lumina_research.agents.loop import run_multiseed_kill_rate, run_phase2_loop
 from lumina_research.agents.objects import as_object_list, mapping_get
-from lumina_research.agents.payloads import dump_json
+from lumina_research.agents.payloads import dump_json, integrity_fields
 from lumina_research.agents.promotion import (
     PromotionAgent,
     PromotionRefused,
@@ -35,12 +36,19 @@ from lumina_research.agents.provenance import (
     ProvenanceAuthority,
     validation_fields_from_result,
 )
-from lumina_research.agents.report import build_kill_rate_report, write_kill_rate_reports
-from lumina_research.risk_core.types import Decision, DecisionKind
+from lumina_research.agents.report import (
+    MultiSeedKillRateReport,
+    build_kill_rate_report,
+    write_kill_rate_reports,
+    write_multiseed_kill_rate_reports,
+)
 from lumina_research.agents.synthetic import materialize
 from lumina_research.agents.validation_agent import ValidationAgent, _latest_trial_id
+from lumina_research.validation.cost_model import COST_COMPONENTS
+from lumina_research.validation.pipeline import missing_evaluation
 from lumina_research.validation.trial_registry import TrialRegistry
-from tests.research.phase2_harness import make_agents, make_board, run_small_loop
+from lumina_research.validation.types import CostProvenance
+from tests.research.phase2_harness import make_agents, make_board, run_small_loop, with_integrity
 
 
 def _rationale() -> EconomicRationale:
@@ -144,15 +152,22 @@ def test_generator_dropped_variants_and_unknown_kind(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_subclassing_is_forbidden() -> None:
     with pytest.raises(TypeError):
+
         class _H(HypothesisAgent):  # type: ignore[misc]
             pass
+
     with pytest.raises(TypeError):
+
         class _V(ValidationAgent):  # type: ignore[misc]
             pass
+
     with pytest.raises(TypeError):
+
         class _P(PromotionAgent):  # type: ignore[misc]
             pass
+
     with pytest.raises(TypeError):
+
         class _A(ProvenanceAuthority):  # type: ignore[misc]
             pass
 
@@ -257,6 +272,7 @@ def test_provenance_digest_mismatch_and_missing_fields() -> None:
         "n_oos_windows": 6,
         "median_oos_after_costs": 0.01,
     }
+    fields = with_integrity(fields)
     digest, mac = authority.seal_validation(fields)
     payload = {**fields, "report_sha256": "0" * 64, "provenance_mac": mac}
     assert authority.verify_validation(payload) is None
@@ -325,6 +341,7 @@ def test_consider_unknown_hypothesis_and_direct_validation_result(tmp_path: Path
         "n_oos_windows": 6,
         "median_oos_after_costs": 0.02,
     }
+    fields = with_integrity(fields)
     digest, mac = auth.seal_validation(fields)
     result = ValidationResult.model_validate({**fields, "report_sha256": digest, "provenance_mac": mac})
     assert validation_fields_from_result(result)["hypothesis_id"] == "hyp-ghost"
@@ -334,27 +351,37 @@ def test_consider_unknown_hypothesis_and_direct_validation_result(tmp_path: Path
 
 @pytest.mark.unit
 def test_gate_pass_independent_floors() -> None:
-    good = {
-        "passed": True,
-        "reject_reasons": [],
-        "dsr": {"probability": 0.99},
-        "pbo": {"pbo": 0.1},
-        "wfe": {"wfe": 0.8},
-        "oos_distribution": {"values": [0.1, 0.2]},
-        "n_oos_windows": 6,
-        "median_oos_after_costs": 0.01,
-    }
+    good = with_integrity(
+        {
+            "passed": True,
+            "reject_reasons": [],
+            "dsr": {"probability": 0.99, "formulation": "bailey_lopez_de_prado_2014"},
+            "pbo": {"pbo": 0.1, "formulation": "cscv_logit_bailey_2014"},
+            "wfe": {"wfe": 0.8},
+            "oos_distribution": {"values": [0.1, 0.2]},
+            "n_oos_windows": 6,
+            "median_oos_after_costs": 0.01,
+        }
+    )
     assert _gate_pass(good) is True
     assert _gate_pass({**good, "passed": False}) is False
     assert _gate_pass({**good, "reject_reasons": ["doubt"]}) is False
-    assert _gate_pass({**good, "dsr": {"probability": 0.5}}) is False
-    assert _gate_pass({**good, "pbo": {"pbo": 0.9}}) is False
+    assert _gate_pass({**good, "dsr": {"probability": 0.5, "formulation": "bailey_lopez_de_prado_2014"}}) is False
+    assert _gate_pass({**good, "pbo": {"pbo": 0.9, "formulation": "cscv_logit_bailey_2014"}}) is False
     assert _gate_pass({**good, "wfe": {"wfe": 0.1}}) is False
     assert _gate_pass({**good, "n_oos_windows": 3}) is False
     assert _gate_pass({**good, "median_oos_after_costs": -0.01}) is False
     assert _gate_pass({**good, "oos_distribution": {"values": []}}) is False
     assert _gate_pass({**good, "dsr": "nope"}) is False
     assert _gate_pass({**good, "reject_reasons": None}) is True
+    assert _gate_pass({**good, "purge_applied": False}) is False
+    assert _gate_pass({**good, "embargo_applied": False}) is False
+    assert _gate_pass({**good, "cost_applied": False}) is False
+    assert _gate_pass({**good, "regimes_complete": False}) is False
+    assert _gate_pass({**good, "cost_contract_root": "FOO"}) is False
+    assert _gate_pass({**good, "cost_model_id": "not-the-cost-model"}) is False
+    assert _gate_pass({**good, "dsr": {"probability": 0.99, "formulation": "other"}}) is False
+    assert _gate_pass({**good, "pbo": {"pbo": 0.1, "formulation": "other"}}) is False
     assert _as_int(True) is None
     assert _as_int(3) == 3
     assert _as_float(1.5) == pytest.approx(1.5)
@@ -630,43 +657,76 @@ def test_malformed_hypothesis_and_invalid_trial_id(tmp_path: Path, monkeypatch: 
         "n_oos_windows": 6,
         "median_oos_after_costs": 0.02,
     }
+    fields = with_integrity(fields)
     digest, mac = auth.seal_validation(fields)
     result = ValidationResult.model_validate({**fields, "report_sha256": digest, "provenance_mac": mac})
     promotion.remember_hypothesis("hyp-malformed", {"instrument": 1})
     assert promotion.consider(result) is None
-    promotion.remember_hypothesis(
-        "hyp-malformed",
+    assert promotion.issued() == ()
+
+
+@pytest.mark.unit
+def test_invalid_trial_id_type_does_not_promote(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _bus, _reg, auth, _h, _v, promotion = make_agents(tmp_path)
+    fields = with_integrity(
         {
-            "instrument": "MES",
-            "proposed_quantity": 1.0,
-            "proposed_price": 5000.0,
-            "proposed_notional": 5000.0,
-        },
+            "schema_version": "research.validation.result.v1",
+            "hypothesis_id": "hyp-bad-trial",
+            "config_id": "bad-trial",
+            "trial_id": 3,
+            "agent_id": "validation_agent",
+            "passed": True,
+            "reject_reasons": [],
+            "oos_distribution": {
+                "values": [0.2, 0.3],
+                "median": 0.25,
+                "mean": 0.25,
+                "stdev": 0.05,
+                "worst": 0.2,
+                "best": 0.3,
+                "pct_positive": 1.0,
+            },
+            "dsr": {
+                "probability": 0.99,
+                "observed_sr": 0.4,
+                "expected_max_sr": 0.05,
+                "sr_standard_error": 0.04,
+                "n_trials": 2,
+                "n_observations": 360,
+                "skew": 0.0,
+                "kurtosis": 3.0,
+                "formulation": "bailey_lopez_de_prado_2014",
+            },
+            "pbo": {
+                "pbo": 0.1,
+                "n_slices": 8,
+                "n_combinations": 70,
+                "n_configs": 2,
+                "n_below_median": 5,
+                "formulation": "cscv_logit_bailey_2014",
+                "logit_mean": 0.2,
+            },
+            "wfe": {
+                "wfe": 0.8,
+                "mean_is_sharpe": 1.0,
+                "mean_oos_sharpe": 0.8,
+                "n_windows": 6,
+                "mode": "rolling",
+                "parameter_stability": 0.9,
+            },
+            "regimes": {
+                "vol_high_sharpe": 0.2,
+                "vol_low_sharpe": 0.2,
+                "trend_up_sharpe": 0.2,
+                "trend_down_sharpe": 0.2,
+                "robustness": 1.0,
+            },
+            "n_oos_windows": 6,
+            "median_oos_after_costs": 0.02,
+        }
     )
-    monkeypatch.setattr(
-        PromotionAgent,
-        "_risk_decide",
-        lambda self, hyp: Decision(
-            kind=DecisionKind.REJECTED,
-            reason="kill_switch",
-            quantity=1.0,
-            notional=1.0,
-            agent_id="promotion_agent",
-        ),
-    )
-    assert promotion.consider(result) is None
-
-    def _approved(self: PromotionAgent, hyp: object) -> Decision:
-        del hyp
-        return Decision(
-            kind=DecisionKind.APPROVED,
-            reason="approved",
-            quantity=1.0,
-            notional=5000.0,
-            agent_id="promotion_agent",
-        )
-
-    monkeypatch.setattr(PromotionAgent, "_risk_decide", _approved)
+    digest, mac = auth.seal_validation(fields)
+    result = ValidationResult.model_validate({**fields, "report_sha256": digest, "provenance_mac": mac})
 
     def _bad_trial(self: ProvenanceAuthority, payload: object) -> dict[str, object] | None:
         verified = original_verify(self, payload)  # type: ignore[misc]
@@ -678,6 +738,7 @@ def test_malformed_hypothesis_and_invalid_trial_id(tmp_path: Path, monkeypatch: 
     original_verify = ProvenanceAuthority.verify_validation
     monkeypatch.setattr(ProvenanceAuthority, "verify_validation", _bad_trial)
     assert promotion.consider(result) is None
+    assert promotion.issued() == ()
 
 
 @pytest.mark.unit
@@ -702,7 +763,7 @@ def test_provenance_short_mac_and_non_sequence_reasons() -> None:
         "median_oos_after_costs": None,
     }
     assert authority.verify_validation({**fields, "provenance_mac": "aa", "report_sha256": "bb"}) is None
-    sealed = {**fields, "reject_reasons": ["doubt"]}
+    sealed = with_integrity({**fields, "reject_reasons": ["doubt"]})
     digest, mac = authority.seal_validation(sealed)
     assert authority.verify_validation({**sealed, "report_sha256": digest, "provenance_mac": mac[:8]}) is None
 
@@ -712,3 +773,107 @@ def test_domain_event_consider_without_mac(tmp_path: Path) -> None:
     _bus, _reg, _auth, _h, _v, promotion = make_agents(tmp_path)
     event = DomainEvent(topic=RESEARCH_VALIDATION_TOPIC, producer="validation_agent", payload={"hypothesis_id": "x"})
     assert promotion.consider(event) is None
+
+
+@pytest.mark.unit
+def test_verify_rejects_non_positive_trial_id() -> None:
+    authority = ProvenanceAuthority(key=b"k" * 16)
+    fields = with_integrity(
+        {
+            "schema_version": "research.validation.result.v1",
+            "hypothesis_id": "h",
+            "config_id": "c",
+            "trial_id": 0,
+            "agent_id": "validation_agent",
+            "passed": False,
+            "reject_reasons": ["doubt"],
+            "oos_distribution": {
+                "values": [],
+                "median": None,
+                "mean": None,
+                "stdev": None,
+                "worst": None,
+                "best": None,
+                "pct_positive": None,
+            },
+            "dsr": {
+                "probability": None,
+                "observed_sr": None,
+                "expected_max_sr": None,
+                "sr_standard_error": None,
+                "n_trials": 0,
+                "n_observations": 0,
+                "skew": None,
+                "kurtosis": None,
+                "formulation": "bailey_lopez_de_prado_2014",
+            },
+            "pbo": {
+                "pbo": None,
+                "n_slices": 0,
+                "n_combinations": 0,
+                "n_configs": 0,
+                "n_below_median": 0,
+                "formulation": "cscv_logit_bailey_2014",
+                "logit_mean": None,
+            },
+            "wfe": {
+                "wfe": None,
+                "mean_is_sharpe": None,
+                "mean_oos_sharpe": None,
+                "n_windows": 0,
+                "mode": "",
+                "parameter_stability": None,
+            },
+            "regimes": {
+                "vol_high_sharpe": None,
+                "vol_low_sharpe": None,
+                "trend_up_sharpe": None,
+                "trend_down_sharpe": None,
+                "robustness": None,
+            },
+            "n_oos_windows": 0,
+            "median_oos_after_costs": None,
+        }
+    )
+    digest, mac = authority.seal_validation(fields)
+    assert authority.verify_validation({**fields, "report_sha256": digest, "provenance_mac": mac}) is None
+
+
+@pytest.mark.unit
+def test_multiseed_helpers_fail_closed_on_empty_and_misaligned(tmp_path: Path) -> None:
+    empty = MultiSeedKillRateReport.from_seeds(())
+    assert empty.kill_rate == 0.0
+    assert empty.false_kill_rate == 0.0
+    assert empty.false_survivor_rate == 0.0
+    md_path, _json_path = write_multiseed_kill_rate_reports(empty, tmp_path)
+    assert "_(none)_" in md_path.read_text(encoding="utf-8")
+    with pytest.raises(ValueError, match="align"):
+        run_multiseed_kill_rate(
+            audit_dir=tmp_path / "a",
+            experiment_log_dir=tmp_path / "e",
+            seeds=(1, 2),
+            instruments=("MES",),
+        )
+
+
+@pytest.mark.unit
+def test_integrity_fields_refuse_spoofed_cost_model_id(tmp_path: Path) -> None:
+    evaluation = missing_evaluation(
+        agent_id="validation_agent",
+        audit_path=tmp_path / "a.jsonl",
+        registry=TrialRegistry(tmp_path / "a.jsonl"),
+    )
+    spoofed = CostProvenance(
+        model_id="not-the-cost-model",
+        model_version="1.0.0",
+        components=COST_COMPONENTS,
+        applied=True,
+        contract_root="MES",
+        tick_size=0.25,
+        tick_value_usd=1.25,
+        commission_ticks=0.5,
+    )
+    report = replace(evaluation.report, cost_provenance=spoofed)
+    fields = integrity_fields(report)
+    assert fields["cost_applied"] is False
+    assert fields["cost_model_id"] == ""

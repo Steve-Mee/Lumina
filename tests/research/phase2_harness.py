@@ -14,7 +14,24 @@ from lumina_research.agents.provenance import ProvenanceAuthority
 from lumina_research.agents.validation_agent import ValidationAgent
 from lumina_research.risk_core.config import load_default_config
 from lumina_research.risk_core.engine import RiskCore
+from lumina_research.validation.cost_model import COST_MODEL_ID
 from lumina_research.validation.trial_registry import TrialRegistry
+
+VALIDATION_INTEGRITY: dict[str, object] = {
+    "purge_applied": True,
+    "embargo_applied": True,
+    "cost_applied": True,
+    "cost_contract_root": "MES",
+    "cost_model_id": COST_MODEL_ID,
+    "regimes_complete": True,
+}
+
+
+def with_integrity(fields: dict[str, object], **overrides: object) -> dict[str, object]:
+    """Attach MAC-bound integrity flags. Overrides win."""
+    merged: dict[str, object] = {**fields, **VALIDATION_INTEGRITY}
+    merged.update(overrides)
+    return merged
 
 
 def make_bus() -> EventBus:
@@ -32,19 +49,27 @@ def make_agents(
     planted_quantity: float = 1.0,
     planted_price: float = 5_000.0,
     blackboard: AgentBlackboard | None = None,
+    equity: float = 100_000.0,
+    risk_equity: float | None = None,
+    instrument: str = "MES",
 ) -> tuple[EventBus, TrialRegistry, ProvenanceAuthority, HypothesisAgent, ValidationAgent, PromotionAgent]:
     bus = EventBus()
     audit = tmp_path / "audit.jsonl"
     log_path = tmp_path / "experiments.jsonl"
     registry = TrialRegistry(audit)
     authority = ProvenanceAuthority()
-    core = RiskCore(load_default_config(), equity=100_000.0)
+    core = RiskCore(load_default_config(), equity=equity if risk_equity is None else risk_equity)
     hypothesis = HypothesisAgent(
         bus=bus,
         registry=registry,
         generators=(
-            NoiseGenerator(n_obs=n_obs),
-            PlantedEdgeGenerator(n_obs=n_obs, quantity=planted_quantity, price=planted_price),
+            NoiseGenerator(n_obs=n_obs, instrument=instrument),
+            PlantedEdgeGenerator(
+                n_obs=n_obs,
+                quantity=planted_quantity,
+                price=planted_price,
+                instrument=instrument,
+            ),
         ),
         experiment_log_path=log_path,
         blackboard=blackboard,
@@ -56,6 +81,7 @@ def make_agents(
         experiment_log_path=log_path,
         blackboard=blackboard,
         audit_path=audit,
+        equity=equity,
     )
     promotion = PromotionAgent(
         bus=bus,

@@ -60,7 +60,7 @@ def test_research_topics_are_registered_and_guarded_additively() -> None:
     assert RESEARCH_HYPOTHESIS_TOPIC in EVENT_BUS_TOPIC_MODELS
     assert RESEARCH_VALIDATION_TOPIC in EVENT_BUS_TOPIC_MODELS
     assert RESEARCH_PROMOTION_TOPIC in EVENT_BUS_TOPIC_MODELS
-    assert EVENT_BUS_GUARDED_TOPICS == frozenset({RESEARCH_PROMOTION_TOPIC})
+    assert EVENT_BUS_GUARDED_TOPICS == frozenset({RESEARCH_PROMOTION_TOPIC, RESEARCH_VALIDATION_TOPIC})
 
 
 @pytest.mark.unit
