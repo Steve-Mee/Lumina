@@ -108,6 +108,7 @@ class HypothesisAgent(Frozen):
             is_size=int(draft.is_size),
             oos_size=int(draft.oos_size),
             parent_config_id=str(draft.parent_config_id),
+            overfit_in_sample=bool(draft.overfit_in_sample),
             rationale=rationale,
         )
         dumped = dump_json(payload)

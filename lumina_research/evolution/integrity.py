@@ -7,6 +7,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from lumina_research import fitness as fitness_mod
 from lumina_research.risk_core.config import load_default_config
 from lumina_research.validation import gate as gate_mod
 from lumina_research.validation import pipeline as pipeline_mod
@@ -24,6 +25,7 @@ _LIMITS = _RESEARCH / "risk_core" / "limits.toml"
 _THRESHOLDS_TOML = _RESEARCH / "validation" / "gate_thresholds.toml"
 _THRESHOLDS_PY = _RESEARCH / "validation" / "thresholds.py"
 _GATE_PY = _RESEARCH / "validation" / "gate.py"
+_FITNESS_PY = _RESEARCH / "fitness.py"
 _LIVE_RISK = _REPO / "lumina_core" / "risk"
 _RESEARCH_RISK = _RESEARCH / "risk_core"
 
@@ -49,8 +51,11 @@ class IntegritySnapshot:
     thresholds_toml_hash: str
     thresholds_py_hash: str
     gate_py_hash: str
+    fitness_py_hash: str
     bound_gate_id: int
+    bound_fitness_id: int
     evaluate_id: int
+    compute_fitness_id: int
 
 
 def capture_integrity() -> IntegritySnapshot:
@@ -78,8 +83,11 @@ def capture_integrity() -> IntegritySnapshot:
         thresholds_toml_hash=_hash_file(_THRESHOLDS_TOML),
         thresholds_py_hash=_hash_file(_THRESHOLDS_PY),
         gate_py_hash=_hash_file(_GATE_PY),
+        fitness_py_hash=_hash_file(_FITNESS_PY),
         bound_gate_id=id(pipeline_mod.BOUND_GATE),
+        bound_fitness_id=id(pipeline_mod.BOUND_FITNESS),
         evaluate_id=id(pipeline_mod.evaluate_candidate),
+        compute_fitness_id=id(fitness_mod.compute_fitness),
     )
 
 
@@ -95,6 +103,8 @@ def assert_intact(snapshot: IntegritySnapshot) -> None:
         raise IntegrityError("thresholds.py drifted")
     if live.gate_py_hash != snapshot.gate_py_hash:
         raise IntegrityError("gate.py drifted")
+    if live.fitness_py_hash != snapshot.fitness_py_hash:
+        raise IntegrityError("fitness.py drifted")
     if live.floors != snapshot.floors:
         raise IntegrityError("gate floor constants drifted")
     if live.risk_file != snapshot.risk_file or live.risk_live != snapshot.risk_live:
@@ -107,8 +117,14 @@ def assert_intact(snapshot: IntegritySnapshot) -> None:
         raise IntegrityError("validation gate monkeypatched")
     if id(pipeline_mod.evaluate_candidate) != snapshot.evaluate_id:
         raise IntegrityError("evaluate_candidate monkeypatched")
+    if id(pipeline_mod.BOUND_FITNESS) != snapshot.bound_fitness_id:
+        raise IntegrityError("bound fitness rebound")
+    if id(fitness_mod.compute_fitness) != snapshot.compute_fitness_id:
+        raise IntegrityError("compute_fitness monkeypatched")
     if pipeline_mod.BOUND_GATE is not gate_mod.passes_validation_gate:
         raise IntegrityError("validation gate monkeypatched")
+    if pipeline_mod.BOUND_FITNESS is not fitness_mod.compute_fitness:
+        raise IntegrityError("fitness monkeypatched")
 
 
 def assert_canonical_floors() -> None:

@@ -20,7 +20,7 @@ from lumina_research.agents.experiment_log import log_experiment
 from lumina_research.agents.frozen import Frozen
 from lumina_research.agents.payloads import dump_json
 from lumina_research.agents.provenance import ProvenanceAuthority
-from lumina_research.evolution.seal import canonical_mutation
+from lumina_research.evolution.seal import canonical_mutation, mutation_fingerprint
 from lumina_research.evolution.types import MutationRefused, require_feasible
 from lumina_research.validation.trial_registry import TrialRegistry
 
@@ -104,10 +104,24 @@ class ReflectorAgent(Frozen):
             raise MutationRefused("target is required")
         if kind in {"parameter_tune", "open_window", "noise"}:
             require_feasible(genome)
+        genome_dump = dump_json(genome)
+        fingerprint = mutation_fingerprint(
+            config_id=config_id,
+            kind=kind,
+            target=target,
+            genome=genome_dump,
+            parent_config_id=parent_config_id,
+        )
         trial_id = self._registry.record(
             config_id=config_id,
             agent_id=REFLECTOR_AGENT_ID,
-            metrics={"phase": "mutate", "kind": kind, "target": target, "parent_config_id": parent_config_id},
+            metrics={
+                "phase": "mutate",
+                "kind": kind,
+                "target": target,
+                "parent_config_id": parent_config_id,
+                "mutation_sha256": fingerprint,
+            },
         )
         unsigned: dict[str, object] = {
             "schema_version": MUTATION_SCHEMA_VERSION,
@@ -119,7 +133,7 @@ class ReflectorAgent(Frozen):
             "kind": kind,
             "target": target,
             "seed": int(seed),
-            "genome": dump_json(genome),
+            "genome": genome_dump,
             "rationale": dump_json(rationale),
             "adr_path": adr_path,
             "review": dump_json(review) if review is not None else None,

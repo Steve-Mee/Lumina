@@ -33,7 +33,13 @@ from lumina_research.agents.objects import as_object_dict
 from lumina_research.agents.payloads import dump_json
 from lumina_research.agents.provenance import ProvenanceAuthority
 from lumina_research.evolution.integrity import refuse_protected_write
-from lumina_research.evolution.seal import canonical_governance, canonical_mutation, review_binding
+from lumina_research.evolution.seal import (
+    canonical_governance,
+    canonical_mutation,
+    mutation_fingerprint,
+    review_binding,
+)
+from lumina_research.validation.trial_registry import TrialRegistry
 from lumina_research.evolution.types import (
     ALLOWED_KINDS,
     FORBIDDEN_KINDS,
@@ -156,10 +162,12 @@ class GovernanceGate(Frozen):
     _bus: EventBus
     _authority: ProvenanceAuthority
     _reviews: ReviewAuthority
+    _registry: TrialRegistry
     _log_path: Path
     _adr_root: Path
     _blackboard: AgentBlackboard | None
     _consume_trial: Callable[[int], bool]
+    _consume_review: Callable[[str, str], bool]
     _decisions: list[GovernanceDecision]
 
     def __init_subclass__(cls) -> None:
@@ -171,6 +179,7 @@ class GovernanceGate(Frozen):
         bus: EventBus,
         authority: ProvenanceAuthority,
         reviews: ReviewAuthority,
+        registry: TrialRegistry,
         experiment_log_path: Path,
         adr_root: Path,
         blackboard: AgentBlackboard | None = None,
@@ -178,11 +187,14 @@ class GovernanceGate(Frozen):
         self._bus = bus
         self._authority = authority
         self._reviews = reviews
+        self._registry = registry
         self._log_path = experiment_log_path
         self._adr_root = adr_root
         self._blackboard = blackboard
         self._decisions = []
         seen: set[int] = set()
+        seen_reviews: set[str] = set()
+        seen_bindings: set[str] = set()
 
         def consume(trial_id: int) -> bool:
             if trial_id in seen:
@@ -190,7 +202,15 @@ class GovernanceGate(Frozen):
             seen.add(trial_id)
             return True
 
+        def consume_review(signature: str, binding: str) -> bool:
+            if signature in seen_reviews or binding in seen_bindings:
+                return False
+            seen_reviews.add(signature)
+            seen_bindings.add(binding)
+            return True
+
         self._consume_trial = consume
+        self._consume_review = consume_review
         self._freeze()
         bus.register_topic_guard(RESEARCH_GOVERNANCE_TOPIC, self._guard)
         if blackboard is not None:
@@ -209,6 +229,9 @@ class GovernanceGate(Frozen):
         trial_id = payload.get("trial_id")
         if not isinstance(trial_id, int) or isinstance(trial_id, bool) or trial_id < 1:
             return self._finish(payload, admitted=False, recorded=False, reasons=("trial_id_invalid",))
+        bound = self._registry_reasons(payload, trial_id=trial_id)
+        if bound:
+            return self._finish(payload, admitted=False, recorded=False, reasons=bound)
         if not self._consume_trial(trial_id):
             return self._finish(payload, admitted=False, recorded=False, reasons=("mutation_replay",))
         kind = str(payload.get("kind", ""))
@@ -254,6 +277,27 @@ class GovernanceGate(Frozen):
             return ("review_invalid",)
         if review.verdict != "approve":
             return ("review_rejected",)
+        binding = f"{review.mutation_sha256}:{review.adr_sha256}"
+        if not self._consume_review(review.signature, binding):
+            return ("review_replay",)
+        return ()
+
+    def _registry_reasons(self, payload: Mapping[str, object], *, trial_id: int) -> tuple[str, ...]:
+        record = next((item for item in self._registry.records() if item.trial_id == trial_id), None)
+        if record is None:
+            return ("trial_not_in_registry",)
+        if record.config_id != str(payload.get("config_id", "")):
+            return ("trial_config_mismatch",)
+        expected = mutation_fingerprint(
+            config_id=str(payload.get("config_id", "")),
+            kind=str(payload.get("kind", "")),
+            target=str(payload.get("target", "")),
+            genome=payload.get("genome"),
+            parent_config_id=str(payload.get("parent_config_id", "")),
+        )
+        recorded = record.metrics.get("mutation_sha256")
+        if recorded != expected:
+            return ("trial_fingerprint_mismatch",)
         return ()
 
     def _finish(

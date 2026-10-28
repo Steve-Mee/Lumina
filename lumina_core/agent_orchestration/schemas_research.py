@@ -115,6 +115,7 @@ class HypothesisProposed(BaseModel):
     is_size: int = Field(default=60, ge=2)
     oos_size: int = Field(default=30, ge=2)
     parent_config_id: str = ""
+    overfit_in_sample: bool = False
     rationale: EconomicRationale
 
 
@@ -248,6 +249,7 @@ class ParameterGenome(BaseModel):
     oos_size: int = Field(default=30, ge=2)
     planted: bool
     kind: Literal["noise", "planted_edge"]
+    overfit_in_sample: bool = False
 
 
 class SignedReview(BaseModel):

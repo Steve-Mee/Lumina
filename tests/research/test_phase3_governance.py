@@ -34,6 +34,19 @@ def test_threshold_mutation_without_adr_is_rejected(tmp_path: Path) -> None:
     assert decision.applied is False
     assert "adr_required" in decision.reasons
     assert runtime.registry.n_trials == n_before
+    bad_name = runtime.reflector.propose(
+        kind="threshold_change",
+        target=THRESHOLD_TARGET,
+        genome=dummy_genome(),
+        rationale=evolution_rationale("ADR path that is not a numbered ADR file must fail closed"),
+        seed=8,
+        parent_config_id="parent",
+        config_id="thr-bad-name",
+        adr_path="not-an-adr.txt",
+    )
+    bad_decision = runtime.governance.admit(bad_name)
+    assert bad_decision.admitted is False
+    assert "adr_filename_invalid" in bad_decision.reasons
 
 
 @pytest.mark.unit
@@ -171,6 +184,7 @@ def test_adr_escape_and_incomplete_file_fail_closed(tmp_path: Path) -> None:
         read_adr(missing_target.name, adr_root=root, target=THRESHOLD_TARGET)
     assert is_human_reviewer("steve") is True
     assert is_human_reviewer("governance_agent") is False
+    assert is_human_reviewer("steve_agent") is False
     assert is_human_reviewer("x") is False
 
 

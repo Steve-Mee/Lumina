@@ -53,6 +53,7 @@ def mutation_to_draft(mutation: MutationProposed, *, action: RegimeAction) -> Hy
         is_size=genome.is_size,
         oos_size=genome.oos_size,
         parent_config_id=mutation.parent_config_id,
+        overfit_in_sample=bool(genome.overfit_in_sample),
     )
 
 

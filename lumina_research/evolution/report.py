@@ -29,8 +29,15 @@ class EvolutionReport:
     kill_rate: float
     n_noise_mutations: int
     n_noise_promoted: int
+    n_planted_mutations: int
+    n_planted_killed: int
+    n_overfit_mutations: int
+    n_overfit_promoted: int
+    false_kill_rate: float
+    false_survivor_rate: float
     n_trials_start: int
     n_trials_end: int
+    dsr_n_trials: tuple[int, ...]
     floors_intact: bool
     risk_core_intact: bool
     reject_reason_counts: Mapping[str, int]
@@ -54,7 +61,15 @@ class MultiSeedEvolutionReport:
     n_promoted: int
     n_noise_mutations: int
     n_noise_promoted: int
+    n_planted_mutations: int
+    n_planted_killed: int
+    n_overfit_mutations: int
+    n_overfit_promoted: int
     kill_rate: float
+    false_kill_rate: float
+    false_survivor_rate: float
+    n_trials_start: int
+    n_trials_end: int
     floors_intact: bool
     risk_core_intact: bool
 
@@ -65,7 +80,13 @@ class MultiSeedEvolutionReport:
         n_promoted = sum(row.report.n_promoted for row in seeds)
         n_noise = sum(row.report.n_noise_mutations for row in seeds)
         n_noise_promoted = sum(row.report.n_noise_promoted for row in seeds)
+        n_planted = sum(row.report.n_planted_mutations for row in seeds)
+        n_planted_killed = sum(row.report.n_planted_killed for row in seeds)
+        n_overfit = sum(row.report.n_overfit_mutations for row in seeds)
+        n_overfit_promoted = sum(row.report.n_overfit_promoted for row in seeds)
         killed = sum(row.report.n_killed for row in seeds)
+        n_trials_start = sum(row.report.n_trials_start for row in seeds)
+        n_trials_end = sum(row.report.n_trials_end for row in seeds)
         return cls(
             seeds=seeds,
             n_mutations=n_mutations,
@@ -73,7 +94,15 @@ class MultiSeedEvolutionReport:
             n_promoted=n_promoted,
             n_noise_mutations=n_noise,
             n_noise_promoted=n_noise_promoted,
+            n_planted_mutations=n_planted,
+            n_planted_killed=n_planted_killed,
+            n_overfit_mutations=n_overfit,
+            n_overfit_promoted=n_overfit_promoted,
             kill_rate=(killed / n_hypotheses) if n_hypotheses else 0.0,
+            false_kill_rate=(n_planted_killed / n_planted) if n_planted else 0.0,
+            false_survivor_rate=(n_noise_promoted / n_noise) if n_noise else 0.0,
+            n_trials_start=n_trials_start,
+            n_trials_end=n_trials_end,
             floors_intact=all(row.report.floors_intact for row in seeds),
             risk_core_intact=all(row.report.risk_core_intact for row in seeds),
         )
@@ -105,9 +134,16 @@ def build_evolution_report(
         planted_flags=planted,
     )
     noise_ids = {f"hyp-{item.config_id}" for item in mutations if item.kind == "noise" or not item.genome.planted}
+    planted_ids = {f"hyp-{item.config_id}" for item in mutations if item.genome.planted}
+    overfit_ids = {f"hyp-{item.config_id}" for item in mutations if item.genome.overfit_in_sample}
     promoted_ids = {item.hypothesis_id for item in promotions}
     n_noise = sum(1 for item in mutations if item.kind == "noise" or not item.genome.planted)
     n_noise_promoted = len(noise_ids & promoted_ids)
+    n_planted = sum(1 for item in mutations if item.genome.planted)
+    n_planted_killed = len(planted_ids - promoted_ids)
+    n_overfit = sum(1 for item in mutations if item.genome.overfit_in_sample)
+    n_overfit_promoted = len(overfit_ids & promoted_ids)
+    dsr_n = tuple(int(item.dsr.n_trials) for item in results)
     reasons: dict[str, int] = dict(kill.reject_reason_counts)
     for decision in decisions:
         if decision.admitted:
@@ -126,8 +162,15 @@ def build_evolution_report(
         kill_rate=kill.kill_rate,
         n_noise_mutations=n_noise,
         n_noise_promoted=n_noise_promoted,
+        n_planted_mutations=n_planted,
+        n_planted_killed=n_planted_killed,
+        n_overfit_mutations=n_overfit,
+        n_overfit_promoted=n_overfit_promoted,
+        false_kill_rate=(n_planted_killed / n_planted) if n_planted else 0.0,
+        false_survivor_rate=(n_noise_promoted / n_noise) if n_noise else 0.0,
         n_trials_start=n_trials_start,
         n_trials_end=n_trials_end,
+        dsr_n_trials=dsr_n,
         floors_intact=floors_intact,
         risk_core_intact=risk_core_intact,
         reject_reason_counts=reasons,
@@ -168,8 +211,15 @@ def _as_json(report: EvolutionReport) -> dict[str, object]:
         "kill_rate": report.kill_rate,
         "n_noise_mutations": report.n_noise_mutations,
         "n_noise_promoted": report.n_noise_promoted,
+        "n_planted_mutations": report.n_planted_mutations,
+        "n_planted_killed": report.n_planted_killed,
+        "n_overfit_mutations": report.n_overfit_mutations,
+        "n_overfit_promoted": report.n_overfit_promoted,
+        "false_kill_rate": report.false_kill_rate,
+        "false_survivor_rate": report.false_survivor_rate,
         "n_trials_start": report.n_trials_start,
         "n_trials_end": report.n_trials_end,
+        "dsr_n_trials": list(report.dsr_n_trials),
         "floors_intact": report.floors_intact,
         "risk_core_intact": report.risk_core_intact,
         "reject_reason_counts": dict(report.reject_reason_counts),
@@ -210,8 +260,12 @@ def _as_markdown(report: EvolutionReport) -> str:
         f"- hypotheses: **{report.n_hypotheses}**",
         f"- promoted: **{report.n_promoted}**",
         f"- kill rate: **{report.kill_rate:.4f}**",
+        f"- false-kill rate: **{report.false_kill_rate:.4f}**",
+        f"- false-survivor rate: **{report.false_survivor_rate:.4f}**",
         f"- noise promoted: **{report.n_noise_promoted}/{report.n_noise_mutations}**",
+        f"- overfit promoted: **{report.n_overfit_promoted}/{report.n_overfit_mutations}**",
         f"- trials: {report.n_trials_start} → {report.n_trials_end}",
+        f"- DSR N (per candidate): {list(report.dsr_n_trials)}",
         f"- floors intact: **{report.floors_intact}**",
         f"- Risk Core intact: **{report.risk_core_intact}**",
         "",
@@ -236,7 +290,15 @@ def _as_multiseed_json(report: MultiSeedEvolutionReport) -> dict[str, object]:
         "n_promoted": report.n_promoted,
         "n_noise_mutations": report.n_noise_mutations,
         "n_noise_promoted": report.n_noise_promoted,
+        "n_planted_mutations": report.n_planted_mutations,
+        "n_planted_killed": report.n_planted_killed,
+        "n_overfit_mutations": report.n_overfit_mutations,
+        "n_overfit_promoted": report.n_overfit_promoted,
         "kill_rate": report.kill_rate,
+        "false_kill_rate": report.false_kill_rate,
+        "false_survivor_rate": report.false_survivor_rate,
+        "n_trials_start": report.n_trials_start,
+        "n_trials_end": report.n_trials_end,
         "floors_intact": report.floors_intact,
         "risk_core_intact": report.risk_core_intact,
         "seeds": [
@@ -261,17 +323,24 @@ def _as_multiseed_markdown(report: MultiSeedEvolutionReport) -> str:
         f"- hypotheses: **{report.n_hypotheses}**",
         f"- promoted: **{report.n_promoted}**",
         f"- overall kill rate: **{report.kill_rate:.4f}**",
+        f"- false-kill rate: **{report.false_kill_rate:.4f}**",
+        f"- false-survivor rate: **{report.false_survivor_rate:.4f}**",
         f"- noise promoted: **{report.n_noise_promoted}/{report.n_noise_mutations}**",
+        f"- overfit promoted: **{report.n_overfit_promoted}/{report.n_overfit_mutations}**",
+        f"- DSR N growth (sum of per-seed n_trials_end): **{report.n_trials_start} → {report.n_trials_end}**",
         f"- floors intact: **{report.floors_intact}**",
         f"- Risk Core intact: **{report.risk_core_intact}**",
         "",
-        "| seed | instrument | n | kill rate | noise promoted |",
-        "|---|---|---|---|---|",
+        "| seed | instrument | n | kill rate | false-kill | false-survivor | DSR N | noise promoted | overfit promoted |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for row in report.seeds:
         lines.append(
             f"| `{row.seed}` | `{row.instrument}` | {row.report.n_hypotheses} | "
-            f"{row.report.kill_rate:.4f} | {row.report.n_noise_promoted}/{row.report.n_noise_mutations} |"
+            f"{row.report.kill_rate:.4f} | {row.report.false_kill_rate:.4f} | "
+            f"{row.report.false_survivor_rate:.4f} | {row.report.n_trials_start}→{row.report.n_trials_end} | "
+            f"{row.report.n_noise_promoted}/{row.report.n_noise_mutations} | "
+            f"{row.report.n_overfit_promoted}/{row.report.n_overfit_mutations} |"
         )
     lines.append("")
     return "\n".join(lines)

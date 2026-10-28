@@ -30,6 +30,7 @@ from lumina_research.validation.walk_forward import WalkForwardConfig, run_walk_
 
 # Bound at import so a later monkeypatch of the public name cannot skip the gate.
 BOUND_GATE = passes_validation_gate
+BOUND_FITNESS = compute_fitness
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,7 +129,7 @@ def evaluate_candidate(
     passed, report = BOUND_GATE(results, registry=registry)
     fitness: FitnessScore | None
     try:
-        fitness = compute_fitness(report, turnover=turnover)
+        fitness = BOUND_FITNESS(report, turnover=turnover)
     except FitnessRefused:
         fitness = None
     return CandidateEvaluation(

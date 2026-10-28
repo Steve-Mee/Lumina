@@ -79,12 +79,17 @@ def detect_regime(
     series = tuple(float(item) for item in returns)
     n = len(series)
     if n < max(vol_window, trend_window) + 2:
-        return RegimeObservation(vol="low", trend="up")
+        raise RegimePolicyError("insufficient observations for regime detection")
     vol = _rolling_vol(series, vol_window)
     finite_vol = tuple(item for item in vol if math.isfinite(item))
-    median_vol = statistics.median(finite_vol) if finite_vol else 0.0
+    if not finite_vol:
+        raise RegimePolicyError("regime volatility is not finite")
+    median_vol = statistics.median(finite_vol)
     last_vol = vol[-1] if math.isfinite(vol[-1]) else median_vol
-    trend = float(sum(series[max(0, n - trend_window) : n]))
+    window = series[max(0, n - trend_window) : n]
+    if not all(math.isfinite(item) for item in window):
+        raise RegimePolicyError("regime trend is not finite")
+    trend = float(sum(window))
     vol_label: VolRegime = "high" if last_vol >= median_vol else "low"
     trend_label: TrendRegime = "up" if trend > 0.0 else "down"
     return RegimeObservation(vol=vol_label, trend=trend_label)
@@ -103,6 +108,8 @@ def _rolling_vol(series: Sequence[float], window: int) -> tuple[float, ...]:
         start = max(0, index - window + 1)
         chunk = series[start : index + 1]
         if len(chunk) < 2:
+            out.append(math.nan)
+        elif not all(math.isfinite(item) for item in chunk):
             out.append(math.nan)
         else:
             out.append(float(statistics.stdev(chunk)))

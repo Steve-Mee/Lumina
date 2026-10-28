@@ -31,6 +31,7 @@ class HypothesisDraft:
     is_size: int = 60
     oos_size: int = 30
     parent_config_id: str = ""
+    overfit_in_sample: bool = False
 
 
 class HypothesisGenerator(ABC):

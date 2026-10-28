@@ -38,13 +38,14 @@ from lumina_research.evolution.report import (
     write_evolution_reports,
     write_multiseed_evolution_reports,
 )
-from lumina_research.evolution.seal import canonical_governance, canonical_mutation
+from lumina_research.evolution.seal import canonical_governance, canonical_mutation, mutation_fingerprint
 from lumina_research.evolution.types import (
     MutationRefused,
     default_parent,
     evolution_rationale,
     require_feasible,
 )
+from lumina_research.validation import pipeline as pipeline_mod
 from lumina_research.validation.trial_registry import TrialRegistry
 from tests.research.phase3_harness import make_runtime, write_adr
 
@@ -104,6 +105,12 @@ def test_integrity_helpers_and_refuse_write(tmp_path: Path) -> None:
         assert_intact(replace(snap, bound_gate_id=0))
     with pytest.raises(IntegrityError, match="evaluate_candidate monkeypatched"):
         assert_intact(replace(snap, evaluate_id=0))
+    with pytest.raises(IntegrityError, match="fitness.py drifted"):
+        assert_intact(replace(snap, fitness_py_hash="0" * 64))
+    with pytest.raises(IntegrityError, match="bound fitness rebound"):
+        assert_intact(replace(snap, bound_fitness_id=0))
+    with pytest.raises(IntegrityError, match="compute_fitness monkeypatched"):
+        assert_intact(replace(snap, compute_fitness_id=0))
 
 
 @pytest.mark.unit
@@ -124,6 +131,8 @@ def test_empty_evolution_report_markdown(tmp_path: Path) -> None:
     assert "_(none)_" in md_path.read_text(encoding="utf-8")
     empty = MultiSeedEvolutionReport.from_seeds(())
     assert empty.kill_rate == 0.0
+    assert empty.false_kill_rate == 0.0
+    assert empty.false_survivor_rate == 0.0
     md2, _j2 = write_multiseed_evolution_reports(empty, tmp_path)
     assert "0.0000" in md2.read_text(encoding="utf-8")
     filled = MultiSeedEvolutionReport.from_seeds(
@@ -406,3 +415,58 @@ def test_applied_protected_change_fail_closes_process(tmp_path: Path) -> None:
     object.__setattr__(runtime.governance, "admit", lie)
     with pytest.raises(EvolutionIntegrityError, match="applied a protected change"):
         runtime.process((mutation,), seed=1)
+
+
+@pytest.mark.unit
+def test_trial_config_mismatch_and_fingerprint_helper(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    first = runtime.birth.noise_child(default_parent(), seed=1, index=0)
+    second = runtime.birth.noise_child(default_parent(), seed=2, index=1)
+    payload = second.model_dump(mode="json")
+    payload["trial_id"] = first.trial_id
+    payload["provenance_mac"] = runtime.authority.mac(canonical_mutation(payload))
+    decision = runtime.governance.admit(payload)
+    assert "trial_config_mismatch" in decision.reasons
+    digest = mutation_fingerprint(
+        config_id="c",
+        kind="noise",
+        target="genome",
+        genome={"mu": 0.0},
+        parent_config_id="p",
+    )
+    assert len(digest) == 64
+
+
+@pytest.mark.unit
+def test_bound_fitness_identity_is_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
+    snap = capture_integrity()
+
+    def fake_fitness(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise AssertionError("bound fitness must not run")
+
+    monkeypatch.setattr(pipeline_mod, "BOUND_FITNESS", fake_fitness)
+    with pytest.raises(IntegrityError, match="fitness"):
+        assert_intact(snap)
+
+
+@pytest.mark.unit
+def test_class_level_record_rebind_and_process_fingerprint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime = make_runtime(tmp_path)
+    original = TrialRegistry.record
+
+    def stolen(self: TrialRegistry, **kwargs: object) -> int:
+        return original(self, **kwargs)
+
+    monkeypatch.setattr(TrialRegistry, "record", stolen)
+    with pytest.raises(EvolutionIntegrityError, match="trial counting skipped"):
+        runtime.assert_intact()
+    monkeypatch.setattr(TrialRegistry, "record", original)
+    mutation = runtime.birth.noise_child(default_parent(), seed=1, index=0)
+    payload = mutation.model_dump(mode="json")
+    payload["genome"] = default_parent().model_copy(update={"mu": 0.002}).model_dump(mode="json")
+    tampered = MutationProposed.model_validate(
+        {**payload, "provenance_mac": runtime.authority.mac(canonical_mutation(payload))}
+    )
+    with pytest.raises(EvolutionIntegrityError, match="trial counting skipped"):
+        runtime.process((tampered,), seed=1)

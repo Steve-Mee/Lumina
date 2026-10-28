@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import Mapping
 
@@ -49,6 +50,25 @@ def canonical_governance(fields: Mapping[str, object]) -> bytes:
 
 def review_binding(*, config_id: str, kind: str, target: str) -> bytes:
     return _dumps({"config_id": config_id, "kind": kind, "target": target})
+
+
+def mutation_fingerprint(
+    *,
+    config_id: str,
+    kind: str,
+    target: str,
+    genome: object,
+    parent_config_id: str,
+) -> str:
+    """Bind a TrialRegistry row to the mutation body so a stolen trial_id cannot change the genome."""
+    body = {
+        "config_id": config_id,
+        "kind": kind,
+        "target": target,
+        "parent_config_id": parent_config_id,
+        "genome": genome,
+    }
+    return hashlib.sha256(_dumps(body)).hexdigest()
 
 
 def _require_sequence(value: object) -> list[object]:

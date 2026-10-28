@@ -522,6 +522,12 @@ def test_materialize_noise_and_planted_lengths() -> None:
     assert len(pg) == 241
     assert all(pos == 1.0 for pos in pp)
     assert len(pm) == 241
+    overfit = hyp.model_copy(update={"overfit_in_sample": True})
+    og, op, om = materialize(overfit)
+    assert len(og) == 241
+    assert all(pos == 1.0 for pos in op)
+    assert len(om) == 241
+    assert og[0] > og[-1]
 
 
 @pytest.mark.unit

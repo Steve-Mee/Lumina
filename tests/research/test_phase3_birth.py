@@ -38,8 +38,13 @@ def test_tune_and_noise_children_are_distinct_trials(tmp_path: Path) -> None:
     assert noise.kind == "noise"
     assert noise.genome.planted is False
     assert noise.genome.mu == 0.0
+    overfit = runtime.birth.overfit_tune(parent, seed=7, index=3)
+    assert overfit.kind == "parameter_tune"
+    assert overfit.genome.overfit_in_sample is True
+    assert overfit.genome.planted is False
+    assert overfit.genome.kind == "noise"
     assert tuned.trial_id != noise.trial_id
-    assert runtime.registry.n_trials == 2
+    assert runtime.registry.n_trials == 3
 
 
 @pytest.mark.unit

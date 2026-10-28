@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from lumina_research.evolution.regime import (
@@ -51,9 +53,8 @@ def test_detect_regime_labels_vol_and_trend() -> None:
     obs_low = detect_regime(low)
     assert obs_high.vol in {"high", "low"}
     assert obs_low.trend in {"up", "down"}
-    short = detect_regime((0.01, -0.01))
-    assert short.vol == "low"
-    assert short.trend == "up"
+    with pytest.raises(RegimePolicyError, match="insufficient observations"):
+        detect_regime((0.01, -0.01))
 
 
 @pytest.mark.unit
@@ -67,3 +68,13 @@ def test_unknown_regime_labels_fail_closed() -> None:
     object.__setattr__(obs2, "trend", "sideways")
     with pytest.raises(RegimePolicyError, match="unknown trend"):
         policy.act(obs2)
+
+
+@pytest.mark.unit
+def test_non_finite_regime_series_fail_closed() -> None:
+    with pytest.raises(RegimePolicyError, match="not finite"):
+        detect_regime(tuple(math.nan for _ in range(40)))
+    mixed = [0.01] * 40
+    mixed[-1] = math.nan
+    with pytest.raises(RegimePolicyError, match="not finite"):
+        detect_regime(tuple(mixed))

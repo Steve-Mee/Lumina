@@ -82,3 +82,17 @@ def test_multiseed_align_check(tmp_path: Path) -> None:
             seeds=(1, 2),
             instruments=("MES",),
         )
+
+
+@pytest.mark.unit
+def test_multiseed_without_report_dir(tmp_path: Path) -> None:
+    report = run_multiseed_evolution(
+        audit_dir=tmp_path / "a",
+        experiment_log_dir=tmp_path / "e",
+        seeds=(11,),
+        instruments=("MES",),
+        n_noise=0,
+        n_overfit=0,
+    )
+    assert report.n_mutations == 2
+    assert report.n_hypotheses == 2

@@ -109,6 +109,35 @@ class BirthPhase(Frozen):
             config_id=config_id,
         )
 
+    def overfit_tune(
+        self,
+        parent: ParameterGenome,
+        *,
+        seed: int,
+        index: int,
+        scale_mu: float = 2.0,
+    ) -> MutationProposed:
+        """Parameter tune peak-fitted on in-sample windows. Counted, expected to die OOS."""
+        child = copy_genome(
+            parent,
+            mu=float(parent.mu) * float(scale_mu),
+            planted=False,
+            kind="noise",
+            overfit_in_sample=True,
+        )
+        config_id = f"birth-overfit-{index:04d}-s{seed}"
+        return self._reflector.propose(
+            kind="parameter_tune",
+            target=GENOME_TARGET,
+            genome=child,
+            rationale=evolution_rationale(
+                f"In-sample peak-fit mu*{scale_mu:.3f} that must die on the OOS walk-forward"
+            ),
+            seed=seed,
+            parent_config_id=_parent_id(parent, index),
+            config_id=config_id,
+        )
+
     def noise_child(
         self,
         parent: ParameterGenome,

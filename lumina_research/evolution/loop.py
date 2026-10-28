@@ -38,6 +38,7 @@ from lumina_research.evolution.report import (
     write_evolution_reports,
     write_multiseed_evolution_reports,
 )
+from lumina_research.evolution.seal import mutation_fingerprint
 from lumina_research.evolution.types import Instrument, default_parent
 from lumina_research.fitness import FitnessRefused, compute_fitness
 from lumina_research.risk_core.config import load_default_config
@@ -46,6 +47,9 @@ from lumina_research.validation.trial_registry import TrialRegistry
 
 DEFAULT_SEED = 20261028
 DEFAULT_N_NOISE = 2
+DEFAULT_N_OVERFIT = 0
+DEFAULT_MULTISEED_N_NOISE = 26
+DEFAULT_MULTISEED_N_OVERFIT = 2
 DEFAULT_MULTISEED_SEEDS: tuple[int, ...] = (20261028, 7, 13, 21, 42, 99, 123, 256, 1024, 4096)
 DEFAULT_MULTISEED_INSTRUMENTS: tuple[Instrument, ...] = (
     "MES",
@@ -83,6 +87,7 @@ class EvolutionRuntime(Frozen):
     blackboard: AgentBlackboard | None
     _snapshot: IntegritySnapshot
     _bound_evaluate: object
+    _bound_record: object
 
     def __init_subclass__(cls) -> None:
         raise TypeError("EvolutionRuntime cannot be subclassed")
@@ -115,6 +120,7 @@ class EvolutionRuntime(Frozen):
             bus=event_bus,
             authority=authority,
             reviews=reviews,
+            registry=registry,
             experiment_log_path=experiment_log_path,
             adr_root=adr_root if adr_root is not None else _ADR_DEFAULT,
             blackboard=blackboard,
@@ -149,6 +155,7 @@ class EvolutionRuntime(Frozen):
         self.blackboard = blackboard
         self._snapshot = snapshot
         self._bound_evaluate = object.__getattribute__(validation, "_evaluate")
+        self._bound_record = TrialRegistry.record
         self._freeze()
 
     def assert_intact(self) -> IntegritySnapshot:
@@ -158,6 +165,10 @@ class EvolutionRuntime(Frozen):
             raise EvolutionIntegrityError(str(exc)) from exc
         if object.__getattribute__(self.validation, "_evaluate") is not self._bound_evaluate:
             raise EvolutionIntegrityError("evaluate_candidate rebound")
+        if "record" in object.__getattribute__(self.registry, "__dict__"):
+            raise EvolutionIntegrityError("trial counting skipped")
+        if object.__getattribute__(type(self.registry), "record") is not self._bound_record:
+            raise EvolutionIntegrityError("trial counting skipped")
         return capture_integrity()
 
     def promote_direct(self, candidate: PromotionCandidate) -> None:
@@ -178,10 +189,11 @@ class EvolutionRuntime(Frozen):
         regime_obs: RegimeObservation | None = None,
         report_dir: Path | None = None,
     ) -> EvolutionReport:
+        self.assert_intact()
+        self._require_registered(mutations)
         n_start = self.registry.n_trials
         if n_start < len(mutations):
             raise EvolutionIntegrityError("trial counting skipped")
-        self.assert_intact()
         observation = regime_obs if regime_obs is not None else RegimeObservation(vol="low", trend="up")
         action = self.regime.act(observation)
         admitted: list[MutationProposed] = []
@@ -209,15 +221,9 @@ class EvolutionRuntime(Frozen):
         n_end = self.registry.n_trials
         if admitted and n_end <= n_start:
             raise EvolutionIntegrityError("trial counting skipped")
-        for evaluation in self.validation.evaluations():
-            if evaluation.fitness is None:
-                continue
-            try:
-                compute_fitness(evaluation.report, turnover=evaluation.turnover)
-            except FitnessRefused:
-                continue
         planted_flags = {item.hypothesis_id: item.planted for item in generated}
-        self.assert_intact()
+        self._verify_fitness()
+        snap = self.assert_intact()
         report = build_evolution_report(
             seed=seed,
             mutations=mutations,
@@ -227,12 +233,44 @@ class EvolutionRuntime(Frozen):
             planted_flags=planted_flags,
             n_trials_start=n_start,
             n_trials_end=n_end,
-            floors_intact=True,
-            risk_core_intact=True,
+            floors_intact=snap.floors == self._snapshot.floors,
+            risk_core_intact=(
+                snap.live_risk_hash == self._snapshot.live_risk_hash
+                and snap.research_risk_hash == self._snapshot.research_risk_hash
+            ),
         )
         if report_dir is not None:
             write_evolution_reports(report, report_dir)
         return report
+
+    def _require_registered(self, mutations: Sequence[MutationProposed]) -> None:
+        records = {item.trial_id: item for item in self.registry.records()}
+        for mutation in mutations:
+            record = records.get(mutation.trial_id)
+            if record is None or record.config_id != mutation.config_id:
+                raise EvolutionIntegrityError("trial counting skipped")
+            expected = mutation_fingerprint(
+                config_id=mutation.config_id,
+                kind=mutation.kind,
+                target=mutation.target,
+                genome=mutation.genome.model_dump(mode="json"),
+                parent_config_id=mutation.parent_config_id,
+            )
+            if record.metrics.get("mutation_sha256") != expected:
+                raise EvolutionIntegrityError("trial counting skipped")
+
+    def _verify_fitness(self) -> None:
+        for evaluation in self.validation.evaluations():
+            if evaluation.passed and evaluation.fitness is None:
+                raise EvolutionIntegrityError("gate pass without composite fitness")
+            if evaluation.fitness is None:
+                continue
+            try:
+                recomputed = compute_fitness(evaluation.report, turnover=evaluation.turnover)
+            except FitnessRefused as exc:
+                raise EvolutionIntegrityError("fitness swapped") from exc
+            if recomputed.value != evaluation.fitness.value:
+                raise EvolutionIntegrityError("fitness swapped")
 
 
 def run_phase3_evolution(
@@ -240,6 +278,7 @@ def run_phase3_evolution(
     audit_path: Path,
     experiment_log_path: Path,
     n_noise: int = DEFAULT_N_NOISE,
+    n_overfit: int = DEFAULT_N_OVERFIT,
     seed: int = DEFAULT_SEED,
     instrument: Instrument = "MES",
     report_dir: Path | None = None,
@@ -247,7 +286,7 @@ def run_phase3_evolution(
     equity: float = 100_000.0,
     open_oos_size: int | None = None,
 ) -> EvolutionReport:
-    """Open a window, tune the parent, add noise children, run the full Phase 2 gate."""
+    """Open a window, tune the parent, add overfit and noise children, run the full Phase 2 gate."""
     runtime = EvolutionRuntime(
         audit_path=audit_path,
         experiment_log_path=experiment_log_path,
@@ -259,6 +298,10 @@ def run_phase3_evolution(
         runtime.birth.open_window(parent, seed=seed, index=0, oos_size=open_oos_size),
         runtime.birth.tune(parent, seed=seed + 1, index=1, scale_mu=0.95),
     ]
+    for offset in range(n_overfit):
+        mutations.append(
+            runtime.birth.overfit_tune(parent, seed=seed + 5 + offset, index=5 + offset, scale_mu=1.8 + 0.1 * offset)
+        )
     for offset in range(n_noise):
         mutations.append(runtime.birth.noise_child(parent, seed=seed + 10 + offset, index=10 + offset))
     return runtime.process(tuple(mutations), seed=seed, report_dir=report_dir)
@@ -269,6 +312,7 @@ def run_multiseed_evolution(
     audit_dir: Path,
     experiment_log_dir: Path,
     n_noise: int = DEFAULT_N_NOISE,
+    n_overfit: int = DEFAULT_N_OVERFIT,
     seeds: Sequence[int] = DEFAULT_MULTISEED_SEEDS,
     instruments: Sequence[Instrument] = DEFAULT_MULTISEED_INSTRUMENTS,
     report_dir: Path | None = None,
@@ -282,6 +326,7 @@ def run_multiseed_evolution(
             audit_path=audit_dir / f"audit-{seed}-{instrument}.jsonl",
             experiment_log_path=experiment_log_dir / f"exp-{seed}-{instrument}.jsonl",
             n_noise=n_noise,
+            n_overfit=n_overfit,
             seed=int(seed),
             instrument=instrument,
             equity=equity,
