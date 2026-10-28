@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from starlette.requests import Request
 
 from backend import setup_endpoints as se
+from backend import setup_endpoints_fabric as se_fabric
 from lumina_launcher.core.onboarding import (
     compute_onboarding_steps,
     resolve_app_surface,
@@ -656,8 +657,12 @@ async def test_configure_rejects_missing_credentials() -> None:
     config_manager = MagicMock()
     config_manager.parse_env_file.return_value = {}
     mock_services = (setup, config_manager, MagicMock(), MagicMock(), MagicMock(), MagicMock())
-    with patch.object(se, "_services", return_value=mock_services):
-        with patch.object(se, "scan_missing_credentials", return_value=["LUMINA_JWT_SECRET_KEY"]):
+    with patch.object(se_fabric, "_services", return_value=mock_services):
+        with patch.object(
+            se_fabric,
+            "scan_missing_credentials",
+            return_value=["LUMINA_JWT_SECRET_KEY"],
+        ):
             with pytest.raises(Exception) as exc:
                 await se.configure_setup(se.ConfigureRequest())
             assert "LUMINA_JWT_SECRET_KEY" in str(exc.value)

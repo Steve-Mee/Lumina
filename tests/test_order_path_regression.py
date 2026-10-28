@@ -402,11 +402,11 @@ def test_place_order_invokes_risk_core_gate_before_broker(monkeypatch) -> None:
         sequence.append("risk_core")
         return original_gate(*args, **kwargs)
 
-    original_submit = container.broker.submit_order
+    fill = SimpleNamespace(accepted=True, status="FILLED", message="ok")
 
     def tracking_submit(*args: Any, **kwargs: Any) -> Any:
         sequence.append("broker")
-        return original_submit(*args, **kwargs)
+        return fill
 
     monkeypatch.setattr(orders_mod, "enforce_pre_trade_gate", tracking_gate)
     container.broker.submit_order.side_effect = tracking_submit
