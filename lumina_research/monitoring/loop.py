@@ -86,6 +86,7 @@ class ContinuityRuntime(Frozen):
     log_path: Path
     _evolution_log_dir: Path | None
     _snapshot: IntegritySnapshot
+    _live: list[IntegritySnapshot]
 
     def __init_subclass__(cls) -> None:
         raise TypeError("ContinuityRuntime cannot be subclassed")
@@ -192,14 +193,17 @@ class ContinuityRuntime(Frozen):
         self.log_path = experiment_log_path
         self._evolution_log_dir = evolution_log_dir
         self._snapshot = snapshot
+        self._live = [snapshot]
         self._freeze()
 
-    def assert_intact(self) -> IntegritySnapshot:
+    def assert_intact(self, *, refresh: bool = False) -> IntegritySnapshot:
+        if refresh:
+            self._live[0] = capture_integrity()
         try:
-            assert_intact(self._snapshot)
+            assert_intact(self._snapshot, live=self._live[0])
         except IntegrityError as exc:
             raise ContinuityIntegrityError(str(exc)) from exc
-        return capture_integrity()
+        return self._live[0]
 
     def insert_direct(self, signal: LiveSignal) -> None:
         self.registry.insert_direct(signal)
@@ -223,13 +227,13 @@ class ContinuityRuntime(Frozen):
             raise ContinuityRefused(str(exc)) from exc
 
     def admit(self, candidate: PromotionCandidate, validation: ValidationResult) -> LiveSignal:
-        self.assert_intact()
+        self.assert_intact(refresh=True)
         signal = self.registry.admit(candidate, validation)
         self._log_admit(signal)
         return signal
 
     def ingest_promotions(self) -> tuple[LiveSignal, ...]:
-        self.assert_intact()
+        self.assert_intact(refresh=True)
         validations: dict[str, ValidationResult] = {}
         for event in self.bus.history(RESEARCH_VALIDATION_TOPIC, limit=10_000):
             parsed = event.typed_payload(ValidationResult)
@@ -289,7 +293,7 @@ class ContinuityRuntime(Frozen):
         return self.sizer.propose(signal_id, quantity=quantity, price=price, regime=regime)
 
     def request_replenishment(self, *, seed: int) -> tuple[LiveSignal, ...]:
-        self.assert_intact()
+        self.assert_intact(refresh=True)
         planted = min(2, self.config.replenish_count)
         noise = max(0, self.config.replenish_count - planted)
         result = self.replenish.maybe_request(seed=seed, counts=(noise, planted))
@@ -305,7 +309,7 @@ class ContinuityRuntime(Frozen):
         decisions: Sequence[dict[str, object]] = (),
         report_dir: Path | None = None,
     ) -> GuardianReport:
-        self.assert_intact()
+        self.assert_intact(refresh=True)
         if cadence not in {"daily", "weekly"}:
             raise ContinuityRefused("cadence must be daily or weekly")
         label: str = cadence

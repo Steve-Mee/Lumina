@@ -91,23 +91,23 @@ def capture_integrity() -> IntegritySnapshot:
     )
 
 
-def assert_intact(snapshot: IntegritySnapshot) -> None:
-    live = capture_integrity()
-    if live.live_risk_hash != snapshot.live_risk_hash:
+def assert_intact(snapshot: IntegritySnapshot, live: IntegritySnapshot | None = None) -> None:
+    current = capture_integrity() if live is None else live
+    if current.live_risk_hash != snapshot.live_risk_hash:
         raise IntegrityError("lumina_core/risk drifted")
-    if live.research_risk_hash != snapshot.research_risk_hash:
+    if current.research_risk_hash != snapshot.research_risk_hash:
         raise IntegrityError("research Risk Core drifted")
-    if live.thresholds_toml_hash != snapshot.thresholds_toml_hash:
+    if current.thresholds_toml_hash != snapshot.thresholds_toml_hash:
         raise IntegrityError("gate_thresholds.toml drifted")
-    if live.thresholds_py_hash != snapshot.thresholds_py_hash:
+    if current.thresholds_py_hash != snapshot.thresholds_py_hash:
         raise IntegrityError("thresholds.py drifted")
-    if live.gate_py_hash != snapshot.gate_py_hash:
+    if current.gate_py_hash != snapshot.gate_py_hash:
         raise IntegrityError("gate.py drifted")
-    if live.fitness_py_hash != snapshot.fitness_py_hash:
+    if current.fitness_py_hash != snapshot.fitness_py_hash:
         raise IntegrityError("fitness.py drifted")
-    if live.floors != snapshot.floors:
+    if current.floors != snapshot.floors:
         raise IntegrityError("gate floor constants drifted")
-    if live.risk_file != snapshot.risk_file or live.risk_live != snapshot.risk_live:
+    if current.risk_file != snapshot.risk_file or current.risk_live != snapshot.risk_live:
         raise IntegrityError("Risk Core config drifted")
     assert_canonical_floors()
     assert_canonical_risk()
