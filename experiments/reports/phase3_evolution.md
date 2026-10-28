@@ -8,8 +8,12 @@ Parameter/window mutations only. Fitness is the Phase 1 composite OOS function.
 - hypotheses: **4**
 - promoted: **2**
 - kill rate: **0.5000**
+- false-kill rate: **0.0000**
+- false-survivor rate: **0.0000**
 - noise promoted: **0/2**
+- overfit promoted: **0/0**
 - trials: 4 → 12
+- DSR N (per candidate): [9, 10, 11, 12]
 - floors intact: **True**
 - Risk Core intact: **True**
 

@@ -105,6 +105,14 @@
       "wfe": 2.2932929567102827
     }
   ],
+  "dsr_n_trials": [
+    9,
+    10,
+    11,
+    12
+  ],
+  "false_kill_rate": 0.0,
+  "false_survivor_rate": 0.0,
   "floors_intact": true,
   "kill_rate": 0.5,
   "mutation_ids": [
@@ -121,6 +129,10 @@
   "n_mutations": 4,
   "n_noise_mutations": 2,
   "n_noise_promoted": 0,
+  "n_overfit_mutations": 0,
+  "n_overfit_promoted": 0,
+  "n_planted_killed": 0,
+  "n_planted_mutations": 2,
   "n_promoted": 2,
   "n_trials_end": 12,
   "n_trials_start": 4,
