@@ -27,6 +27,20 @@ def _module_from_import(node: ast.AST) -> str:
 
 
 @pytest.mark.unit
+def test_phase4_source_has_no_todo_or_pass_placeholders() -> None:
+    banned = ("TODO", "FIXME", "XXX", "NotImplemented", "pass  #")
+    hits: list[str] = []
+    for path in MONITORING.rglob("*.py"):
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if any(token in line for token in banned):
+                hits.append(f"{path.name}:{lineno}:{stripped}")
+    assert hits == [], "placeholder in monitoring:\n" + "\n".join(hits)
+
+
+@pytest.mark.unit
 def test_phase4_does_not_import_live_risk_promotion_or_archive_birth() -> None:
     hits: list[str] = []
     for path in MONITORING.rglob("*.py"):

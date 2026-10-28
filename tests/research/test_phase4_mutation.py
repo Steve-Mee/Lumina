@@ -1,0 +1,48 @@
+"""Mutation testing of lumina_research/monitoring."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from tests.research.phase4_mutant_kills import run as run_kills
+from tests.research.phase4_mutants import (
+    iter_mutants,
+    justify_survivor,
+    run_mutation_campaign,
+    write_mutation_reports,
+)
+
+REPO_REPORTS = Path("experiments/reports")
+
+
+@pytest.mark.unit
+def test_kill_battery_passes_on_unmutated_code() -> None:
+    run_kills()
+
+
+@pytest.mark.unit
+def test_mutant_iterator_finds_sites() -> None:
+    mutants = iter_mutants(40)
+    assert len(mutants) >= 40
+    files = {item.path.split("/")[-1] for item in mutants}
+    assert len(files) >= 4
+    assert "registry.py" in files or "statistics.py" in files
+
+
+@pytest.mark.slow
+@pytest.mark.timeout(180)
+def test_monitoring_mutation_campaign_kills_most_mutants(tmp_path: Path) -> None:
+    report = run_mutation_campaign(limit=320, timeout=20.0, workers=4)
+    write_mutation_reports(report, tmp_path / "reports")
+    write_mutation_reports(report, REPO_REPORTS)
+    assert report.n_mutants >= 300
+    assert report.kill_rate >= 0.70
+    payload = json.loads((REPO_REPORTS / "phase4_mutation.json").read_text(encoding="utf-8"))
+    assert payload["n_mutants"] >= 300
+    md = (REPO_REPORTS / "phase4_mutation.md").read_text(encoding="utf-8")
+    assert "kill rate" in md.lower()
+    for survivor in report.survivors:
+        assert justify_survivor(survivor)
