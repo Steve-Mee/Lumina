@@ -116,7 +116,11 @@ class _Mutator(ast.NodeTransformer):
     def visit_Raise(self, node: ast.Raise) -> ast.AST:
         self.generic_visit(node)
         exc = node.exc
-        if isinstance(exc, ast.Call) and isinstance(exc.func, ast.Name) and exc.func.id in {"TypeError", "RuntimeError"}:
+        if (
+            isinstance(exc, ast.Call)
+            and isinstance(exc.func, ast.Name)
+            and exc.func.id in {"TypeError", "RuntimeError"}
+        ):
             return node
         if self._hit("raise-to-pass"):
             return ast.Pass()
@@ -170,11 +174,9 @@ def _mutants_for_file(name: str) -> Iterator[Mutant]:
 
 
 def iter_mutants(limit: int) -> list[Mutant]:
-    gens: list[Iterator[Mutant]] = [
-        _mutants_for_file(name) for name in TARGET_FILES if name not in SKIP_FILES
-    ]
+    gens: list[Iterator[Mutant]] = [_mutants_for_file(name) for name in TARGET_FILES if name not in SKIP_FILES]
     mutants: list[Mutant] = []
-    while gens and len(mutants) < limit:
+    while gens and len(mutants) < int(limit):
         remaining: list[Iterator[Mutant]] = []
         for gen in gens:
             try:
@@ -182,30 +184,52 @@ def iter_mutants(limit: int) -> list[Mutant]:
             except StopIteration:
                 continue
             remaining.append(gen)
-            if len(mutants) >= limit:
+            if len(mutants) >= int(limit):
                 return mutants
         gens = remaining
     return mutants
 
 
+def insert_refuse_mutant() -> Mutant:
+    """Single known-kill mutant: drop the direct-insert ContinuityRefused."""
+    rel = "lumina_research/monitoring/registry.py"
+    original = (ROOT / rel).read_text(encoding="utf-8")
+    needle = 'raise ContinuityRefused("direct registry insertion is forbidden")'
+    if needle not in original:
+        raise RuntimeError("insert refuse text missing from registry.py")
+    return Mutant(
+        path=rel,
+        description="registry.py:raise-to-pass-insert",
+        source=original.replace(needle, "pass", 1),
+    )
+
+
+def _link_or_copy(src: str, dst: str) -> None:
+    try:
+        os.link(src, dst)
+    except OSError:
+        shutil.copy2(src, dst)
+
+
 def _run_one(mutant: Mutant, timeout: float) -> MutantResult:
-    with tempfile.TemporaryDirectory(prefix="p4mut-") as tmp:
+    cache = ROOT / ".pytest_cache" / "p4mut"
+    cache.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="p4mut-", dir=str(cache)) as tmp:
         overlay = Path(tmp)
         dest = overlay / "lumina_research"
         shutil.copytree(
             ROOT / "lumina_research",
             dest,
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+            copy_function=_link_or_copy,
         )
         target = overlay / mutant.path
+        if target.exists():
+            target.unlink()
         target.write_text(mutant.source, encoding="utf-8")
         env = dict(**{str(key): str(value) for key, value in os.environ.items()})
         env["PYTHONPATH"] = str(overlay) + os.pathsep + str(ROOT)
-        launcher = (
-            "import sys;"
-            f"sys.path.insert(0, {str(overlay)!r});"
-            f"from {KILL_MOD} import run; run()"
-        )
+        launcher = f"import sys;sys.path.insert(0, {str(overlay)!r});from {KILL_MOD} import run; run()"
         try:
             proc = subprocess.run(
                 [sys.executable, "-c", launcher],

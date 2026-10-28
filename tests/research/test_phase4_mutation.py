@@ -10,6 +10,7 @@ import pytest
 from tests.research.phase4_mutant_kills import run as run_kills
 from tests.research.phase4_mutants import (
     _run_one,
+    insert_refuse_mutant,
     iter_mutants,
     justify_survivor,
     run_mutation_campaign,
@@ -36,17 +37,7 @@ def test_mutant_iterator_finds_sites() -> None:
 @pytest.mark.unit
 def test_overlay_kills_raise_to_pass_on_insert() -> None:
     """Guard against cwd shadowing the mutant overlay on sys.path."""
-    needle = "direct registry insertion is forbidden"
-    chosen = next(
-        (
-            item
-            for item in iter_mutants(250)
-            if item.path.endswith("registry.py") and needle not in item.source
-        ),
-        None,
-    )
-    assert chosen is not None
-    killed = _run_one(chosen, 20.0)
+    killed = _run_one(insert_refuse_mutant(), 8.0)
     assert killed.killed is True, killed.detail
 
 
