@@ -28,7 +28,7 @@ def make_board(tmp_path: Path) -> AgentBlackboard:
 def make_agents(
     tmp_path: Path,
     *,
-    n_obs: int = 240,
+    n_obs: int = 360,
     planted_quantity: float = 1.0,
     planted_price: float = 5_000.0,
     blackboard: AgentBlackboard | None = None,

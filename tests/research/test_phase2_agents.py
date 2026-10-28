@@ -38,7 +38,7 @@ class _BlankGenerator(HypothesisGenerator):
             kind="noise",
             instrument="MES",
             seed=1,
-            n_obs=240,
+            n_obs=360,
             mu=0.0,
             sigma=0.01,
             planted=False,

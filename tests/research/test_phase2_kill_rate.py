@@ -85,8 +85,7 @@ def test_scaled_risk_core_decision_is_treated_as_approved_with_scaled_size(tmp_p
     validation.flush()
     planted = next(item for item in generated if item.planted)
     issued = [item for item in promotion.issued() if item.hypothesis_id == planted.hypothesis_id]
-    if not issued:
-        pytest.skip("planted edge did not survive this seed; kill-rate test covers survival")
+    assert issued, "planted edge must survive so Scaled can be observed"
     candidate = issued[0]
     assert candidate.decision_kind in {DecisionKind.APPROVED.value, DecisionKind.SCALED.value, "approved", "scaled"}
     if candidate.scaled:

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from lumina_core.agent_orchestration import event_bus as event_bus_mod
 from lumina_core.agent_orchestration.event_bus import EventBus
 from lumina_core.agent_orchestration.schemas import (
     EVENT_BUS_TOPIC_MODELS,
@@ -14,6 +15,7 @@ from lumina_core.agent_orchestration.schemas import (
     RESEARCH_PROMOTION_TOPIC,
     RESEARCH_VALIDATION_TOPIC,
 )
+from lumina_core.engine.agent_blackboard_types import DEFAULT_ALLOWED_PRODUCERS
 from lumina_core.agent_orchestration.schemas_research import EVENT_BUS_GUARDED_TOPICS
 from lumina_core.agent_orchestration.schemas_research import (
     EconomicRationale,
@@ -80,7 +82,7 @@ def test_unauthorized_producer_cannot_publish_hypothesis() -> None:
         kind="noise",
         instrument="MES",
         seed=1,
-        n_obs=240,
+        n_obs=360,
         mu=0.0,
         sigma=0.01,
         planted=False,
@@ -116,6 +118,48 @@ def test_promotion_candidate_without_guard_is_rejected() -> None:
                 "issue_mac": "c" * 64,
             },
         )
+
+
+@pytest.mark.unit
+def test_event_bus_public_export_list_is_unchanged() -> None:
+    assert event_bus_mod.__all__ == [
+        "AgentReflection",
+        "BirthAutonomyDecision",
+        "BirthCertificateRemediationRequested",
+        "BirthCurriculumStageAborted",
+        "BirthCurriculumStageCompleted",
+        "BirthCurriculumStageRequested",
+        "BirthCurriculumStageStarted",
+        "BirthCurriculumStarted",
+        "BirthMetaPlan",
+        "BirthPhoenixCycle",
+        "BirthPlateauEntered",
+        "BirthPlateauEvolutionStep",
+        "BirthPlateauTrapDetected",
+        "BirthStageRolloutSnapshot",
+        "BirthStallRemediationCycle",
+        "BirthStallRemediationStep",
+        "CommunityKnowledgeSnippet",
+        "ConstitutionAudit",
+        "ConstitutionViolation",
+        "DreamState",
+        "DomainEvent",
+        "EventBus",
+        "EvolutionPromotionDecision",
+        "EvolutionProposal",
+        "FinalArbitrationResult",
+        "LLMDecisionContext",
+        "MetaAgentThought",
+        "RiskVerdict",
+        "ShadowResult",
+        "TradeIntent",
+    ]
+
+
+@pytest.mark.unit
+def test_existing_blackboard_test_producer_is_unchanged() -> None:
+    assert "test" in DEFAULT_ALLOWED_PRODUCERS["agent.rl.proposal"]
+    assert "test" not in DEFAULT_ALLOWED_PRODUCERS[RESEARCH_PROMOTION_TOPIC]
 
 
 @pytest.mark.unit

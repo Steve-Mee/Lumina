@@ -99,7 +99,7 @@ def test_direct_consider_without_valid_mac_does_not_issue(tmp_path: Path) -> Non
                 "expected_max_sr": 0.05,
                 "sr_standard_error": 0.04,
                 "n_trials": 5,
-                "n_observations": 240,
+                "n_observations": 360,
                 "skew": 0.0,
                 "kurtosis": 3.0,
                 "formulation": "bailey_lopez_de_prado_2014",
