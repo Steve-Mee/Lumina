@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, cast
 
-from lumina_core.broker.broker_bridge import Order
+from lumina_core.broker.broker_bridge import Order, Position
 from lumina_core.runtime_context import RuntimeContext
 from lumina_core.trade_workers import submit_order_with_risk_check
 
@@ -74,6 +74,7 @@ def test_submit_order_with_risk_check_buy_is_frozen(monkeypatch) -> None:
 def test_submit_order_with_risk_check_allows_reduce_only_flatten(monkeypatch) -> None:
     app, broker = _app("real")
     app.engine.live_position_qty = 1
+    broker.get_positions = lambda: [Position(symbol="MES JUN26", quantity=1, avg_price=1.0, side="BUY")]
     monkeypatch.setattr(
         "lumina_core.trade_workers.check_pre_trade_risk",
         lambda *_a, **_k: (True, "ok"),

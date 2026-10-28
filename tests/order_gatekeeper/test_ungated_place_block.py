@@ -235,6 +235,22 @@ def test_inspect_and_live_qty_fail_closed_on_bad_metadata() -> None:
     app = SimpleNamespace(sim_position_qty="nope")
     engine = SimpleNamespace(live_position_qty="nope")
     assert live_qty_from_order_or_engine(None, engine, app) == 0
+    engine_only = SimpleNamespace(live_position_qty=2)
+    assert live_qty_from_order_or_engine(None, engine_only, SimpleNamespace()) == 2
+    reduce_engine = Order(
+        symbol="MES",
+        side="SELL",
+        quantity=1,
+        metadata={"reduce_only": True},
+    )
+    allowed_engine, reason_engine = gate_order(
+        "trade_workers.submit_order_with_risk_check",
+        reduce_engine,
+        engine=engine_only,
+        app=SimpleNamespace(),
+    )
+    assert allowed_engine is True
+    assert reason_engine == "reduce_only_allowed"
     assert live_qty_from_order_or_engine(None, None, None) == 0
     assert is_risk_reducing_side(order_side="HOLD", live_position_qty=1) is False
     allowed, blocked = assert_validation_gate_or_block(

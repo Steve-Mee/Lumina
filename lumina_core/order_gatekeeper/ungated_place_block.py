@@ -236,9 +236,9 @@ def inspect_order_flags(order: Order | None) -> tuple[bool, str, str, int | None
 def live_qty_from_order_or_engine(order: Order | None, engine: object | None, app: object | None) -> int:
     """Live qty from app/engine only. Order metadata is attacker-controlled and ignored."""
     del order
-    if app is not None:
+    if app is not None and hasattr(app, "sim_position_qty"):
         try:
-            return int(getattr(app, "sim_position_qty", 0) or 0)
+            return int(getattr(app, "sim_position_qty") or 0)
         except (TypeError, ValueError):
             pass
     if engine is not None:

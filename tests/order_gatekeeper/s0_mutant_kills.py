@@ -303,6 +303,8 @@ def _freeze_battery() -> None:
         raise AssertionError("explicit live qty wins over empty book")
     if live_qty_from_order_or_engine(None, SimpleNamespace(live_position_qty=2), None) != 2:
         raise AssertionError("engine live qty")
+    if live_qty_from_order_or_engine(None, SimpleNamespace(live_position_qty=2), SimpleNamespace()) != 2:
+        raise AssertionError("missing sim qty falls through to engine")
     if instrument_root("  nq 06-26 ") != "NQ":
         raise AssertionError("root strips and uppercases")
     custom = blocked_order_result("nope")
