@@ -50,6 +50,10 @@ from lumina_core.agent_orchestration.schemas import (
     TradeIntent,
     model_validate_payload_with_instance,
 )
+from lumina_core.agent_orchestration.schemas_research import (
+    EVENT_BUS_GUARDED_TOPICS,
+    EVENT_BUS_TOPIC_PRODUCERS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +130,7 @@ class EventBus:
         self._callbacks: dict[str, dict[str, Callable[[DomainEvent], None]]] = defaultdict(dict)
         self._history: dict[str, deque[DomainEvent]] = defaultdict(lambda: deque(maxlen=self._max_topic_history))
         self._seq = 0
+        self._topic_guards: dict[str, Callable[[str, dict[str, Any]], bool]] = {}
 
     def publish(
         self,
@@ -141,6 +146,10 @@ class EventBus:
             raise ValueError("topic cannot be empty")
         if not isinstance(payload, dict):
             raise TypeError("payload must be a dict")
+        producer_key = str(producer)
+        allowed = EVENT_BUS_TOPIC_PRODUCERS.get(topic_key)
+        if allowed is not None and producer_key.strip() not in allowed:
+            raise PermissionError(f"producer '{producer}' is not allowed on topic '{topic_key}'")
         safe_payload = dict(payload)
         registry_model = EVENT_BUS_TOPIC_MODELS.get(topic_key)
         if topic_key in CRITICAL_EVENT_BUS_TOPICS:
@@ -157,6 +166,12 @@ class EventBus:
                 payload=safe_payload,
                 payload_model=selected_payload_model,
             )
+
+        if topic_key in EVENT_BUS_GUARDED_TOPICS:
+            with self._lock:
+                guard = self._topic_guards.get(topic_key)
+            if guard is None or not bool(guard(producer_key, dict(safe_payload))):
+                raise PermissionError(f"topic {topic_key!r} rejected: missing or invalid issuer guard")
 
         event = DomainEvent(
             topic=topic_key,
@@ -222,6 +237,19 @@ class EventBus:
             if topic_key in CRITICAL_EVENT_BUS_TOPICS:
                 raise
             return None
+
+    def register_topic_guard(self, topic: str, guard: Callable[[str, dict[str, Any]], bool]) -> None:
+        """Attach an issuer guard. Only new guarded research topics may register.
+
+        Existing Event Bus topics cannot receive a guard (additive, fail-closed).
+        """
+        topic_key = str(topic).strip().lower()
+        if topic_key not in EVENT_BUS_GUARDED_TOPICS:
+            raise ValueError(
+                f"topic guards cannot be attached to {topic_key!r}; existing Event Bus topics stay unguarded"
+            )
+        with self._lock:
+            self._topic_guards[topic_key] = guard
 
     def subscribe(self, topic: str, callback: Callable[[DomainEvent], None]) -> str:
         topic_key = str(topic).strip().lower()
