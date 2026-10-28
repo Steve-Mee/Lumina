@@ -32,6 +32,8 @@ Every task starts with the Validation Gate in `lumina_research/validation/`. No 
 
 Doubt = reject. The live Risk Core (`lumina_core/risk/`) stays untouchable; `lumina_research/risk_core/` is an additional research-time filter.
 
+Phase 2 (`lumina_research/agents/`): hypotheses on the Event Bus → full Phase 1 gate → `PromotionCandidate` only for sealed survivors. Live `PromotionGate` and live Risk Core are not written.
+
 ## Phase 1 freeze
 
 Agents **may not write new signals**, strategy mutants, or birth curricula until the Validation Gate in `lumina_research/validation/` exists and is tested. Do not build on `archive/birth-v1/`. Research may only propose; the live Risk Core and `PromotionGate` remain the only promotion path.
