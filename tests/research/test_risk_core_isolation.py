@@ -15,6 +15,8 @@ BANNED_PREFIXES = (
     "lumina_core",
     "lumina_research.validation",
     "lumina_research.fitness",
+    "lumina_research.evolution",
+    "lumina_research.agents",
     "lumina_agents",
     "numpy",
     "pandas",
