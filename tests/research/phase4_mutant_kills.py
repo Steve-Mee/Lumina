@@ -26,17 +26,39 @@ from lumina_research.monitoring.acceptance import (
     CONFIRM_WINDOWS,
     DETECTION_RATE_MIN,
     FAR_HEALTHY_MAX,
+    FAR_HIGH_VOL_EXTREME_NOT_A_PASS,
     FAR_HIGH_VOL_MAX,
+    FAR_HIGH_VOL_TARGET,
+    HIGH_VOL_CONFIRM_WINDOWS,
+    HIGH_VOL_REALIZED_MULT,
+    HIGH_VOL_REALIZED_WINDOW,
+    HIGH_VOL_TRAILING_PCT,
+    HIGH_VOL_TRAILING_WINDOW,
+    HIGH_VOL_VIX,
+    MATERIAL_DD_MULT,
+    MATERIAL_IC_RATIO,
+    MATERIAL_SHARPE_RATIO,
     MEANINGFUL_RAMP_DAYS,
+    MEDIUM_WINDOW,
     MUTATION_EQUIVALENT_MAX_FRAC,
     MUTATION_KILL_RATE_MIN,
     MUTATION_MIN_MUTANTS,
     TTD_MAX_TRADING_DAYS,
+    TTD_MEDIUM_MAX_TRADING_DAYS,
+    confirm_windows_for,
 )
 from lumina_research.monitoring.capacity import CapacityController, _needed, _sums
 from lumina_research.monitoring.config import ContinuityConfigError, config_from_mapping, load_default_config
 from lumina_research.monitoring.guardian import GuardianAgent
+from lumina_research.monitoring.horizons import combined_assessment
 from lumina_research.monitoring.loop import ContinuityIntegrityError, ContinuityRuntime, run_phase4_detection
+from lumina_research.monitoring.material import (
+    _drawdown_breach,
+    _ic_halved,
+    _max_drawdown,
+    _sharpe_halved,
+    assess_material,
+)
 from lumina_research.monitoring.monitor import LivePerformanceMonitor
 from lumina_research.monitoring.registry import LiveSignalRegistry
 from lumina_research.monitoring.replenish import ReplenishAgent
@@ -55,6 +77,7 @@ from lumina_research.monitoring.statistics import (
     _select,
     assess_decay,
     cusum_down,
+    effective_sigma,
     empirical_percentile,
     rolling_mean,
     sprt_llr,
@@ -72,6 +95,7 @@ from lumina_research.monitoring.types import (
     stage_weight,
     tighter_stage,
 )
+from lumina_research.monitoring.vol_regime import classify_vol_regime, label_windows, realized_vol, trailing_percentile
 from lumina_research.risk_core.config import load_default_config as load_risk_config
 from lumina_research.risk_core.engine import RiskCore
 from lumina_research.risk_core.types import DecisionKind
@@ -151,6 +175,21 @@ def _config_battery() -> None:
         or FAR_HIGH_VOL_MAX != 0.10
         or DETECTION_RATE_MIN != 0.85
         or TTD_MAX_TRADING_DAYS != 15
+        or HIGH_VOL_CONFIRM_WINDOWS != 3
+        or TTD_MEDIUM_MAX_TRADING_DAYS != 45
+        or MATERIAL_DD_MULT != 1.5
+        or MATERIAL_IC_RATIO != 0.50
+        or MATERIAL_SHARPE_RATIO != 0.50
+        or FAR_HIGH_VOL_TARGET != 0.08
+        or FAR_HIGH_VOL_EXTREME_NOT_A_PASS != 0.12
+        or HIGH_VOL_REALIZED_WINDOW != 20
+        or HIGH_VOL_TRAILING_WINDOW != 252
+        or HIGH_VOL_TRAILING_PCT != 0.75
+        or HIGH_VOL_REALIZED_MULT != 1.50
+        or HIGH_VOL_VIX != 25.0
+        or MEDIUM_WINDOW != 40
+        or confirm_windows_for("normal") != 2
+        or confirm_windows_for("high_vol") != 3
     ):
         raise AssertionError("Steve Phase 4 acceptance floors drifted")
     cfg = load_default_config()
@@ -876,10 +915,84 @@ def _runtime_battery(root: Path) -> None:
         raise AssertionError("observe after Risk Core drift must fail closed")
 
 
+def _phase5_battery() -> None:
+    quiet = tuple(0.75 for _ in range(40))
+    if classify_vol_regime(quiet, vix=10.0) != "normal":
+        raise AssertionError("quiet VIX must classify normal")
+    if classify_vol_regime(quiet, vix=HIGH_VOL_VIX + 1.0) != "high_vol":
+        raise AssertionError("VIX>25 must classify high_vol")
+    if classify_vol_regime(quiet[:5]) != "normal":
+        raise AssertionError("short history must classify normal")
+    _refuse_msg(ContinuityRefused, "VIX", classify_vol_regime, quiet, vix=-1.0)
+    _refuse(ContinuityRefused, realized_vol, (0.7, 0.8), window=1)
+    if realized_vol(tuple(0.70 + 0.01 * index for index in range(20)), window=2) is None:
+        raise AssertionError("realized-vol window=2 must compute")
+    if trailing_percentile((), pct=0.75) is not None:
+        raise AssertionError("empty trailing percentile is None")
+    if trailing_percentile((1.0, 2.0, 3.0, 4.0), pct=0.75) != 3.0:
+        raise AssertionError("75th percentile drifted")
+    _refuse(ContinuityRefused, trailing_percentile, (1.0, 2.0), pct=1.5)
+    _refuse(ContinuityRefused, classify_vol_regime, quiet, trailing_window=1)
+    loud = tuple(1.0 for _ in range(50)) + tuple(20.0 + float(index) for index in range(30))
+    if classify_vol_regime(loud, instrument="ES") != "high_vol":
+        raise AssertionError("ES 1.5x-median path must be high_vol")
+    labels = label_windows(quiet + loud, vix_path=tuple(10.0 for _ in quiet) + tuple(30.0 for _ in loud))
+    if labels[0] != "normal" or labels[-1] != "high_vol":
+        raise AssertionError("label_windows must switch between windows")
+    cfg = load_default_config()
+    oos = RICH_OOS
+    mean = sum(oos) / float(len(oos))
+    healthy = tuple(mean for _ in range(30))
+    quiet_mat = assess_material(healthy, oos, cfg)
+    if quiet_mat.stage != "active" or quiet_mat.votes_deweight != 0 or quiet_mat.votes_retire != 0:
+        raise AssertionError("healthy material must stay active without votes")
+    if assess_material(healthy[:5], oos, cfg).ready is True:
+        raise AssertionError("short material window must not be ready")
+    _refuse_msg(ContinuityRefused, "empty", assess_material, healthy, (), cfg)
+    _refuse_msg(ContinuityRefused, "non-finite OOS", assess_material, healthy, (math.nan, mean), cfg)
+    _refuse_msg(ContinuityRefused, "non-finite live", _max_drawdown, (mean, math.nan))
+    if not _ic_halved(0.20 * mean, mean):
+        raise AssertionError("IC halved must fire at 20% of OOS mean")
+    if _ic_halved(0.80 * mean, mean):
+        raise AssertionError("IC must not fire at 80% of OOS mean")
+    if not _sharpe_halved(0.10, 1.0, mean, 0.05):
+        raise AssertionError("Sharpe collapse must fire")
+    ic_break = tuple(mean for _ in range(20)) + tuple(0.20 * mean for _ in range(15))
+    ic_high = assess_material(ic_break, oos, cfg, vol_regime="high_vol")
+    if ic_high.severity < 1:
+        raise AssertionError("IC collapse must still flag in high_vol")
+    peak = mean + 0.40
+    dd_only = tuple(peak for _ in range(25)) + (peak - 0.40,) + tuple(peak for _ in range(20))
+    if not _drawdown_breach(dd_only, oos, 0.05, vol_scale=1.0):
+        raise AssertionError("DD helper must flag 1.5x path")
+    dd_normal = assess_material(dd_only, oos, cfg, vol_regime="normal")
+    if dd_normal.severity < 1:
+        raise AssertionError("DD-only path must flag in normal vol")
+    dd_high = assess_material(dd_only, oos, cfg, vol_regime="high_vol")
+    if dd_high.severity != 0 or dd_high.stage != "active":
+        raise AssertionError("packaged high_vol material skips DD-only")
+    both = tuple(peak for _ in range(20)) + tuple(0.20 * mean for _ in range(20))
+    if assess_material(both, oos, cfg, vol_regime="normal").severity < 2:
+        raise AssertionError("IC+DD must suspend")
+    noisy = tuple(mean + (((-1) ** index) * 0.25) for index in range(30))
+    if effective_sigma(0.05, noisy, window=20) < 0.05:
+        raise AssertionError("effective_sigma must not fall below OOS vol")
+    combined = combined_assessment(ic_break, oos, cfg, vix=HIGH_VOL_VIX + 5.0)
+    if combined.vol_regime != "high_vol":
+        raise AssertionError("combined assessment must label high_vol")
+    if combined.assessment.stage == "active":
+        raise AssertionError("IC collapse must not stay active after combine")
+    recovered = tuple(mean - 3.0 * 0.05 for _ in range(20)) + tuple(mean for _ in range(20))
+    medium = combined_assessment(recovered, oos, cfg)
+    if medium.horizon != "medium" or medium.assessment.stage == "active":
+        raise AssertionError("medium horizon must catch a recovered short window")
+    if combined_assessment(healthy[:10], oos, cfg).assessment.ready is True:
+        raise AssertionError("combined short series must not be ready")
 def run() -> None:
     _config_battery()
     _statistics_battery()
     _types_battery()
+    _phase5_battery()
     _seal_battery(ProvenanceAuthority())
     with TemporaryDirectory() as tmp:
         root = Path(tmp)

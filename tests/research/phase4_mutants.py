@@ -31,6 +31,14 @@ TARGET_FILES = (
     "seal.py",
     "loop.py",
 )
+PHASE5_CHANGE_FILES = (
+    "material.py",
+    "horizons.py",
+    "vol_regime.py",
+    "acceptance.py",
+    "statistics.py",
+    "monitor.py",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,8 +201,9 @@ def _mutants_for_file(name: str) -> Iterator[Mutant]:
         yield Mutant(path=rel, description=f"{name}:{mutator.applied}#{index}", source=source)
 
 
-def iter_mutants(limit: int) -> list[Mutant]:
-    gens: list[Iterator[Mutant]] = [_mutants_for_file(name) for name in TARGET_FILES if name not in SKIP_FILES]
+def iter_mutants(limit: int, files: tuple[str, ...] | None = None) -> list[Mutant]:
+    names = files if files is not None else TARGET_FILES
+    gens: list[Iterator[Mutant]] = [_mutants_for_file(name) for name in names if name not in SKIP_FILES]
     mutants: list[Mutant] = []
     while gens and len(mutants) < int(limit):
         remaining: list[Iterator[Mutant]] = []
@@ -282,8 +291,14 @@ def justify_survivor(result: MutantResult) -> str:
     return equivalent_reason(result)
 
 
-def run_mutation_campaign(*, limit: int = 320, timeout: float = 20.0, workers: int = 4) -> MutationReport:
-    mutants = iter_mutants(limit)
+def run_mutation_campaign(
+    *,
+    limit: int = 320,
+    timeout: float = 20.0,
+    workers: int = 4,
+    files: tuple[str, ...] | None = None,
+) -> MutationReport:
+    mutants = iter_mutants(limit, files=files)
     collected: list[MutantResult] = []
     if workers <= 1:
         collected.extend(_run_one(item, timeout) for item in mutants)

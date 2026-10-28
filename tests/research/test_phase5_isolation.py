@@ -21,6 +21,7 @@ TARGETS = (
 )
 BANNED = (
     "lumina_core.risk",
+    "lumina_core.trading_engine",
     "lumina_core.evolution.promotion_gate",
     "lumina_core.evolution.promotion_evidence",
     "lumina_core.broker",
