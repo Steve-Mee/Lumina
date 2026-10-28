@@ -20,13 +20,12 @@ Binding laws live in the documents listed below. If this index conflicts with
 | Context | Path |
 |---------|------|
 | Safety | `lumina_core/safety/` |
-| Research | `lumina_core/research/` (propose-only Validation Gate; no Risk Core) |
-| Evolution | `lumina_core/evolution/` (promotion/shadow/twin fabric; birth-v1 experiments in `archive/birth-v1/`) |
+| Evolution | `lumina_core/evolution/` |
 | Risk Management | `lumina_core/risk/` |
 | Agent Orchestration | `lumina_core/agent_orchestration/` |
 | Trading Engine | `lumina_core/trading_engine/` (+ `engine/` composition/compat root) |
 
-Extended ownership: `audit/`, `broker/`, `reasoning/`, `rl/`, `state/`, `monitoring/`, `ports/`. Birth-v1 training lives under `archive/birth-v1/` (compat shims remain at `lumina_core/birth`).
+Extended ownership: `audit/`, `broker/`, `reasoning/`, `birth/`, `rl/`, `state/`, `monitoring/`, `ports/`.
 Operator UI SSOT: `tauri-app/` + FastAPI `lumina_os/backend/` (ADR-0016).
 
 ## Non-negotiable operating rules (pointers only)
