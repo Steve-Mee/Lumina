@@ -1,0 +1,10 @@
+# Research-time Risk Core hard limits. Frozen at load; no runtime mutation.
+# This is NOT lumina_core/risk (the live KEEP Risk Core). See README.md.
+
+max_position_pct = 0.10
+max_daily_loss_pct = 0.02
+max_total_drawdown_pct = 0.10
+leverage_cap = 4.0
+correlation_cluster_limit_pct = 0.15
+heartbeat_timeout_sec = 30.0
+min_quantity = 1.0

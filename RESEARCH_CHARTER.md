@@ -25,7 +25,9 @@ Only the survivors of this gate enter the live portfolio. Everything else is res
 The live enforcement point is `PromotionGate` (`lumina_core/evolution/promotion_gate.py`). Any remaining mutation, promotion or birth path that would skip this gate must hard-fail.
 
 ## Phase 1 freeze (mandatory)
-Agents **may not write new signals**, strategy mutants, birth curricula, or fitness search until Phase 1 of `lumina_research/` (Validation Gate implementation) is complete.
+Every task starts with the Validation Gate. Agents **may not write new signals**, strategy mutants, birth curricula, or fitness search until Phase 1 of `lumina_research/` (Validation Gate implementation) exists and is tested.
+
+Phase 1 lives in `lumina_research/validation/` (`walk_forward`, `cpcv`, `dsr`, `cost_model`, `gate`) plus `lumina_research/fitness.py` and the additional research-time `lumina_research/risk_core/`. The live Risk Core in `lumina_core/risk/` remains untouchable.
 
 - Do not build further on `archive/birth-v1/` or the old birth/evolution search logic.
 - Propose-only research lives in `lumina_research/`. It may never modify or bypass the Risk Core.

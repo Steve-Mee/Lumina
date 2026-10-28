@@ -1,0 +1,9 @@
+# RESEARCH_CHARTER Validation Gate thresholds.
+# Doubt = reject. Agents cannot pass a lower DSR trial count by hand;
+# n_trials comes from the trial registry.
+
+dsr_probability_min = 0.95
+wfe_min = 0.5
+pbo_hard_reject = 0.50
+pbo_warning = 0.25
+min_oos_windows = 6

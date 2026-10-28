@@ -52,8 +52,14 @@ jobs:
             --pretty \
             lumina_core/
 
+      - name: MyPy strict on lumina_research
+        run: mypy --config-file mypy-research.ini lumina_research/
+
       - name: Pyright on lumina_os backend
         run: pyright lumina_os/backend
+
+      - name: Pyright strict on lumina_research
+        run: pyright --project lumina_research lumina_research
 
   # ─────────────────────────────────────────────────────────────────────
   # 2. Fast unit test gate (< 60 s target)
