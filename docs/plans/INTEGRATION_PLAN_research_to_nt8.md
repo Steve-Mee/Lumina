@@ -10,8 +10,8 @@ Binding decisions (plan authors, approved by Steve), restated as implementation 
 2. **Keep** the NT8 AddOn bridge / Execution Fabric (gRPC), the independent fail-closed live Risk Core, data ingest if point-in-time correct, the order lifecycle, typed contracts, Constitution, and safety layers. **Isolate** old birth/evolution/fitness that bypasses the new gates or mixes research into the execution path.
 3. **Messages:** `SignalIntent` / `OrderIntent` (`strategy_id`, `direction`, `size`, `timestamp`, `expected_horizon`) and `FillEvent` (`fill_price`, `qty`, `slippage`, `commission`). Fills feed the decay monitor and cost calibration from **one** source of truth.
 4. **SIM safety:** live Risk Core rejects any account not on an **explicit SIM whitelist**. Live needs `LIVE_RELEASE` (HMAC-signed review/token + human-reviewed logged ADR; see D4), outside research agents. That config is not agent-mutable. Tests must prove there is no bypass.
-5. **Order of work:** shadow first (signals logged, hypothetical fills calibrated to ADR-0055, no orders). Real SIM orders only after **2–3 independent survivors** whose Validation Gate ran on **point-in-time NT bars** (D2), first on **MES/MNQ** (D5).
-6. **Failure:** fail-closed. Stale data or lost connection → no new orders, server-side cancel / reduce-to-flat, broker as source of truth, reconcile on reconnect. Monitor alarm with an open position: research **proposes** de-weight/reduce; Risk Core or Position Manager **executes** (D7). Log and alert everything.
+5. **Order of work:** shadow first (signals logged, hypothetical fills calibrated to ADR-0055, no orders). Real SIM orders only after **2–3 independent survivors** whose Validation Gate ran on **point-in-time NT bars** (D2, D11), first on **MES/MNQ** (D5).
+6. **Failure:** fail-closed. Stale data or lost connection → no new orders, server-side cancel / reduce-to-flat, broker as source of truth, reconcile on reconnect. Monitor alarm with an open position: research **proposes** de-weight/reduce; Risk Core or Position Manager **executes** (D7, D9, D10). Log and alert everything.
 7. **Ticks:** ES/NQ and MES/MNQ have separate costs, reported in ticks **and** dollars. Cost SSOT is ADR-0055 (D3).
 
 This plan names existing files, existing tests, and the exact new files each phase must add. It does not invent a second execution stack.
@@ -20,21 +20,25 @@ This plan names existing files, existing tests, and the exact new files each pha
 
 ## Decisions (Steve, 2026-10-28)
 
-Plan authors, approved by Steve. These close the six questions in the first draft of this plan and add a seventh. They are implementation law for S0–S3. A config flag **alone** is never a control.
+Plan authors, approved by Steve. These close the six questions in the first draft of this plan, the seventh (alarm authority), and the four follow-ups (OQ1–OQ4). They are implementation law for S0–S3. A config flag **alone** is never a control.
 
 | ID | Decision |
 |----|----------|
-| **D1** | **Hard-freeze / hard-block** `supervisor_tick_exec` and **every equivalent path that can place orders without the Validation Gate** during S0 and S1. A `research_execution_mode` (or `mode: sim`) yaml key is **not** enough. This is an **S0 prerequisite**. Tests must prove there is no parallel order path. Flatten / cancel / emergency reduce remain allowed. |
+| **D1** | **Hard-freeze / hard-block** `supervisor_tick_exec` and **every equivalent path that can place orders without the Validation Gate** during S0 and S1. A `research_execution_mode` (or `mode: sim`) yaml key is **not** enough. This is an **S0 prerequisite**. Tests must prove there is no parallel order path. Flatten / cancel / emergency reduce remain allowed. **D8** extends this: research signals never use `supervisor_tick_exec`. |
 | **D2** | S3 survivors come **only** from `passes_validation_gate` on **real point-in-time NT closed bars** (ADR-0053/0054). Synthetic `materialize()` / planted_edge tapes are for **acceptance tests, calibration, and unit tests only**. They cannot count as S3 survivors. |
 | **D3** | Cost source of truth is **ADR-0055**: commission from `lumina_core/market/nt_fees.py`; **slippage lives in the fill price**. The research `CostModel` **calibrates to** that card. On discrepancy, **execution-side wins** (broker fill + NT card), not the four-leg research estimate. |
 | **D4** | `LIVE_RELEASE` is an **HMAC-signed review/token**. The HMAC secret is **outside agent reach**. A human-reviewed, logged ADR is required. The **live Risk Core verifies the signature**. Invalid or missing signature → reject. A plain file plus hash **without** HMAC is too weak and is refused. |
 | **D5** | First S3 instruments are **MES and MNQ**. Scale to **ES/NQ only after stability** on micros (separate costs, ticks and $). |
 | **D6** | Refuse a `SignalIntent` (and the hypothesis that would produce it) **without `expected_horizon`**. No silent default (not 20, not `oos_size`). `HypothesisAgent` **may set one explicitly**; that value is **logged and gated**. |
-| **D7** | Alarm with an open position: research **only proposes** de-weight/reduce (`research.signal.deweighted` / suspend / retire). The **live Risk Core or a Position Manager executes**. Act within **1–5 minutes or the next bar**, depending on severity. Default reduce is **50%**. **Critical** (hard drawdown limit, prolonged disconnect, critical severity) → **flatten**. Log and escalate everything. Broker is SSOT; reconcile on reconnect. |
+| **D7** | Alarm with an open position: research **only proposes** de-weight/reduce. The **live Risk Core or a Position Manager executes**. Act within **1–5 minutes or the next bar**, depending on severity. Size and SLA-miss policy: **D9** and **D10**. Log and escalate everything. Broker is SSOT; reconcile on reconnect. |
+| **D8** | `supervisor_tick_exec` stays **permanently closed for research signals**. S3 does **not** re-arm confluence auto-place. Non-research orders (manual / legacy) are **default closed**. They may place **only** via an **explicit logged release outside the agents**, always through the live Risk Core (SIM whitelist **or** a valid `LIVE_RELEASE`). Reopening that path requires **ADR + human approval**. |
+| **D9** | ADR-0058 mapping: **suspend / de-weight** → reduce **50% of that strategy’s position** within the D7 reaction time. **Disable / critical / hard limit** (including `retired`, guardian disable, `GuardianSeverity` critical, hard drawdown, prolonged disconnect) → **flatten 100%** of that strategy. Research **proposes**; Risk Core / Position Manager **executes**. Account-wide flatten only if Core kill-switch / Fabric emergency fires. |
+| **D10** | SLA miss: **first miss** → log + alarm + **one retry**. **Second miss** or **timeout > 10 minutes** → escalate to Risk Core action **for that strategy** (reduce or flatten by D9 severity). **No infinite silent retry**. Broker is SSOT; reconcile on reconnect. |
+| **D11** | Survivors count as **independent** only if **both** apply: (1) a **different economic hypothesis and family**, and (2) pairwise return (or residual return) **correlation < 0.5** over the evaluation period. Distinct `hypothesis_id` alone is not enough. Same `config_id` clones never count. |
 
-Closed questions: former Q1→D1, Q2→D2, Q3→D3, Q4→D4, Q5→D5, Q6→D6. D7 is the seventh answer (alarm authority). Remaining real questions (only) are **OQ1–OQ4** in §4.2. Inventory market-data rows are **MD1–MD7**; live Risk Core inventory rows stay **R1–R15**.
+Closed questions: former Q1→D1, Q2→D2, Q3→D3, Q4→D4, Q5→D5, Q6→D6, alarm authority→D7, OQ1→D8, OQ2→D9, OQ3→D10, OQ4→D11. §4.2 has **no remaining blocking questions**. Inventory market-data rows are **MD1–MD7**; live Risk Core inventory rows stay **R1–R15**.
 
-**This revision (2026-10-28, docs-only):** adds this Decisions table and retunes S0–S3. It does not change runtime, Risk Core, or Fabric code.
+**This revision (2026-10-28, docs-only):** adds D8–D11 (Steve-approved OQ answers) and retunes S0–S3. It does not change runtime, Risk Core, or Fabric code.
 
 ---
 
@@ -49,7 +53,7 @@ lumina_research (propose-only)
            │
            ▼
 KEEP ResearchBridge  (NEW, lumina_core/research_bridge/)
-  S0 prerequisite: hard-block ungated place_order paths (D1)
+  S0 prerequisite: hard-block ungated place_order paths (D1); supervisor stays closed for research (D8)
   S0: PromotionCandidate → SignalIntent (log only; expected_horizon required)
       → hypothetical FillEvent using ADR-0055 commission + fill-price slippage (D3)
       → observe() on LivePerformanceMonitor
@@ -57,7 +61,8 @@ KEEP ResearchBridge  (NEW, lumina_core/research_bridge/)
   S3: SignalIntent → OrderIntent → AdmissionChain → FinalArbitration
       → FabricGrpcClient → ExecutionFabric → NtAccountOrderGateway
       ← OrderEvent → FillEvent (broker SSOT) → monitor + cost calibrator
-      MES/MNQ first (D5). Alarm: research proposes; Risk Core / Position Manager executes (D7).
+      MES/MNQ first (D5). Independent survivors per D11.
+      Alarm: research proposes; Risk Core / Position Manager executes (D7, D9, D10).
 ```
 
 `lumina_core` today does **not** import `lumina_research` (repo-wide grep: zero hits under `lumina_core/` and `integrations/`). The bridge is the first allowed KEEP consumer of research **events**, not of research internals except the already-public `CostModel` / `GateReport.as_promotion_fragments()` for shadow fills and evidence mapping.
@@ -85,7 +90,7 @@ Verdict key: **KEEP** = reuse as-is (do not duplicate). **ADAPT** = keep the mod
 | E2 | Composition root | `lumina_core/engine/lumina_engine.py` | KEEP | Product engine. |
 | E3 | Operator/engine place | `lumina_core/engine/operations_service_orders.py` `place_order()` | KEEP (product) / ISOLATE from research | Calls `enforce_pre_trade_gate` then `PolicyEngine.execute_order`. |
 | E4 | Policy execute | `lumina_core/engine/policy_engine.py` `execute_order()` | KEEP | AdmissionChain block message: `"AdmissionChain blocked order: {reason}"`. |
-| E5 | Supervisor auto-place | `lumina_core/engine/supervisor_tick_exec.py` `run_tick_exec()` | **HARD-BLOCK in S0/S1 (D1)** | On `BUY`/`SELL` + confluence, `paper` uses `PaperSimulator`; **any other `trade_mode` calls `app.place_order(signal, qty)`**. Ungated vs Validation Gate. S0 must tripwire this path in code, not via yaml. Equivalent callers: `operations_service_orders.place_order`, `policy_engine.execute_order`, `reasoning_service.submit_order`/`execute_order`, `trade_workers.submit_order_with_risk_check`, `paper_trade_executor` broker submit, `PaperSimulator.try_open`. Emergency flatten (`lumina_os/backend/emergency_order_endpoints.py`) stays allowed. |
+| E5 | Supervisor auto-place | `lumina_core/engine/supervisor_tick_exec.py` `run_tick_exec()` | **HARD-BLOCK in S0/S1 (D1); permanently closed for research (D8)** | On `BUY`/`SELL` + confluence, `paper` uses `PaperSimulator`; **any other `trade_mode` calls `app.place_order(signal, qty)`**. Ungated vs Validation Gate. S0 must tripwire this path in code, not via yaml. S3 does **not** re-arm it for research. Equivalent callers: `operations_service_orders.place_order`, `policy_engine.execute_order`, `reasoning_service.submit_order`/`execute_order`, `trade_workers.submit_order_with_risk_check`, `paper_trade_executor` broker submit, `PaperSimulator.try_open`. Emergency flatten (`lumina_os/backend/emergency_order_endpoints.py`) stays allowed. Non-research reopen: ADR + human, through Risk Core (D8). |
 | E6 | Order gatekeeper | `lumina_core/order_gatekeeper/gate.py` `enforce_pre_trade_gate()` | KEEP | Canonical pre-trade admission for risk-bearing intents. |
 | E7 | Admission steps | `lumina_core/order_gatekeeper/admission_steps.py` | KEEP / ADAPT in S1 | Equity snapshot: stale → `equity_snapshot_stale`. Modes requiring snapshot: `real`, `paper`, `sim_real_guard` (`engine_helpers.MODES_REQUIRING_EQUITY_SNAPSHOT`). **`sim` is not in that set.** |
 | E8 | Admission chain | `lumina_core/risk/admission_chain.py` | KEEP | Steps: `session_equity_sync` → `risk_policy` → `final_arbitration` → `constitution` → `audit_write`. REAL bypass forbidden. |
@@ -101,7 +106,7 @@ End-to-end product path (KEEP):
 
 `LuminaEngine` / `OperationsOrdersMixin.place_order` → `enforce_pre_trade_gate` + `PolicyEngine.execute_order` → `NinjaTraderBroker.submit_order` → `FabricGrpcClient.place_order_sync` (`BrainMessage.place_order`) → `ExecutionFabricService.HandlePlace` → `NtAccountOrderGateway.PlaceOrder` → `Account.CreateOrder` + `Account.Submit` → `OrderEvent` on `TradingStream` → Brain fill/reconcile.
 
-`config.yaml` today: `mode: sim`, `broker.backend: live`, `broker.live_provider: ninjatrader`, `broker.ninjatrader.account_name: Sim101`. `ConfigLoader._resolve_runtime_modes` reads `trade_mode` or `mode`. **The desk is already in a mode that may submit NT orders** from E5, independent of research. D1 forbids leaving that path live during S0/S1.
+`config.yaml` today: `mode: sim`, `broker.backend: live`, `broker.live_provider: ninjatrader`, `broker.ninjatrader.account_name: Sim101`. `ConfigLoader._resolve_runtime_modes` reads `trade_mode` or `mode`. **The desk is already in a mode that may submit NT orders** from E5, independent of research. D1 forbids leaving that path live during S0/S1. D8 forbids using it for research signals at any later phase; non-research stays default-closed.
 
 ### 1.2 gRPC / Execution Fabric / NT8 AddOn
 
@@ -239,7 +244,7 @@ What exists instead (KEEP as building blocks, ADAPT into an explicit list):
 | S4 | Stale equity | admission `equity_snapshot_stale` | KEEP for REAL/`sim_real_guard` | Not applied in `sim` (gap vs binding “stale data → no new orders” if S3 uses `sim`). |
 | S5 | Stale/bad bars | `nt_bar_ssot.validate_nt_bar` | KEEP | Fail-closed `BarRejected`. |
 | S6 | Broker SSOT | `GetAccountState` / NT `Account.Positions` | KEEP | Reconcile on auth `StateSync`. |
-| S7 | Monitor vs flatten | ADR-0058 + EmergencyFlattenPolicy | ADAPT S3 per **D7** | Research monitor **cannot** send reduce-only (isolation). It **proposes** de-weight/reduce. Live Risk Core or Position Manager **executes** within 1–5 min or the next bar. Default 50% reduce. Critical (hard DD, prolonged disconnect, critical severity) → flatten. Broker SSOT. |
+| S7 | Monitor vs flatten | ADR-0058 + EmergencyFlattenPolicy | ADAPT S3 per **D7, D9, D10** | Research monitor **cannot** send reduce-only (isolation). It **proposes**. Live Risk Core or Position Manager **executes**: deweight/suspend → 50% of that strategy; disable/critical/hard limit → flatten 100% (D9). SLA miss: one logged retry, then Core action; no silent loop (D10). Broker SSOT. |
 
 ### 1.10 Message-field gap (binding vs code)
 
@@ -275,12 +280,12 @@ Numbered. Each gap is a missing behavior or a contradicting behavior, with evide
 | G-SIMBYP | Independent fail-closed Risk Core on SIM orders | `risk_gates.check_can_trade` returns OK and **bypasses all caps** when `sim_mode or not enforce_rules`. Orchestrator sets `enforce_rules` only for `real`. S3 on `trade_mode=sim` would place NT orders with Brain risk caps off. Fabric `PreTradeRiskEngine` is the remaining size cap (`config.yaml` `max_position_size: 2`). | Safety | S1 policy + S3 mode = `sim_real_guard` with `enforce_rules` aligned to `risk_enforced` |
 | G-PGATE | Live `PromotionGate` is the only live promotion path; research must pass Validation Gate first | Live gate does not require sealed `GateReport` / TrialRegistry. Defaults weaker on DSR (0.0 vs 0.95) and window count (5 vs 6). `as_promotion_fragments()` unused. | Skip-gate residual | S3 (AND with sealed research report on **NT PIT** evidence) |
 | G-PIT | S3 survivors only from Validation Gate on real NT closed bars (D2) | Research `materialize()` is synthetic. No NT-bar candidate pipeline. Live ingest **is** PIT-correct. | Honesty of “survivors” | **S2.5 mandatory** then S3 |
-| G-ENG | Isolate / hard-block ungated order paths (D1) | E5 still auto-places on confluence. Also: `reasoning_service`, `trade_workers`, `paper_trade_executor`, `PaperSimulator.try_open`. Archive is isolated. | Mix / skip | **S0 prerequisite** + keep blocked through S1 |
-| G-RED | Alarm + open position: research proposes; Risk Core/Position Manager executes (D7) | Monitor can publish `research.signal.deweighted`. Nothing in KEEP executes a reduce-only or timed flatten. Fabric flatten is watchdog/emergency, not decay. | Binding miss | S3 executor + SLA tests; S0/S1 only log proposals (no open research positions if D1 holds) |
+| G-ENG | Isolate / hard-block ungated order paths (D1, D8) | E5 still auto-places on confluence. Also: `reasoning_service`, `trade_workers`, `paper_trade_executor`, `PaperSimulator.try_open`. Archive is isolated. | Mix / skip | **S0 prerequisite**; supervisor stays closed for research **after S3** (D8) |
+| G-RED | Alarm + open position: research proposes; Risk Core/Position Manager executes (D7, D9, D10) | Monitor can publish `research.signal.deweighted`. Nothing in KEEP executes a reduce-only or timed flatten. Fabric flatten is watchdog/emergency, not decay. | Binding miss | S3 executor + D9 size map + D10 SLA tests; S0/S1 only log proposals (no open research positions if D1 holds) |
 | G-CS | C# account tests | Python `test_ninjatrader_guards.py` covers prefix/mismatch. **Zero** Fabric.Tests for `only_sim_accounts_allowed`. | Bypass in AddOn | S1 |
 | G-DOC | Architecture lists research | `docs/architecture.md` omits `lumina_research` / `research.*`. | Observability | S0 (docs in the implementation PRs; this plan is the spec) |
 | G-HORIZ | No silent default for `expected_horizon` (D6) | Nowhere on `HypothesisProposed` / `PromotionCandidate` / `SignalIntent`. CPCV `label_horizon` is a different concept (purge t1). | Contract | S0 schema + HypothesisAgent + gate |
-| G-SURV | 2–3 independent **NT-PIT** survivors before SIM orders (D2, D5) | None on NT tape. Phase 2 loop produces sealed candidates from **planted_edge vs noise**. Phase 4 floors are synthetic-campaign numbers. | Process | S2.5 + S3; synthetics never count |
+| G-SURV | 2–3 independent **NT-PIT** survivors before SIM orders (D2, D5, D11) | None on NT tape. Phase 2 loop produces sealed candidates from **planted_edge vs noise**. Phase 4 floors are synthetic-campaign numbers. No pairwise correlation cap. | Process | S2.5 + S3; synthetics never count; D11 both-clauses |
 
 Gaps this plan **does not** treat as missing (already KEEP):
 
@@ -301,7 +306,7 @@ Global rules for every phase:
 - `archive/birth-v1/` stays untouched.
 - Each phase is its own PR (or two, if C# + Python). Rollback is a flag first, git revert second.
 - Constitution: fail-closed; doubt = no new order.
-- Decisions D1–D7 override earlier draft recommendations in this file.
+- Decisions D1–D11 override earlier draft recommendations in this file.
 
 ### 3.0 Shared contracts (introduced in S0, frozen after)
 
@@ -384,7 +389,7 @@ Block **new risk-increasing orders** from these product callers (evidence in §1
 - Operator emergency flatten/cancel: `lumina_os/backend/emergency_order_endpoints.py`.
 - Risk-reducing / flatten intents tagged `reduce_only` or emergency (Admission `is_risk_reducing_side`).
 
-Implementation shape: NEW `lumina_core/order_gatekeeper/ungated_place_block.py` with `assert_validation_gate_or_block(source, *, reduce_only) -> tuple[bool, str]`. Call it at the **start** of `OperationsOrdersMixin.place_order` and `PolicyEngine.execute_order` (the two funnels). Supervisor and reasoning go through those funnels today; still add an explicit guard in `run_tick_exec` so a future bypass of `place_order` cannot skip it. Reason code: `UNGATED_PLACE_BLOCKED_S0`. S3 later allows `source_agent="research_bridge"` **only** when `sim_gate` passes; that allow-list is **empty** in S0/S1.
+Implementation shape: NEW `lumina_core/order_gatekeeper/ungated_place_block.py` with `assert_validation_gate_or_block(source, *, reduce_only) -> tuple[bool, str]`. Call it at the **start** of `OperationsOrdersMixin.place_order` and `PolicyEngine.execute_order` (the two funnels). Supervisor and reasoning go through those funnels today; still add an explicit guard in `run_tick_exec` so a future bypass of `place_order` cannot skip it. Reason code: `UNGATED_PLACE_BLOCKED_S0`. S3 later allows `source_agent="research_bridge"` **only** when `sim_gate` passes; that allow-list is **empty** in S0/S1. **D8:** `run_tick_exec` is never added to the research allow-list. Non-research `place_order` stays denied unless a later ADR + human logged release exists; even then AdmissionChain (SIM whitelist or valid `LIVE_RELEASE`) must pass.
 
 AST inventory test: every production (non-`tests/`, non-`archive/`) call to `place_order` / `execute_order` / `submit_order` / `try_open` is either behind this block or on the emergency/flatten allow-list. New callers without the block fail CI.
 
@@ -411,7 +416,7 @@ AST inventory test: every production (non-`tests/`, non-`archive/`) call to `pla
 | NEW | `docs/adr/0059-research-bridge-shadow-first.md` |
 | ADAPT | `docs/architecture.md` — Research context + freeze + bridge |
 | NEW tests | see below |
-| FORBIDDEN | relaxing `risk_gates` SIM bypass; Fabric `HandlePlace` allow; `NtAccountOrderGateway.PlaceOrder` allow; silent horizon defaults; counting synthetic candidates as live survivors |
+| FORBIDDEN | relaxing `risk_gates` SIM bypass; Fabric `HandlePlace` allow; `NtAccountOrderGateway.PlaceOrder` allow; silent horizon defaults; counting synthetic candidates as live survivors; re-arming `supervisor_tick_exec` for research (D8) |
 
 `shadow_runtime` may import `lumina_research.agents.provenance` and `lumina_core.market.nt_fees` (ADR-0055). It may import research `CostModel` **only** to record the research estimate **beside** the execution-side numbers for later calibration (D3). Hypothetical **FillEvent** fields that feed the monitor/calibrator-preview must be execution-side: commission from `nt_fees.fee_components`, slippage from (hypothetical fill price − reference) / tick_size, **not** an added cash tick. If the two disagree, log `cost_discrepancy` and **keep execution-side**. Stale/missing closed NT bar → no hypothetical fill, log `shadow_fill_refused:stale_or_missing_market`.
 
@@ -446,7 +451,7 @@ S0 does **not** require a new strategy engine. Synthetic Phase 2 loops remain va
 
 #### Rollback (S0)
 
-Revert the S0 PR: freeze lifts **and** bridge unsubscribes together (do not lift freeze while leaving a half-wired bridge). `research_execution_mode: off`. No research positions should exist if D1 held. Research Phases 1–4 remain.
+Revert the S0 PR: freeze lifts **and** bridge unsubscribes together (do not lift freeze while leaving a half-wired bridge). `research_execution_mode: off`. No research positions should exist if D1 held. Research Phases 1–4 remain. D8 still forbids treating a revert as a license to auto-place research from `supervisor_tick_exec` in a later PR without ADR + human.
 
 ---
 
@@ -535,7 +540,7 @@ C# (new; gap G-CS):
 2. Prefix `Sim999` not on the list is rejected.
 3. `LIVE_RELEASE` without HMAC, with a wrong HMAC, or with a missing secret is rejected by the **Risk Core**. File+hash without mac is rejected.
 4. Repo `config.yaml` remains `live_release.enabled: false` and `mac: ""`. Secret is not in git.
-5. D1 freeze still blocks ungated places (including with yaml `mode: sim`).
+5. D1 freeze still blocks ungated places (including with yaml `mode: sim`). D8: supervisor cannot place research even if a later PR sets `research_execution_mode: sim`.
 6. Isolation tests still pass. ADR-0060 exists.
 
 #### Rollback (S1)
@@ -618,7 +623,7 @@ Rollback: revert S2.5; S3 cannot enable (gate fails closed with `survivors_not_n
 
 ### 3.4 S3 — SIM orders, gated
 
-**Goal.** Research-originated `OrderIntent`s may reach Fabric **only if** all gates below pass. Still **not** LIVE (`LIVE_RELEASE` HMAC must verify as disabled / not valid for REAL). Account on the S1 whitelist. First instruments **MES and MNQ only** (D5). Ungated supervisor remains blocked unless **OQ1** says otherwise after S3; the **only** new allow is `source_agent="research_bridge"` after `sim_gate`.
+**Goal.** Research-originated `OrderIntent`s may reach Fabric **only if** all gates below pass. Still **not** LIVE (`LIVE_RELEASE` HMAC must verify as disabled / not valid for REAL). Account on the S1 whitelist. First instruments **MES and MNQ only** (D5). **D8:** `supervisor_tick_exec` stays **permanently closed for research**; S3 does not re-arm confluence. The **only** new allow is `source_agent="research_bridge"` after `sim_gate`. Non-research (manual/legacy) stays default-closed unless ADR + human logged release, then Risk Core.
 
 #### Entry criteria (machine-checkable)
 
@@ -632,8 +637,9 @@ All must be true; missing evidence = reject (`research_sim_gated`):
 6. **Survivors:** ≥ 2 and ≤ N **independent** signals in `LiveSignalRegistry` with `stage in {active, deweighted}`, each with:
    - sealed `PromotionCandidate` + `ValidationResult` with `passes_validation_gate` true;
    - **`tape_kind="nt_pit"`** (D2). `tape_kind="synthetic"` never counts, even if the gate passed in a unit test;
-   - distinct `hypothesis_id`;
-   - independent families: two clones of the same `config_id` do not count; MES+MNQ may count as two if hypotheses differ;
+   - **D11 independence — both clauses required:**
+     - different economic hypothesis **and** family (distinct `hypothesis_id` is necessary but not sufficient; two clones of the same `config_id` never count; MES+MNQ of the **same** family count as one);
+     - pairwise return (or residual return) correlation **< 0.5** over the evaluation period. Missing corr series → not independent (`survivors_corr_unavailable`);
    - explicit `expected_horizon_bars ≥ 1` (D6);
    - shadow/PIT fill history ≥ `expected_horizon` and ≥ ADR-0058 window from **FillEvent SSOT** (broker or S0 hypothetical **on NT bars**, not gauss).
 7. Empirical monitoring thresholds on that **NT-bar** shadow series (synthetic campaign in `test_phase4_campaign.py` is necessary but **not sufficient**). If live/shadow FAR on healthy NT-tape controls cannot be measured, **do not enable** S3.
@@ -646,31 +652,35 @@ If any check fails, bridge stays in shadow behavior even if the yaml says `sim`.
 
 | Action | Path |
 |--------|------|
-| ADAPT | `ungated_place_block.py` — allow-list **only** `source_agent="research_bridge"` after `sim_gate` ok. Supervisor confluence still blocked. |
+| ADAPT | `ungated_place_block.py` — allow-list **only** `source_agent="research_bridge"` after `sim_gate` ok. **Never** allow `supervisor_tick_exec` / confluence for research (D8). Non-research sources stay denied unless an ADR + human logged release is present; then still AdmissionChain. |
 | ADAPT | `lumina_core/research_bridge/shadow_runtime.py` → `sim_runtime.py`: `sim` builds live `OrderIntent` (MES/MNQ only) and calls **existing** `enforce_pre_trade_gate` + `FinalArbitration` + `NinjaTraderBroker.submit_order`. No new broker. |
-| NEW | `lumina_core/research_bridge/sim_gate.py` — entry criteria 1–9; returns `(ok, reason)`. |
+| NEW | `lumina_core/research_bridge/sim_gate.py` — entry criteria 1–9 including D11 corr; returns `(ok, reason)`. |
+| NEW | `lumina_core/research_bridge/independence.py` — pairwise return / residual-return correlation; threshold **< 0.5**; fail-closed if series too short. |
 | ADAPT | `lumina_core/evolution/promotion_gate.py` — require `validation_mac` / `report_sha256` / `tape_kind=nt_pit` when `source=research`. |
-| NEW | `lumina_core/risk/alarm_executor.py` — **D7 executor** in the Risk Core context (not in `lumina_research`). Subscribes to `research.signal.deweighted` / `suspended` / `retired` / `research.guardian.finding`. Research still only **proposes**. This module (with `LivePositionManager` for book qty) **executes** reduce/flatten through AdmissionChain. SLA: default alarm → next bar or ≤ 5 min; **critical** → ≤ 1 min. Default size: **50% of that strategy’s qty** (`reduce_only`). Critical (hard DD limit, prolonged disconnect, `GuardianSeverity` critical) → **flatten** that strategy’s qty (and account flatten if Core kill-switch / Fabric emergency says so). Log + escalate every proposal, every execution, every SLA miss. Broker `GetAccountState` is SSOT after. |
+| NEW | `lumina_core/risk/alarm_executor.py` — **D7/D9/D10 executor** in the Risk Core context (not in `lumina_research`). Subscribes to `research.signal.deweighted` / `suspended` / `retired` / `research.guardian.finding`. Research still only **proposes**. This module (with `LivePositionManager` for book qty) **executes** through AdmissionChain. **D9 size:** deweight/suspend → **50% of that strategy’s qty** (`reduce_only`); disable/retired/critical/hard DD/prolonged disconnect → **flatten 100%** of that strategy (account flatten only if Core kill-switch / Fabric emergency). **D7 SLA:** default → next bar or ≤ 5 min; critical → ≤ 1 min. **D10 miss:** first miss → log + alarm + **one retry**; second miss **or** wall time **> 10 min** → Core action for that strategy (reduce or flatten by D9); **no infinite silent retry**. Broker `GetAccountState` is SSOT after; reconcile on reconnect. |
 | ADAPT | `lumina_core/engine/live_position_manager.py` — book qty for the executor; does not decide severity. |
-| ADAPT | `fabric_mapper.order_to_place_command` — `reduce_only` true for D7 reduces; `mode_context=sim_real_guard`; `correlation_id` = strategy_id + client_order_id. |
+| ADAPT | `fabric_mapper.order_to_place_command` — `reduce_only` true for D9 50% reduces; flatten is close-to-flat of that strategy; `mode_context=sim_real_guard`; `correlation_id` = strategy_id + client_order_id. |
 | ADAPT | `config.yaml` — do not commit `research_execution_mode: sim`. |
-| NEW | `scripts/research/check_sim_entry.py` — survivors with `tape_kind=nt_pit`, FAR, whitelist, live_release HMAC disabled, MES/MNQ, freeze allow-list; exit 0 only if criteria pass. |
+| NEW | `scripts/research/check_sim_entry.py` — survivors with `tape_kind=nt_pit`, D11 independence (family **and** corr < 0.5), FAR, whitelist, live_release HMAC disabled, MES/MNQ, supervisor still blocked; exit 0 only if criteria pass. |
 | NEW tests | below |
-| FORBIDDEN | `LIVE_RELEASE` HMAC valid for REAL; `trade_mode: real`; ES/NQ research orders; synthetic survivors; research calling `place_order`; relaxing SIM cap bypass; archive birth. |
+| FORBIDDEN | `LIVE_RELEASE` HMAC valid for REAL; `trade_mode: real`; ES/NQ research orders; synthetic survivors; research calling `place_order`; relaxing SIM cap bypass; archive birth; re-arming `supervisor_tick_exec` for research; counting correlated clones as two survivors. |
 
 #### Tests (S3)
 
 | Test | Proves |
 |------|--------|
-| `tests/research_bridge/test_sim_gate_requires_survivors.py` | 0 or 1 survivor → no `place_order`. 2 independent **nt_pit** → gate ok in fixture. Two clones same `config_id` → not independent. Two **synthetic** gate-passes → still refuse. |
+| `tests/research_bridge/test_sim_gate_requires_survivors.py` | 0 or 1 survivor → no `place_order`. 2 **D11-independent nt_pit** → gate ok in fixture. Two clones same `config_id` → not independent. Two **synthetic** gate-passes → still refuse. |
+| `tests/research_bridge/test_survivor_independence.py` | Same family, corr 0.2 → not independent. Different family, corr 0.7 → not independent. Different family, corr 0.3 → independent. Missing series → `survivors_corr_unavailable`. Threshold is **strictly < 0.5** (0.5 is not independent). |
 | `tests/research_bridge/test_sim_gate_mes_mnq_only.py` | ES/NQ OrderIntent refused with `sim_instrument_not_yet_released`. MES/MNQ allowed when other gates pass. |
 | `tests/research_bridge/test_sim_gate_mode.py` | `trade_mode=sim` → refuse research orders. `sim_real_guard` + env → ok. `real` → refuse. |
-| `tests/research_bridge/test_sim_still_shadow_when_yaml_lies.py` | yaml `sim` but survivors < 2 or synthetic-only → no Fabric call. D1 still blocks supervisor. |
+| `tests/research_bridge/test_sim_still_shadow_when_yaml_lies.py` | yaml `sim` but survivors < 2 or synthetic-only → no Fabric call. D1/D8 still block supervisor. |
+| `tests/research_bridge/test_supervisor_stays_closed_after_sim_gate.py` | After `sim_gate` ok, `run_tick_exec` BUY/SELL still cannot `place_order`. Research bridge can. (D8) |
+| `tests/research_bridge/test_non_research_default_closed.py` | Manual/legacy `place_order` without logged ADR+human release is denied even when `sim_gate` is ok. With a fixture release, still requires Risk Core whitelist / LIVE_RELEASE. |
 | `tests/research_bridge/test_research_order_hits_admission.py` | Whitelist, constitution, arbitration invoked; reject anywhere → no Fabric. |
 | `tests/research_bridge/test_promotion_gate_requires_mac.py` | Evidence dict without MAC or without `nt_pit` → reject. |
-| `tests/risk/test_alarm_executor_default_reduce.py` | Deweight proposal + open qty 2 → executor submits reduce-only qty 1 (50%) through AdmissionChain. Research modules are not in the stack trace of `submit_order`. |
-| `tests/risk/test_alarm_executor_critical_flatten.py` | Hard DD / prolonged disconnect / critical guardian finding → flatten that strategy (qty to 0). Account-wide flatten only if Core kill-switch / Fabric emergency fires. |
-| `tests/risk/test_alarm_executor_sla.py` | Default proposal executed by next bar or ≤ 5 min in the fake clock. Critical ≤ 1 min. SLA miss → log + escalate (OQ3: flatten-on-miss still open). |
+| `tests/risk/test_alarm_executor_default_reduce.py` | Deweight **or suspend** proposal + open qty 2 → executor submits reduce-only qty 1 (50%) through AdmissionChain. Research modules are not in the stack trace of `submit_order`. (D9) |
+| `tests/risk/test_alarm_executor_critical_flatten.py` | Retired / disable / hard DD / prolonged disconnect / critical guardian finding → flatten that strategy (qty to 0). Account-wide flatten only if Core kill-switch / Fabric emergency fires. (D9) |
+| `tests/risk/test_alarm_executor_sla.py` | Default proposal executed by next bar or ≤ 5 min in the fake clock. Critical ≤ 1 min. **First miss:** log + alarm + exactly one retry, no flatten yet. **Second miss** or **t > 10 min:** Core action for that strategy (50% or flatten by D9). Third miss does not retry forever. (D10) |
 | `tests/research_bridge/test_disconnect_no_new_orders.py` | SAFE_MODE / disconnect: no new research places; reconcile on reconnect. |
 | `tests/research_bridge/test_stale_equity_blocks_sim.py` | Stale snapshot → no **new** research order; reduce-only still allowed if `is_risk_reducing_side`. |
 | `tests/research/test_monitor_cannot_place.py` | AST: `lumina_research/monitoring` still has no broker/`place_order` import. |
@@ -678,16 +688,16 @@ If any check fails, bridge stays in shadow behavior even if the yaml says `sim`.
 
 #### Acceptance (S3)
 
-1. `python scripts/research/check_sim_entry.py` exit 0: ≥2 independent **nt_pit** survivors, MES/MNQ, whitelist, `sim_real_guard`, LIVE_RELEASE HMAC not enabling REAL.
-2. First research order is MES or MNQ on a **whitelisted SIM** account. ES/NQ research orders are rejected.
+1. `python scripts/research/check_sim_entry.py` exit 0: ≥2 **D11-independent nt_pit** survivors, MES/MNQ, whitelist, `sim_real_guard`, LIVE_RELEASE HMAC not enabling REAL, supervisor still blocked.
+2. First research order is MES or MNQ on a **whitelisted SIM** account. ES/NQ research orders are rejected. `run_tick_exec` still cannot place.
 3. Fills return on `TradingStream`, become `FillEvent(source=broker)` with ADR-0055 commission, update monitor and live calibrator.
 4. Kill NT or Brain: Fabric SAFE + cancel non-protected; no new places; reconcile on reconnect (`GetAccountState`).
-5. Alarm: research JSONL shows a **proposal**; Risk Core `alarm_executor` JSONL shows the **execution** (50% or flatten) within SLA. Research did not call Fabric.
-6. Logs/alerts: every reject and every alarm execution; Telegram `ops` / `evolution`, not a `real_safety` spam path.
+5. Alarm: research JSONL shows a **proposal**; Risk Core `alarm_executor` JSONL shows the **execution** (D9: 50% on deweight/suspend, flatten on disable/critical) within SLA. First SLA miss retries once; second miss or >10 min → Core action (D10). Research did not call Fabric.
+6. Logs/alerts: every reject, every alarm execution, every SLA miss; Telegram `ops` / `evolution`, not a `real_safety` spam path.
 
 #### Rollback (S3)
 
-1. Immediate: `research_execution_mode: shadow` + restart. Bridge allow-list empties (D1 freeze fully on again). Open research positions: `alarm_executor` on a retire-all **proposal** (50% then flatten if critical), or operator emergency flatten. Account-wide flatten only if Core kill-switch / Fabric emergency.
+1. Immediate: `research_execution_mode: shadow` + restart. Bridge allow-list empties (D1 freeze fully on again; D8 supervisor stays closed). Open research positions: `alarm_executor` on a retire-all **proposal** (D9: flatten 100% of those strategies), or operator emergency flatten. Account-wide flatten only if Core kill-switch / Fabric emergency.
 2. Git revert S3 PR. S0–S2.5 remain.
 3. Fabric watchdog unchanged.
 
@@ -701,22 +711,25 @@ If any check fails, bridge stays in shadow behavior even if the yaml says `sim`.
 - Use `archive/birth-v1/` fitness or curricula.
 - Trust prefix `Sim*` as a whitelist.
 - Calibrate live costs on hypothetical fills.
-- Flatten the whole book because a monitor z-test fired (D7: default is 50% of **that strategy**; account flatten is Core/Fabric critical only).
+- Flatten the whole book because a monitor z-test fired (D9: deweight/suspend is 50% of **that strategy**; flatten 100% of that strategy on disable/critical; account flatten is Core/Fabric emergency only).
 - Count synthetic planted_edge candidates as S3 survivors (D2).
+- Count two correlated or same-family hypotheses as independent survivors (D11).
 - Accept `LIVE_RELEASE` as a yaml flag or file+SHA without HMAC (D4).
 - Silent-default `expected_horizon` from `oos_size` or 20 (D6).
 - First-wave ES/NQ research SIM orders (D5).
 - Let research execute de-weight (D7).
+- Re-arm `supervisor_tick_exec` for research signals (D8).
+- Infinite silent SLA retries (D10).
 
 ---
 
-## 4. Risks and remaining open questions
+## 4. Risks and remaining questions
 
 ### 4.1 Risks (real)
 
 | Risk | Why it is real | Mitigation |
 |------|----------------|------------|
-| Ungated `mode: sim` path | E5 and siblings can submit without the Validation Gate **today** | D1 hard-block in S0; AST inventory test; yaml cannot lift it |
+| Ungated `mode: sim` path | E5 and siblings can submit without the Validation Gate **today** | D1 hard-block in S0; D8 keeps supervisor closed for research after S3; AST inventory test; yaml cannot lift it |
 | S0 freeze touches the order funnel | `place_order` / `execute_order` wrappers change in S0 | Separate review of the freeze diff; flatten/emergency remain allowed; this docs PR does not apply it |
 | Dual cost numbers until S2 calibrates | Research four-leg vs ADR-0055 | D3: FillEvent is execution-side; log discrepancy; never undercut the card |
 | Live `PromotionGate` DSR floor 0.0 vs research 0.95 | Weaker live gate on dict evidence | S3 requires MAC + `nt_pit` + research floors |
@@ -726,20 +739,14 @@ If any check fails, bridge stays in shadow behavior even if the yaml says `sim`.
 | Alarm executor vs session-touched flatten | Wrong wiring could flatten operator SIM trades | D7 executes **per strategy_id** in `fill_index`; Fabric emergency stays session-touched for Brain death |
 | HMAC secret handling | Secret in env can leak via logs/debug | Never log secret; AST ban in research; missing secret = reject |
 | S1 AdmissionChain step is a Risk Core change | Required by whitelist + LIVE_RELEASE verify | S1 PR + ADR-0060 + human review; not this docs PR |
+| Correlated “survivors” | Two clones or high-corr MES/MNQ pair could count as 2 | D11 both-clauses; `check_sim_entry.py` fail-closed if corr missing |
+| Silent SLA retry loop | Executor could retry forever on a stuck reduce | D10: one logged retry, then Core action; >10 min cap |
 
-### 4.2 Remaining open questions (only real ones)
+### 4.2 Remaining questions
 
-Former Q1–Q6 are **closed** (Decisions D1–D6). D7 closed the alarm-authority question. IDs **OQ*** avoid collision with inventory Risk Core rows R1–R15. These are still unspecified:
+Former Q1–Q6 are **closed** (D1–D6). Alarm authority is **D7**. Former OQ1–OQ4 are **closed** (D8–D11). Nothing in that set is still unspecified.
 
-**OQ1.** After S3 enables the research_bridge allow-list, does **ungated** confluence / `supervisor_tick_exec` stay **permanently dead**, or can it be re-armed for non-research orders once research SIM is gated? D1 only mandates the freeze during S0/S1.
-
-**OQ2.** Map ADR-0058 stages to D7 actions. Default deweight → 50% reduce is set. Are `research.signal.suspended` and `research.signal.retired` **flatten-that-strategy**, or additional 50% steps? Binding names flatten only for **critical** (hard DD, prolonged disconnect, critical severity).
-
-**OQ3.** If the Risk Core / Position Manager **misses the SLA** (1–5 min / next bar), does that miss **escalate to critical flatten**, or only log/alert and retry? Fail-closed suggests escalate; Steve did not say.
-
-**OQ4.** Numeric independence test for “2–3 independent survivors” (correlation cap, or only distinct `hypothesis_id` + instrument family). Without a number, `check_sim_entry.py` cannot be fully deterministic.
-
-Not blocking for S0–S3: Event Bus vs gRPC (keep both), rewrite AddOn (no), merge research into `lumina_core/engine` (no), LIVE_RELEASE secret store (use env `LUMINA_LIVE_RELEASE_SECRET` like `LUMINA_FABRIC_TOKEN`), horizon unit (bars, `expected_horizon_bars ≥ 1`), numeric “stability” gate to scale MES/MNQ → ES/NQ (D5; later ADR).
+Not blocking for S0–S3 (later ADR, not a gate on this plan): Event Bus vs gRPC (keep both), rewrite AddOn (no), merge research into `lumina_core/engine` (no), LIVE_RELEASE secret store (use env `LUMINA_LIVE_RELEASE_SECRET` like `LUMINA_FABRIC_TOKEN`), horizon unit (bars, `expected_horizon_bars ≥ 1`), numeric “stability” gate to scale MES/MNQ → ES/NQ (D5).
 
 ---
 
@@ -748,11 +755,11 @@ Not blocking for S0–S3: Event Bus vs gRPC (keep both), rewrite AddOn (no), mer
 | PR | Content | Touches Risk Core / Fabric? |
 |----|---------|------------------------------|
 | This PR | `docs/plans/INTEGRATION_PLAN_research_to_nt8.md` only | No |
-| S0 | **D1 freeze** + bridge + horizon schema + ADR-0059 + parallel-path tests | **Yes** (order-funnel tripwire). Flatten/emergency remain. Human review. |
+| S0 | **D1 freeze** + bridge + horizon schema + ADR-0059 + parallel-path tests (D8: supervisor never on the research allow-list) | **Yes** (order-funnel tripwire). Flatten/emergency remain. Human review. |
 | S1 | Whitelist + HMAC `LIVE_RELEASE` in Risk Core + C# + ADR-0060 + attack tests. Freeze stays on. | **Yes** (admission step, Core verify, C# reject). Human review. |
 | S2 | Fill translator + ADR-0055 stamp + research calibrates to execution | Mapper/reconciler/calibrator; not risk limits |
 | S2.5 | **Mandatory** NT-PIT tape for Validation Gate (D2) | Read-only MD |
-| S3 | sim_runtime + sim_gate (MES/MNQ, nt_pit survivors) + `alarm_executor` (D7) + PromotionGate MAC | Order path via **existing** admission; research still propose-only on alarms |
+| S3 | sim_runtime + sim_gate (MES/MNQ, nt_pit, **D11 independence**) + `alarm_executor` (D7/D9/D10) + PromotionGate MAC. Supervisor stays closed (D8). | Order path via **existing** admission; research still propose-only on alarms |
 
 Each PR: `ruff` + `mypy --strict` + `pyright` + targeted pytest; C# `dotnet test` on Fabric.Tests when G/S1/S3.
 
@@ -768,9 +775,10 @@ Each PR: `ruff` + `mypy --strict` + `pyright` + targeted pytest; C# `dotnet test
 | SignalIntent / OrderIntent / FillEvent fields | §1.10, §3.0, G-MSG |
 | Fills → monitor + calibration, one SSOT | §3.3, E13, G-FILL |
 | Explicit SIM whitelist; HMAC LIVE_RELEASE; not agent-mutable; bypass tests | §1.4, §3.2, D4, G-WL, G-LIVE, G-MUT |
-| Shadow first; hard-block ungated places (D1); SIM after 2–3 **nt_pit** survivors | Decisions, §3.1, §3.3.1, §3.4, G-SURV, G-ENG |
-| Fail-closed stale/disconnect; broker SSOT; research proposes, Core executes (D7) | Decisions D7, G11–G13, S7, G-RED, `alarm_executor` |
+| Shadow first; hard-block ungated places (D1); supervisor closed for research (D8); SIM after 2–3 **nt_pit** D11-independent survivors | Decisions, §3.1, §3.3.1, §3.4, G-SURV, G-ENG |
+| Fail-closed stale/disconnect; broker SSOT; research proposes, Core executes (D7, D9, D10) | Decisions D7–D10, G11–G13, S7, G-RED, `alarm_executor` |
 | ES/NQ vs MES/MNQ ticks and $; ADR-0055 SSOT (D3); MES/MNQ first (D5) | D3, D5, P2, P3, R13, S0/S2 tests |
 | `expected_horizon` required, no silent default (D6) | Decisions D6, G-HORIZ, HypothesisAgent, SignalIntent |
+| Independent = different family **and** corr < 0.5 (D11) | Decisions D11, `independence.py`, `check_sim_entry.py` |
 
 *End of plan. No runtime behavior changes in the commit that updates this file.*
