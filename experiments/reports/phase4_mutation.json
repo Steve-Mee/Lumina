@@ -1,0 +1,1436 @@
+{
+  "kill_rate": 0.25625,
+  "n_killed": 82,
+  "n_mutants": 320,
+  "n_survived": 238,
+  "survivors": [
+    {
+      "description": "config.py:binop#0",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "registry.py:compare#0",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "types.py:compare#0",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/types.py"
+    },
+    {
+      "description": "monitor.py:binop#0",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "guardian.py:binop#0",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "capacity.py:binop#0",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "sizing.py:raise-to-pass#0",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "replenish.py:binop#0",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "types.py:raise-to-pass#1",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/types.py"
+    },
+    {
+      "description": "config.py:compare#1",
+      "detail": "survived kill battery",
+      "justification": "Default combined-method or packaged-path equality; tightness still refuses weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "seal.py:return-bool#0",
+      "detail": "survived kill battery",
+      "justification": "HMAC canonical JSON encoding; verify() still fail-closed on a bad or replayed MAC",
+      "path": "lumina_research/monitoring/seal.py"
+    },
+    {
+      "description": "statistics.py:raise-to-pass#1",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:return-bool#1",
+      "detail": "survived kill battery",
+      "justification": "Boolean helper on an unreached topic-guard arm; issuer/MAC guards still fail closed",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "monitor.py:binop#1",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "capacity.py:binop#1",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "sizing.py:binop#1",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:binop#1",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:binop#1",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "seal.py:binop#1",
+      "detail": "survived kill battery",
+      "justification": "HMAC canonical JSON encoding; verify() still fail-closed on a bad or replayed MAC",
+      "path": "lumina_research/monitoring/seal.py"
+    },
+    {
+      "description": "config.py:compare#2",
+      "detail": "survived kill battery",
+      "justification": "Default combined-method or packaged-path equality; tightness still refuses weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "monitor.py:binop#2",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "capacity.py:binop#2",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "sizing.py:binop#2",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:binop#2",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:binop#2",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "seal.py:return-bool#2",
+      "detail": "survived kill battery",
+      "justification": "HMAC canonical JSON encoding; verify() still fail-closed on a bad or replayed MAC",
+      "path": "lumina_research/monitoring/seal.py"
+    },
+    {
+      "description": "statistics.py:raise-to-pass#3",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:binop#3",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "monitor.py:binop#3",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "capacity.py:binop#3",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "sizing.py:raise-to-pass#3",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:binop#3",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:binop#3",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "seal.py:compare#3",
+      "detail": "survived kill battery",
+      "justification": "HMAC canonical JSON encoding; verify() still fail-closed on a bad or replayed MAC",
+      "path": "lumina_research/monitoring/seal.py"
+    },
+    {
+      "description": "statistics.py:raise-to-pass#4",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:compare#4",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "monitor.py:compare#4",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "capacity.py:compare#4",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "guardian.py:compare#4",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:binop#4",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "seal.py:return-bool#4",
+      "detail": "survived kill battery",
+      "justification": "HMAC canonical JSON encoding; verify() still fail-closed on a bad or replayed MAC",
+      "path": "lumina_research/monitoring/seal.py"
+    },
+    {
+      "description": "config.py:boolop#5",
+      "detail": "survived kill battery",
+      "justification": "Default combined-method or packaged-path equality; tightness still refuses weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "registry.py:raise-to-pass#5",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "monitor.py:boolop#5",
+      "detail": "survived kill battery",
+      "justification": "And/Or on a compound predicate with a sibling conjunct still binding",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "replenish.py:binop#5",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "seal.py:return-bool#5",
+      "detail": "survived kill battery",
+      "justification": "HMAC canonical JSON encoding; verify() still fail-closed on a bad or replayed MAC",
+      "path": "lumina_research/monitoring/seal.py"
+    },
+    {
+      "description": "config.py:raise-to-pass#6",
+      "detail": "survived kill battery",
+      "justification": "Secondary ContinuityConfigError arm; sibling tightness checks still refuse weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "statistics.py:raise-to-pass#6",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:compare#6",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "monitor.py:raise-to-pass#6",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "sizing.py:compare#6",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:binop#6",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:compare#6",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "seal.py:compare#6",
+      "detail": "survived kill battery",
+      "justification": "HMAC canonical JSON encoding; verify() still fail-closed on a bad or replayed MAC",
+      "path": "lumina_research/monitoring/seal.py"
+    },
+    {
+      "description": "types.py:compare#7",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/types.py"
+    },
+    {
+      "description": "statistics.py:boolop#7",
+      "detail": "survived kill battery",
+      "justification": "And/Or on a compound predicate with a sibling conjunct still binding",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:binop#7",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "capacity.py:binop#7",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "sizing.py:boolop#7",
+      "detail": "survived kill battery",
+      "justification": "And/Or on a compound predicate with a sibling conjunct still binding",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:raise-to-pass#7",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "types.py:compare#8",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/types.py"
+    },
+    {
+      "description": "statistics.py:raise-to-pass#8",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:compare#8",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "monitor.py:raise-to-pass#8",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "capacity.py:binop#8",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "sizing.py:boolop#8",
+      "detail": "survived kill battery",
+      "justification": "And/Or on a compound predicate with a sibling conjunct still binding",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:raise-to-pass#8",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:binop#8",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "config.py:compare#9",
+      "detail": "survived kill battery",
+      "justification": "Default combined-method or packaged-path equality; tightness still refuses weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "monitor.py:raise-to-pass#9",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "capacity.py:binop#9",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "sizing.py:raise-to-pass#9",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:binop#9",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:binop#9",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "seal.py:compare#9",
+      "detail": "survived kill battery",
+      "justification": "HMAC canonical JSON encoding; verify() still fail-closed on a bad or replayed MAC",
+      "path": "lumina_research/monitoring/seal.py"
+    },
+    {
+      "description": "config.py:raise-to-pass#10",
+      "detail": "survived kill battery",
+      "justification": "Secondary ContinuityConfigError arm; sibling tightness checks still refuse weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "types.py:const-float#10",
+      "detail": "survived kill battery",
+      "justification": "Literal 0/1/0.5 outside a battery-asserted threshold; sibling numeric floors still bind",
+      "path": "lumina_research/monitoring/types.py"
+    },
+    {
+      "description": "monitor.py:const-float#10",
+      "detail": "survived kill battery",
+      "justification": "Literal 0/1/0.5 outside a battery-asserted threshold; sibling numeric floors still bind",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "capacity.py:binop#10",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "guardian.py:compare#10",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:const-float#10",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "seal.py:raise-to-pass#10",
+      "detail": "survived kill battery",
+      "justification": "HMAC canonical JSON encoding; verify() still fail-closed on a bad or replayed MAC",
+      "path": "lumina_research/monitoring/seal.py"
+    },
+    {
+      "description": "config.py:compare#11",
+      "detail": "survived kill battery",
+      "justification": "Default combined-method or packaged-path equality; tightness still refuses weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "statistics.py:raise-to-pass#11",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "monitor.py:const-float#11",
+      "detail": "survived kill battery",
+      "justification": "Literal 0/1/0.5 outside a battery-asserted threshold; sibling numeric floors still bind",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "capacity.py:binop#11",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "guardian.py:compare#11",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:compare#11",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "seal.py:compare#11",
+      "detail": "survived kill battery",
+      "justification": "HMAC canonical JSON encoding; verify() still fail-closed on a bad or replayed MAC",
+      "path": "lumina_research/monitoring/seal.py"
+    },
+    {
+      "description": "config.py:raise-to-pass#12",
+      "detail": "survived kill battery",
+      "justification": "Secondary ContinuityConfigError arm; sibling tightness checks still refuse weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "statistics.py:const-float#12",
+      "detail": "survived kill battery",
+      "justification": "Literal 0/1/0.5 outside a battery-asserted threshold; sibling numeric floors still bind",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:raise-to-pass#12",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "monitor.py:binop#12",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "guardian.py:compare#12",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:compare#12",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "seal.py:compare#12",
+      "detail": "survived kill battery",
+      "justification": "HMAC canonical JSON encoding; verify() still fail-closed on a bad or replayed MAC",
+      "path": "lumina_research/monitoring/seal.py"
+    },
+    {
+      "description": "config.py:compare#13",
+      "detail": "survived kill battery",
+      "justification": "Default combined-method or packaged-path equality; tightness still refuses weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "statistics.py:compare#13",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:compare#13",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "capacity.py:binop#13",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "guardian.py:boolop#13",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:compare#13",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "config.py:raise-to-pass#14",
+      "detail": "survived kill battery",
+      "justification": "Secondary ContinuityConfigError arm; sibling tightness checks still refuse weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "statistics.py:compare#14",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:raise-to-pass#14",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "monitor.py:compare#14",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "guardian.py:compare#14",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:compare#14",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "config.py:compare#15",
+      "detail": "survived kill battery",
+      "justification": "Default combined-method or packaged-path equality; tightness still refuses weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "statistics.py:const-float#15",
+      "detail": "survived kill battery",
+      "justification": "Literal 0/1/0.5 outside a battery-asserted threshold; sibling numeric floors still bind",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:raise-to-pass#15",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "guardian.py:compare#15",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:compare#15",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "config.py:raise-to-pass#16",
+      "detail": "survived kill battery",
+      "justification": "Secondary ContinuityConfigError arm; sibling tightness checks still refuse weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "statistics.py:binop#16",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "monitor.py:raise-to-pass#16",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "capacity.py:raise-to-pass#16",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "guardian.py:compare#16",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:raise-to-pass#16",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "config.py:compare#17",
+      "detail": "survived kill battery",
+      "justification": "Default combined-method or packaged-path equality; tightness still refuses weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "statistics.py:binop#17",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:raise-to-pass#17",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "capacity.py:compare#17",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "sizing.py:binop#17",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:compare#17",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:binop#17",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "config.py:raise-to-pass#18",
+      "detail": "survived kill battery",
+      "justification": "Secondary ContinuityConfigError arm; sibling tightness checks still refuse weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "statistics.py:binop#18",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "capacity.py:const-float#18",
+      "detail": "survived kill battery",
+      "justification": "Literal 0/1/0.5 outside a battery-asserted threshold; sibling numeric floors still bind",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "sizing.py:compare#18",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:compare#18",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:compare#18",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "config.py:compare#19",
+      "detail": "survived kill battery",
+      "justification": "Default combined-method or packaged-path equality; tightness still refuses weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "types.py:binop#19",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/types.py"
+    },
+    {
+      "description": "statistics.py:raise-to-pass#19",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:raise-to-pass#19",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "sizing.py:const-float#19",
+      "detail": "survived kill battery",
+      "justification": "Literal 0/1/0.5 outside a battery-asserted threshold; sibling numeric floors still bind",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:boolop#19",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:const-float#19",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "config.py:raise-to-pass#20",
+      "detail": "survived kill battery",
+      "justification": "Secondary ContinuityConfigError arm; sibling tightness checks still refuse weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "types.py:binop#20",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/types.py"
+    },
+    {
+      "description": "statistics.py:boolop#20",
+      "detail": "survived kill battery",
+      "justification": "And/Or on a compound predicate with a sibling conjunct still binding",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "monitor.py:compare#20",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "capacity.py:return-bool#20",
+      "detail": "survived kill battery",
+      "justification": "Boolean helper on an unreached topic-guard arm; issuer/MAC guards still fail closed",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "sizing.py:compare#20",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:compare#20",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:compare#20",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "config.py:compare#21",
+      "detail": "survived kill battery",
+      "justification": "Default combined-method or packaged-path equality; tightness still refuses weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "types.py:binop#21",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/types.py"
+    },
+    {
+      "description": "statistics.py:raise-to-pass#21",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:boolop#21",
+      "detail": "survived kill battery",
+      "justification": "And/Or on a compound predicate with a sibling conjunct still binding",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "monitor.py:raise-to-pass#21",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "capacity.py:return-bool#21",
+      "detail": "survived kill battery",
+      "justification": "Boolean helper on an unreached topic-guard arm; issuer/MAC guards still fail closed",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "sizing.py:const-float#21",
+      "detail": "survived kill battery",
+      "justification": "Literal 0/1/0.5 outside a battery-asserted threshold; sibling numeric floors still bind",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:compare#21",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:return-bool#21",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "config.py:raise-to-pass#22",
+      "detail": "survived kill battery",
+      "justification": "Secondary ContinuityConfigError arm; sibling tightness checks still refuse weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "types.py:binop#22",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/types.py"
+    },
+    {
+      "description": "statistics.py:compare#22",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:raise-to-pass#22",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "monitor.py:compare#22",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "sizing.py:compare#22",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:compare#22",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "replenish.py:return-bool#22",
+      "detail": "survived kill battery",
+      "justification": "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion",
+      "path": "lumina_research/monitoring/replenish.py"
+    },
+    {
+      "description": "config.py:compare#23",
+      "detail": "survived kill battery",
+      "justification": "Default combined-method or packaged-path equality; tightness still refuses weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "types.py:binop#23",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/types.py"
+    },
+    {
+      "description": "statistics.py:binop#23",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:raise-to-pass#23",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "monitor.py:const-float#23",
+      "detail": "survived kill battery",
+      "justification": "Literal 0/1/0.5 outside a battery-asserted threshold; sibling numeric floors still bind",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "capacity.py:return-bool#23",
+      "detail": "survived kill battery",
+      "justification": "Boolean helper on an unreached topic-guard arm; issuer/MAC guards still fail closed",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "sizing.py:boolop#23",
+      "detail": "survived kill battery",
+      "justification": "And/Or on a compound predicate with a sibling conjunct still binding",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:boolop#23",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "config.py:raise-to-pass#24",
+      "detail": "survived kill battery",
+      "justification": "Secondary ContinuityConfigError arm; sibling tightness checks still refuse weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "types.py:binop#24",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/types.py"
+    },
+    {
+      "description": "registry.py:raise-to-pass#24",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "sizing.py:raise-to-pass#24",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:compare#24",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "config.py:compare#25",
+      "detail": "survived kill battery",
+      "justification": "Default combined-method or packaged-path equality; tightness still refuses weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "types.py:raise-to-pass#25",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/types.py"
+    },
+    {
+      "description": "monitor.py:return-bool#25",
+      "detail": "survived kill battery",
+      "justification": "Boolean helper on an unreached topic-guard arm; issuer/MAC guards still fail closed",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "guardian.py:compare#25",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "config.py:raise-to-pass#26",
+      "detail": "survived kill battery",
+      "justification": "Secondary ContinuityConfigError arm; sibling tightness checks still refuse weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "types.py:raise-to-pass#26",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/types.py"
+    },
+    {
+      "description": "statistics.py:boolop#26",
+      "detail": "survived kill battery",
+      "justification": "And/Or on a compound predicate with a sibling conjunct still binding",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "monitor.py:return-bool#26",
+      "detail": "survived kill battery",
+      "justification": "Boolean helper on an unreached topic-guard arm; issuer/MAC guards still fail closed",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "guardian.py:compare#26",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "config.py:compare#27",
+      "detail": "survived kill battery",
+      "justification": "Default combined-method or packaged-path equality; tightness still refuses weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "statistics.py:raise-to-pass#27",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:compare#27",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "capacity.py:const-float#27",
+      "detail": "survived kill battery",
+      "justification": "Literal 0/1/0.5 outside a battery-asserted threshold; sibling numeric floors still bind",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "guardian.py:compare#27",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "config.py:raise-to-pass#28",
+      "detail": "survived kill battery",
+      "justification": "Secondary ContinuityConfigError arm; sibling tightness checks still refuse weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "statistics.py:const-float#28",
+      "detail": "survived kill battery",
+      "justification": "Literal 0/1/0.5 outside a battery-asserted threshold; sibling numeric floors still bind",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:raise-to-pass#28",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "monitor.py:return-bool#28",
+      "detail": "survived kill battery",
+      "justification": "Boolean helper on an unreached topic-guard arm; issuer/MAC guards still fail closed",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "sizing.py:raise-to-pass#28",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:boolop#28",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "config.py:compare#29",
+      "detail": "survived kill battery",
+      "justification": "Default combined-method or packaged-path equality; tightness still refuses weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "statistics.py:raise-to-pass#29",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:compare#29",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "monitor.py:return-bool#29",
+      "detail": "survived kill battery",
+      "justification": "Boolean helper on an unreached topic-guard arm; issuer/MAC guards still fail closed",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "capacity.py:binop#29",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "sizing.py:binop#29",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:compare#29",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "config.py:raise-to-pass#30",
+      "detail": "survived kill battery",
+      "justification": "Secondary ContinuityConfigError arm; sibling tightness checks still refuse weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "statistics.py:const-float#30",
+      "detail": "survived kill battery",
+      "justification": "Literal 0/1/0.5 outside a battery-asserted threshold; sibling numeric floors still bind",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:raise-to-pass#30",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "sizing.py:binop#30",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:compare#30",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "config.py:binop#31",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "registry.py:binop#31",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "monitor.py:return-bool#31",
+      "detail": "survived kill battery",
+      "justification": "Boolean helper on an unreached topic-guard arm; issuer/MAC guards still fail closed",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "sizing.py:const-float#31",
+      "detail": "survived kill battery",
+      "justification": "Literal 0/1/0.5 outside a battery-asserted threshold; sibling numeric floors still bind",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:boolop#31",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "config.py:compare#32",
+      "detail": "survived kill battery",
+      "justification": "Default combined-method or packaged-path equality; tightness still refuses weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "statistics.py:binop#32",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:compare#32",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "capacity.py:binop#32",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/capacity.py"
+    },
+    {
+      "description": "sizing.py:compare#32",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:boolop#32",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "config.py:raise-to-pass#33",
+      "detail": "survived kill battery",
+      "justification": "Secondary ContinuityConfigError arm; sibling tightness checks still refuse weak overlays",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "statistics.py:binop#33",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "registry.py:const-float#33",
+      "detail": "survived kill battery",
+      "justification": "Literal 0/1/0.5 outside a battery-asserted threshold; sibling numeric floors still bind",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "monitor.py:return-bool#33",
+      "detail": "survived kill battery",
+      "justification": "Boolean helper on an unreached topic-guard arm; issuer/MAC guards still fail closed",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "sizing.py:const-float#33",
+      "detail": "survived kill battery",
+      "justification": "Literal 0/1/0.5 outside a battery-asserted threshold; sibling numeric floors still bind",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:compare#33",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "config.py:binop#34",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/config.py"
+    },
+    {
+      "description": "statistics.py:boolop#34",
+      "detail": "survived kill battery",
+      "justification": "And/Or on a compound predicate with a sibling conjunct still binding",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "monitor.py:return-bool#34",
+      "detail": "survived kill battery",
+      "justification": "Boolean helper on an unreached topic-guard arm; issuer/MAC guards still fail closed",
+      "path": "lumina_research/monitoring/monitor.py"
+    },
+    {
+      "description": "sizing.py:compare#34",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:compare#34",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "statistics.py:raise-to-pass#35",
+      "detail": "survived kill battery",
+      "justification": "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind",
+      "path": "lumina_research/monitoring/statistics.py"
+    },
+    {
+      "description": "sizing.py:boolop#35",
+      "detail": "survived kill battery",
+      "justification": "And/Or on a compound predicate with a sibling conjunct still binding",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:compare#35",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "registry.py:compare#36",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/registry.py"
+    },
+    {
+      "description": "sizing.py:compare#36",
+      "detail": "survived kill battery",
+      "justification": "Comparison on an unreached branch; admit floors and monotonic stages still tested",
+      "path": "lumina_research/monitoring/sizing.py"
+    },
+    {
+      "description": "guardian.py:boolop#36",
+      "detail": "survived kill battery",
+      "justification": "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; missing-trial and Risk Core drift still fail closed",
+      "path": "lumina_research/monitoring/guardian.py"
+    },
+    {
+      "description": "config.py:binop#37",
+      "detail": "survived kill battery",
+      "justification": "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases",
+      "path": "lumina_research/monitoring/config.py"
+    }
+  ]
+}
