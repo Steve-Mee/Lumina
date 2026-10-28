@@ -41,6 +41,7 @@ class LoadedTape:
     bar_size: str
     path: Path
     bars: tuple[ResearchBar, ...]
+    holdout_start_ns: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,16 +67,20 @@ def discover_data(*, repo_root: Path, data_dir: Path | None = None) -> DataStatu
             tapes.append(loaded)
     usable = any(len(item.bars) >= MIN_BARS for item in tapes)
     required = {
-        "instruments": "at least one of ES, NQ, MES, MNQ",
-        "bar_size": "1-minute RTH last bars preferred (ADR-0053); 5m or 1d accepted",
-        "period": f">= {MIN_BARS} bars (walk-forward 60 IS + 6*30 OOS); prefer >= 252 trading days",
-        "format": "CSV/JSONL columns timestamp,open,high,low,close,volume (UTC) or playground .bars",
-        "paths": (
-            f"${ENV_DATA_DIR}/{{ROOT}}/{{1m|5m|1d}}/*.csv ; "
-            "data/research/{ROOT}/{1m|5m|1d}/*.csv ; "
-            "reports/playground_bar_archive/{ROOT}.bars"
+        "instruments": "P2 first cycle: MES and MNQ 1m; ES/NQ accepted later",
+        "bar_size": "NT8 1-minute bars first; 5m or 1d accepted only as a documented fallback",
+        "period": "recent 2-3 years; train split must still have >= 241 bars after the holdout lock",
+        "holdout": (
+            "last 9 calendar months (allowed 6-12) from the last bar are locked; "
+            "access_bars(purpose=selection|tuning|calibration|gate) fails closed on holdout timestamps"
         ),
-        "code": "lumina_research.cycles.data.discover_data",
+        "format": "UTF-8 CSV header timestamp,open,high,low,close,volume (UTC ISO-8601 with offset)",
+        "paths": (
+            f"${ENV_DATA_DIR}/{{MES,MNQ}}/1m/nt8_{{mes,mnq}}_1m.csv ; "
+            "data/research/{MES,MNQ}/1m/*.csv ; "
+            "optional data/research/VIX/1d/vix.csv for regime labels"
+        ),
+        "code": "lumina_research.cycles.data.discover_data + lumina_research.cycles.holdout.access_bars",
     }
     return DataStatus(usable=usable, tapes=tuple(tapes), searched=searched, missing=tuple(missing), required=required)
 

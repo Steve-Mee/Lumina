@@ -9,7 +9,7 @@ from typing import Sequence
 
 from lumina_research.cycles.runner import run_research_cycles
 from lumina_research.monitoring.cli import run_scan as run_guardian_scan
-from lumina_research.proof.independent import INDEPENDENT_INSTRUMENTS, INDEPENDENT_SEEDS
+from lumina_research.proof.independent import HOLDOUT_INSTRUMENTS, HOLDOUT_SEEDS, assert_holdout_seeds
 from lumina_research.proof.runner import DEFAULT_EVOLUTION_LOG, DEFAULT_REPORTS, run_empirical_verification
 
 
@@ -45,6 +45,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(list(argv) if argv is not None else None)
     command = str(args.command)
     if command == "verify":
+        assert_holdout_seeds(HOLDOUT_SEEDS)
         result = run_empirical_verification(
             work_dir=args.work_dir,
             report_dir=args.report_dir,
@@ -53,8 +54,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             n_per_kind=int(args.n_per_kind),
             n_days=int(args.n_days),
             decay_start=int(args.decay_start),
-            seeds=INDEPENDENT_SEEDS,
-            instruments=INDEPENDENT_INSTRUMENTS,
+            seeds=HOLDOUT_SEEDS,
+            instruments=HOLDOUT_INSTRUMENTS,
         )
         if result.passed:
             return 0

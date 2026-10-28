@@ -87,12 +87,15 @@ def test_phase4_floors_unchanged() -> None:
         DETECTION_RATE_MIN,
         FAR_HEALTHY_MAX,
         FAR_HIGH_VOL_MAX,
+        HIGH_VOL_CONFIRM_WINDOWS,
         TTD_MAX_TRADING_DAYS,
         TTD_MEDIUM_MAX_TRADING_DAYS,
         FAR_HIGH_VOL_EXTREME_NOT_A_PASS,
     )
 
     assert CONFIRM_WINDOWS == 2
+    assert HIGH_VOL_CONFIRM_WINDOWS == 3
+    assert HIGH_VOL_CONFIRM_WINDOWS <= 3
     assert FAR_HEALTHY_MAX == 0.05
     assert FAR_HIGH_VOL_MAX == 0.10
     assert DETECTION_RATE_MIN == 0.85

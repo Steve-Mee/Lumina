@@ -6,12 +6,14 @@ import math
 import random
 from typing import Literal
 
-from lumina_research.monitoring.acceptance import MEANINGFUL_RAMP_DAYS
+from lumina_research.monitoring.acceptance import HIGH_VOL_REALIZED_WINDOW, HIGH_VOL_VIX, MEANINGFUL_RAMP_DAYS
 from lumina_research.monitoring.campaign import DEFAULT_CAMPAIGN_SEEDS
 from lumina_research.monitoring.types import ContinuityRefused, Instrument
 
-# Tuning used (20261028, 7, 13, 21, 42, 99, 123, 256, 1024, 4096) and Gaussian paths.
+# Seen in PR #63 verify. Kept for overlap checks. Not used for final floor numbers.
 INDEPENDENT_SEEDS: tuple[int, ...] = (314159, 271828, 161803, 141421, 173205, 223606, 264575, 331662, 577215, 618033)
+# Held-out seeds: disjoint from Phase 4 tuning AND from INDEPENDENT_SEEDS.
+HOLDOUT_SEEDS: tuple[int, ...] = (8675309, 424242, 135790, 246801, 112358, 132134, 178101, 192837, 204060, 777277)
 INDEPENDENT_INSTRUMENTS: tuple[Instrument, ...] = (
     "ES",
     "NQ",
@@ -24,11 +26,15 @@ INDEPENDENT_INSTRUMENTS: tuple[Instrument, ...] = (
     "ES",
     "NQ",
 )
+HOLDOUT_INSTRUMENTS: tuple[Instrument, ...] = INDEPENDENT_INSTRUMENTS
 INDEPENDENT_OOS: tuple[float, ...] = (0.68, 0.74, 0.81, 0.77, 0.84, 0.79)
+PRIMARY_HIGH_VOL_KIND = "healthy_regime_switch"
+STRESS_HIGH_VOL_KIND = "high_vol_mixture"
 FLOOR_KINDS: tuple[str, ...] = (
     "healthy_laplace",
     "abrupt_student",
     "gradual_smooth",
+    "healthy_regime_switch",
     "high_vol_mixture",
     "regime_laplace",
     "material_break",
@@ -47,6 +53,14 @@ def assert_independent_seeds(seeds: tuple[int, ...]) -> None:
         raise ContinuityRefused(f"independent seeds overlap Phase 4 tuning seeds: {sorted(overlap)}")
     if len(set(seeds)) != len(seeds):
         raise ContinuityRefused("independent seeds must be unique")
+
+
+def assert_holdout_seeds(seeds: tuple[int, ...]) -> None:
+    """Final numbers may not reuse Phase 4 tuning seeds or the PR #63 independent set."""
+    assert_independent_seeds(seeds)
+    seen = set(seeds) & set(INDEPENDENT_SEEDS)
+    if seen:
+        raise ContinuityRefused(f"holdout seeds overlap the PR #63 independent set: {sorted(seen)}")
 
 
 def map_instrument(root: str) -> Instrument:
@@ -123,6 +137,7 @@ def material_break(
 
 
 def high_vol_mixture(rng: random.Random, *, oos_mean: float, oos_stdev: float, n: int) -> tuple[float, ...]:
+    """Iid 40% loud / 60% quiet. STRESS report only. Does not decide the high-vol FAR floor."""
     quiet = max(oos_stdev * 0.70, 1e-6)
     loud = max(oos_stdev * 1.60, 1e-6)
     out: list[float] = []
@@ -130,6 +145,37 @@ def high_vol_mixture(rng: random.Random, *, oos_mean: float, oos_stdev: float, n
         sigma = loud if rng.random() < 0.40 else quiet
         out.append(rng.gauss(oos_mean, sigma))
     return tuple(out)
+
+
+def regime_switch_index(n: int) -> int:
+    """Quiet block then loud block. Switch sits between ready windows."""
+    if n < 4:
+        return max(n // 2, 1)
+    return int(min(max(HIGH_VOL_REALIZED_WINDOW, n // 2), n - 1))
+
+
+def healthy_regime_switch(
+    rng: random.Random, *, oos_mean: float, oos_stdev: float, n: int, switch_at: int | None = None
+) -> tuple[float, ...]:
+    """Primary high-vol FAR path: quiet then loud, no mean decay. Regime switches between windows."""
+    boundary = switch_at if switch_at is not None else regime_switch_index(n)
+    quiet = max(oos_stdev * 0.45, 1e-6)
+    loud = max(oos_stdev * 2.20, 1e-6)
+    out: list[float] = []
+    for index in range(n):
+        sigma = quiet if index < boundary else loud
+        out.append(rng.gauss(oos_mean, sigma))
+    return tuple(out)
+
+
+def vix_path_for(kind: str, n: int, *, switch_at: int | None = None) -> tuple[float | None, ...]:
+    """Companion VIX labels. Loud block uses VIX>25 so the high-vol regime is unambiguous."""
+    if kind != PRIMARY_HIGH_VOL_KIND:
+        return tuple(None for _ in range(n))
+    boundary = switch_at if switch_at is not None else regime_switch_index(n)
+    quiet_vix = min(HIGH_VOL_VIX - 7.0, 18.0)
+    loud_vix = HIGH_VOL_VIX + 5.0
+    return tuple(quiet_vix if index < boundary else loud_vix for index in range(n))
 
 
 def regime_laplace(
@@ -189,6 +235,8 @@ def path_for(
         return gradual_smooth(rng, oos_mean=oos_mean, oos_stdev=oos_stdev, n=n, decay_start=decay_start)
     if kind == "high_vol_mixture":
         return high_vol_mixture(rng, oos_mean=oos_mean, oos_stdev=oos_stdev, n=n)
+    if kind == "healthy_regime_switch":
+        return healthy_regime_switch(rng, oos_mean=oos_mean, oos_stdev=oos_stdev, n=n)
     if kind == "regime_laplace":
         return regime_laplace(rng, oos_mean=oos_mean, oos_stdev=oos_stdev, n=n, decay_start=decay_start)
     if kind == "material_break":
@@ -202,16 +250,18 @@ def path_for(
 
 
 def decaying_kind(kind: str) -> bool:
-    if kind in {"healthy_laplace", "high_vol_mixture"}:
+    if kind in {"healthy_laplace", "high_vol_mixture", "healthy_regime_switch"}:
         return False
     if kind in SHORT_DECAY_KINDS or kind in SLOW_KINDS:
         return True
     raise ContinuityRefused(f"unknown independent kind {kind!r}")
 
 
-def healthy_kind(kind: str) -> Literal["healthy", "high_vol", "none"]:
+def healthy_kind(kind: str) -> Literal["healthy", "high_vol", "stress", "none"]:
     if kind == "healthy_laplace":
         return "healthy"
-    if kind == "high_vol_mixture":
+    if kind == PRIMARY_HIGH_VOL_KIND:
         return "high_vol"
+    if kind == STRESS_HIGH_VOL_KIND:
+        return "stress"
     return "none"

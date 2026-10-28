@@ -27,18 +27,23 @@ from lumina_research.monitoring.report import (
 )
 from lumina_research.monitoring.synthetic import oos_stats, seal_promotion_pair
 from lumina_research.monitoring.types import ContinuityRefused
+from lumina_research.monitoring.vol_regime import classify_vol_regime
 from lumina_research.proof.independent import (
     FLOOR_KINDS,
-    INDEPENDENT_INSTRUMENTS,
+    HOLDOUT_INSTRUMENTS,
+    HOLDOUT_SEEDS,
     INDEPENDENT_OOS,
-    INDEPENDENT_SEEDS,
+    PRIMARY_HIGH_VOL_KIND,
     SHORT_DECAY_KINDS,
     SLOW_KINDS,
+    STRESS_HIGH_VOL_KIND,
     assert_independent_seeds,
     decaying_kind,
     healthy_kind,
     map_instrument,
     path_for,
+    regime_switch_index,
+    vix_path_for,
 )
 
 
@@ -50,6 +55,9 @@ class ContinuitySuiteReport:
     short_passed: bool
     medium_passed: bool
     slow_notes: str
+    stress_high_vol_mixture_far: float | None = None
+    primary_high_vol_far: float | None = None
+    primary_normal_far: float | None = None
 
 
 def run_independent_continuity(
@@ -59,8 +67,8 @@ def run_independent_continuity(
     n_per_kind: int = 6,
     n_days: int = 70,
     decay_start: int = 20,
-    seeds: tuple[int, ...] = INDEPENDENT_SEEDS,
-    instruments: tuple[str, ...] = INDEPENDENT_INSTRUMENTS,
+    seeds: tuple[int, ...] = HOLDOUT_SEEDS,
+    instruments: tuple[str, ...] = HOLDOUT_INSTRUMENTS,
     floor_kinds: tuple[str, ...] = FLOOR_KINDS,
     slow_kinds: tuple[str, ...] = SLOW_KINDS,
 ) -> ContinuitySuiteReport:
@@ -95,7 +103,9 @@ def run_independent_continuity(
         "Two horizons, reported separately. Short/material breaks: detection >= 0.85 within "
         f"{TTD_MAX_TRADING_DAYS} trading days. Slow 30/45/60-day ramps: detection >= 0.85 within "
         f"{TTD_MEDIUM_MAX_TRADING_DAYS} trading days (target 40). High-vol FAR hard cap "
-        f"{FAR_HIGH_VOL_MAX:.2f}, target {FAR_HIGH_VOL_TARGET:.2f}; 0.12 is not a pass."
+        f"{FAR_HIGH_VOL_MAX:.2f}, target {FAR_HIGH_VOL_TARGET:.2f}; 0.12 is not a pass. "
+        f"Primary high-vol FAR is `{PRIMARY_HIGH_VOL_KIND}` (between-window regime switch). "
+        f"`{STRESS_HIGH_VOL_KIND}` is a reported STRESS test and does not decide the floor."
     )
     return ContinuitySuiteReport(
         floor=floor,
@@ -104,6 +114,9 @@ def run_independent_continuity(
         short_passed=short_passed,
         medium_passed=medium_passed,
         slow_notes=note,
+        stress_high_vol_mixture_far=_kind_far(floor, STRESS_HIGH_VOL_KIND),
+        primary_high_vol_far=_kind_far(floor, PRIMARY_HIGH_VOL_KIND),
+        primary_normal_far=_kind_far(floor, "healthy_laplace"),
     )
 
 
@@ -150,13 +163,28 @@ def _campaign(
                 series = path_for(
                     kind, rng, oos_mean=mean, oos_stdev=stdev, n=n_days, decay_start=decay_start
                 )
+                vix_series = vix_path_for(kind, n_days, switch_at=regime_switch_index(n_days))
                 detect_day: int | None = None
+                alarm_regime = "normal"
+                n_normal = 0
+                n_high = 0
                 for day, metric in enumerate(series):
-                    updated = runtime.observe(hyp, metric)
+                    vix = vix_series[day]
+                    updated = runtime.observe(hyp, metric, vix=vix)
+                    history = runtime.monitor.series(hyp)
+                    regime = classify_vol_regime(history, vix=vix, instrument=mapped)
+                    if len(history) >= 20:
+                        if regime == "high_vol":
+                            n_high += 1
+                        else:
+                            n_normal += 1
                     if detect_day is None and updated.stage != "active":
                         detect_day = max(0, day - decay_start) if decaying else day
+                        alarm_regime = regime
                 signal = runtime.registry.require(hyp)
                 flagged = signal.stage != "active"
+                if not flagged:
+                    alarm_regime = "high_vol" if n_high > n_normal else "normal"
                 paths.append(
                     DetectionPath(
                         signal_id=hyp,
@@ -166,6 +194,9 @@ def _campaign(
                         time_to_detect=detect_day if flagged else None,
                         final_stage=signal.stage,
                         kind=kind,
+                        vol_regime=alarm_regime,
+                        n_normal_windows=n_normal,
+                        n_high_vol_windows=n_high,
                     )
                 )
         seed_report = build_detection_report(seed=seed, paths=paths)
@@ -197,6 +228,8 @@ def _short_holds(report: MultiSeedDetectionReport, *, n_signals_floor: int) -> b
         return False
     for kind_row in report.by_kind:
         band = healthy_kind(kind_row.kind)
+        if band == "stress":
+            continue
         if band == "healthy" and kind_row.false_alarm_rate > FAR_HEALTHY_MAX:
             return False
         if band == "high_vol" and kind_row.false_alarm_rate > FAR_HIGH_VOL_MAX:
@@ -230,3 +263,10 @@ def _floor_holds(report: MultiSeedDetectionReport, *, n_signals_floor: int) -> b
 
 def kind_rows(report: MultiSeedDetectionReport) -> tuple[KindMetrics, ...]:
     return report.by_kind
+
+
+def _kind_far(report: MultiSeedDetectionReport, kind: str) -> float | None:
+    for item in report.by_kind:
+        if item.kind == kind:
+            return float(item.false_alarm_rate)
+    return None

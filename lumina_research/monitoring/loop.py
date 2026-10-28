@@ -273,9 +273,9 @@ class ContinuityRuntime(Frozen):
             evolution_log_dir=self._evolution_log_dir,
         )
 
-    def observe(self, signal_id: str, metric: float) -> LiveSignal:
+    def observe(self, signal_id: str, metric: float, *, vix: float | None = None) -> LiveSignal:
         self.assert_intact()
-        return self.monitor.observe(signal_id, metric)
+        return self.monitor.observe(signal_id, metric, vix=vix)
 
     def rebalance(self) -> tuple[LiveSignal, ...]:
         self.assert_intact()

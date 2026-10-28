@@ -23,7 +23,7 @@ from lumina_core.engine.agent_blackboard import AgentBlackboard
 from lumina_research.agents.frozen import Frozen
 from lumina_research.agents.payloads import dump_json
 from lumina_research.agents.provenance import ProvenanceAuthority
-from lumina_research.monitoring.acceptance import CONFIRM_WINDOWS
+from lumina_research.monitoring.acceptance import confirm_windows_for
 from lumina_research.monitoring.config import ContinuityConfig
 from lumina_research.monitoring.horizons import combined_assessment
 from lumina_research.monitoring.registry import LiveSignalRegistry
@@ -139,7 +139,8 @@ class LivePerformanceMonitor(Frozen):
             self._pending[signal_id] = (assessment.stage, 1)
             return signal
         confirmed = previous[1] + 1
-        if confirmed < CONFIRM_WINDOWS:
+        needed = confirm_windows_for(assessment.vol_regime)
+        if confirmed < needed:
             self._pending[signal_id] = (assessment.stage, confirmed)
             return signal
         self._pending.pop(signal_id, None)

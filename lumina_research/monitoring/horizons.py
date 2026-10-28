@@ -36,10 +36,10 @@ def combined_assessment(
     instrument: Instrument | str | None = None,
 ) -> CombinedDecay:
     """Short window + material breaks + medium window. Stage only tightens. CONFIRM is elsewhere."""
-    short = assess_decay(series, oos, config)
-    material = assess_material(series, oos, config)
-    medium = _medium(series, oos, config)
     regime = classify_vol_regime(series, vix=vix, instrument=instrument)
+    short = assess_decay(series, oos, config)
+    material = assess_material(series, oos, config, vol_regime=regime)
+    medium = _medium(series, oos, config)
     stage = tighter_stage(short.stage, material.stage)
     stage = tighter_stage(stage, medium.stage)
     horizon: DecayHorizon = "short"

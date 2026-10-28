@@ -42,6 +42,30 @@ def trailing_percentile(sample: Sequence[float], *, pct: float) -> float | None:
     return float(ordered[index])
 
 
+def label_windows(
+    series: Sequence[float],
+    *,
+    vix_path: Sequence[float | None] | None = None,
+    instrument: Instrument | str | None = None,
+    realized_window: int = HIGH_VOL_REALIZED_WINDOW,
+    trailing_window: int = HIGH_VOL_TRAILING_WINDOW,
+) -> tuple[VolRegime, ...]:
+    """Classify every prefix of ``series``. Labels switch between windows, not inside one."""
+    labels: list[VolRegime] = []
+    for index in range(len(series)):
+        vix = None if vix_path is None else vix_path[index]
+        labels.append(
+            classify_vol_regime(
+                tuple(series[: index + 1]),
+                vix=vix,
+                instrument=instrument,
+                realized_window=realized_window,
+                trailing_window=trailing_window,
+            )
+        )
+    return tuple(labels)
+
+
 def classify_vol_regime(
     series: Sequence[float],
     *,

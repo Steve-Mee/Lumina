@@ -20,6 +20,9 @@ class DetectionPath:
     time_to_detect: int | None
     final_stage: str
     kind: str = ""
+    vol_regime: str = "normal"
+    n_normal_windows: int = 0
+    n_high_vol_windows: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +84,7 @@ class MultiSeedDetectionReport:
     time_to_detect: tuple[int, ...]
     by_kind: tuple[KindMetrics, ...]
     paths: tuple[DetectionPath, ...]
+    by_regime: tuple[KindMetrics, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +168,9 @@ def write_detection_reports(report: DetectionReport, directory: Path) -> None:
                 "time_to_detect": item.time_to_detect,
                 "final_stage": item.final_stage,
                 "kind": item.kind,
+                "vol_regime": item.vol_regime,
+                "n_normal_windows": item.n_normal_windows,
+                "n_high_vol_windows": item.n_high_vol_windows,
             }
             for item in report.paths
         ],
@@ -260,6 +267,38 @@ def _kind_metrics(paths: Sequence[DetectionPath]) -> tuple[KindMetrics, ...]:
     return tuple(rows)
 
 
+def _path_regime(item: DetectionPath) -> str:
+    """Majority ready-window label. Alarm-time vol_regime stays on the path for logs."""
+    if item.n_high_vol_windows > item.n_normal_windows:
+        return "high_vol"
+    return "normal"
+
+
+def _regime_metrics(paths: Sequence[DetectionPath]) -> tuple[KindMetrics, ...]:
+    grouped: list[DetectionPath] = []
+    for item in paths:
+        if item.kind == "high_vol_mixture":
+            continue
+        grouped.append(
+            DetectionPath(
+                signal_id=item.signal_id,
+                decaying=item.decaying,
+                detected=item.detected,
+                false_alarm=item.false_alarm,
+                time_to_detect=item.time_to_detect,
+                final_stage=item.final_stage,
+                kind=_path_regime(item),
+                vol_regime=item.vol_regime,
+                n_normal_windows=item.n_normal_windows,
+                n_high_vol_windows=item.n_high_vol_windows,
+            )
+        )
+    rows = {item.kind: item for item in _kind_metrics(grouped)}
+    ordered = tuple(rows[name] for name in ("normal", "high_vol") if name in rows)
+    extra = tuple(item for item in rows.values() if item.kind not in {"normal", "high_vol"})
+    return ordered + extra
+
+
 def build_multiseed_report(
     *, rows: Sequence[SeedDetectionRow], paths: Sequence[DetectionPath]
 ) -> MultiSeedDetectionReport:
@@ -283,6 +322,7 @@ def build_multiseed_report(
         time_to_detect=ttds,
         by_kind=_kind_metrics(paths),
         paths=tuple(paths),
+        by_regime=_regime_metrics(paths),
     )
 
 
@@ -316,6 +356,20 @@ def write_multiseed_detection_reports(report: MultiSeedDetectionReport, director
                 "max_time_to_detect": item.max_time_to_detect,
             }
             for item in report.by_kind
+        ],
+        "by_regime": [
+            {
+                "kind": item.kind,
+                "n": item.n,
+                "n_detected": item.n_detected,
+                "n_false_alarms": item.n_false_alarms,
+                "detection_rate": item.detection_rate,
+                "false_alarm_rate": item.false_alarm_rate,
+                "median_time_to_detect": item.median_time_to_detect,
+                "p90_time_to_detect": item.p90_time_to_detect,
+                "max_time_to_detect": item.max_time_to_detect,
+            }
+            for item in report.by_regime
         ],
         "seeds": [
             {
@@ -355,6 +409,21 @@ def write_multiseed_detection_reports(report: MultiSeedDetectionReport, director
         md.append(
             f"| {kind_row.kind} | {kind_row.n} | {kind_row.detection_rate:.4f} | {kind_row.false_alarm_rate:.4f} | {mid} | {p90} | {mx} |"
         )
+    if report.by_regime:
+        md.extend(
+            [
+                "",
+                "| regime | n | detection_rate | false_alarm_rate | median TTD | p90 TTD | max TTD |",
+                "|---|---|---|---|---|---|---|",
+            ]
+        )
+        for kind_row in report.by_regime:
+            mid = "n/a" if kind_row.median_time_to_detect is None else f"{kind_row.median_time_to_detect:.1f}"
+            p90 = "n/a" if kind_row.p90_time_to_detect is None else f"{kind_row.p90_time_to_detect:.1f}"
+            mx = "n/a" if kind_row.max_time_to_detect is None else f"{kind_row.max_time_to_detect:.1f}"
+            md.append(
+                f"| {kind_row.kind} | {kind_row.n} | {kind_row.detection_rate:.4f} | {kind_row.false_alarm_rate:.4f} | {mid} | {p90} | {mx} |"
+            )
     md.extend(
         ["", "| seed | instrument | n | detection_rate | false_alarm_rate | median TTD |", "|---|---|---|---|---|---|"]
     )

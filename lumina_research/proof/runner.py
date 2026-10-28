@@ -12,7 +12,7 @@ from lumina_research.monitoring.mutation_report import (
 )
 from lumina_research.proof.continuity_suite import ContinuitySuiteReport, run_independent_continuity
 from lumina_research.proof.gate_suite import GateSuiteReport, run_gate_suite
-from lumina_research.proof.independent import FLOOR_KINDS, INDEPENDENT_INSTRUMENTS, INDEPENDENT_SEEDS, SLOW_KINDS
+from lumina_research.proof.independent import FLOOR_KINDS, HOLDOUT_INSTRUMENTS, HOLDOUT_SEEDS, SLOW_KINDS
 from lumina_research.proof.log import log_proof_event
 from lumina_research.proof.report import write_empirical_reports
 
@@ -40,8 +40,8 @@ def run_empirical_verification(
     n_per_kind: int = 6,
     n_days: int = 70,
     decay_start: int = 20,
-    seeds: tuple[int, ...] = INDEPENDENT_SEEDS,
-    instruments: tuple[str, ...] = INDEPENDENT_INSTRUMENTS,
+    seeds: tuple[int, ...] = HOLDOUT_SEEDS,
+    instruments: tuple[str, ...] = HOLDOUT_INSTRUMENTS,
 ) -> EmpiricalVerification:
     """Phase 1 gate + independent Phase 4 floors + mutation report. Never retunes floors."""
     audit_dir = work_dir / "audit"
@@ -49,6 +49,9 @@ def run_empirical_verification(
     audit_dir.mkdir(parents=True, exist_ok=True)
     exp_dir.mkdir(parents=True, exist_ok=True)
     log_path = experiment_log_path if experiment_log_path is not None else work_dir / "experiments.jsonl"
+    # Gate uses its own independent planted suite (not Phase 4, not the FAR holdout).
+    # Holdout seeds below are for continuity FAR/TTD only; mixing them into the
+    # planted pipeline made PBO flip over 0.50 by seed luck, which is not a floor.
     gate = run_gate_suite(audit_dir=audit_dir / "gate")
     continuity = run_independent_continuity(
         audit_dir=audit_dir / "continuity",
@@ -79,6 +82,10 @@ def run_empirical_verification(
             "mutation_kill_rate": mutation.kill_rate,
             "n_floor_signals": continuity.floor.n_signals,
             "n_slow_signals": continuity.slow.n_signals,
+            "primary_normal_far": continuity.primary_normal_far,
+            "primary_high_vol_far": continuity.primary_high_vol_far,
+            "stress_high_vol_mixture_far": continuity.stress_high_vol_mixture_far,
+            "holdout_seeds": list(seeds),
             "report_json": str(json_path),
         },
         evolution_log_dir=evolution_log_dir,

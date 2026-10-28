@@ -17,6 +17,7 @@ from lumina_research.agents.synthetic import MaterializeRefused, materialize
 from lumina_research.cycles.catalog import N_HYPOTHESES, N_TEMPLATES, EconomicCatalogGenerator, catalog
 from lumina_research.cycles.cost_bands import ES_NQ_ONE_WAY, MES_MNQ_ONE_WAY, band_for, report_band
 from lumina_research.cycles.data import DataRefused, ResearchBar, discover_data, tape_for
+from lumina_research.cycles.first_cycle import FIRST_CYCLE_CONFIG_IDS, first_cycle_specs
 from lumina_research.cycles.fills import FillRefused, fill_probability, trade_through_fill
 from lumina_research.cycles.geometry import GeometryRefused, floors_for, require_geometry
 from lumina_research.cycles.kill_rate import diagnose_kill_rate
@@ -196,7 +197,9 @@ def test_research_cycles_stop_without_real_data(tmp_path: Path) -> None:
     assert result.data.usable is False
     assert result.kill_rate is None
     assert result.kill_rate_flag == "not_tested"
-    assert result.report.n_hypotheses == 24
+    assert result.report.n_hypotheses == 12
+    assert (tmp_path / "reports" / "phase5_first_cycle_preregister.md").is_file()
+    assert (tmp_path / "reports" / "phase5_p2_data_spec.md").is_file()
     assert all(item.death_reason == "not_tested_no_real_data" for item in result.report.rows)
     assert (tmp_path / "reports" / "phase5_research_cycles.json").is_file()
     assert (tmp_path / "reports" / "phase5_sim_plan.md").is_file()
@@ -207,9 +210,35 @@ def test_research_cycles_stop_without_real_data(tmp_path: Path) -> None:
     assert "do not start" in plan.lower() or "Do not start" in plan
 
 
+def _calendar_bars(n: int = 400, seed: int = 1) -> tuple[ResearchBar, ...]:
+    rng = random.Random(seed)
+    px = 5000.0
+    start = datetime(2023, 10, 28, tzinfo=timezone.utc)
+    end = datetime(2026, 10, 28, tzinfo=timezone.utc)
+    step = (end - start).total_seconds() / float(max(n - 1, 1))
+    rows: list[ResearchBar] = []
+    for index in range(n):
+        px += rng.gauss(0.0, 0.75)
+        ts_ns = int((start.timestamp() + float(index) * step) * 1_000_000_000)
+        rows.append(
+            ResearchBar(ts_ns=ts_ns, open=px, high=px + 0.75, low=px - 0.75, close=px, volume=1_000.0 + index)
+        )
+    return tuple(rows)
+
+
+@pytest.mark.unit
+def test_first_cycle_is_twelve_mes_mnq_variants() -> None:
+    selected = first_cycle_specs()
+    assert 10 <= len(selected) <= 15
+    assert len(selected) == 12
+    assert {item.config_id for item in selected} == set(FIRST_CYCLE_CONFIG_IDS)
+    assert {item.instrument for item in selected} <= {"MES", "MNQ"}
+    assert {item.template_id for item in selected} == {item.template_id for item in catalog()}
+
+
 @pytest.mark.unit
 def test_research_cycles_on_labeled_fixture_runs_gate(tmp_path: Path) -> None:
-    _write_csv(tmp_path / "data" / "research" / "MES" / "1m" / "mes.csv", _bars(n=260))
+    _write_csv(tmp_path / "data" / "research" / "MES" / "1m" / "mes.csv", _calendar_bars(n=400))
     spec = catalog()[0]
     result = run_research_cycles(
         work_dir=tmp_path / "work",

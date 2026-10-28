@@ -12,14 +12,16 @@ from lumina_research.monitoring.acceptance import (
     MATERIAL_SHARPE_RATIO,
 )
 from lumina_research.monitoring.config import ContinuityConfig
-from lumina_research.monitoring.statistics import rolling_mean
-from lumina_research.monitoring.types import ContinuityRefused, DecayAssessment, stage_from_rank
+from lumina_research.monitoring.statistics import live_noise_vol, rolling_mean
+from lumina_research.monitoring.types import ContinuityRefused, DecayAssessment, VolRegime, stage_from_rank
 
 
 def assess_material(
     series: Sequence[float],
     oos: Sequence[float],
     config: ContinuityConfig,
+    *,
+    vol_regime: VolRegime = "normal",
 ) -> DecayAssessment:
     """Ready only after the packaged short window. Severity 0–2 (deweight/suspend)."""
     oos_values = tuple(float(item) for item in oos)
@@ -53,9 +55,16 @@ def assess_material(
     live_mean = rolling_mean(series, window)
     live_chunk = tuple(float(item) for item in series[-window:])
     live_stdev = float(statistics.pstdev(live_chunk)) if len(live_chunk) >= 2 else 0.0
+    noise = live_noise_vol(series, window=window)
+    base = noise if noise is not None and noise > 0.0 else live_stdev
+    vol_scale = 1.0
+    if oos_stdev > 0.0 and base > oos_stdev:
+        vol_scale = oos_stdev / base
     ic_hit = _ic_halved(live_mean, oos_mean)
-    sharpe_hit = _sharpe_halved(live_mean, live_stdev, oos_mean, oos_stdev)
-    dd_hit = _drawdown_breach(series, oos_values, oos_stdev)
+    sharpe_hit = _sharpe_halved(live_mean, max(base * vol_scale, 1e-12), oos_mean, oos_stdev)
+    dd_hit = False
+    if vol_regime != "high_vol":
+        dd_hit = _drawdown_breach(series, oos_values, oos_stdev, vol_scale=vol_scale)
     hits = (ic_hit, sharpe_hit, dd_hit)
     n_hits = sum(1 for item in hits if item)
     severity = 0
@@ -112,8 +121,14 @@ def _ratio(mean: float, stdev: float) -> float:
     return 0.0
 
 
-def _drawdown_breach(series: Sequence[float], oos: Sequence[float], oos_stdev: float) -> bool:
-    live_dd = _max_drawdown(series)
+def _drawdown_breach(
+    series: Sequence[float],
+    oos: Sequence[float],
+    oos_stdev: float,
+    *,
+    vol_scale: float = 1.0,
+) -> bool:
+    live_dd = _max_drawdown(series) * min(max(vol_scale, 0.0), 1.0)
     oos_range = max(oos) - min(oos) if oos else 0.0
     expected = max(oos_range, 2.0 * max(oos_stdev, 0.0), 1e-12)
     return live_dd >= MATERIAL_DD_MULT * expected

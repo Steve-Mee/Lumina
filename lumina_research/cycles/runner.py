@@ -11,9 +11,12 @@ from lumina_core.agent_orchestration.schemas_research import HypothesisProposed,
 from lumina_research.agents.hypothesis import HypothesisAgent
 from lumina_research.agents.provenance import ProvenanceAuthority
 from lumina_research.agents.validation_agent import ValidationAgent
-from lumina_research.cycles.catalog import EconomicCatalogGenerator, HypothesisSpec, catalog
+from lumina_research.cycles.catalog import EconomicCatalogGenerator, HypothesisSpec
 from lumina_research.cycles.cost_bands import report_band
-from lumina_research.cycles.data import DataStatus, discover_data, tape_for
+from lumina_research.cycles.data import MIN_BARS, DataStatus, discover_data, tape_for
+from lumina_research.cycles.data_spec import write_data_spec
+from lumina_research.cycles.first_cycle import first_cycle_specs, write_first_cycle_preregister
+from lumina_research.cycles.holdout import HoldoutLocked, access_bars
 from lumina_research.cycles.geometry import Geometry, require_geometry
 from lumina_research.cycles.kill_rate import diagnose_kill_rate
 from lumina_research.cycles.report import CycleReport, CycleRow, death_reason, write_cycle_reports
@@ -50,7 +53,9 @@ def run_research_cycles(
     work_dir.mkdir(parents=True, exist_ok=True)
     audit = work_dir / "audit.jsonl"
     log_path = work_dir / "experiments.jsonl"
-    specs = specs if specs is not None else catalog()
+    write_data_spec(report_dir)
+    write_first_cycle_preregister(report_dir)
+    specs = specs if specs is not None else first_cycle_specs()
     bus = EventBus()
     registry = TrialRegistry(audit)
     generator = EconomicCatalogGenerator(specs)
@@ -63,7 +68,7 @@ def run_research_cycles(
     status = discover_data(repo_root=repo_root if repo_root is not None else _REPO, data_dir=data_dir)
     geometries = _geometries(specs)
     validation: ValidationAgent | None = None
-    if status.usable:
+    if status.usable and _usable_for_gate(status):
         validation = ValidationAgent(
             bus=bus,
             registry=registry,
@@ -73,7 +78,7 @@ def run_research_cycles(
             materializer=_materializer(specs, status),
         )
     proposed = hypothesis.generate(seed=seed, counts=(len(specs),))
-    if not status.usable or validation is None:
+    if not status.usable or validation is None or not _usable_for_gate(status):
         report = _untested_report(proposed, specs, geometries, status)
         json_path, md_path = write_cycle_reports(report, report_dir)
         write_sim_plan(report_dir)
@@ -131,6 +136,17 @@ def run_research_cycles(
     )
 
 
+def _usable_for_gate(status: DataStatus) -> bool:
+    for tape in status.tapes:
+        try:
+            bars = access_bars(tape, purpose="gate")
+        except HoldoutLocked:
+            continue
+        if len(bars) >= MIN_BARS:
+            return True
+    return False
+
+
 def _geometries(specs: tuple[HypothesisSpec, ...]) -> tuple[Geometry, ...]:
     seen: dict[str, Geometry] = {}
     for spec in specs:
@@ -147,10 +163,14 @@ def _materializer(specs: tuple[HypothesisSpec, ...], status: DataStatus) -> Call
     def _map(hypothesis: HypothesisProposed) -> Tape:
         spec = by_id[hypothesis.config_id]
         tape = tape_for(status, spec.instrument)
+        try:
+            bars = access_bars(tape, purpose="gate")
+        except HoldoutLocked as exc:
+            raise HoldoutLocked(f"gate calibration refused holdout bars for {spec.instrument}: {exc}") from exc
         geometry = require_geometry(root=spec.instrument, target_ticks=spec.target_ticks, stop_ticks=spec.stop_ticks)
         return simulate(
             family=spec.family,
-            bars=tape.bars,
+            bars=bars,
             geometry=geometry,
             lookback=spec.lookback,
             threshold=spec.threshold,

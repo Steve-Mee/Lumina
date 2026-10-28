@@ -15,8 +15,10 @@ FAR_HIGH_VOL_MAX = 0.10
 DETECTION_RATE_MIN = 0.85
 TTD_MAX_TRADING_DAYS = 15
 
-# Two consecutive ready windows must agree before a stage is applied.
+# Two consecutive ready windows must agree before a stage is applied (normal vol).
 CONFIRM_WINDOWS = 2
+# Optional extra confirm in high vol only (max 3). Does not loosen CONFIRM_WINDOWS.
+HIGH_VOL_CONFIRM_WINDOWS = 3
 
 # Gradual synthetic paths reach a full 2.8σ mean shift in this many days after onset.
 MEANINGFUL_RAMP_DAYS = 12
@@ -37,3 +39,10 @@ HIGH_VOL_TRAILING_PCT = 0.75
 HIGH_VOL_REALIZED_MULT = 1.50
 HIGH_VOL_REALIZED_WINDOW = 20
 HIGH_VOL_TRAILING_WINDOW = 252
+
+
+def confirm_windows_for(vol_regime: str) -> int:
+    """High-vol may wait one extra ready window. Never more than 3, never fewer than 2."""
+    if vol_regime == "high_vol":
+        return HIGH_VOL_CONFIRM_WINDOWS
+    return CONFIRM_WINDOWS

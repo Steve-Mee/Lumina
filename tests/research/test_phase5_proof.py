@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import random
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -21,9 +22,11 @@ from lumina_research.proof.cli import build_parser, main
 from lumina_research.proof.continuity_suite import _medium_holds, _short_holds, kind_rows
 from lumina_research.proof.gate_suite import run_gate_suite
 from lumina_research.proof.independent import (
-    INDEPENDENT_SEEDS,
     FLOOR_KINDS,
+    HOLDOUT_SEEDS,
+    INDEPENDENT_SEEDS,
     SLOW_KINDS,
+    assert_holdout_seeds,
     decaying_kind,
     healthy_kind,
     map_instrument,
@@ -41,9 +44,7 @@ def _kind(
     far: float = 0.0,
     ttd: float = 8.0,
 ) -> KindMetrics:
-    decaying = decaying_kind(kind) if kind not in {"healthy_laplace", "high_vol_mixture"} else False
-    if kind in SLOW_KINDS:
-        decaying = True
+    decaying = decaying_kind(kind) if kind not in SLOW_KINDS else True
     return KindMetrics(
         kind=kind,
         n=n,
@@ -101,8 +102,12 @@ def test_independent_generators_and_instrument_map() -> None:
     with pytest.raises(Exception):
         map_instrument("BTC")
     assert healthy_kind("healthy_laplace") == "healthy"
-    assert healthy_kind("high_vol_mixture") == "high_vol"
+    assert healthy_kind("healthy_regime_switch") == "high_vol"
+    assert healthy_kind("high_vol_mixture") == "stress"
     assert decaying_kind("slow_gradual_45") is True
+    assert_holdout_seeds(HOLDOUT_SEEDS)
+    with pytest.raises(Exception):
+        assert_holdout_seeds(INDEPENDENT_SEEDS)
 
 
 @pytest.mark.unit
@@ -110,7 +115,8 @@ def test_short_holds_rejects_twelve_percent_high_vol_far() -> None:
     passing = _report(
         (
             _kind("healthy_laplace", far=FAR_HEALTHY_MAX, detection=0.0),
-            _kind("high_vol_mixture", far=FAR_HIGH_VOL_MAX, detection=0.0),
+            _kind("healthy_regime_switch", far=FAR_HIGH_VOL_MAX, detection=0.0),
+            _kind("high_vol_mixture", far=0.95, detection=0.0),
             _kind("abrupt_student", detection=DETECTION_RATE_MIN, ttd=float(TTD_MAX_TRADING_DAYS)),
             _kind("gradual_smooth", detection=0.9, ttd=10.0),
             _kind("regime_laplace", detection=0.9, ttd=10.0),
@@ -118,8 +124,10 @@ def test_short_holds_rejects_twelve_percent_high_vol_far() -> None:
         )
     )
     assert _short_holds(passing, n_signals_floor=60) is True
-    too_far = _report((_kind("high_vol_mixture", far=0.12, detection=0.0),))
+    too_far = _report((_kind("healthy_regime_switch", far=0.12, detection=0.0),))
     assert _short_holds(too_far, n_signals_floor=60) is False
+    stress_ignored = _report((_kind("high_vol_mixture", far=0.95, detection=0.0),))
+    assert _short_holds(stress_ignored, n_signals_floor=60) is True
     slow_ok = _report((_kind("slow_gradual_45", detection=0.9, ttd=40.0),))
     assert _medium_holds(slow_ok, n_signals_floor=30) is True
     slow_late = _report(
@@ -202,14 +210,55 @@ def test_empirical_report_writer(tmp_path: Path) -> None:
         ),
         passed=True,
     )
-    floor = _report((_kind("healthy_laplace", far=0.0),))
+    floor = _report(
+        (
+            _kind("healthy_laplace", far=0.0, detection=0.0),
+            _kind("healthy_regime_switch", far=0.12, detection=0.0),
+            _kind("high_vol_mixture", far=0.90, detection=0.0),
+            _kind("abrupt_student", detection=0.90, ttd=8.0),
+            _kind("gradual_smooth", detection=0.90, ttd=10.0),
+            _kind("regime_laplace", detection=0.90, ttd=10.0),
+            _kind("material_break", detection=0.50, ttd=20.0),
+        )
+    )
+    floor = replace(
+        floor,
+        by_regime=(
+            KindMetrics(
+                kind="normal",
+                n=10,
+                n_detected=8,
+                n_false_alarms=0,
+                detection_rate=1.0,
+                false_alarm_rate=0.0,
+                median_time_to_detect=8.0,
+                p90_time_to_detect=8.0,
+                max_time_to_detect=8.0,
+            ),
+            KindMetrics(
+                kind="high_vol",
+                n=10,
+                n_detected=0,
+                n_false_alarms=1,
+                detection_rate=0.0,
+                false_alarm_rate=0.03,
+                median_time_to_detect=None,
+                p90_time_to_detect=None,
+                max_time_to_detect=None,
+            ),
+        ),
+    )
+    slow = _report((_kind("slow_gradual_45", detection=0.90, ttd=40.0),))
     continuity = ContinuitySuiteReport(
         floor=floor,
-        slow=floor,
+        slow=slow,
         floor_passed=True,
         short_passed=True,
         medium_passed=True,
         slow_notes="two horizons",
+        stress_high_vol_mixture_far=0.90,
+        primary_high_vol_far=0.12,
+        primary_normal_far=0.0,
     )
     mutation = MutationFloorResult(
         passed=True,
@@ -231,6 +280,11 @@ def test_empirical_report_writer(tmp_path: Path) -> None:
     text = md_path.read_text(encoding="utf-8")
     assert "TTD <= 15" in text
     assert "TTD <= 45" in text
+    assert "regime=normal" in text
+    assert "regime=high_vol" in text
+    assert "reported" in text
+    assert "FAIL" in text
+    assert payload["by_regime"][0]["regime"] == "normal"
 
 
 @pytest.mark.unit

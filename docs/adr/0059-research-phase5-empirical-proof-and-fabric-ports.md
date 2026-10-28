@@ -69,6 +69,16 @@ Everything is logged and alerted (`ExecutionAlert`). `ShadowBook.place_order` / 
 
 If a floor fails, tune only the detector. Do not loosen gate floors or Risk Core.
 
+## Addendum — primary high-vol FAR and P2 holdout (2026-10-28, plan authors / Steve)
+
+Floors stay frozen: FAR high-vol ≤ 10% hard, normal ≤ 5%, short-horizon detection ≥ 85% within 15d, slow detection ≥ 85% within 45d, kill rate ≥ 0.80. No merge, no orders.
+
+1. **Primary high-vol FAR** is the between-window regime switch (`healthy_regime_switch`): 20d realized vol > 75th pct of the trailing 252d, or VIX>25, with labels on every ready window. `high_vol_mixture` remains a reported **stress** number and does not decide the floor when the regime-aware test passes.
+2. **Variance scaling** inside the detector is allowed (live noise vol vs OOS vol). Packaged z/percentile/CUSUM/SPRT thresholds are unchanged.
+3. High-vol confirmation may be 3 windows (max 3). Normal-vol confirmation stays 2. Every alarm logs `vol_regime`.
+4. Official continuity FAR/TTD uses **held-out seeds** disjoint from Phase 4 tuning and from the PR #63 independent set. The Phase 1 planted gate suite stays on that independent set (not the FAR holdout).
+5. P2 prep (not run here): NT8 1m MES/MNQ, last 9 months locked, fail-closed accessor. First cycle is 12 of 24 variants, pre-registered before seeing bars.
+
 ## Consequences
 
 ### Positive

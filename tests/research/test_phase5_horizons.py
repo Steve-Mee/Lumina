@@ -8,19 +8,23 @@ from pathlib import Path
 import pytest
 
 from lumina_research.monitoring.acceptance import (
+    CONFIRM_WINDOWS,
     FAR_HIGH_VOL_MAX,
     FAR_HIGH_VOL_TARGET,
+    HIGH_VOL_CONFIRM_WINDOWS,
     HIGH_VOL_VIX,
     MEDIUM_WINDOW,
     TTD_MAX_TRADING_DAYS,
     TTD_MEDIUM_MAX_TRADING_DAYS,
+    confirm_windows_for,
 )
 from lumina_research.monitoring.campaign import DEFAULT_CAMPAIGN_SEEDS as PHASE4_SEEDS
 from lumina_research.monitoring.config import load_default_config
 from lumina_research.monitoring.horizons import combined_assessment
 from lumina_research.monitoring.material import assess_material
+from lumina_research.monitoring.synthetic import DEFAULT_OOS, oos_stats
 from lumina_research.monitoring.types import ContinuityRefused
-from lumina_research.monitoring.vol_regime import classify_vol_regime, realized_vol, trailing_percentile
+from lumina_research.monitoring.vol_regime import classify_vol_regime, label_windows, realized_vol, trailing_percentile
 from lumina_research.proof.independent import (
     INDEPENDENT_SEEDS,
     assert_independent_seeds,
@@ -49,7 +53,8 @@ def test_unknown_kind_and_slow_ramp_refused() -> None:
     assert decaying_kind("material_break") is True
     assert decaying_kind("slow_gradual_45") is True
     assert healthy_kind("healthy_laplace") == "healthy"
-    assert healthy_kind("high_vol_mixture") == "high_vol"
+    assert healthy_kind("healthy_regime_switch") == "high_vol"
+    assert healthy_kind("high_vol_mixture") == "stress"
 
 
 @pytest.mark.unit
@@ -104,6 +109,41 @@ def test_confirm_windows_still_two_on_material(tmp_path: Path) -> None:
     assert stage == "active"
     confirmed = runtime.observe("hyp-c", dropped)
     assert confirmed.stage != "active"
+
+
+@pytest.mark.unit
+def test_high_vol_confirms_three_windows_and_logs_regime(tmp_path: Path) -> None:
+    assert confirm_windows_for("normal") == CONFIRM_WINDOWS == 2
+    assert confirm_windows_for("high_vol") == HIGH_VOL_CONFIRM_WINDOWS == 3
+    runtime = make_runtime(tmp_path)
+    admit_signal(runtime, "hyp-hv", trial_id=1)
+    mean, stdev = oos_stats(DEFAULT_OOS)
+    dropped = mean - 3.0 * stdev
+    vix = HIGH_VOL_VIX + 5.0
+    for _ in range(19):
+        runtime.observe("hyp-hv", dropped, vix=vix)
+    assert runtime.registry.require("hyp-hv").stage == "active"
+    first = runtime.observe("hyp-hv", dropped, vix=vix)
+    assert first.stage == "active"
+    second = runtime.observe("hyp-hv", dropped, vix=vix)
+    assert second.stage == "active"
+    third = runtime.observe("hyp-hv", dropped, vix=vix)
+    assert third.stage != "active"
+    events = runtime.monitor.decay_events()
+    assert events
+    assert events[0].vol_regime == "high_vol"
+
+
+@pytest.mark.unit
+def test_label_windows_switch_between_quiet_and_loud() -> None:
+    quiet = tuple(0.70 + 0.001 * i for i in range(40))
+    loud = tuple(20.0 + float(i) for i in range(30))
+    series = quiet + loud
+    vix = tuple(18.0 for _ in quiet) + tuple(HIGH_VOL_VIX + 5.0 for _ in loud)
+    labels = label_windows(series, vix_path=vix, instrument="MES")
+    assert labels[0] == "normal"
+    assert labels[-1] == "high_vol"
+    assert "normal" in labels and "high_vol" in labels
 
 
 @pytest.mark.unit

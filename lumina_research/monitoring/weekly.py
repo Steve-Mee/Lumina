@@ -292,15 +292,16 @@ def _horizon_fields(
     short_ttd: float | None = None
     medium_ttd: float | None = None
     if isinstance(detection, MultiSeedDetectionReport):
-        high = tuple(item for item in detection.by_kind if "high_vol" in item.kind)
+        high = tuple(item for item in detection.by_kind if item.kind == "healthy_regime_switch")
+        if not high:
+            high = tuple(item for item in detection.by_kind if item.kind == "high_vol_mixture")
         if high:
             alarms = sum(item.n_false_alarms for item in high)
             denom = sum(item.n for item in high)
             far_high = None if denom == 0 else alarms / float(denom)
+        healthy_names = {"healthy_laplace", "high_vol_mixture", "healthy_regime_switch"}
         decaying = tuple(
-            item
-            for item in detection.by_kind
-            if item.kind not in {"healthy_laplace", "high_vol_mixture"} and "slow" not in item.kind
+            item for item in detection.by_kind if item.kind not in healthy_names and "slow" not in item.kind
         )
         if decaying:
             detected = sum(item.n_detected for item in decaying)
