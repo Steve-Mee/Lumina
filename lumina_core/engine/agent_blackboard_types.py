@@ -7,9 +7,13 @@ from typing import Any
 from pydantic import BaseModel
 
 from lumina_core.agent_orchestration.schemas_research import (
+    GOVERNANCE_AGENT_ID,
     HYPOTHESIS_AGENT_ID,
     PROMOTION_AGENT_ID,
+    REFLECTOR_AGENT_ID,
+    RESEARCH_GOVERNANCE_TOPIC,
     RESEARCH_HYPOTHESIS_TOPIC,
+    RESEARCH_MUTATION_TOPIC,
     RESEARCH_PROMOTION_TOPIC,
     RESEARCH_VALIDATION_TOPIC,
     VALIDATION_AGENT_ID,
@@ -69,6 +73,8 @@ DEFAULT_ALLOWED_PRODUCERS: dict[str, set[str]] = {
     RESEARCH_HYPOTHESIS_TOPIC: {HYPOTHESIS_AGENT_ID},
     RESEARCH_VALIDATION_TOPIC: {VALIDATION_AGENT_ID},
     RESEARCH_PROMOTION_TOPIC: {PROMOTION_AGENT_ID},
+    RESEARCH_MUTATION_TOPIC: {REFLECTOR_AGENT_ID},
+    RESEARCH_GOVERNANCE_TOPIC: {GOVERNANCE_AGENT_ID},
 }
 
 
@@ -91,6 +97,8 @@ DEFAULT_TOPIC_POLICIES: dict[str, TopicPolicy] = {
     RESEARCH_HYPOTHESIS_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
     RESEARCH_VALIDATION_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
     RESEARCH_PROMOTION_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
+    RESEARCH_MUTATION_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
+    RESEARCH_GOVERNANCE_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
 }
 
 
