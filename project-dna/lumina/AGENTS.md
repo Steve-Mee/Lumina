@@ -7,24 +7,26 @@ Binding laws live in the documents listed below. If this index conflicts with
 ## Read order (mandatory)
 
 1. [`constitution.md`](constitution.md) — non-negotiable invariants
-2. [`north-star.md`](north-star.md) — mission compression
-3. [`architecture.md`](architecture.md) — layers and bounded contexts (DNA view)
-4. [`docs/architecture.md`](../../docs/architecture.md) — living architecture overview
-5. [`docs/roadmap.md`](../../docs/roadmap.md) — capability waves (not release tags)
-6. [`evolutionary-debt.md`](evolutionary-debt.md) — current evolvability debt catalog
-7. [`operating-system/skills/README.md`](operating-system/skills/README.md) — agent skills
+2. [`RESEARCH_CHARTER.md`](RESEARCH_CHARTER.md) — Validation Gate; research may only propose
+3. [`north-star.md`](north-star.md) — mission compression
+4. [`architecture.md`](architecture.md) — layers and bounded contexts (DNA view)
+5. [`docs/architecture.md`](../../docs/architecture.md) — living architecture overview
+6. [`docs/roadmap.md`](../../docs/roadmap.md) — capability waves (not release tags)
+7. [`evolutionary-debt.md`](evolutionary-debt.md) — current evolvability debt catalog
+8. [`operating-system/skills/README.md`](operating-system/skills/README.md) — agent skills
 
 ## Bounded contexts (canonical under `lumina_core/`)
 
 | Context | Path |
 |---------|------|
 | Safety | `lumina_core/safety/` |
-| Evolution | `lumina_core/evolution/` |
+| Research | `lumina_core/research/` (propose-only Validation Gate; no Risk Core) |
+| Evolution | `lumina_core/evolution/` (promotion/shadow/twin fabric; birth-v1 experiments in `archive/birth-v1/`) |
 | Risk Management | `lumina_core/risk/` |
 | Agent Orchestration | `lumina_core/agent_orchestration/` |
 | Trading Engine | `lumina_core/trading_engine/` (+ `engine/` composition/compat root) |
 
-Extended ownership: `audit/`, `broker/`, `reasoning/`, `birth/`, `rl/`, `state/`, `monitoring/`, `ports/`.
+Extended ownership: `audit/`, `broker/`, `reasoning/`, `rl/`, `state/`, `monitoring/`, `ports/`. Birth-v1 training lives under `archive/birth-v1/` (compat shims remain at `lumina_core/birth`).
 Operator UI SSOT: `tauri-app/` + FastAPI `lumina_os/backend/` (ADR-0016).
 
 ## Non-negotiable operating rules (pointers only)

@@ -5,6 +5,8 @@ Dit is de **canonieke** skills map voor Lumina.
 ## Locatie
 `project-dna/lumina/operating-system/skills/`
 
+Validation Gate skill: [`validation-rigor.md`](validation-rigor.md) (charter: [`RESEARCH_CHARTER.md`](../RESEARCH_CHARTER.md)).
+
 ## Gebruik
 Alle agents (Grok Build en Cursor) dienen bij voorkeur skills uit deze map te laden.
 
