@@ -3,6 +3,8 @@
 Last HOLDOUT_MONTHS of calendar time is never used for template selection, first-cycle
 ranking, parameter tuning, or Validation Gate calibration. Unknown purposes refuse.
 A tape that cannot form a non-empty train AND holdout split also refuses.
+Timestamps must be strictly increasing so a shuffled or future-dummy last row cannot
+move the lock window.
 """
 
 from __future__ import annotations
@@ -33,8 +35,14 @@ def holdout_ns(months: int = HOLDOUT_MONTHS) -> int:
 def holdout_start_ns(bars: tuple[ResearchBar, ...], *, months: int = HOLDOUT_MONTHS) -> int:
     if len(bars) < 2:
         raise HoldoutLocked("tape too short to lock a holdout; fail-closed")
-    last = int(bars[-1].ts_ns)
+    previous = int(bars[0].ts_ns)
+    for item in bars[1:]:
+        current = int(item.ts_ns)
+        if current <= previous:
+            raise HoldoutLocked("tape timestamps must be strictly increasing; fail-closed")
+        previous = current
     first = int(bars[0].ts_ns)
+    last = int(bars[-1].ts_ns)
     start = last - holdout_ns(months)
     if start <= first or start >= last:
         raise HoldoutLocked("tape span cannot form a non-empty train and holdout split; fail-closed")
@@ -75,8 +83,10 @@ def access_bars(
 
 def assert_not_holdout(ts_ns: int, *, holdout_start: int, purpose: str) -> None:
     key = purpose.strip().lower()
-    if key not in LOCKED_PURPOSES:
+    if key in EVAL_PURPOSES:
         return
+    if key not in LOCKED_PURPOSES:
+        raise HoldoutLocked(f"unknown holdout purpose {purpose!r}; fail-closed")
     if int(ts_ns) >= int(holdout_start):
         raise HoldoutLocked(f"holdout access refused for purpose {key!r}")
 
