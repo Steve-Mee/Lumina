@@ -51,6 +51,7 @@ def test_overlay_kills_raise_to_pass_on_insert() -> None:
 
 
 @pytest.mark.nightly
+@pytest.mark.slow
 def test_monitoring_mutation_campaign_kills_most_mutants(tmp_path: Path) -> None:
     report = run_mutation_campaign(limit=320, timeout=20.0, workers=4)
     write_mutation_reports(report, tmp_path / "reports")

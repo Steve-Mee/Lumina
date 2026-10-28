@@ -12,7 +12,7 @@ import tempfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Iterator
 
 ROOT = Path(__file__).resolve().parents[2]
 MONITORING = ROOT / "lumina_research" / "monitoring"
@@ -142,56 +142,49 @@ def _site_count(tree: ast.AST) -> int:
     return probe.seen
 
 
-def iter_mutants(limit: int) -> list[Mutant]:
-    buckets: list[list[Mutant]] = []
-    for name in TARGET_FILES:
-        if name in SKIP_FILES:
+def _mutants_for_file(name: str) -> Iterator[Mutant]:
+    path = MONITORING / name
+    if not path.is_file():
+        return
+    original = path.read_text(encoding="utf-8")
+    try:
+        tree = ast.parse(original)
+    except SyntaxError:
+        return
+    n_sites = _site_count(tree)
+    rel = f"lumina_research/monitoring/{name}"
+    for index in range(n_sites):
+        mutator = _Mutator(target_index=index)
+        mutated = mutator.visit(ast.parse(original))
+        if not mutator.applied:
             continue
-        path = MONITORING / name
-        if not path.is_file():
-            continue
-        original = path.read_text(encoding="utf-8")
+        ast.fix_missing_locations(mutated)
         try:
-            ast.parse(original)
-        except SyntaxError:
+            source = ast.unparse(mutated)
+            compile(source, str(path), "exec")
+        except (SyntaxError, ValueError):
             continue
-        n_sites = _site_count(ast.parse(original))
-        bucket: list[Mutant] = []
-        for index in range(n_sites):
-            mutator = _Mutator(target_index=index)
-            mutated = mutator.visit(ast.parse(original))
-            if not mutator.applied:
-                continue
-            ast.fix_missing_locations(mutated)
-            try:
-                source = ast.unparse(mutated)
-                compile(source, str(path), "exec")
-            except (SyntaxError, ValueError):
-                continue
-            if source == original:
-                continue
-            bucket.append(
-                Mutant(
-                    path=f"lumina_research/monitoring/{name}",
-                    description=f"{name}:{mutator.applied}#{index}",
-                    source=source,
-                )
-            )
-        if bucket:
-            buckets.append(bucket)
+        if source == original:
+            continue
+        yield Mutant(path=rel, description=f"{name}:{mutator.applied}#{index}", source=source)
+
+
+def iter_mutants(limit: int) -> list[Mutant]:
+    gens: list[Iterator[Mutant]] = [
+        _mutants_for_file(name) for name in TARGET_FILES if name not in SKIP_FILES
+    ]
     mutants: list[Mutant] = []
-    index = 0
-    while len(mutants) < limit and buckets:
-        progressed = False
-        for bucket in buckets:
-            if index < len(bucket):
-                mutants.append(bucket[index])
-                progressed = True
-                if len(mutants) >= limit:
-                    return mutants
-        if not progressed:
-            break
-        index += 1
+    while gens and len(mutants) < limit:
+        remaining: list[Iterator[Mutant]] = []
+        for gen in gens:
+            try:
+                mutants.append(next(gen))
+            except StopIteration:
+                continue
+            remaining.append(gen)
+            if len(mutants) >= limit:
+                return mutants
+        gens = remaining
     return mutants
 
 
