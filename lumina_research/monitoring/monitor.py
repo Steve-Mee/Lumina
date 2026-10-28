@@ -23,6 +23,7 @@ from lumina_core.engine.agent_blackboard import AgentBlackboard
 from lumina_research.agents.frozen import Frozen
 from lumina_research.agents.payloads import dump_json
 from lumina_research.agents.provenance import ProvenanceAuthority
+from lumina_research.monitoring.acceptance import CONFIRM_WINDOWS
 from lumina_research.monitoring.config import ContinuityConfig
 from lumina_research.monitoring.registry import LiveSignalRegistry
 from lumina_research.monitoring.report import log_decision
@@ -53,6 +54,7 @@ class LivePerformanceMonitor(Frozen):
     _suspends: list[SignalSuspended]
     _retires: list[SignalRetired]
     _seen: set[str]
+    _pending: dict[str, tuple[SignalStage, int]]
 
     def __init_subclass__(cls) -> None:
         raise TypeError("LivePerformanceMonitor cannot be subclassed")
@@ -81,6 +83,7 @@ class LivePerformanceMonitor(Frozen):
         self._suspends = []
         self._retires = []
         self._seen = set()
+        self._pending = {}
         self._freeze()
         bus.register_topic_guard(RESEARCH_DECAY_TOPIC, self._guard_decay)
         bus.register_topic_guard(RESEARCH_DEWEIGHT_TOPIC, self._guard_deweight)
@@ -123,7 +126,20 @@ class LivePerformanceMonitor(Frozen):
         history.append(value)
         assessment = assess_decay(history, signal.oos_values, self._config)
         if not assessment.ready:
+            self._pending.pop(signal_id, None)
             return signal
+        if stage_rank(assessment.stage) <= stage_rank(signal.stage):
+            self._pending.pop(signal_id, None)
+            return signal
+        previous = self._pending.get(signal_id)
+        if previous is None or previous[0] != assessment.stage:
+            self._pending[signal_id] = (assessment.stage, 1)
+            return signal
+        confirmed = previous[1] + 1
+        if confirmed < CONFIRM_WINDOWS:
+            self._pending[signal_id] = (assessment.stage, confirmed)
+            return signal
+        self._pending.pop(signal_id, None)
         return self._apply(signal, assessment)
 
     def apply_guardian_suspend(self, signal_id: str, reason: str) -> LiveSignal:

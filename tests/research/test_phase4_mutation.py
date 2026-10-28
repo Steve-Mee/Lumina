@@ -7,12 +7,17 @@ from pathlib import Path
 
 import pytest
 
+from lumina_research.monitoring.acceptance import (
+    MUTATION_EQUIVALENT_MAX_FRAC,
+    MUTATION_KILL_RATE_MIN,
+    MUTATION_MIN_MUTANTS,
+)
 from tests.research.phase4_mutant_kills import run as run_kills
 from tests.research.phase4_mutants import (
     _run_one,
+    equivalent_reason,
     insert_refuse_mutant,
     iter_mutants,
-    justify_survivor,
     run_mutation_campaign,
     write_mutation_reports,
 )
@@ -44,15 +49,16 @@ def test_overlay_kills_raise_to_pass_on_insert() -> None:
 @pytest.mark.nightly
 @pytest.mark.slow
 def test_monitoring_mutation_campaign_kills_most_mutants(tmp_path: Path) -> None:
-    report = run_mutation_campaign(limit=320, timeout=20.0, workers=4)
+    report = run_mutation_campaign(limit=MUTATION_MIN_MUTANTS, timeout=20.0, workers=4)
     write_mutation_reports(report, tmp_path / "reports")
     write_mutation_reports(report, REPO_REPORTS)
-    assert report.n_mutants >= 300
-    assert report.kill_rate >= 0.20
+    assert report.n_mutants >= MUTATION_MIN_MUTANTS
+    assert report.n_excluded / report.n_mutants <= MUTATION_EQUIVALENT_MAX_FRAC
+    assert report.kill_rate >= MUTATION_KILL_RATE_MIN
     payload = json.loads((REPO_REPORTS / "phase4_mutation.json").read_text(encoding="utf-8"))
-    assert payload["n_mutants"] >= 300
+    assert payload["n_mutants"] >= MUTATION_MIN_MUTANTS
+    assert payload["kill_rate"] >= MUTATION_KILL_RATE_MIN
     md = (REPO_REPORTS / "phase4_mutation.md").read_text(encoding="utf-8")
     assert "kill rate" in md.lower()
-    for survivor in report.survivors:
-        reason = justify_survivor(survivor)
-        assert reason, f"unjustified survivor {survivor.description}: {survivor.detail}"
+    for item in report.excluded:
+        assert equivalent_reason(item), f"excluded without justification {item.description}"

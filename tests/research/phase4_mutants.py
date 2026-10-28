@@ -17,7 +17,7 @@ from typing import Iterable, Iterator
 ROOT = Path(__file__).resolve().parents[2]
 MONITORING = ROOT / "lumina_research" / "monitoring"
 KILL_MOD = "tests.research.phase4_mutant_kills"
-SKIP_FILES = frozenset({"__init__.py", "__main__.py", "synthetic.py", "campaign.py", "cli.py", "report.py", "loop.py"})
+SKIP_FILES = frozenset({"__init__.py", "__main__.py", "synthetic.py", "campaign.py", "cli.py", "report.py"})
 TARGET_FILES = (
     "config.py",
     "types.py",
@@ -29,6 +29,7 @@ TARGET_FILES = (
     "guardian.py",
     "replenish.py",
     "seal.py",
+    "loop.py",
 )
 
 
@@ -52,8 +53,12 @@ class MutationReport:
     n_mutants: int
     n_killed: int
     n_survived: int
+    n_excluded: int
+    n_non_equivalent: int
     kill_rate: float
+    raw_kill_rate: float
     survivors: tuple[MutantResult, ...]
+    excluded: tuple[MutantResult, ...]
     results: tuple[MutantResult, ...]
 
 
@@ -249,39 +254,17 @@ def _run_one(mutant: Mutant, timeout: float) -> MutantResult:
         return MutantResult(mutant.path, mutant.description, True, tail[:240])
 
 
+# Filled from a measured campaign: only Steve's four equivalent categories, per mutant.
+_EQUIVALENT: dict[str, str] = {}
+
+
+def equivalent_reason(result: MutantResult) -> str:
+    """Return a written justification only for Steve's equivalent categories; else empty."""
+    return _EQUIVALENT.get(result.description, "")
+
+
 def justify_survivor(result: MutantResult) -> str:
-    name = result.path.rsplit("/", 1)[-1]
-    kind = result.description.split(":")[1].split("#")[0] if ":" in result.description else ""
-    if name == "guardian.py":
-        return (
-            "Guardian charter-row predicate on a fixture that already passes WF/DSR/PBO/cost; "
-            "missing-trial and Risk Core drift still fail closed"
-        )
-    if name == "replenish.py":
-        return "Replenish request/guard arithmetic; shortcut_admit still refuses ungated insertion"
-    if name == "seal.py":
-        return "HMAC canonical JSON encoding; verify() still fail-closed on a bad or replayed MAC"
-    if name == "loop.py":
-        return "Runtime wiring / detection-campaign helper; live-book refuses stay in registry/monitor/sizer"
-    if name == "report.py":
-        return "Report formatting; not on the live-book fail-closed path"
-    if name == "config.py" and kind in {"compare", "boolop"}:
-        return "Default combined-method or packaged-path equality; tightness still refuses weak overlays"
-    if name == "config.py" and kind == "raise-to-pass":
-        return "Secondary ContinuityConfigError arm; sibling tightness checks still refuse weak overlays"
-    if kind == "raise-to-pass":
-        return "Refuse path not reached by this battery case; sibling ContinuityRefused arms still bind"
-    if kind == "binop":
-        return "Arithmetic on notional/logging sums; monotonic weight/scale checks still refuse increases"
-    if kind == "return-bool":
-        return "Boolean helper on an unreached topic-guard arm; issuer/MAC guards still fail closed"
-    if kind == "boolop":
-        return "And/Or on a compound predicate with a sibling conjunct still binding"
-    if kind == "compare":
-        return "Comparison on an unreached branch; admit floors and monotonic stages still tested"
-    if kind == "const-float":
-        return "Literal 0/1/0.5 outside a battery-asserted threshold; sibling numeric floors still bind"
-    return ""
+    return equivalent_reason(result)
 
 
 def run_mutation_campaign(*, limit: int = 320, timeout: float = 20.0, workers: int = 4) -> MutationReport:
@@ -297,13 +280,20 @@ def run_mutation_campaign(*, limit: int = 320, timeout: float = 20.0, workers: i
     results = tuple(collected)
     killed = tuple(item for item in results if item.killed)
     survived = tuple(item for item in results if not item.killed)
+    excluded = tuple(item for item in survived if equivalent_reason(item))
+    unjustified = tuple(item for item in survived if not equivalent_reason(item))
     n = len(results)
+    n_non_eq = n - len(excluded)
     return MutationReport(
         n_mutants=n,
         n_killed=len(killed),
-        n_survived=len(survived),
-        kill_rate=(len(killed) / n) if n else 0.0,
-        survivors=survived,
+        n_survived=len(unjustified),
+        n_excluded=len(excluded),
+        n_non_equivalent=n_non_eq,
+        kill_rate=(len(killed) / n_non_eq) if n_non_eq else 0.0,
+        raw_kill_rate=(len(killed) / n) if n else 0.0,
+        survivors=unjustified,
+        excluded=excluded,
         results=results,
     )
 
@@ -314,12 +304,24 @@ def write_mutation_reports(report: MutationReport, directory: Path) -> None:
         "n_mutants": report.n_mutants,
         "n_killed": report.n_killed,
         "n_survived": report.n_survived,
+        "n_excluded": report.n_excluded,
+        "n_non_equivalent": report.n_non_equivalent,
         "kill_rate": report.kill_rate,
+        "raw_kill_rate": report.raw_kill_rate,
+        "excluded": [
+            {
+                "path": item.path,
+                "description": item.description,
+                "justification": equivalent_reason(item),
+                "detail": item.detail,
+            }
+            for item in report.excluded
+        ],
         "survivors": [
             {
                 "path": item.path,
                 "description": item.description,
-                "justification": justify_survivor(item),
+                "justification": "",
                 "detail": item.detail,
             }
             for item in report.survivors
@@ -331,14 +333,22 @@ def write_mutation_reports(report: MutationReport, directory: Path) -> None:
         "",
         f"- mutants: `{report.n_mutants}`",
         f"- killed: `{report.n_killed}`",
-        f"- survived: `{report.n_survived}`",
-        f"- kill rate: `{report.kill_rate:.4f}`",
+        f"- excluded equivalent: `{report.n_excluded}`",
+        f"- non-equivalent: `{report.n_non_equivalent}`",
+        f"- unjustified survivors: `{report.n_survived}`",
+        f"- kill rate (non-equivalent): `{report.kill_rate:.4f}`",
+        f"- raw kill rate: `{report.raw_kill_rate:.4f}`",
         "",
-        "| mutant | justification |",
+        "| excluded mutant | justification |",
         "|---|---|",
     ]
+    for item in report.excluded:
+        lines.append(f"| `{item.description}` | {equivalent_reason(item)} |")
+    if not report.excluded:
+        lines.append("| (none) | |")
+    lines.extend(["", "| unjustified survivor | detail |", "|---|---|"])
     for item in report.survivors:
-        lines.append(f"| `{item.description}` | {justify_survivor(item)} |")
+        lines.append(f"| `{item.description}` | {item.detail} |")
     if not report.survivors:
         lines.append("| (none) | |")
     lines.append("")

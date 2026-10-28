@@ -15,6 +15,7 @@ from lumina_core.agent_orchestration.schemas_research import (
     WFEPayload,
 )
 from lumina_research.agents.provenance import ProvenanceAuthority
+from lumina_research.monitoring.acceptance import MEANINGFUL_RAMP_DAYS
 from lumina_research.monitoring.types import Instrument
 from lumina_research.validation.cost_model import COST_MODEL_ID
 from lumina_research.validation.dsr import DSR_FORMULATION
@@ -55,13 +56,13 @@ def gradual_decay_path(
 ) -> tuple[float, ...]:
     sigma = max(oos_stdev * 0.45, 1e-6)
     depth = 2.8 * max(oos_stdev, 1e-6)
-    span = max(n - 1 - decay_start, 1)
+    ramp = min(MEANINGFUL_RAMP_DAYS, max(n - 1 - decay_start, 1))
     out: list[float] = []
     for index in range(n):
         if index < decay_start:
             mu = oos_mean
         else:
-            mu = oos_mean - depth * float(index - decay_start) / float(span)
+            mu = oos_mean - depth * min(float(index - decay_start) / float(ramp), 1.0)
         out.append(rng.gauss(mu, sigma))
     return tuple(out)
 

@@ -52,6 +52,16 @@ This supports the mission: a self-evolving research loop that remains fail-close
 4. Single z-test with no CUSUM — rejected: sequential decay is slower to catch; combined tests keep false alarms bounded.
 5. Guardian auto-retires on any warn — rejected: staged reductions; warn ≠ retire. Violations propose suspend.
 
+## Addendum — binding acceptance floors (2026-10-28)
+
+Steve's Phase 4 gates. Encoded in `lumina_research/monitoring/acceptance.py` and enforced by the nightly campaign / mutation harness. Packaged `limits.toml` floors are not loosened to hit these numbers.
+
+1. **Code mutation kill rate** on `lumina_research/monitoring` ≥ **0.80 of non-equivalent mutants** (same 320+ mutant AST harness). Equivalent mutants may be excluded only with a written per-mutant justification and at most 10% of the total. Equivalent means: logging/telemetry-only changes; pure renames/reorders; numerically identical refactors within float tolerance; parameter perturbations inside the robust plateau that do not move a decision. Unreached refuse arms are **not** equivalent — they must be killed by behavioral tests.
+2. **False-alarm rate** on healthy signals, 300-signal / 10-seed campaign, per kind: normal-vol healthy ≤ **5%**; high-vol healthy ≤ **10%** (strict end). Combined still needs two tests to de-weight; a single extreme CUSUM may suspend, but the live monitor **confirms `CONFIRM_WINDOWS=2` consecutive ready windows** before applying a stage. Regime information remains a size multiplier ≤ 1 (sizing/throttling only), never a strategy switch.
+3. **Detection rate** on meaningfully decaying signals (abrupt decay, gradual decay that reaches a 2.8σ mean shift within `MEANINGFUL_RAMP_DAYS=12`, regime shift) ≥ **85%**, with **max time-to-detect 15 trading days** from decay onset (~25 trades). TTD is `max(0, detect_day - decay_start)`, not days from series start. A previous p90 of 21 days on a 49-day gradual ramp is treated as a fail against this floor.
+
+If a floor is not reachable without weakening safety (looser z/percentile/CUSUM/SPRT, longer packaged window, skip-gate replenish, exposure increase), stop and report the measured numbers. Do not merge.
+
 ## Links
 
 - Charter: `RESEARCH_CHARTER.md`

@@ -47,6 +47,8 @@ class KindMetrics:
     detection_rate: float
     false_alarm_rate: float
     median_time_to_detect: float | None
+    p90_time_to_detect: float | None
+    max_time_to_detect: float | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +77,7 @@ class MultiSeedDetectionReport:
     mean_time_to_detect: float | None
     p10_time_to_detect: float | None
     p90_time_to_detect: float | None
+    max_time_to_detect: float | None
     time_to_detect: tuple[int, ...]
     by_kind: tuple[KindMetrics, ...]
     paths: tuple[DetectionPath, ...]
@@ -135,9 +138,7 @@ def log_decision(
     if not weekly.exists():
         weekly.write_text("# Phase 4 continuity decisions\n\n", encoding="utf-8")
     with weekly.open("a", encoding="utf-8") as handle:
-        handle.write(
-            f"- `{payload['timestamp']}` agent=`{agent_id}` event=`{event}` signal=`{signal_id}`\n"
-        )
+        handle.write(f"- `{payload['timestamp']}` agent=`{agent_id}` event=`{event}` signal=`{signal_id}`\n")
 
 
 def write_detection_reports(report: DetectionReport, directory: Path) -> None:
@@ -167,7 +168,9 @@ def write_detection_reports(report: DetectionReport, directory: Path) -> None:
             for item in report.paths
         ],
     }
-    (directory / "phase4_detection.json").write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    (directory / "phase4_detection.json").write_text(
+        json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     ttd = "n/a" if report.median_time_to_detect is None else f"{report.median_time_to_detect:.1f}"
     md = [
         "# Phase 4 decay detection",
@@ -240,6 +243,7 @@ def _kind_metrics(paths: Sequence[DetectionPath]) -> tuple[KindMetrics, ...]:
         detected = tuple(item for item in decaying if item.detected)
         false_alarms = tuple(item for item in healthy if item.false_alarm)
         ttds = tuple(sorted(item.time_to_detect for item in detected if item.time_to_detect is not None))
+        p90 = None if not ttds else float(ttds[min(len(ttds) - 1, int(0.90 * (len(ttds) - 1)))])
         rows.append(
             KindMetrics(
                 kind=name,
@@ -249,12 +253,16 @@ def _kind_metrics(paths: Sequence[DetectionPath]) -> tuple[KindMetrics, ...]:
                 detection_rate=(len(detected) / len(decaying)) if decaying else 0.0,
                 false_alarm_rate=(len(false_alarms) / len(healthy)) if healthy else 0.0,
                 median_time_to_detect=None if not ttds else float(ttds[len(ttds) // 2]),
+                p90_time_to_detect=p90,
+                max_time_to_detect=None if not ttds else float(ttds[-1]),
             )
         )
     return tuple(rows)
 
 
-def build_multiseed_report(*, rows: Sequence[SeedDetectionRow], paths: Sequence[DetectionPath]) -> MultiSeedDetectionReport:
+def build_multiseed_report(
+    *, rows: Sequence[SeedDetectionRow], paths: Sequence[DetectionPath]
+) -> MultiSeedDetectionReport:
     pooled = build_detection_report(seed=0, paths=paths)
     ttds = tuple(item.time_to_detect for item in paths if item.decaying and item.time_to_detect is not None)
     return MultiSeedDetectionReport(
@@ -271,6 +279,7 @@ def build_multiseed_report(*, rows: Sequence[SeedDetectionRow], paths: Sequence[
         mean_time_to_detect=pooled.mean_time_to_detect,
         p10_time_to_detect=pooled.p10_time_to_detect,
         p90_time_to_detect=pooled.p90_time_to_detect,
+        max_time_to_detect=None if not ttds else float(max(ttds)),
         time_to_detect=ttds,
         by_kind=_kind_metrics(paths),
         paths=tuple(paths),
@@ -292,6 +301,7 @@ def write_multiseed_detection_reports(report: MultiSeedDetectionReport, director
         "mean_time_to_detect": report.mean_time_to_detect,
         "p10_time_to_detect": report.p10_time_to_detect,
         "p90_time_to_detect": report.p90_time_to_detect,
+        "max_time_to_detect": report.max_time_to_detect,
         "time_to_detect": list(report.time_to_detect),
         "by_kind": [
             {
@@ -302,6 +312,8 @@ def write_multiseed_detection_reports(report: MultiSeedDetectionReport, director
                 "detection_rate": item.detection_rate,
                 "false_alarm_rate": item.false_alarm_rate,
                 "median_time_to_detect": item.median_time_to_detect,
+                "p90_time_to_detect": item.p90_time_to_detect,
+                "max_time_to_detect": item.max_time_to_detect,
             }
             for item in report.by_kind
         ],
@@ -331,16 +343,21 @@ def write_multiseed_detection_reports(report: MultiSeedDetectionReport, director
         f"- median_time_to_detect: `{ttd}`",
         f"- p10_time_to_detect: `{report.p10_time_to_detect}`",
         f"- p90_time_to_detect: `{report.p90_time_to_detect}`",
+        f"- max_time_to_detect: `{report.max_time_to_detect}`",
         "",
-        "| kind | n | detection_rate | false_alarm_rate | median TTD |",
-        "|---|---|---|---|---|",
+        "| kind | n | detection_rate | false_alarm_rate | median TTD | p90 TTD | max TTD |",
+        "|---|---|---|---|---|---|---|",
     ]
     for kind_row in report.by_kind:
         mid = "n/a" if kind_row.median_time_to_detect is None else f"{kind_row.median_time_to_detect:.1f}"
+        p90 = "n/a" if kind_row.p90_time_to_detect is None else f"{kind_row.p90_time_to_detect:.1f}"
+        mx = "n/a" if kind_row.max_time_to_detect is None else f"{kind_row.max_time_to_detect:.1f}"
         md.append(
-            f"| {kind_row.kind} | {kind_row.n} | {kind_row.detection_rate:.4f} | {kind_row.false_alarm_rate:.4f} | {mid} |"
+            f"| {kind_row.kind} | {kind_row.n} | {kind_row.detection_rate:.4f} | {kind_row.false_alarm_rate:.4f} | {mid} | {p90} | {mx} |"
         )
-    md.extend(["", "| seed | instrument | n | detection_rate | false_alarm_rate | median TTD |", "|---|---|---|---|---|---|"])
+    md.extend(
+        ["", "| seed | instrument | n | detection_rate | false_alarm_rate | median TTD |", "|---|---|---|---|---|---|"]
+    )
     for seed_row in report.seeds:
         mid = "n/a" if seed_row.median_time_to_detect is None else f"{seed_row.median_time_to_detect:.1f}"
         md.append(

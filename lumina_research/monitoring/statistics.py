@@ -181,6 +181,9 @@ def _select(
             return 2
         if votes_deweight >= 2:
             return 1
+        # ADR-0058: a single extreme CUSUM may suspend. The live monitor still
+        # confirms CONFIRM_WINDOWS consecutive ready assessments before applying,
+        # so a one-bar high-vol spike does not change the book.
         if cusum_sev >= 2:
             return cusum_sev
         return 0
