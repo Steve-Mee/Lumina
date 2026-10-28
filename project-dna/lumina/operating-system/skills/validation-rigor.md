@@ -8,7 +8,7 @@ description: >
 
 # Validation Rigor Skill (v1.0, 2026-10-28)
 
-Bron van de regels: [`RESEARCH_CHARTER.md`](../../../RESEARCH_CHARTER.md). Bij conflict wint het charter.
+Bron van de regels: [`RESEARCH_CHARTER.md`](../../../../RESEARCH_CHARTER.md). Bij conflict wint het charter.
 
 Phase 1 freeze: agents mogen geen nieuwe signalen schrijven tot Phase 1 van `lumina_research/` klaar is. Bouw niet verder op `archive/birth-v1/`.
 

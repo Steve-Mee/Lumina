@@ -13,6 +13,8 @@ from .dna_registry import DNARegistry
 from .evolution_guard import EvolutionGuard
 from .promotion_policy import PromotionPolicy
 from .steve_values_registry import SteveValuesRegistry
+from .veto_registry import VetoRegistry
+from .veto_window import VetoWindow
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +49,8 @@ class EvolutionOrchestrator:
         self._approval_twin = ApprovalTwinAgent(registry=self._values_registry, event_bus=None)
         self._market_data_service: Any | None = None
         self._promotion_policy: PromotionPolicy | None = None
+        self._veto_registry = VetoRegistry()
+        self._veto_window = VetoWindow(veto_registry=self._veto_registry)
         self._initialized = True
 
     def bind_promotion_event_bus(self, event_bus: EventBus | None) -> None:

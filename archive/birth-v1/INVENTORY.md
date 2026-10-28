@@ -9,7 +9,7 @@ Previously `blocked: dependency`, now archived after importer untangle:
 
 KEEP (not in this archive): Risk Core, Safety, Execution Fabric behaviour, Event Bus, constitution content, PromotionGate/Twin/shadow/rollout, live/NinjaTrader data and config.
 
-Count: 1428 files.
+Count: 1433 files.
 
 ## `lumina_core/audit`
 
@@ -1593,4 +1593,34 @@ Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0
 Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
 
 - `tests/test_strategy_generator.py`
+
+## `tests/audit`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/audit/test_d4_birth_prereq.py`
+
+## `tests/test_evolution_dashboard.py`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/test_evolution_dashboard.py`
+
+## `tests/test_maturity_progress_off_loop.py`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/test_maturity_progress_off_loop.py`
+
+## `tests/test_reality_ohlc_stress.py`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/test_reality_ohlc_stress.py`
+
+## `tests/test_reality_ppo_aggregate.py`
+
+Reason: Experimental: missing hard CPCV (purge+embargo), DSR, PBO hard-reject >0.50, walk-forward OOS over 5–8 windows, and/or four-leg realistic costs — fails RESEARCH_CHARTER Validation Gate.
+
+- `tests/test_reality_ppo_aggregate.py`
 

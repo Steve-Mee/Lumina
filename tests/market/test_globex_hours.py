@@ -13,8 +13,8 @@ from lumina_core.market.globex_hours import (
     globex_status,
     history_request_end,
     next_open,
+    row_session_date,
 )
-from lumina_core.maturity.apprenticeship.days import row_session_date
 
 
 def _et(year: int, month: int, day: int, hour: int, minute: int = 0) -> datetime:

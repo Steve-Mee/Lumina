@@ -4,8 +4,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from pathlib import Path
-
 from lumina_core.logging_utils import get_logger
 from lumina_core.rl.ppo_evolution_logger import PPOEvolutionLogger
 

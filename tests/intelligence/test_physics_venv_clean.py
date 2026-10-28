@@ -34,8 +34,8 @@ def test_physics_requirements_contain_no_vllm() -> None:
 def test_installer_source_mentions_vllm_only_in_refuse_or_detect_paths() -> None:
     # gegeven
     paths = [
-        ROOT / "scripts" / "install_birth_physics_stack.py",
-        ROOT / "lumina_core" / "birth" / "physics_stack_install.py",
+        ROOT / "archive" / "birth-v1" / "scripts" / "install_birth_physics_stack.py",
+        ROOT / "archive" / "birth-v1" / "lumina_core" / "birth" / "physics_stack_install.py",
     ]
 
     # wanneer / dan

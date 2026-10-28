@@ -114,9 +114,7 @@ def _run_first_boot_training() -> int:
     ep = _ep()
     cfg = ep._load_first_boot_config()
     target = int(cfg["training_trades"])
-    prefer_real = bool(cfg["prefer_real_data_only"])
     max_days = int(cfg["max_real_days"])
-    birth_phase_enabled = bool(cfg.get("birth_phase", True))
     estimated_days = estimate_first_boot_real_days(target)
 
     start_message = (

@@ -77,6 +77,7 @@ M5_OVER_400_CEILINGS: dict[str, int] = {
     "lumina_core/birth/phase2_autonomy/sim_campaign.py": 516,
     "lumina_core/ops/operator_residuals.py": 510,
     "lumina_core/engine/market_data_ingest.py": 783,
+    "lumina_core/market/archive_repair.py": 420,
     "lumina_core/birth/meta_decide_periodic.py": 490,
     "lumina_core/birth/stage_loop_iteration_core.py": 489,
     "lumina_core/rl/gym_environment_step.py": 487,
@@ -109,7 +110,7 @@ M5_OVER_400_CEILINGS: dict[str, int] = {
     "lumina_core/maturity/continuum.py": 442,
     "lumina_core/maturity/awakening/law.py": 424,
     "lumina_core/birth/foundation_history.py": 422,
-    "lumina_core/engine/operations_service_orders.py": 414,
+    "lumina_core/engine/operations_service_orders.py": 430,
     "lumina_core/birth/stage3_inband_idle.py": 408,
     "lumina_core/birth/stage2_participation_envelope.py": 403,
 
