@@ -46,6 +46,12 @@ def compute_fitness(
     if turnover < 0.0 or not math.isfinite(turnover):
         raise FitnessRefused("turnover must be a finite number >= 0")
 
+    _finite(report.median_oos_after_costs, "median_oos_after_costs")
+    if report.median_oos_after_costs < 0.0:
+        raise FitnessRefused("median OOS after costs is negative")
+    if report.cost_provenance is None or not report.cost_provenance.is_valid():
+        raise FitnessRefused("fitness requires cost provenance")
+
     median_oos = _finite(report.oos_distribution.median, "oos_distribution.median")
     pbo = _finite(report.pbo.pbo, "pbo")
     wfe = _finite(report.wfe.wfe, "wfe")

@@ -11,6 +11,13 @@ import tomllib
 from lumina_research.validation.types import Thresholds
 
 _DEFAULT_PATH = Path(__file__).with_name("gate_thresholds.toml")
+
+# Hard floors. Runtime config may only tighten these; the gate also re-applies them.
+FLOOR_DSR_PROBABILITY_MIN = 0.95
+FLOOR_WFE_MIN = 0.5
+FLOOR_PBO_HARD_REJECT = 0.50
+FLOOR_PBO_WARNING = 0.25
+FLOOR_MIN_OOS_WINDOWS = 6
 _ALLOWED_KEYS = frozenset(
     {
         "dsr_probability_min",
@@ -37,11 +44,24 @@ class FrozenThresholds:
 
 def default_thresholds() -> Thresholds:
     return Thresholds(
-        dsr_probability_min=0.95,
-        wfe_min=0.5,
-        pbo_hard_reject=0.50,
-        pbo_warning=0.25,
-        min_oos_windows=6,
+        dsr_probability_min=FLOOR_DSR_PROBABILITY_MIN,
+        wfe_min=FLOOR_WFE_MIN,
+        pbo_hard_reject=FLOOR_PBO_HARD_REJECT,
+        pbo_warning=FLOOR_PBO_WARNING,
+        min_oos_windows=FLOOR_MIN_OOS_WINDOWS,
+    )
+
+
+def enforce_floors(thresholds: Thresholds) -> Thresholds:
+    """Config may only tighten floors. Weaker values are replaced, not accepted."""
+    pbo_hard = min(thresholds.pbo_hard_reject, FLOOR_PBO_HARD_REJECT)
+    pbo_warn = min(thresholds.pbo_warning, FLOOR_PBO_WARNING, pbo_hard)
+    return Thresholds(
+        dsr_probability_min=max(thresholds.dsr_probability_min, FLOOR_DSR_PROBABILITY_MIN),
+        wfe_min=max(thresholds.wfe_min, FLOOR_WFE_MIN),
+        pbo_hard_reject=pbo_hard,
+        pbo_warning=pbo_warn,
+        min_oos_windows=max(thresholds.min_oos_windows, FLOOR_MIN_OOS_WINDOWS),
     )
 
 
@@ -85,9 +105,11 @@ def _parse_mapping(raw: Mapping[str, object]) -> Thresholds:
         raise ThresholdConfigError("wfe_min cannot be weaker than 0.5")
     if parsed.min_oos_windows < values.min_oos_windows:
         raise ThresholdConfigError("min_oos_windows cannot be weaker than 6")
-    if parsed.pbo_hard_reject > 0.50:
+    if parsed.pbo_hard_reject > FLOOR_PBO_HARD_REJECT:
         raise ThresholdConfigError("pbo_hard_reject cannot be weaker than 0.50")
-    return parsed
+    if parsed.pbo_warning > FLOOR_PBO_WARNING:
+        raise ThresholdConfigError("pbo_warning cannot be weaker than 0.25")
+    return enforce_floors(parsed)
 
 
 def _unit_interval(value: object, name: str) -> float:
