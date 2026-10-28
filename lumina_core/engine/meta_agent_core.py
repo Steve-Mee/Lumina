@@ -138,14 +138,24 @@ class SelfEvolutionMetaAgent(MetaAgentNightlyMixin):
         )
 
     def run_nightly_evolution(self, *, nightly_report: dict[str, Any], dry_run: bool = False) -> dict[str, Any]:
+        """Review-only nightly: meta_review stays live; mutations stay blocked."""
         del dry_run
-        report = dict(nightly_report or {})
-        report["mutation_applied"] = False
-        report["dry_run"] = True
-        report["validation_gate"] = "blocked"
-        report["reason"] = "BIRTH_V1_ARCHIVED"
-        report["archived_birth_v1"] = True
-        return report
+        report = self._hydrate_report_from_blackboard(dict(nightly_report or {}))
+        meta_review = self._meta_review(report)
+        weakest = self._weakest_regime(meta_review)
+        out = dict(report)
+        out["meta_review"] = meta_review
+        out["best_candidate"] = {
+            "name": "review_only",
+            "regime_focus": weakest,
+            "source": "meta_review",
+        }
+        out["mutation_applied"] = False
+        out["dry_run"] = True
+        out["validation_gate"] = "blocked"
+        out["reason"] = "BIRTH_V1_ARCHIVED"
+        out["archived_birth_v1"] = True
+        return out
 
     def _apply_candidate(self, candidate: dict[str, Any]) -> None:
         raise LuminaError(
