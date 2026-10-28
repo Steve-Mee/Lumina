@@ -68,6 +68,8 @@ class DecayDetected(BaseModel):
     cusum: float | None
     sprt_llr: float | None
     stage: SignalStage
+    vol_regime: Literal["normal", "high_vol"] = "normal"
+    horizon: Literal["short", "medium"] = "short"
     provenance_mac: str = Field(min_length=64, max_length=64)
 
 

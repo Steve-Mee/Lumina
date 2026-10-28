@@ -308,6 +308,7 @@ class ContinuityRuntime(Frozen):
         *,
         decisions: Sequence[dict[str, object]] = (),
         report_dir: Path | None = None,
+        mutation_report: Path | None = None,
     ) -> GuardianReport:
         self.assert_intact(refresh=True)
         if cadence not in {"daily", "weekly"}:
@@ -318,6 +319,7 @@ class ContinuityRuntime(Frozen):
             baseline=self._snapshot,
             trials=self.trials.records(),
             decisions=decisions,
+            mutation_report=mutation_report,
         )
         for signal_id in report.suspend_proposals:
             if self.registry.get(signal_id) is not None:

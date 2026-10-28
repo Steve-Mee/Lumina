@@ -10,6 +10,8 @@ from lumina_core.agent_orchestration.schemas_research import SignalStage
 from lumina_research.risk_core.types import cluster_for
 
 Instrument = Literal["ES", "NQ", "MES", "MNQ"]
+VolRegime = Literal["normal", "high_vol"]
+DecayHorizon = Literal["short", "medium"]
 
 INSTRUMENT_FAMILIES: Mapping[str, str] = {
     "ES": "es_index",
@@ -140,6 +142,8 @@ class DecayAssessment:
     votes_suspend: int
     votes_retire: int
     ready: bool
+    vol_regime: VolRegime = "normal"
+    horizon: DecayHorizon = "short"
 
 
 def require_cluster(instrument: str) -> str:

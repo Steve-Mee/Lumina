@@ -677,9 +677,13 @@ def _book_battery(tmp: Path) -> None:
         "trial_logged",
         "admission_mac",
         "promotion_via_gate",
+        "sealed_gate_passage",
     }
     if not needed.issubset(checks):
         raise AssertionError(f"guardian rows missing {needed - checks}")
+    mut_rows = [item for item in guardian.findings() if item.check_id == "mutation_kill_rate"]
+    if not mut_rows:
+        raise AssertionError("mutation_kill_rate must be scanned")
     _admit(registry, authority, "hyp-pbo", 8, pbo=0.40, dsr=0.99)
     warn = guardian.scan(
         cadence="weekly",
