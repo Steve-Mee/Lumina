@@ -44,6 +44,10 @@ class ContinuitySizer:
             return _blocked(signal)
         if not _finite_positive(quantity) or not _finite_positive(price):
             raise ContinuityRefused("quantity and price must be finite and positive")
+        if float(quantity) > float(signal.base_quantity) + 1e-12:
+            raise ContinuityRefused("monitoring cannot increase exposure")
+        if float(price) * float(quantity) > float(signal.base_notional) + 1e-9:
+            raise ContinuityRefused("monitoring cannot increase exposure")
         multiplier = float(signal.weight) * float(signal.capacity_scale)
         if regime is not None:
             if regime.size_multiplier <= 0.0 or regime.size_multiplier > 1.0:

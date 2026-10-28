@@ -18,7 +18,7 @@ from lumina_research.agents.provenance import ProvenanceAuthority
 from lumina_research.monitoring.config import ContinuityConfig
 from lumina_research.monitoring.registry import LiveSignalRegistry
 from lumina_research.monitoring.report import log_decision
-from lumina_research.monitoring.seal import canonical_capacity, mac_ok
+from lumina_research.monitoring.seal import accept_mac, canonical_capacity
 from lumina_research.monitoring.types import ContinuityRefused, LiveSignal
 
 
@@ -33,6 +33,7 @@ class CapacityController(Frozen):
     _blackboard: AgentBlackboard | None
     _evolution_log_dir: Path | None
     _events: list[CapacityScaled]
+    _seen: set[str]
 
     def __init_subclass__(cls) -> None:
         raise TypeError("CapacityController cannot be subclassed")
@@ -56,10 +57,11 @@ class CapacityController(Frozen):
         self._blackboard = blackboard
         self._evolution_log_dir = evolution_log_dir
         self._events = []
+        self._seen = set()
         self._freeze()
         bus.register_topic_guard(RESEARCH_CAPACITY_TOPIC, self._guard)
         if blackboard is not None:
-            blackboard.register_topic_guard(RESEARCH_CAPACITY_TOPIC, self._guard)
+            blackboard.register_topic_guard(RESEARCH_CAPACITY_TOPIC, self._guard_bb)
 
     def events(self) -> tuple[CapacityScaled, ...]:
         return tuple(self._events)
@@ -154,6 +156,12 @@ class CapacityController(Frozen):
         )
 
     def _guard(self, producer: str, payload: dict[str, object]) -> bool:
+        return self._check(producer, payload, consume=True)
+
+    def _guard_bb(self, producer: str, payload: dict[str, object]) -> bool:
+        return self._check(producer, payload, consume=False)
+
+    def _check(self, producer: str, payload: dict[str, object], *, consume: bool) -> bool:
         if producer.strip() != CAPACITY_AGENT_ID:
             return False
         try:
@@ -162,7 +170,12 @@ class CapacityController(Frozen):
             return False
         if parsed.new_scale > parsed.previous_scale:
             return False
-        return mac_ok(self._authority, canonical_capacity(payload), payload.get("provenance_mac"))
+        return accept_mac(
+            self._authority,
+            canonical_capacity(payload),
+            payload.get("provenance_mac"),
+            self._seen if consume else None,
+        )
 
 
 def _sums(signals: list[LiveSignal], attr: Literal["instrument", "family_id", "cluster_id"]) -> dict[str, float]:

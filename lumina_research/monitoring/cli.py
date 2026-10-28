@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Sequence, cast
 
 from lumina_research.agents.objects import as_object_dict
-from lumina_research.monitoring.config import load_default_config
-from lumina_research.monitoring.loop import ContinuityRuntime
+from lumina_research.monitoring.config import ContinuityConfigError, load_default_config
+from lumina_research.monitoring.loop import ContinuityIntegrityError, ContinuityRuntime
 from lumina_research.monitoring.types import ContinuityRefused
 
 
@@ -52,18 +52,18 @@ def run_scan(argv: Sequence[str] | None = None) -> int:
     report_dir: Path = args.report_dir
     state_dir.mkdir(parents=True, exist_ok=True)
     report_dir.mkdir(parents=True, exist_ok=True)
-    config = load_default_config(args.config) if args.config is not None else load_default_config()
-    runtime = ContinuityRuntime(
-        audit_path=state_dir / "audit.jsonl",
-        experiment_log_path=state_dir / "experiments.jsonl",
-        config=config,
-        evolution_log_dir=args.evolution_log_dir,
-    )
     try:
+        config = load_default_config(args.config) if args.config is not None else load_default_config()
+        runtime = ContinuityRuntime(
+            audit_path=state_dir / "audit.jsonl",
+            experiment_log_path=state_dir / "experiments.jsonl",
+            config=config,
+            evolution_log_dir=args.evolution_log_dir,
+        )
         report = runtime.guardian_scan(str(args.cadence), decisions=load_decisions(state_dir), report_dir=report_dir)
         if bool(args.replenish):
             runtime.request_replenishment(seed=int(args.seed))
-    except ContinuityRefused as exc:
+    except (ContinuityRefused, ContinuityConfigError, ContinuityIntegrityError) as exc:
         sys.stderr.write(f"continuity refused: {exc}\n")
         return 1
     if report.passed:

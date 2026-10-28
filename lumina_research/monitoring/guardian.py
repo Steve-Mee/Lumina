@@ -22,9 +22,10 @@ from lumina_research.evolution.integrity import IntegrityError, IntegritySnapsho
 from lumina_research.monitoring.config import ContinuityConfig
 from lumina_research.monitoring.registry import LiveSignalRegistry
 from lumina_research.monitoring.report import GuardianReport, log_decision
-from lumina_research.monitoring.seal import canonical_guardian, mac_ok
-from lumina_research.monitoring.types import ContinuityRefused, LiveSignal
+from lumina_research.monitoring.seal import accept_mac, canonical_guardian
+from lumina_research.monitoring.types import MIN_LIVE_OOS_VALUES, ContinuityRefused, LiveSignal
 from lumina_research.validation.cost_model import COST_MODEL_ID
+from lumina_research.validation.thresholds import FLOOR_DSR_PROBABILITY_MIN
 from lumina_research.validation.trial_registry import TrialRecord
 
 
@@ -40,6 +41,7 @@ class GuardianAgent(Frozen):
     _evolution_log_dir: Path | None
     _findings: list[GuardianFinding]
     _seq: list[int]
+    _seen: set[str]
 
     def __init_subclass__(cls) -> None:
         raise TypeError("GuardianAgent cannot be subclassed")
@@ -64,10 +66,11 @@ class GuardianAgent(Frozen):
         self._evolution_log_dir = evolution_log_dir
         self._findings = []
         self._seq = [0]
+        self._seen = set()
         self._freeze()
         bus.register_topic_guard(RESEARCH_GUARDIAN_TOPIC, self._guard)
         if blackboard is not None:
-            blackboard.register_topic_guard(RESEARCH_GUARDIAN_TOPIC, self._guard)
+            blackboard.register_topic_guard(RESEARCH_GUARDIAN_TOPIC, self._guard_bb)
 
     def findings(self) -> tuple[GuardianFinding, ...]:
         return tuple(self._findings)
@@ -84,12 +87,38 @@ class GuardianAgent(Frozen):
         decisions: Sequence[Mapping[str, object]] = (),
         live: IntegritySnapshot | None = None,
     ) -> GuardianReport:
+        try:
+            return self._scan_body(
+                cadence=cadence,
+                baseline=baseline,
+                trials=trials,
+                decisions=decisions,
+                live=live,
+            )
+        except ContinuityRefused:
+            raise
+        except Exception as exc:
+            raise ContinuityRefused(f"guardian failed closed: {exc}") from exc
+
+    def _scan_body(
+        self,
+        *,
+        cadence: GuardianCadence,
+        baseline: IntegritySnapshot,
+        trials: Sequence[TrialRecord],
+        decisions: Sequence[Mapping[str, object]],
+        live: IntegritySnapshot | None,
+    ) -> GuardianReport:
         signals = self._registry.signals()
         emitted: list[GuardianFinding] = []
         if live is None:
             integrity_ok, integrity_detail = _integrity(baseline)
         else:
-            integrity_ok, integrity_detail = live.live_risk_hash == baseline.live_risk_hash and live.research_risk_hash == baseline.research_risk_hash, "risk_core_hash"
+            integrity_ok, integrity_detail = (
+                live.live_risk_hash == baseline.live_risk_hash
+                and live.research_risk_hash == baseline.research_risk_hash,
+                "risk_core_hash",
+            )
             if integrity_ok:
                 try:
                     assert_intact(baseline)
@@ -108,32 +137,35 @@ class GuardianAgent(Frozen):
                 required="unchanged live and research Risk Core",
             )
         )
+        if not integrity_ok:
+            for signal in signals:
+                if signal.stage == "retired":
+                    continue
+                emitted.append(
+                    self._finding(
+                        cadence=cadence,
+                        check_id="risk_core_untouched",
+                        signal_id=signal.signal_id,
+                        passed=False,
+                        severity="violation",
+                        suspend_proposed=True,
+                        metric="risk_core_hash",
+                        observed=integrity_detail,
+                        required="unchanged live and research Risk Core",
+                    )
+                )
         trial_ids = {item.trial_id for item in trials}
         live_ids = {item.signal_id for item in signals}
         for signal in signals:
             emitted.extend(self._signal_checks(cadence, signal, trial_ids))
         for raw in decisions:
             emitted.append(self._decision_check(cadence, raw, live_ids))
-        if cadence == "weekly":
-            for signal in signals:
-                mac_ok_flag = self._registry.verify(signal)
-                emitted.append(
-                    self._finding(
-                        cadence=cadence,
-                        check_id="admission_mac",
-                        signal_id=signal.signal_id,
-                        passed=mac_ok_flag,
-                        severity="ok" if mac_ok_flag else "violation",
-                        suspend_proposed=not mac_ok_flag,
-                        metric="admission_mac",
-                        observed="valid" if mac_ok_flag else "tampered",
-                        required="HMAC admission seal",
-                    )
-                )
         n_ok = sum(1 for item in emitted if item.severity == "ok")
         n_warn = sum(1 for item in emitted if item.severity == "warn")
         n_viol = sum(1 for item in emitted if item.severity == "violation")
-        suspends = tuple(item.signal_id for item in emitted if item.suspend_proposed and item.signal_id != "*")
+        suspends = tuple(
+            dict.fromkeys(item.signal_id for item in emitted if item.suspend_proposed and item.signal_id != "*")
+        )
         return GuardianReport(
             cadence=cadence,
             n_signals=len(signals),
@@ -153,18 +185,21 @@ class GuardianAgent(Frozen):
         trial_ids: set[int],
     ) -> list[GuardianFinding]:
         windows_ok = signal.n_oos_windows >= self._config.min_oos_windows
+        thin_ok = len(signal.oos_values) >= MIN_LIVE_OOS_VALUES
         purge_ok = signal.purge_applied and signal.embargo_applied
-        dsr_ok = signal.dsr_probability >= 0.95
+        dsr_ok = signal.dsr_probability >= FLOOR_DSR_PROBABILITY_MIN
         pbo_hard = signal.pbo > self._config.pbo_reject_min
         pbo_warn = signal.pbo > self._config.pbo_promote_max
         cost_ok = signal.cost_applied and signal.cost_model_id == COST_MODEL_ID
         regime_ok = signal.regimes_complete
         trial_ok = signal.trial_id in trial_ids
+        sealed = self._registry.verify(signal)
         pbo_severity: GuardianSeverity = "violation" if pbo_hard else ("warn" if pbo_warn else "ok")
         rows: list[tuple[str, bool, GuardianSeverity, bool, str, str, str]] = [
             ("wf_oos_windows", windows_ok, "violation" if not windows_ok else "ok", not windows_ok, "n_oos_windows", str(signal.n_oos_windows), f">={self._config.min_oos_windows}"),
+            ("oos_distribution_size", thin_ok, "violation" if not thin_ok else "ok", not thin_ok, "oos_values", str(len(signal.oos_values)), f">={MIN_LIVE_OOS_VALUES}"),
             ("cpcv_purge_embargo", purge_ok, "violation" if not purge_ok else "ok", not purge_ok, "purge_embargo", f"{signal.purge_applied}/{signal.embargo_applied}", "true/true"),
-            ("dsr_present", dsr_ok, "violation" if not dsr_ok else "ok", not dsr_ok, "dsr_probability", str(signal.dsr_probability), ">=0.95"),
+            ("dsr_present", dsr_ok, "violation" if not dsr_ok else "ok", not dsr_ok, "dsr_probability", str(signal.dsr_probability), f">={FLOOR_DSR_PROBABILITY_MIN}"),
             (
                 "pbo_band",
                 not pbo_hard,
@@ -177,7 +212,8 @@ class GuardianAgent(Frozen):
             ("costs", cost_ok, "violation" if not cost_ok else "ok", not cost_ok, "cost_model", signal.cost_model_id, COST_MODEL_ID),
             ("regimes", regime_ok, "violation" if not regime_ok else "ok", not regime_ok, "regimes_complete", str(signal.regimes_complete), "true"),
             ("trial_logged", trial_ok, "violation" if not trial_ok else "ok", not trial_ok, "trial_id", str(signal.trial_id), "present in TrialRegistry"),
-            ("promotion_via_gate", True, "ok", False, "admission", "sealed", "PromotionCandidate+ValidationResult"),
+            ("admission_mac", sealed, "violation" if not sealed else "ok", not sealed, "admission_mac", "valid" if sealed else "tampered", "HMAC admission+state seal"),
+            ("promotion_via_gate", sealed, "violation" if not sealed else "ok", not sealed, "admission", "sealed" if sealed else "unsealed", "PromotionCandidate+ValidationResult"),
         ]
         out: list[GuardianFinding] = []
         for check_id, passed, severity, suspend, metric, observed, required in rows:
@@ -273,13 +309,24 @@ class GuardianAgent(Frozen):
         return finding
 
     def _guard(self, producer: str, payload: dict[str, object]) -> bool:
+        return self._check(producer, payload, consume=True)
+
+    def _guard_bb(self, producer: str, payload: dict[str, object]) -> bool:
+        return self._check(producer, payload, consume=False)
+
+    def _check(self, producer: str, payload: dict[str, object], *, consume: bool) -> bool:
         if producer.strip() != GUARDIAN_AGENT_ID:
             return False
         try:
             GuardianFinding.model_validate(payload)
         except Exception:
             return False
-        return mac_ok(self._authority, canonical_guardian(payload), payload.get("provenance_mac"))
+        return accept_mac(
+            self._authority,
+            canonical_guardian(payload),
+            payload.get("provenance_mac"),
+            self._seen if consume else None,
+        )
 
 
 def _integrity(baseline: IntegritySnapshot) -> tuple[bool, str]:

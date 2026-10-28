@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 from typing import Mapping
 
@@ -94,10 +95,26 @@ def load_default_config(path: Path | None = None) -> ContinuityConfig:
     source = path if path is not None else _DEFAULT_PATH
     with source.open("rb") as handle:
         loaded = tomllib.load(handle)
-    return config_from_mapping({str(key): loaded[key] for key in loaded})
+    cfg = _parse_mapping({str(key): loaded[key] for key in loaded})
+    if source.resolve() != _DEFAULT_PATH.resolve():
+        _require_at_least_as_tight(cfg, packaged_config())
+    return cfg
+
+
+@cache
+def packaged_config() -> ContinuityConfig:
+    with _DEFAULT_PATH.open("rb") as handle:
+        loaded = tomllib.load(handle)
+    return _parse_mapping({str(key): loaded[key] for key in loaded})
 
 
 def config_from_mapping(raw: Mapping[str, object]) -> ContinuityConfig:
+    cfg = _parse_mapping(raw)
+    _require_at_least_as_tight(cfg, packaged_config())
+    return cfg
+
+
+def _parse_mapping(raw: Mapping[str, object]) -> ContinuityConfig:
     extra = set(raw) - _ALLOWED
     missing = _ALLOWED - set(raw)
     if extra or missing:
@@ -134,6 +151,58 @@ def config_from_mapping(raw: Mapping[str, object]) -> ContinuityConfig:
         min_oos_windows=_positive_int(raw["min_oos_windows"], "min_oos_windows"),
         equity=_positive_float(raw["equity"], "equity"),
     )
+
+
+def _require_at_least_as_tight(config: ContinuityConfig, packaged: ContinuityConfig) -> None:
+    """Runtime overlays may only tighten packaged detection and capacity protection."""
+    if config.window > packaged.window:
+        raise ContinuityConfigError("window cannot be longer than the packaged 20-day rolling window")
+    if config.min_observations > packaged.min_observations:
+        raise ContinuityConfigError("min_observations cannot delay detection past the packaged window")
+    if config.z_deweight < packaged.z_deweight:
+        raise ContinuityConfigError("z_deweight cannot be weaker than the packaged default")
+    if config.z_suspend < packaged.z_suspend:
+        raise ContinuityConfigError("z_suspend cannot be weaker than the packaged default")
+    if config.z_retire < packaged.z_retire:
+        raise ContinuityConfigError("z_retire cannot be weaker than the packaged default")
+    if config.percentile_deweight < packaged.percentile_deweight:
+        raise ContinuityConfigError("percentile_deweight cannot be weaker than the packaged default")
+    if config.percentile_suspend < packaged.percentile_suspend:
+        raise ContinuityConfigError("percentile_suspend cannot be weaker than the packaged default")
+    if config.percentile_retire < packaged.percentile_retire:
+        raise ContinuityConfigError("percentile_retire cannot be weaker than the packaged default")
+    if config.cusum_k > packaged.cusum_k:
+        raise ContinuityConfigError("cusum_k cannot be weaker than the packaged default")
+    if config.cusum_h_deweight > packaged.cusum_h_deweight:
+        raise ContinuityConfigError("cusum_h_deweight cannot be weaker than the packaged default")
+    if config.cusum_h_suspend > packaged.cusum_h_suspend:
+        raise ContinuityConfigError("cusum_h_suspend cannot be weaker than the packaged default")
+    if config.cusum_h_retire > packaged.cusum_h_retire:
+        raise ContinuityConfigError("cusum_h_retire cannot be weaker than the packaged default")
+    if abs(config.sprt_delta - packaged.sprt_delta) > 1e-12:
+        raise ContinuityConfigError("sprt_delta cannot be changed without an ADR")
+    if abs(config.sprt_alpha - packaged.sprt_alpha) > 1e-12:
+        raise ContinuityConfigError("sprt_alpha cannot be changed without an ADR")
+    if abs(config.sprt_beta - packaged.sprt_beta) > 1e-12:
+        raise ContinuityConfigError("sprt_beta cannot be changed without an ADR")
+    if config.deweight_multiplier > packaged.deweight_multiplier:
+        raise ContinuityConfigError("deweight_multiplier cannot be weaker than the packaged default")
+    if config.max_signal_notional_pct > packaged.max_signal_notional_pct:
+        raise ContinuityConfigError("max_signal_notional_pct cannot exceed the packaged cap")
+    if config.max_instrument_notional_pct > packaged.max_instrument_notional_pct:
+        raise ContinuityConfigError("max_instrument_notional_pct cannot exceed the packaged cap")
+    if config.max_family_notional_pct > packaged.max_family_notional_pct:
+        raise ContinuityConfigError("max_family_notional_pct cannot exceed the packaged cap")
+    if config.max_cluster_notional_pct > packaged.max_cluster_notional_pct:
+        raise ContinuityConfigError("max_cluster_notional_pct cannot exceed the packaged cap")
+    if config.equity > packaged.equity + 1e-9:
+        raise ContinuityConfigError("equity cannot exceed the packaged continuity equity")
+    if config.min_oos_windows < packaged.min_oos_windows:
+        raise ContinuityConfigError("min_oos_windows cannot be weaker than the packaged default")
+    if config.pbo_promote_max > packaged.pbo_promote_max + 1e-12:
+        raise ContinuityConfigError("pbo_promote_max cannot be weaker than the packaged default")
+    if config.pbo_reject_min < packaged.pbo_reject_min - 1e-12:
+        raise ContinuityConfigError("pbo_reject_min cannot be weaker than the packaged default")
 
 
 def _validate(config: ContinuityConfig) -> None:

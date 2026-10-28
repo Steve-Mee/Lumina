@@ -23,6 +23,10 @@ class ContinuityRefused(ValueError):
     """Monitoring tried to increase exposure, skip the gate, or mutate Risk Core."""
 
 
+# Percentile/z-tests need a real OOS sample. CPCV path counts may be below the WF floor of 6.
+MIN_LIVE_OOS_VALUES = 4
+
+
 def family_for(instrument: str) -> str:
     key = instrument.strip().upper()
     family = INSTRUMENT_FAMILIES.get(key)
@@ -102,6 +106,7 @@ class LiveSignal:
     issue_mac: str
     report_sha256: str
     admission_mac: str
+    state_mac: str
 
     def __init_subclass__(cls) -> None:
         raise TypeError("LiveSignal cannot be subclassed")

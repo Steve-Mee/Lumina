@@ -45,6 +45,58 @@ def decaying_path(
     return tuple(out)
 
 
+def gradual_decay_path(
+    rng: random.Random,
+    *,
+    oos_mean: float,
+    oos_stdev: float,
+    n: int,
+    decay_start: int,
+) -> tuple[float, ...]:
+    sigma = max(oos_stdev * 0.45, 1e-6)
+    depth = 2.8 * max(oos_stdev, 1e-6)
+    span = max(n - 1 - decay_start, 1)
+    out: list[float] = []
+    for index in range(n):
+        if index < decay_start:
+            mu = oos_mean
+        else:
+            mu = oos_mean - depth * float(index - decay_start) / float(span)
+        out.append(rng.gauss(mu, sigma))
+    return tuple(out)
+
+
+def high_vol_healthy_path(
+    rng: random.Random,
+    *,
+    oos_mean: float,
+    oos_stdev: float,
+    n: int,
+) -> tuple[float, ...]:
+    sigma = max(oos_stdev, 1e-6)
+    return tuple(rng.gauss(oos_mean, sigma) for _ in range(n))
+
+
+def regime_shift_path(
+    rng: random.Random,
+    *,
+    oos_mean: float,
+    oos_stdev: float,
+    n: int,
+    decay_start: int,
+) -> tuple[float, ...]:
+    quiet = max(oos_stdev * 0.45, 1e-6)
+    loud = max(oos_stdev, 1e-6)
+    shift = oos_mean - 2.4 * max(oos_stdev, 1e-6)
+    out: list[float] = []
+    for index in range(n):
+        if index < decay_start:
+            out.append(rng.gauss(oos_mean, quiet))
+        else:
+            out.append(rng.gauss(shift, loud))
+    return tuple(out)
+
+
 def oos_stats(values: Sequence[float]) -> tuple[float, float]:
     series = tuple(float(item) for item in values)
     mean = sum(series) / float(len(series))

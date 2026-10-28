@@ -17,8 +17,9 @@ from lumina_research.agents.payloads import dump_json
 from lumina_research.agents.promotion import validation_gate_pass
 from lumina_research.agents.provenance import ProvenanceAuthority
 from lumina_research.monitoring.config import ContinuityConfig
-from lumina_research.monitoring.seal import canonical_admission, mac_ok
+from lumina_research.monitoring.seal import canonical_admission, canonical_state, mac_ok
 from lumina_research.monitoring.types import (
+    MIN_LIVE_OOS_VALUES,
     ContinuityRefused,
     Instrument,
     LiveSignal,
@@ -113,6 +114,8 @@ class LiveSignalRegistry(Frozen):
         oos = _oos_values(verified)
         if not oos:
             raise ContinuityRefused("OOS distribution missing")
+        if len(oos) < MIN_LIVE_OOS_VALUES:
+            raise ContinuityRefused("OOS distribution shorter than charter floor")
         windows = _count(verified.get("n_oos_windows"), "n_oos_windows")
         if windows < self._config.min_oos_windows:
             raise ContinuityRefused("OOS distribution shorter than charter floor")
@@ -178,7 +181,9 @@ class LiveSignalRegistry(Frozen):
             issue_mac=_text(unsigned["issue_mac"], "issue_mac"),
             report_sha256=_text(unsigned["report_sha256"], "report_sha256"),
             admission_mac=mac,
+            state_mac="",
         )
+        signal = _resign_state(self._authority, signal)
         if not self.verify(signal):
             raise ContinuityRefused("admission mac failed")
         self._signals[signal_id] = signal
@@ -186,7 +191,9 @@ class LiveSignalRegistry(Frozen):
 
     def verify(self, signal: LiveSignal) -> bool:
         body = _admission_body(signal)
-        return mac_ok(self._authority, canonical_admission(body), signal.admission_mac)
+        if not mac_ok(self._authority, canonical_admission(body), signal.admission_mac):
+            return False
+        return mac_ok(self._authority, canonical_state(_state_body(signal)), signal.state_mac)
 
     def apply_stage(self, signal_id: str, stage: SignalStage) -> LiveSignal:
         current = self.require(signal_id)
@@ -198,7 +205,7 @@ class LiveSignalRegistry(Frozen):
         weight = stage_weight(nxt, deweight_multiplier=self._config.deweight_multiplier)
         if weight > current.weight:
             raise ContinuityRefused("monitoring cannot increase exposure")
-        updated = _replace(current, stage=nxt, weight=weight)
+        updated = _resign_state(self._authority, _replace(current, stage=nxt, weight=weight))
         self._signals[signal_id] = updated
         return updated
 
@@ -210,7 +217,10 @@ class LiveSignalRegistry(Frozen):
             raise ContinuityRefused("illegal capacity scale")
         if scale > current.capacity_scale + 1e-12:
             raise ContinuityRefused("monitoring cannot increase exposure")
-        updated = _replace(current, capacity_scale=float(min(current.capacity_scale, scale)))
+        updated = _resign_state(
+            self._authority,
+            _replace(current, capacity_scale=float(min(current.capacity_scale, scale))),
+        )
         self._signals[signal_id] = updated
         return updated
 
@@ -221,10 +231,12 @@ def _replace(
     stage: SignalStage | None = None,
     weight: float | None = None,
     capacity_scale: float | None = None,
+    state_mac: str | None = None,
 ) -> LiveSignal:
     nxt_stage = signal.stage if stage is None else stage
     nxt_weight = signal.weight if weight is None else weight
     nxt_scale = signal.capacity_scale if capacity_scale is None else capacity_scale
+    nxt_state = signal.state_mac if state_mac is None else state_mac
     if stage_rank(nxt_stage) < stage_rank(signal.stage):
         raise ContinuityRefused("stage cannot recede")
     if nxt_weight > signal.weight + 1e-12 or nxt_scale > signal.capacity_scale + 1e-12:
@@ -259,7 +271,25 @@ def _replace(
         issue_mac=signal.issue_mac,
         report_sha256=signal.report_sha256,
         admission_mac=signal.admission_mac,
+        state_mac=nxt_state,
     )
+
+
+def _state_body(signal: LiveSignal) -> dict[str, object]:
+    return {
+        "signal_id": signal.signal_id,
+        "admission_mac": signal.admission_mac,
+        "stage": signal.stage,
+        "weight": signal.weight,
+        "capacity_scale": signal.capacity_scale,
+    }
+
+
+def _resign_state(authority: ProvenanceAuthority, signal: LiveSignal) -> LiveSignal:
+    mac = authority.mac(canonical_state(_state_body(signal)))
+    if signal.state_mac == mac:
+        return signal
+    return _replace(signal, state_mac=mac)
 
 
 def _admission_body(signal: LiveSignal) -> dict[str, object]:

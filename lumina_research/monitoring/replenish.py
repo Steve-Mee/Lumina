@@ -21,7 +21,7 @@ from lumina_research.agents.provenance import ProvenanceAuthority
 from lumina_research.monitoring.config import ContinuityConfig
 from lumina_research.monitoring.registry import LiveSignalRegistry
 from lumina_research.monitoring.report import log_decision
-from lumina_research.monitoring.seal import canonical_replenish, mac_ok
+from lumina_research.monitoring.seal import accept_mac, canonical_replenish
 from lumina_research.monitoring.types import ContinuityRefused
 
 
@@ -38,6 +38,7 @@ class ReplenishAgent(Frozen):
     _evolution_log_dir: Path | None
     _requests: list[ReplenishmentRequested]
     _seq: list[int]
+    _seen: set[str]
 
     def __init_subclass__(cls) -> None:
         raise TypeError("ReplenishAgent cannot be subclassed")
@@ -64,10 +65,11 @@ class ReplenishAgent(Frozen):
         self._evolution_log_dir = evolution_log_dir
         self._requests = []
         self._seq = [0]
+        self._seen = set()
         self._freeze()
         bus.register_topic_guard(RESEARCH_REPLENISH_TOPIC, self._guard)
         if blackboard is not None:
-            blackboard.register_topic_guard(RESEARCH_REPLENISH_TOPIC, self._guard)
+            blackboard.register_topic_guard(RESEARCH_REPLENISH_TOPIC, self._guard_bb)
 
     def requests(self) -> tuple[ReplenishmentRequested, ...]:
         return tuple(self._requests)
@@ -136,10 +138,21 @@ class ReplenishAgent(Frozen):
         return event
 
     def _guard(self, producer: str, payload: dict[str, object]) -> bool:
+        return self._check(producer, payload, consume=True)
+
+    def _guard_bb(self, producer: str, payload: dict[str, object]) -> bool:
+        return self._check(producer, payload, consume=False)
+
+    def _check(self, producer: str, payload: dict[str, object], *, consume: bool) -> bool:
         if producer.strip() != REPLENISH_AGENT_ID:
             return False
         try:
             ReplenishmentRequested.model_validate(payload)
         except Exception:
             return False
-        return mac_ok(self._authority, canonical_replenish(payload), payload.get("provenance_mac"))
+        return accept_mac(
+            self._authority,
+            canonical_replenish(payload),
+            payload.get("provenance_mac"),
+            self._seen if consume else None,
+        )

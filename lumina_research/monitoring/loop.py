@@ -19,7 +19,13 @@ from lumina_research.agents.hypothesis import HypothesisAgent
 from lumina_research.agents.promotion import PromotionAgent
 from lumina_research.agents.provenance import ProvenanceAuthority
 from lumina_research.agents.validation_agent import ValidationAgent
-from lumina_research.evolution.integrity import IntegrityError, IntegritySnapshot, assert_intact, capture_integrity
+from lumina_research.evolution.integrity import (
+    IntegrityError,
+    IntegritySnapshot,
+    assert_intact,
+    capture_integrity,
+    refuse_protected_write,
+)
 from lumina_research.evolution.regime import RegimeAction, RegimePolicy
 from lumina_research.monitoring.capacity import CapacityController
 from lumina_research.monitoring.config import ContinuityConfig, load_default_config
@@ -32,6 +38,7 @@ from lumina_research.monitoring.report import (
     DetectionReport,
     GuardianReport,
     build_detection_report,
+    log_decision,
     write_detection_reports,
     write_guardian_report,
 )
@@ -77,6 +84,7 @@ class ContinuityRuntime(Frozen):
     trials: TrialRegistry
     regime: RegimePolicy
     log_path: Path
+    _evolution_log_dir: Path | None
     _snapshot: IntegritySnapshot
 
     def __init_subclass__(cls) -> None:
@@ -95,10 +103,13 @@ class ContinuityRuntime(Frozen):
     ) -> None:
         snapshot = capture_integrity()
         cfg = config if config is not None else load_default_config()
+        core_equity = float(cfg.equity if equity is None else equity)
+        if core_equity > float(cfg.equity) + 1e-9:
+            raise ContinuityRefused("equity cannot exceed continuity config")
         event_bus = bus if bus is not None else EventBus()
         sealer = ProvenanceAuthority()
         registry = LiveSignalRegistry(authority=sealer, config=cfg)
-        core = RiskCore(load_risk_config(), equity=equity if equity is not None else cfg.equity)
+        core = RiskCore(load_risk_config(), equity=core_equity)
         trials = TrialRegistry(audit_path)
         hypothesis = HypothesisAgent(
             bus=event_bus,
@@ -117,7 +128,7 @@ class ContinuityRuntime(Frozen):
             experiment_log_path=experiment_log_path,
             blackboard=blackboard,
             audit_path=audit_path,
-            equity=equity if equity is not None else cfg.equity,
+            equity=core_equity,
         )
         promotion = PromotionAgent(
             bus=event_bus,
@@ -179,6 +190,7 @@ class ContinuityRuntime(Frozen):
         self.trials = trials
         self.regime = RegimePolicy()
         self.log_path = experiment_log_path
+        self._evolution_log_dir = evolution_log_dir
         self._snapshot = snapshot
         self._freeze()
 
@@ -201,9 +213,20 @@ class ContinuityRuntime(Frozen):
     def set_risk_limits(self) -> None:
         self.guardian.set_risk_limits()
 
+    def mutate_thresholds(self) -> None:
+        raise ContinuityRefused("threshold mutation requires ADR plus signed human review")
+
+    def write_risk_core(self, path: Path) -> None:
+        try:
+            refuse_protected_write(path)
+        except IntegrityError as exc:
+            raise ContinuityRefused(str(exc)) from exc
+
     def admit(self, candidate: PromotionCandidate, validation: ValidationResult) -> LiveSignal:
         self.assert_intact()
-        return self.registry.admit(candidate, validation)
+        signal = self.registry.admit(candidate, validation)
+        self._log_admit(signal)
+        return signal
 
     def ingest_promotions(self) -> tuple[LiveSignal, ...]:
         self.assert_intact()
@@ -219,14 +242,39 @@ class ContinuityRuntime(Frozen):
             validation = validations.get(candidate.hypothesis_id)
             if validation is None:
                 raise ContinuityRefused("promotion without ValidationResult")
-            admitted.append(self.registry.admit(candidate, validation))
+            signal = self.registry.admit(candidate, validation)
+            self._log_admit(signal)
+            admitted.append(signal)
             live.add(candidate.hypothesis_id)
         return tuple(admitted)
 
+    def _log_admit(self, signal: LiveSignal) -> None:
+        log_decision(
+            path=self.log_path,
+            agent_id="live_registry",
+            event="admit",
+            signal_id=signal.signal_id,
+            metrics={
+                "stage": signal.stage,
+                "weight": signal.weight,
+                "capacity_scale": signal.capacity_scale,
+                "instrument": signal.instrument,
+                "n_oos_windows": signal.n_oos_windows,
+                "oos_values": len(signal.oos_values),
+                "base_quantity": signal.base_quantity,
+                "base_notional": signal.base_notional,
+                "admission_mac": signal.admission_mac,
+                "state_mac": signal.state_mac,
+            },
+            evolution_log_dir=self._evolution_log_dir,
+        )
+
     def observe(self, signal_id: str, metric: float) -> LiveSignal:
+        self.assert_intact()
         return self.monitor.observe(signal_id, metric)
 
     def rebalance(self) -> tuple[LiveSignal, ...]:
+        self.assert_intact()
         return self.capacity.rebalance()
 
     def propose_order(
@@ -237,6 +285,7 @@ class ContinuityRuntime(Frozen):
         price: float,
         regime: RegimeAction | None = None,
     ) -> Decision:
+        self.assert_intact()
         return self.sizer.propose(signal_id, quantity=quantity, price=price, regime=regime)
 
     def request_replenishment(self, *, seed: int) -> tuple[LiveSignal, ...]:
@@ -323,6 +372,7 @@ def run_phase4_detection(
                 false_alarm=false_alarm,
                 time_to_detect=None,
                 final_stage=signal.stage,
+                kind="healthy",
             )
         )
     for index in range(n_decaying):
@@ -354,6 +404,7 @@ def run_phase4_detection(
                 false_alarm=False,
                 time_to_detect=detect_day,
                 final_stage=signal.stage,
+                kind="abrupt_decay",
             )
         )
     report = build_detection_report(seed=seed, paths=paths)

@@ -132,10 +132,40 @@ def canonical_replenish(fields: Mapping[str, object]) -> bytes:
     )
 
 
+def canonical_state(fields: Mapping[str, object]) -> bytes:
+    return _dumps(
+        {
+            "signal_id": fields["signal_id"],
+            "admission_mac": fields["admission_mac"],
+            "stage": fields["stage"],
+            "weight": fields["weight"],
+            "capacity_scale": fields["capacity_scale"],
+        }
+    )
+
+
 def mac_ok(authority: ProvenanceAuthority, canonical: bytes, digest: object) -> bool:
     if not isinstance(digest, str):
         return False
     return bool(authority.mac_ok(canonical, digest))
+
+
+def accept_mac(
+    authority: ProvenanceAuthority,
+    canonical: bytes,
+    digest: object,
+    seen: set[str] | None = None,
+) -> bool:
+    if not mac_ok(authority, canonical, digest):
+        return False
+    if seen is None:
+        return True
+    if not isinstance(digest, str):
+        return False
+    if digest in seen:
+        return False
+    seen.add(digest)
+    return True
 
 
 def _weight_event(fields: Mapping[str, object], default_version: str) -> bytes:

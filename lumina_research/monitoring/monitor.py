@@ -27,11 +27,11 @@ from lumina_research.monitoring.config import ContinuityConfig
 from lumina_research.monitoring.registry import LiveSignalRegistry
 from lumina_research.monitoring.report import log_decision
 from lumina_research.monitoring.seal import (
+    accept_mac,
     canonical_decay,
     canonical_deweight,
     canonical_retire,
     canonical_suspend,
-    mac_ok,
 )
 from lumina_research.monitoring.statistics import assess_decay
 from lumina_research.monitoring.types import ContinuityRefused, DecayAssessment, LiveSignal, stage_rank
@@ -52,6 +52,7 @@ class LivePerformanceMonitor(Frozen):
     _deweights: list[SignalDeweighted]
     _suspends: list[SignalSuspended]
     _retires: list[SignalRetired]
+    _seen: set[str]
 
     def __init_subclass__(cls) -> None:
         raise TypeError("LivePerformanceMonitor cannot be subclassed")
@@ -79,16 +80,17 @@ class LivePerformanceMonitor(Frozen):
         self._deweights = []
         self._suspends = []
         self._retires = []
+        self._seen = set()
         self._freeze()
         bus.register_topic_guard(RESEARCH_DECAY_TOPIC, self._guard_decay)
         bus.register_topic_guard(RESEARCH_DEWEIGHT_TOPIC, self._guard_deweight)
         bus.register_topic_guard(RESEARCH_SUSPEND_TOPIC, self._guard_suspend)
         bus.register_topic_guard(RESEARCH_RETIRE_TOPIC, self._guard_retire)
         if blackboard is not None:
-            blackboard.register_topic_guard(RESEARCH_DECAY_TOPIC, self._guard_decay)
-            blackboard.register_topic_guard(RESEARCH_DEWEIGHT_TOPIC, self._guard_deweight)
-            blackboard.register_topic_guard(RESEARCH_SUSPEND_TOPIC, self._guard_suspend)
-            blackboard.register_topic_guard(RESEARCH_RETIRE_TOPIC, self._guard_retire)
+            blackboard.register_topic_guard(RESEARCH_DECAY_TOPIC, self._guard_decay_bb)
+            blackboard.register_topic_guard(RESEARCH_DEWEIGHT_TOPIC, self._guard_deweight_bb)
+            blackboard.register_topic_guard(RESEARCH_SUSPEND_TOPIC, self._guard_suspend_bb)
+            blackboard.register_topic_guard(RESEARCH_RETIRE_TOPIC, self._guard_retire_bb)
 
     def series(self, signal_id: str) -> tuple[float, ...]:
         return tuple(self._series.get(signal_id, ()))
@@ -115,6 +117,8 @@ class LivePerformanceMonitor(Frozen):
         if not math.isfinite(value):
             raise ContinuityRefused("non-finite live metric")
         signal = self._registry.require(signal_id)
+        if not self._registry.verify(signal):
+            raise ContinuityRefused("signal_tampered")
         history = self._series.setdefault(signal_id, [])
         history.append(value)
         assessment = assess_decay(history, signal.oos_values, self._config)
@@ -124,6 +128,8 @@ class LivePerformanceMonitor(Frozen):
 
     def apply_guardian_suspend(self, signal_id: str, reason: str) -> LiveSignal:
         signal = self._registry.require(signal_id)
+        if not self._registry.verify(signal):
+            raise ContinuityRefused("signal_tampered")
         dummy = DecayAssessment(
             method=self._config.method,
             severity=2,
@@ -259,15 +265,44 @@ class LivePerformanceMonitor(Frozen):
             self._blackboard.publish_sync(topic=topic, producer=producer, payload=dict(payload), confidence=1.0)
 
     def _guard_decay(self, producer: str, payload: dict[str, object]) -> bool:
+        return self._check_decay(producer, payload, consume=True)
+
+    def _guard_decay_bb(self, producer: str, payload: dict[str, object]) -> bool:
+        return self._check_decay(producer, payload, consume=False)
+
+    def _guard_deweight(self, producer: str, payload: dict[str, object]) -> bool:
+        return self._check_deweight(producer, payload, consume=True)
+
+    def _guard_deweight_bb(self, producer: str, payload: dict[str, object]) -> bool:
+        return self._check_deweight(producer, payload, consume=False)
+
+    def _guard_suspend(self, producer: str, payload: dict[str, object]) -> bool:
+        return self._check_suspend(producer, payload, consume=True)
+
+    def _guard_suspend_bb(self, producer: str, payload: dict[str, object]) -> bool:
+        return self._check_suspend(producer, payload, consume=False)
+
+    def _guard_retire(self, producer: str, payload: dict[str, object]) -> bool:
+        return self._check_retire(producer, payload, consume=True)
+
+    def _guard_retire_bb(self, producer: str, payload: dict[str, object]) -> bool:
+        return self._check_retire(producer, payload, consume=False)
+
+    def _check_decay(self, producer: str, payload: dict[str, object], *, consume: bool) -> bool:
         if producer.strip() != MONITOR_AGENT_ID:
             return False
         try:
             DecayDetected.model_validate(payload)
         except Exception:
             return False
-        return mac_ok(self._authority, canonical_decay(payload), payload.get("provenance_mac"))
+        return accept_mac(
+            self._authority,
+            canonical_decay(payload),
+            payload.get("provenance_mac"),
+            self._seen if consume else None,
+        )
 
-    def _guard_deweight(self, producer: str, payload: dict[str, object]) -> bool:
+    def _check_deweight(self, producer: str, payload: dict[str, object], *, consume: bool) -> bool:
         if producer.strip() != MONITOR_AGENT_ID:
             return False
         try:
@@ -276,9 +311,14 @@ class LivePerformanceMonitor(Frozen):
             return False
         if parsed.new_weight >= parsed.previous_weight:
             return False
-        return mac_ok(self._authority, canonical_deweight(payload), payload.get("provenance_mac"))
+        return accept_mac(
+            self._authority,
+            canonical_deweight(payload),
+            payload.get("provenance_mac"),
+            self._seen if consume else None,
+        )
 
-    def _guard_suspend(self, producer: str, payload: dict[str, object]) -> bool:
+    def _check_suspend(self, producer: str, payload: dict[str, object], *, consume: bool) -> bool:
         if producer.strip() != MONITOR_AGENT_ID:
             return False
         try:
@@ -287,9 +327,14 @@ class LivePerformanceMonitor(Frozen):
             return False
         if parsed.new_weight != 0.0 or parsed.new_weight > parsed.previous_weight:
             return False
-        return mac_ok(self._authority, canonical_suspend(payload), payload.get("provenance_mac"))
+        return accept_mac(
+            self._authority,
+            canonical_suspend(payload),
+            payload.get("provenance_mac"),
+            self._seen if consume else None,
+        )
 
-    def _guard_retire(self, producer: str, payload: dict[str, object]) -> bool:
+    def _check_retire(self, producer: str, payload: dict[str, object], *, consume: bool) -> bool:
         if producer.strip() != MONITOR_AGENT_ID:
             return False
         try:
@@ -298,7 +343,12 @@ class LivePerformanceMonitor(Frozen):
             return False
         if parsed.new_weight != 0.0:
             return False
-        return mac_ok(self._authority, canonical_retire(payload), payload.get("provenance_mac"))
+        return accept_mac(
+            self._authority,
+            canonical_retire(payload),
+            payload.get("provenance_mac"),
+            self._seen if consume else None,
+        )
 
 
 def _intermediate(current: SignalStage, target: SignalStage) -> Sequence[SignalStage]:

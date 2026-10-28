@@ -19,6 +19,7 @@ class DetectionPath:
     false_alarm: bool
     time_to_detect: int | None
     final_stage: str
+    kind: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +33,50 @@ class DetectionReport:
     false_alarm_rate: float
     median_time_to_detect: float | None
     mean_time_to_detect: float | None
+    paths: tuple[DetectionPath, ...]
+    p10_time_to_detect: float | None = None
+    p90_time_to_detect: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class KindMetrics:
+    kind: str
+    n: int
+    n_detected: int
+    n_false_alarms: int
+    detection_rate: float
+    false_alarm_rate: float
+    median_time_to_detect: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class SeedDetectionRow:
+    seed: int
+    instrument: str
+    n_signals: int
+    detection_rate: float
+    false_alarm_rate: float
+    median_time_to_detect: float | None
+    mean_time_to_detect: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class MultiSeedDetectionReport:
+    seeds: tuple[SeedDetectionRow, ...]
+    n_signals: int
+    n_seeds: int
+    n_healthy: int
+    n_decaying: int
+    n_detected: int
+    n_false_alarms: int
+    detection_rate: float
+    false_alarm_rate: float
+    median_time_to_detect: float | None
+    mean_time_to_detect: float | None
+    p10_time_to_detect: float | None
+    p90_time_to_detect: float | None
+    time_to_detect: tuple[int, ...]
+    by_kind: tuple[KindMetrics, ...]
     paths: tuple[DetectionPath, ...]
 
 
@@ -107,6 +152,8 @@ def write_detection_reports(report: DetectionReport, directory: Path) -> None:
         "false_alarm_rate": report.false_alarm_rate,
         "median_time_to_detect": report.median_time_to_detect,
         "mean_time_to_detect": report.mean_time_to_detect,
+        "p10_time_to_detect": report.p10_time_to_detect,
+        "p90_time_to_detect": report.p90_time_to_detect,
         "paths": [
             {
                 "signal_id": item.signal_id,
@@ -115,6 +162,7 @@ def write_detection_reports(report: DetectionReport, directory: Path) -> None:
                 "false_alarm": item.false_alarm,
                 "time_to_detect": item.time_to_detect,
                 "final_stage": item.final_stage,
+                "kind": item.kind,
             }
             for item in report.paths
         ],
@@ -129,6 +177,8 @@ def write_detection_reports(report: DetectionReport, directory: Path) -> None:
         f"- detection_rate: `{report.detection_rate:.4f}`",
         f"- false_alarm_rate: `{report.false_alarm_rate:.4f}`",
         f"- median_time_to_detect: `{ttd}`",
+        f"- p10_time_to_detect: `{report.p10_time_to_detect}`",
+        f"- p90_time_to_detect: `{report.p90_time_to_detect}`",
         "",
     ]
     (directory / "phase4_detection.md").write_text("\n".join(md), encoding="utf-8")
@@ -159,8 +209,11 @@ def build_detection_report(*, seed: int, paths: Sequence[DetectionPath]) -> Dete
     detected = tuple(item for item in decaying if item.detected)
     false_alarms = tuple(item for item in healthy if item.false_alarm)
     ttds = tuple(item.time_to_detect for item in detected if item.time_to_detect is not None)
-    median = None if not ttds else float(sorted(ttds)[len(ttds) // 2])
-    mean = None if not ttds else float(sum(ttds) / len(ttds))
+    ordered = tuple(sorted(ttds))
+    median = None if not ordered else float(ordered[len(ordered) // 2])
+    mean = None if not ordered else float(sum(ordered) / len(ordered))
+    p10 = None if not ordered else float(ordered[max(0, int(0.10 * (len(ordered) - 1)))])
+    p90 = None if not ordered else float(ordered[min(len(ordered) - 1, int(0.90 * (len(ordered) - 1)))])
     return DetectionReport(
         seed=seed,
         n_healthy=len(healthy),
@@ -172,4 +225,126 @@ def build_detection_report(*, seed: int, paths: Sequence[DetectionPath]) -> Dete
         median_time_to_detect=median,
         mean_time_to_detect=mean,
         paths=rows,
+        p10_time_to_detect=p10,
+        p90_time_to_detect=p90,
     )
+
+
+def _kind_metrics(paths: Sequence[DetectionPath]) -> tuple[KindMetrics, ...]:
+    names = tuple(dict.fromkeys(item.kind or ("decaying" if item.decaying else "healthy") for item in paths))
+    rows: list[KindMetrics] = []
+    for name in names:
+        group = tuple(item for item in paths if (item.kind or ("decaying" if item.decaying else "healthy")) == name)
+        decaying = tuple(item for item in group if item.decaying)
+        healthy = tuple(item for item in group if not item.decaying)
+        detected = tuple(item for item in decaying if item.detected)
+        false_alarms = tuple(item for item in healthy if item.false_alarm)
+        ttds = tuple(sorted(item.time_to_detect for item in detected if item.time_to_detect is not None))
+        rows.append(
+            KindMetrics(
+                kind=name,
+                n=len(group),
+                n_detected=len(detected),
+                n_false_alarms=len(false_alarms),
+                detection_rate=(len(detected) / len(decaying)) if decaying else 0.0,
+                false_alarm_rate=(len(false_alarms) / len(healthy)) if healthy else 0.0,
+                median_time_to_detect=None if not ttds else float(ttds[len(ttds) // 2]),
+            )
+        )
+    return tuple(rows)
+
+
+def build_multiseed_report(*, rows: Sequence[SeedDetectionRow], paths: Sequence[DetectionPath]) -> MultiSeedDetectionReport:
+    pooled = build_detection_report(seed=0, paths=paths)
+    ttds = tuple(item.time_to_detect for item in paths if item.decaying and item.time_to_detect is not None)
+    return MultiSeedDetectionReport(
+        seeds=tuple(rows),
+        n_signals=len(tuple(paths)),
+        n_seeds=len(tuple(rows)),
+        n_healthy=pooled.n_healthy,
+        n_decaying=pooled.n_decaying,
+        n_detected=pooled.n_detected,
+        n_false_alarms=pooled.n_false_alarms,
+        detection_rate=pooled.detection_rate,
+        false_alarm_rate=pooled.false_alarm_rate,
+        median_time_to_detect=pooled.median_time_to_detect,
+        mean_time_to_detect=pooled.mean_time_to_detect,
+        p10_time_to_detect=pooled.p10_time_to_detect,
+        p90_time_to_detect=pooled.p90_time_to_detect,
+        time_to_detect=ttds,
+        by_kind=_kind_metrics(paths),
+        paths=tuple(paths),
+    )
+
+
+def write_multiseed_detection_reports(report: MultiSeedDetectionReport, directory: Path) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    body = {
+        "n_signals": report.n_signals,
+        "n_seeds": report.n_seeds,
+        "n_healthy": report.n_healthy,
+        "n_decaying": report.n_decaying,
+        "n_detected": report.n_detected,
+        "n_false_alarms": report.n_false_alarms,
+        "detection_rate": report.detection_rate,
+        "false_alarm_rate": report.false_alarm_rate,
+        "median_time_to_detect": report.median_time_to_detect,
+        "mean_time_to_detect": report.mean_time_to_detect,
+        "p10_time_to_detect": report.p10_time_to_detect,
+        "p90_time_to_detect": report.p90_time_to_detect,
+        "time_to_detect": list(report.time_to_detect),
+        "by_kind": [
+            {
+                "kind": item.kind,
+                "n": item.n,
+                "n_detected": item.n_detected,
+                "n_false_alarms": item.n_false_alarms,
+                "detection_rate": item.detection_rate,
+                "false_alarm_rate": item.false_alarm_rate,
+                "median_time_to_detect": item.median_time_to_detect,
+            }
+            for item in report.by_kind
+        ],
+        "seeds": [
+            {
+                "seed": item.seed,
+                "instrument": item.instrument,
+                "n_signals": item.n_signals,
+                "detection_rate": item.detection_rate,
+                "false_alarm_rate": item.false_alarm_rate,
+                "median_time_to_detect": item.median_time_to_detect,
+                "mean_time_to_detect": item.mean_time_to_detect,
+            }
+            for item in report.seeds
+        ],
+    }
+    (directory / "phase4_detection_multiseed.json").write_text(
+        json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    ttd = "n/a" if report.median_time_to_detect is None else f"{report.median_time_to_detect:.1f}"
+    md = [
+        "# Phase 4 multi-seed decay detection",
+        "",
+        f"- seeds: `{report.n_seeds}` signals: `{report.n_signals}`",
+        f"- detection_rate: `{report.detection_rate:.4f}`",
+        f"- false_alarm_rate: `{report.false_alarm_rate:.4f}`",
+        f"- median_time_to_detect: `{ttd}`",
+        f"- p10_time_to_detect: `{report.p10_time_to_detect}`",
+        f"- p90_time_to_detect: `{report.p90_time_to_detect}`",
+        "",
+        "| kind | n | detection_rate | false_alarm_rate | median TTD |",
+        "|---|---|---|---|---|",
+    ]
+    for kind_row in report.by_kind:
+        mid = "n/a" if kind_row.median_time_to_detect is None else f"{kind_row.median_time_to_detect:.1f}"
+        md.append(
+            f"| {kind_row.kind} | {kind_row.n} | {kind_row.detection_rate:.4f} | {kind_row.false_alarm_rate:.4f} | {mid} |"
+        )
+    md.extend(["", "| seed | instrument | n | detection_rate | false_alarm_rate | median TTD |", "|---|---|---|---|---|---|"])
+    for seed_row in report.seeds:
+        mid = "n/a" if seed_row.median_time_to_detect is None else f"{seed_row.median_time_to_detect:.1f}"
+        md.append(
+            f"| {seed_row.seed} | {seed_row.instrument} | {seed_row.n_signals} | {seed_row.detection_rate:.4f} | {seed_row.false_alarm_rate:.4f} | {mid} |"
+        )
+    md.append("")
+    (directory / "phase4_detection_multiseed.md").write_text("\n".join(md), encoding="utf-8")
