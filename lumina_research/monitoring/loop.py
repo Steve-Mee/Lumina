@@ -44,11 +44,12 @@ from lumina_research.monitoring.synthetic import (
     seal_promotion_pair,
 )
 from lumina_research.monitoring.types import ContinuityRefused, Instrument, LiveSignal
-
-_INSTRUMENTS: dict[str, Instrument] = {"ES": "ES", "NQ": "NQ", "MES": "MES", "MNQ": "MNQ"}
 from lumina_research.risk_core.config import load_default_config as load_risk_config
 from lumina_research.risk_core.engine import RiskCore
+from lumina_research.risk_core.types import Decision
 from lumina_research.validation.trial_registry import TrialRegistry
+
+_INSTRUMENTS: dict[str, Instrument] = {"ES": "ES", "NQ": "NQ", "MES": "MES", "MNQ": "MNQ"}
 
 DEFAULT_SEED = 20261028
 
@@ -235,9 +236,8 @@ class ContinuityRuntime(Frozen):
         quantity: float,
         price: float,
         regime: RegimeAction | None = None,
-    ) -> object:
-        action = regime if regime is not None else None
-        return self.sizer.propose(signal_id, quantity=quantity, price=price, regime=action)
+    ) -> Decision:
+        return self.sizer.propose(signal_id, quantity=quantity, price=price, regime=regime)
 
     def request_replenishment(self, *, seed: int) -> tuple[LiveSignal, ...]:
         self.assert_intact()

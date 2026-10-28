@@ -6,8 +6,9 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Sequence
+from typing import Sequence, cast
 
+from lumina_research.agents.objects import as_object_dict
 from lumina_research.monitoring.config import load_default_config
 from lumina_research.monitoring.loop import ContinuityRuntime
 from lumina_research.monitoring.types import ContinuityRefused
@@ -32,14 +33,15 @@ def load_decisions(state_dir: Path) -> tuple[dict[str, object], ...]:
     path = state_dir / "decisions.json"
     if not path.exists():
         return ()
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(raw, list):
+    loaded: object = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(loaded, list):
         raise ContinuityRefused("decisions.json must be a list")
     rows: list[dict[str, object]] = []
-    for item in raw:
-        if not isinstance(item, dict):
+    for item in cast(list[object], loaded):
+        mapping = as_object_dict(item)
+        if mapping is None:
             raise ContinuityRefused("decision rows must be objects")
-        rows.append({str(key): value for key, value in item.items()})
+        rows.append(mapping)
     return tuple(rows)
 
 

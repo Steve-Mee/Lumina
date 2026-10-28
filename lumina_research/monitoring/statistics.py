@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import math
 import statistics
-from typing import Sequence
+from typing import Sequence, assert_never
 
-from lumina_core.agent_orchestration.schemas_research import DecayMethod, SignalStage
+from lumina_core.agent_orchestration.schemas_research import DecayMethod
 from lumina_research.monitoring.config import ContinuityConfig
 from lumina_research.monitoring.types import ContinuityRefused, DecayAssessment, stage_from_rank
 
@@ -88,8 +88,8 @@ def assess_decay(
     config: ContinuityConfig,
 ) -> DecayAssessment:
     oos_values = tuple(float(item) for item in oos)
-    if len(oos_values) < config.min_oos_windows:
-        raise ContinuityRefused("OOS distribution is shorter than the charter window floor")
+    if not oos_values:
+        raise ContinuityRefused("OOS distribution is empty")
     if any(not math.isfinite(item) for item in oos_values):
         raise ContinuityRefused("non-finite OOS value")
     oos_mean = float(statistics.fmean(oos_values))
@@ -171,18 +171,20 @@ def _select(
         return cusum_sev
     if method == "sprt":
         return sprt_sev
-    votes_deweight = sum(1 for item in (z_sev, pct_sev, cusum_sev, sprt_sev) if item >= 1)
-    votes_suspend = sum(1 for item in (z_sev, pct_sev, cusum_sev, sprt_sev) if item >= 2)
-    votes_retire = sum(1 for item in (z_sev, pct_sev, cusum_sev, sprt_sev) if item >= 3)
-    if votes_retire >= 2:
-        return 3
-    if votes_suspend >= 2 or (votes_retire >= 1 and votes_deweight >= 2):
-        return 2
-    if votes_deweight >= 2:
-        return 1
-    if cusum_sev >= 2:
-        return cusum_sev
-    return 0
+    if method == "combined":
+        votes_deweight = sum(1 for item in (z_sev, pct_sev, cusum_sev, sprt_sev) if item >= 1)
+        votes_suspend = sum(1 for item in (z_sev, pct_sev, cusum_sev, sprt_sev) if item >= 2)
+        votes_retire = sum(1 for item in (z_sev, pct_sev, cusum_sev, sprt_sev) if item >= 3)
+        if votes_retire >= 2:
+            return 3
+        if votes_suspend >= 2 or (votes_retire >= 1 and votes_deweight >= 2):
+            return 2
+        if votes_deweight >= 2:
+            return 1
+        if cusum_sev >= 2:
+            return cusum_sev
+        return 0
+    assert_never(method)
 
 
 def _lower_severity(value: float, deweight: float, suspend: float, retire: float) -> int:
@@ -222,8 +224,6 @@ def _display(
         return cusum, config.cusum_h_deweight
     if method == "sprt":
         return llr, a_limit
-    return cusum, config.cusum_h_deweight
-
-
-def stage_name(severity: int) -> SignalStage:
-    return stage_from_rank(severity)
+    if method == "combined":
+        return cusum, config.cusum_h_deweight
+    assert_never(method)

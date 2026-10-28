@@ -14,7 +14,7 @@ from lumina_core.agent_orchestration.schemas_research import (
 from lumina_research.agents.frozen import Frozen
 from lumina_research.agents.objects import as_object_dict, as_object_list, mapping_get
 from lumina_research.agents.payloads import dump_json
-from lumina_research.agents.promotion import _gate_pass
+from lumina_research.agents.promotion import validation_gate_pass
 from lumina_research.agents.provenance import ProvenanceAuthority
 from lumina_research.monitoring.config import ContinuityConfig
 from lumina_research.monitoring.seal import canonical_admission, mac_ok
@@ -99,7 +99,7 @@ class LiveSignalRegistry(Frozen):
         verified = self._authority.verify_validation(val)
         if verified is None:
             raise ContinuityRefused("validation provenance_invalid")
-        if not _gate_pass(verified):
+        if not validation_gate_pass(verified):
             raise ContinuityRefused("validation gate failed")
         if str(cand.get("hypothesis_id")) != str(verified.get("hypothesis_id")):
             raise ContinuityRefused("hypothesis mismatch")
@@ -111,7 +111,10 @@ class LiveSignalRegistry(Frozen):
         if not self._consume_trial(trial_id):
             raise ContinuityRefused("trial_replay")
         oos = _oos_values(verified)
-        if len(oos) < self._config.min_oos_windows:
+        if not oos:
+            raise ContinuityRefused("OOS distribution missing")
+        windows = _count(verified.get("n_oos_windows"), "n_oos_windows")
+        if windows < self._config.min_oos_windows:
             raise ContinuityRefused("OOS distribution shorter than charter floor")
         instrument = _instrument(cand.get("instrument"))
         signal_id = str(verified["hypothesis_id"])
@@ -131,8 +134,8 @@ class LiveSignalRegistry(Frozen):
             "oos_values": list(oos),
             "oos_mean": float(statistics.fmean(oos)),
             "oos_stdev": float(statistics.pstdev(oos)) if len(oos) >= 2 else 0.0,
-            "n_oos_windows": int(verified["n_oos_windows"]),
-            "median_oos_after_costs": float(verified["median_oos_after_costs"]),
+            "n_oos_windows": _count(verified.get("n_oos_windows"), "n_oos_windows"),
+            "median_oos_after_costs": _number(verified.get("median_oos_after_costs"), "median_oos_after_costs"),
             "pbo": _required_float(as_object_dict(mapping_get(verified, "pbo")), "pbo"),
             "dsr_probability": _required_float(as_object_dict(mapping_get(verified, "dsr")), "probability"),
             "purge_applied": bool(verified["purge_applied"]),
@@ -148,32 +151,32 @@ class LiveSignalRegistry(Frozen):
         signal = LiveSignal(
             signal_id=signal_id,
             hypothesis_id=signal_id,
-            config_id=str(unsigned["config_id"]),
+            config_id=_text(unsigned["config_id"], "config_id"),
             trial_id=trial_id,
             instrument=instrument,
-            family_id=str(unsigned["family_id"]),
-            cluster_id=str(unsigned["cluster_id"]),
+            family_id=_text(unsigned["family_id"], "family_id"),
+            cluster_id=_text(unsigned["cluster_id"], "cluster_id"),
             stage="active",
             weight=1.0,
             capacity_scale=1.0,
-            base_quantity=float(unsigned["base_quantity"]),
-            base_price=float(unsigned["base_price"]),
-            base_notional=float(unsigned["base_notional"]),
+            base_quantity=_number(unsigned["base_quantity"], "base_quantity"),
+            base_price=_number(unsigned["base_price"], "base_price"),
+            base_notional=_number(unsigned["base_notional"], "base_notional"),
             oos_values=oos,
-            oos_mean=float(unsigned["oos_mean"]),
-            oos_stdev=float(unsigned["oos_stdev"]),
-            n_oos_windows=int(unsigned["n_oos_windows"]),
-            median_oos_after_costs=float(unsigned["median_oos_after_costs"]),
-            pbo=float(unsigned["pbo"]),
-            dsr_probability=float(unsigned["dsr_probability"]),
-            purge_applied=True,
-            embargo_applied=True,
-            cost_applied=True,
-            cost_model_id=str(unsigned["cost_model_id"]),
-            regimes_complete=True,
-            validation_mac=str(unsigned["validation_mac"]),
-            issue_mac=str(unsigned["issue_mac"]),
-            report_sha256=str(unsigned["report_sha256"]),
+            oos_mean=_number(unsigned["oos_mean"], "oos_mean"),
+            oos_stdev=_number(unsigned["oos_stdev"], "oos_stdev"),
+            n_oos_windows=_count(unsigned["n_oos_windows"], "n_oos_windows"),
+            median_oos_after_costs=_number(unsigned["median_oos_after_costs"], "median_oos_after_costs"),
+            pbo=_number(unsigned["pbo"], "pbo"),
+            dsr_probability=_number(unsigned["dsr_probability"], "dsr_probability"),
+            purge_applied=unsigned["purge_applied"] is True,
+            embargo_applied=unsigned["embargo_applied"] is True,
+            cost_applied=unsigned["cost_applied"] is True,
+            cost_model_id=_text(unsigned["cost_model_id"], "cost_model_id"),
+            regimes_complete=unsigned["regimes_complete"] is True,
+            validation_mac=_text(unsigned["validation_mac"], "validation_mac"),
+            issue_mac=_text(unsigned["issue_mac"], "issue_mac"),
+            report_sha256=_text(unsigned["report_sha256"], "report_sha256"),
             admission_mac=mac,
         )
         if not self.verify(signal):
@@ -307,10 +310,28 @@ def _oos_values(verified: Mapping[str, object]) -> tuple[float, ...]:
 def _required_float(payload: dict[str, object] | None, key: str) -> float:
     if payload is None:
         raise ContinuityRefused(f"{key} missing")
-    value = mapping_get(payload, key)
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
-        raise ContinuityRefused(f"{key} missing")
-    return float(value)
+    return _number(mapping_get(payload, key), key)
+
+
+def _number(value: object, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ContinuityRefused(f"{name} missing")
+    number = float(value)
+    if not math.isfinite(number):
+        raise ContinuityRefused(f"{name} missing")
+    return number
+
+
+def _count(value: object, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ContinuityRefused(f"{name} missing")
+    return value
+
+
+def _text(value: object, name: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ContinuityRefused(f"{name} missing")
+    return value
 
 
 def _instrument(value: object) -> Instrument:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal, assert_never
 
 from lumina_core.agent_orchestration.event_bus import EventBus
 from lumina_core.agent_orchestration.schemas_research import (
@@ -164,10 +165,17 @@ class CapacityController(Frozen):
         return mac_ok(self._authority, canonical_capacity(payload), payload.get("provenance_mac"))
 
 
-def _sums(signals: list[LiveSignal], attr: str) -> dict[str, float]:
+def _sums(signals: list[LiveSignal], attr: Literal["instrument", "family_id", "cluster_id"]) -> dict[str, float]:
     out: dict[str, float] = {}
     for item in signals:
-        key = str(getattr(item, attr))
+        if attr == "instrument":
+            key = str(item.instrument)
+        elif attr == "family_id":
+            key = item.family_id
+        elif attr == "cluster_id":
+            key = item.cluster_id
+        else:
+            assert_never(attr)
         out[key] = out.get(key, 0.0) + item.effective_notional()
     return out
 

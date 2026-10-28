@@ -339,3 +339,8 @@ def _gate_pass(verified: Mapping[str, object]) -> bool:
     if not isinstance(median, (int, float)) or isinstance(median, bool) or float(median) < 0.0:
         return False
     return True
+
+
+def validation_gate_pass(verified: Mapping[str, object]) -> bool:
+    """Independent floor re-check. Used by PromotionAgent and the live book."""
+    return _gate_pass(verified)

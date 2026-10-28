@@ -135,7 +135,7 @@ def canonical_replenish(fields: Mapping[str, object]) -> bytes:
 def mac_ok(authority: ProvenanceAuthority, canonical: bytes, digest: object) -> bool:
     if not isinstance(digest, str):
         return False
-    return authority.mac_ok(canonical, digest)
+    return bool(authority.mac_ok(canonical, digest))
 
 
 def _weight_event(fields: Mapping[str, object], default_version: str) -> bytes:
@@ -158,7 +158,7 @@ def _require_sequence(value: object) -> list[object]:
     items = as_object_list(value)
     if items is None:
         raise KeyError("reasons")
-    return items
+    return list(items)
 
 
 def _dumps(value: object) -> bytes:

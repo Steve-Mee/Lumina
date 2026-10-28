@@ -108,8 +108,8 @@ class LivePerformanceMonitor(Frozen):
     def increase_weight(self, signal_id: str, weight: float) -> None:
         self._registry.increase_weight(signal_id, weight)
 
-    def observe(self, signal_id: str, metric: float) -> LiveSignal:
-        if not isinstance(metric, (int, float)) or isinstance(metric, bool):
+    def observe(self, signal_id: str, metric: object) -> LiveSignal:
+        if isinstance(metric, bool) or not isinstance(metric, (int, float)):
             raise ContinuityRefused("non-finite live metric")
         value = float(metric)
         if not math.isfinite(value):

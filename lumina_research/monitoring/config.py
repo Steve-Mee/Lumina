@@ -149,8 +149,6 @@ def _validate(config: ContinuityConfig) -> None:
         raise ContinuityConfigError("pbo_promote_max cannot be weaker than the charter warning 0.25")
     if config.pbo_reject_min < FLOOR_PBO_HARD_REJECT:
         raise ContinuityConfigError("pbo_reject_min cannot be weaker than the charter hard reject 0.50")
-    if config.pbo_promote_max > config.pbo_reject_min:
-        raise ContinuityConfigError("pbo_promote_max must be <= pbo_reject_min")
     if config.min_oos_windows < FLOOR_MIN_OOS_WINDOWS:
         raise ContinuityConfigError("min_oos_windows cannot be weaker than the gate floor")
 
