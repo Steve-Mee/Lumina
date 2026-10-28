@@ -8,7 +8,7 @@ import math
 from typing import Any
 
 from ..evolution.dna_registry import PolicyDNA
-from ..evolution.genetic_operators import calculate_fitness, crossover, mutate_prompt
+from ..evolution.genetic_operators import calculate_fitness
 from .errors import ErrorSeverity, LuminaError
 from .proposal_emit import emit_risk_shadow_for_proposals
 
@@ -168,106 +168,13 @@ class ProposalBuildersMixin:
         meta_review: dict[str, Any],
         fitness_score: float,
     ) -> tuple[list[dict[str, Any]], dict[str, PolicyDNA]]:
-        if not top_dna:
-            return [], {}
-        registry = self.dna_registry()
-        weakest_regime = self.weakest_regime(meta_review)
-        lineage_hash = self.dna_lineage_hash()
-        candidates: list[dict[str, Any]] = []
-        candidate_map: dict[str, PolicyDNA] = {}
-        mutation_rates = [0.12, 0.18, 0.24, 0.3, 0.36]
-
-        for index, parent in enumerate(top_dna[:3]):
-            mutation_rate = mutation_rates[index % len(mutation_rates)]
-            mutated_prompt = mutate_prompt(self.prompt_source_from_dna(parent), mutation_rate)
-            draft = registry.mutate(
-                parent=parent,
-                mutation_rate=mutation_rate,
-                content={
-                    "candidate_name": f"genetic_mutant_{index + 1}",
-                    "prompt_tweak": mutated_prompt,
-                    "regime_focus": weakest_regime,
-                    "hyperparam_suggestion": self.mutated_hyperparams(
-                        parent=parent, scale=mutation_rate, champion=champion
-                    ),
-                },
-                fitness_score=fitness_score,
-                version="candidate",
-                lineage_hash=lineage_hash,
-            )
-            draft = registry.register_dna(draft)
-            candidate = self.candidate_from_dna(draft)
-            candidates.append(candidate)
-            candidate_map[draft.hash] = draft
-
-        crossover_pairs = [(0, 1), (0, 2), (1, 2)]
-        for left_index, right_index in crossover_pairs:
-            if left_index >= len(top_dna) or right_index >= len(top_dna):
-                continue
-            left_parent = top_dna[left_index]
-            right_parent = top_dna[right_index]
-            crossed_prompt = crossover(left_parent, right_parent)
-            draft = registry.mutate(
-                parent=left_parent,
-                crossover=right_parent,
-                mutation_rate=0.22,
-                content={
-                    "candidate_name": f"genetic_crossover_{left_index + 1}_{right_index + 1}",
-                    "prompt_tweak": crossed_prompt,
-                    "regime_focus": weakest_regime,
-                    "hyperparam_suggestion": self.blended_hyperparams(
-                        left_parent=left_parent, right_parent=right_parent, champion=champion
-                    ),
-                },
-                fitness_score=fitness_score,
-                version="candidate",
-                lineage_hash=lineage_hash,
-            )
-            draft = registry.register_dna(draft)
-            candidate = self.candidate_from_dna(draft)
-            candidates.append(candidate)
-            candidate_map[draft.hash] = draft
-
-        if len(candidates) < 5 and top_dna:
-            filler_parent = top_dna[0]
-            while len(candidates) < 5:
-                mutation_rate = mutation_rates[len(candidates) % len(mutation_rates)]
-                mutated_prompt = mutate_prompt(self.prompt_source_from_dna(filler_parent), mutation_rate)
-                draft = registry.mutate(
-                    parent=filler_parent,
-                    mutation_rate=mutation_rate,
-                    content={
-                        "candidate_name": f"genetic_filler_{len(candidates) + 1}",
-                        "prompt_tweak": mutated_prompt,
-                        "regime_focus": weakest_regime,
-                        "hyperparam_suggestion": self.mutated_hyperparams(
-                            parent=filler_parent, scale=mutation_rate, champion=champion
-                        ),
-                    },
-                    fitness_score=fitness_score,
-                    version="candidate",
-                    lineage_hash=lineage_hash,
-                )
-                draft = registry.register_dna(draft)
-                candidate = self.candidate_from_dna(draft)
-                candidates.append(candidate)
-                candidate_map[draft.hash] = draft
-
-        del nightly_report
-
+        del champion, top_dna, nightly_report, meta_review, fitness_score
         # === Phase 2 Deliverable 5 (Aperture Hardening) — Primary meta path (original SPF-003) ===
-        # Best-effort risk shadow validation for genetic candidates via
-        # validate_risk_proposal_in_shadow (risk_shadow_bridge). D2 Sub-Slice 3 creation firewall:
+        # Birth-v1 genetic search is archived. Risk shadow remains on PromotionGate via
+        # validate_risk_proposal_in_shadow (risk_shadow_bridge). D2 Sub-Slice 3:
         # ensure_candidate_has_shadow_ref attaches shadow_result_ref by construction.
-        emit_risk_shadow_for_proposals(
-            candidates,
-            engine=getattr(self._owner, "engine", None),
-            experiment_id_prefix="risk-meta-genetic",
-            default_dna_hash="meta-genetic",
-        )
-        # ================================================================================
-
-        return candidates[:10], candidate_map
+        # Prefix kept for audit: risk-meta-genetic.
+        return [], {}
 
     def prompt_fingerprint(self) -> str:
         agent_styles = dict(getattr(self._owner.engine.config, "agent_styles", {}) or {})
