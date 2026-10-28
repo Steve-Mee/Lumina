@@ -1,0 +1,1377 @@
+{
+  "floors_intact": true,
+  "kill_rate": 0.5,
+  "n_hypotheses": 40,
+  "n_mutations": 40,
+  "n_noise_mutations": 20,
+  "n_noise_promoted": 0,
+  "n_promoted": 20,
+  "risk_core_intact": true,
+  "seeds": [
+    {
+      "admitted_ids": [
+        "mut-birth-window-0000-s20261028",
+        "mut-birth-tune-0001-s20261029",
+        "mut-birth-noise-0010-s20261038",
+        "mut-birth-noise-0011-s20261039"
+      ],
+      "candidates": [
+        {
+          "dsr": 0.9999999983805712,
+          "hypothesis_id": "hyp-birth-window-0000-s20261028",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 6.281710335469365,
+            "pct_positive": 1.0,
+            "values": [
+              6.281710335469365,
+              6.281710335469365,
+              6.281710335469365,
+              6.281710335469365,
+              6.281710335469365
+            ],
+            "worst": 6.281710335469365
+          },
+          "passed_gate": true,
+          "pbo": 0.0,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 1.0504560805742333
+        },
+        {
+          "dsr": 0.9999999999413873,
+          "hypothesis_id": "hyp-birth-tune-0001-s20261029",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 6.739393546757026,
+            "pct_positive": 1.0,
+            "values": [
+              6.739393546757026,
+              6.739393546757026,
+              6.739393546757026,
+              6.739393546757026,
+              6.739393546757026
+            ],
+            "worst": 6.739393546757026
+          },
+          "passed_gate": true,
+          "pbo": 0.0,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 1.0194565242998403
+        },
+        {
+          "dsr": 0.12529709778371828,
+          "hypothesis_id": "hyp-birth-noise-0010-s20261038",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 0.3974830076498087,
+            "pct_positive": 1.0,
+            "values": [
+              0.3974830076498087,
+              0.3974830076498087,
+              0.3974830076498087,
+              0.3974830076498087,
+              0.3974830076498087
+            ],
+            "worst": 0.3974830076498087
+          },
+          "passed_gate": false,
+          "pbo": 0.0,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "dsr_below_threshold",
+            "negative_median_oos_after_costs",
+            "wfe_below_threshold"
+          ],
+          "wfe": -1.3347220265722886
+        },
+        {
+          "dsr": 0.0738029200767667,
+          "hypothesis_id": "hyp-birth-noise-0011-s20261039",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 0.18133898363109424,
+            "pct_positive": 1.0,
+            "values": [
+              0.18133898363109424,
+              0.18133898363109424,
+              0.18133898363109424,
+              0.18133898363109424,
+              0.18133898363109424
+            ],
+            "worst": 0.18133898363109424
+          },
+          "passed_gate": false,
+          "pbo": 0.0,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "dsr_below_threshold"
+          ],
+          "wfe": 2.2932929567102827
+        }
+      ],
+      "floors_intact": true,
+      "instrument": "MES",
+      "kill_rate": 0.5,
+      "mutation_ids": [
+        "mut-birth-window-0000-s20261028",
+        "mut-birth-tune-0001-s20261029",
+        "mut-birth-noise-0010-s20261038",
+        "mut-birth-noise-0011-s20261039"
+      ],
+      "n_admitted": 4,
+      "n_governance_rejected": 0,
+      "n_human_recorded": 0,
+      "n_hypotheses": 4,
+      "n_killed": 2,
+      "n_mutations": 4,
+      "n_noise_mutations": 2,
+      "n_noise_promoted": 0,
+      "n_promoted": 2,
+      "n_trials_end": 12,
+      "n_trials_start": 4,
+      "reject_reason_counts": {
+        "dsr_below_threshold": 2,
+        "negative_median_oos_after_costs": 1,
+        "wfe_below_threshold": 1
+      },
+      "risk_core_intact": true,
+      "seed": 20261028
+    },
+    {
+      "admitted_ids": [
+        "mut-birth-window-0000-s7",
+        "mut-birth-tune-0001-s8",
+        "mut-birth-noise-0010-s17",
+        "mut-birth-noise-0011-s18"
+      ],
+      "candidates": [
+        {
+          "dsr": 0.9999980573122553,
+          "hypothesis_id": "hyp-birth-window-0000-s7",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 6.071859459937003,
+            "pct_positive": 1.0,
+            "values": [
+              6.071859459937003,
+              6.071859459937003,
+              6.071859459937003,
+              6.071859459937003,
+              6.071859459937003
+            ],
+            "worst": 6.071859459937003
+          },
+          "passed_gate": true,
+          "pbo": 0.0,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 1.0513714985585314
+        },
+        {
+          "dsr": 0.9999997998226892,
+          "hypothesis_id": "hyp-birth-tune-0001-s8",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 5.816233060377228,
+            "pct_positive": 1.0,
+            "values": [
+              5.816233060377228,
+              5.816233060377228,
+              5.816233060377228,
+              5.816233060377228,
+              5.816233060377228
+            ],
+            "worst": 5.816233060377228
+          },
+          "passed_gate": true,
+          "pbo": 0.0,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 1.0483886530979152
+        },
+        {
+          "dsr": 0.0662231935410777,
+          "hypothesis_id": "hyp-birth-noise-0010-s17",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 0.09863353413313258,
+            "pct_positive": 1.0,
+            "values": [
+              0.09863353413313258,
+              0.09863353413313258,
+              0.09863353413313258,
+              0.09863353413313258,
+              0.09863353413313258
+            ],
+            "worst": 0.09863353413313258
+          },
+          "passed_gate": false,
+          "pbo": 0.0,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "dsr_below_threshold"
+          ],
+          "wfe": 1.7289644344762425
+        },
+        {
+          "dsr": 0.14013550580815176,
+          "hypothesis_id": "hyp-birth-noise-0011-s18",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 0.48979301126748254,
+            "pct_positive": 1.0,
+            "values": [
+              0.48979301126748254,
+              0.48979301126748254,
+              0.48979301126748254,
+              0.48979301126748254,
+              0.48979301126748254
+            ],
+            "worst": 0.48979301126748254
+          },
+          "passed_gate": false,
+          "pbo": 0.0,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "dsr_below_threshold"
+          ],
+          "wfe": 1.1048760950763312
+        }
+      ],
+      "floors_intact": true,
+      "instrument": "MNQ",
+      "kill_rate": 0.5,
+      "mutation_ids": [
+        "mut-birth-window-0000-s7",
+        "mut-birth-tune-0001-s8",
+        "mut-birth-noise-0010-s17",
+        "mut-birth-noise-0011-s18"
+      ],
+      "n_admitted": 4,
+      "n_governance_rejected": 0,
+      "n_human_recorded": 0,
+      "n_hypotheses": 4,
+      "n_killed": 2,
+      "n_mutations": 4,
+      "n_noise_mutations": 2,
+      "n_noise_promoted": 0,
+      "n_promoted": 2,
+      "n_trials_end": 12,
+      "n_trials_start": 4,
+      "reject_reason_counts": {
+        "dsr_below_threshold": 2
+      },
+      "risk_core_intact": true,
+      "seed": 7
+    },
+    {
+      "admitted_ids": [
+        "mut-birth-window-0000-s13",
+        "mut-birth-tune-0001-s14",
+        "mut-birth-noise-0010-s23",
+        "mut-birth-noise-0011-s24"
+      ],
+      "candidates": [
+        {
+          "dsr": 0.9999999999966693,
+          "hypothesis_id": "hyp-birth-window-0000-s13",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 7.558225758692148,
+            "pct_positive": 1.0,
+            "values": [
+              7.558225758692148,
+              7.558225758692148,
+              7.558225758692148,
+              7.558225758692148,
+              7.558225758692148
+            ],
+            "worst": 7.558225758692148
+          },
+          "passed_gate": true,
+          "pbo": 0.0,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 1.042917062423438
+        },
+        {
+          "dsr": 0.9999999996554763,
+          "hypothesis_id": "hyp-birth-tune-0001-s14",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 6.969949469146474,
+            "pct_positive": 1.0,
+            "values": [
+              6.969949469146474,
+              6.969949469146474,
+              6.969949469146474,
+              6.969949469146474,
+              6.969949469146474
+            ],
+            "worst": 6.969949469146474
+          },
+          "passed_gate": true,
+          "pbo": 0.0,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 1.1693747051428391
+        },
+        {
+          "dsr": 0.0002579818834284042,
+          "hypothesis_id": "hyp-birth-noise-0010-s23",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": -1.5592831523409691,
+            "pct_positive": 0.0,
+            "values": [
+              -1.5592831523409691,
+              -1.5592831523409691,
+              -1.5592831523409691,
+              -1.5592831523409691,
+              -1.5592831523409691
+            ],
+            "worst": -1.5592831523409691
+          },
+          "passed_gate": false,
+          "pbo": 0.0,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "missing_or_undefined_wfe",
+            "dsr_below_threshold",
+            "negative_median_oos_after_costs",
+            "doubt"
+          ],
+          "wfe": null
+        },
+        {
+          "dsr": 0.11993249861010818,
+          "hypothesis_id": "hyp-birth-noise-0011-s24",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 0.4103196875739126,
+            "pct_positive": 1.0,
+            "values": [
+              0.4103196875739126,
+              0.4103196875739126,
+              0.4103196875739126,
+              0.4103196875739126,
+              0.4103196875739126
+            ],
+            "worst": 0.4103196875739126
+          },
+          "passed_gate": false,
+          "pbo": 0.0,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "dsr_below_threshold"
+          ],
+          "wfe": 1.9037010215105528
+        }
+      ],
+      "floors_intact": true,
+      "instrument": "ES",
+      "kill_rate": 0.5,
+      "mutation_ids": [
+        "mut-birth-window-0000-s13",
+        "mut-birth-tune-0001-s14",
+        "mut-birth-noise-0010-s23",
+        "mut-birth-noise-0011-s24"
+      ],
+      "n_admitted": 4,
+      "n_governance_rejected": 0,
+      "n_human_recorded": 0,
+      "n_hypotheses": 4,
+      "n_killed": 2,
+      "n_mutations": 4,
+      "n_noise_mutations": 2,
+      "n_noise_promoted": 0,
+      "n_promoted": 2,
+      "n_trials_end": 12,
+      "n_trials_start": 4,
+      "reject_reason_counts": {
+        "doubt": 1,
+        "dsr_below_threshold": 2,
+        "missing_or_undefined_wfe": 1,
+        "negative_median_oos_after_costs": 1
+      },
+      "risk_core_intact": true,
+      "seed": 13
+    },
+    {
+      "admitted_ids": [
+        "mut-birth-window-0000-s21",
+        "mut-birth-tune-0001-s22",
+        "mut-birth-noise-0010-s31",
+        "mut-birth-noise-0011-s32"
+      ],
+      "candidates": [
+        {
+          "dsr": 0.999999999971074,
+          "hypothesis_id": "hyp-birth-window-0000-s21",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 7.23600768651708,
+            "pct_positive": 1.0,
+            "values": [
+              7.23600768651708,
+              7.23600768651708,
+              7.23600768651708,
+              7.23600768651708,
+              7.23600768651708
+            ],
+            "worst": 7.23600768651708
+          },
+          "passed_gate": true,
+          "pbo": 0.0,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 1.0699425404405165
+        },
+        {
+          "dsr": 0.9999999814010847,
+          "hypothesis_id": "hyp-birth-tune-0001-s22",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 5.819128407246784,
+            "pct_positive": 1.0,
+            "values": [
+              5.819128407246784,
+              5.819128407246784,
+              5.819128407246784,
+              5.819128407246784,
+              5.819128407246784
+            ],
+            "worst": 5.819128407246784
+          },
+          "passed_gate": true,
+          "pbo": 0.0,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 0.9569929956607761
+        },
+        {
+          "dsr": 0.016285022484093192,
+          "hypothesis_id": "hyp-birth-noise-0010-s31",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": -0.4306816518045601,
+            "pct_positive": 0.0,
+            "values": [
+              -0.4306816518045601,
+              -0.4306816518045601,
+              -0.4306816518045601,
+              -0.4306816518045601,
+              -0.4306816518045601
+            ],
+            "worst": -0.4306816518045601
+          },
+          "passed_gate": false,
+          "pbo": 0.0,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "missing_or_undefined_wfe",
+            "dsr_below_threshold",
+            "negative_median_oos_after_costs",
+            "doubt"
+          ],
+          "wfe": null
+        },
+        {
+          "dsr": 0.10741601141961232,
+          "hypothesis_id": "hyp-birth-noise-0011-s32",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 0.3555316933457468,
+            "pct_positive": 1.0,
+            "values": [
+              0.3555316933457468,
+              0.3555316933457468,
+              0.3555316933457468,
+              0.3555316933457468,
+              0.3555316933457468
+            ],
+            "worst": 0.3555316933457468
+          },
+          "passed_gate": false,
+          "pbo": 0.0,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "missing_or_undefined_wfe",
+            "dsr_below_threshold",
+            "doubt"
+          ],
+          "wfe": null
+        }
+      ],
+      "floors_intact": true,
+      "instrument": "NQ",
+      "kill_rate": 0.5,
+      "mutation_ids": [
+        "mut-birth-window-0000-s21",
+        "mut-birth-tune-0001-s22",
+        "mut-birth-noise-0010-s31",
+        "mut-birth-noise-0011-s32"
+      ],
+      "n_admitted": 4,
+      "n_governance_rejected": 0,
+      "n_human_recorded": 0,
+      "n_hypotheses": 4,
+      "n_killed": 2,
+      "n_mutations": 4,
+      "n_noise_mutations": 2,
+      "n_noise_promoted": 0,
+      "n_promoted": 2,
+      "n_trials_end": 12,
+      "n_trials_start": 4,
+      "reject_reason_counts": {
+        "doubt": 2,
+        "dsr_below_threshold": 2,
+        "missing_or_undefined_wfe": 2,
+        "negative_median_oos_after_costs": 1
+      },
+      "risk_core_intact": true,
+      "seed": 21
+    },
+    {
+      "admitted_ids": [
+        "mut-birth-window-0000-s42",
+        "mut-birth-tune-0001-s43",
+        "mut-birth-noise-0010-s52",
+        "mut-birth-noise-0011-s53"
+      ],
+      "candidates": [
+        {
+          "dsr": 0.999999999970667,
+          "hypothesis_id": "hyp-birth-window-0000-s42",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 7.374352568814563,
+            "pct_positive": 1.0,
+            "values": [
+              7.374352568814563,
+              7.374352568814563,
+              7.374352568814563,
+              7.374352568814563,
+              7.374352568814563
+            ],
+            "worst": 7.374352568814563
+          },
+          "passed_gate": true,
+          "pbo": 0.0,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 1.0736049452346665
+        },
+        {
+          "dsr": 0.9999950629232073,
+          "hypothesis_id": "hyp-birth-tune-0001-s43",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 5.281107390360827,
+            "pct_positive": 1.0,
+            "values": [
+              5.281107390360827,
+              5.281107390360827,
+              5.281107390360827,
+              5.281107390360827,
+              5.281107390360827
+            ],
+            "worst": 5.281107390360827
+          },
+          "passed_gate": true,
+          "pbo": 0.0,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 0.8761115282905916
+        },
+        {
+          "dsr": 0.03375780591620875,
+          "hypothesis_id": "hyp-birth-noise-0010-s52",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": -0.17238769180007274,
+            "pct_positive": 0.0,
+            "values": [
+              -0.17238769180007274,
+              -0.17238769180007274,
+              -0.17238769180007274,
+              -0.17238769180007274,
+              -0.17238769180007274
+            ],
+            "worst": -0.17238769180007274
+          },
+          "passed_gate": false,
+          "pbo": 0.0,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "missing_or_undefined_wfe",
+            "dsr_below_threshold",
+            "negative_median_oos_after_costs",
+            "doubt"
+          ],
+          "wfe": null
+        },
+        {
+          "dsr": 0.01137026586440032,
+          "hypothesis_id": "hyp-birth-noise-0011-s53",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": -0.5150100832764789,
+            "pct_positive": 0.0,
+            "values": [
+              -0.5150100832764789,
+              -0.5150100832764789,
+              -0.5150100832764789,
+              -0.5150100832764789,
+              -0.5150100832764789
+            ],
+            "worst": -0.5150100832764789
+          },
+          "passed_gate": false,
+          "pbo": 0.0,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "missing_or_undefined_wfe",
+            "dsr_below_threshold",
+            "negative_median_oos_after_costs",
+            "doubt"
+          ],
+          "wfe": null
+        }
+      ],
+      "floors_intact": true,
+      "instrument": "MES",
+      "kill_rate": 0.5,
+      "mutation_ids": [
+        "mut-birth-window-0000-s42",
+        "mut-birth-tune-0001-s43",
+        "mut-birth-noise-0010-s52",
+        "mut-birth-noise-0011-s53"
+      ],
+      "n_admitted": 4,
+      "n_governance_rejected": 0,
+      "n_human_recorded": 0,
+      "n_hypotheses": 4,
+      "n_killed": 2,
+      "n_mutations": 4,
+      "n_noise_mutations": 2,
+      "n_noise_promoted": 0,
+      "n_promoted": 2,
+      "n_trials_end": 12,
+      "n_trials_start": 4,
+      "reject_reason_counts": {
+        "doubt": 2,
+        "dsr_below_threshold": 2,
+        "missing_or_undefined_wfe": 2,
+        "negative_median_oos_after_costs": 2
+      },
+      "risk_core_intact": true,
+      "seed": 42
+    },
+    {
+      "admitted_ids": [
+        "mut-birth-window-0000-s99",
+        "mut-birth-tune-0001-s100",
+        "mut-birth-noise-0010-s109",
+        "mut-birth-noise-0011-s110"
+      ],
+      "candidates": [
+        {
+          "dsr": 0.9999958501524367,
+          "hypothesis_id": "hyp-birth-window-0000-s99",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 5.517101063192406,
+            "pct_positive": 1.0,
+            "values": [
+              5.517101063192406,
+              5.517101063192406,
+              5.517101063192406,
+              5.517101063192406,
+              5.517101063192406
+            ],
+            "worst": 5.517101063192406
+          },
+          "passed_gate": true,
+          "pbo": 0.0,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 1.0967018944618692
+        },
+        {
+          "dsr": 0.9999949418765943,
+          "hypothesis_id": "hyp-birth-tune-0001-s100",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 5.406362158396822,
+            "pct_positive": 1.0,
+            "values": [
+              5.406362158396822,
+              5.406362158396822,
+              5.406362158396822,
+              5.406362158396822,
+              5.406362158396822
+            ],
+            "worst": 5.406362158396822
+          },
+          "passed_gate": true,
+          "pbo": 0.0,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 1.0505797770168592
+        },
+        {
+          "dsr": 0.016638676417435216,
+          "hypothesis_id": "hyp-birth-noise-0010-s109",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": -0.4264053956208567,
+            "pct_positive": 0.0,
+            "values": [
+              -0.4264053956208567,
+              -0.4264053956208567,
+              -0.4264053956208567,
+              -0.4264053956208567,
+              -0.4264053956208567
+            ],
+            "worst": -0.4264053956208567
+          },
+          "passed_gate": false,
+          "pbo": 0.0,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "missing_or_undefined_wfe",
+            "dsr_below_threshold",
+            "doubt"
+          ],
+          "wfe": null
+        },
+        {
+          "dsr": 0.11480030284270021,
+          "hypothesis_id": "hyp-birth-noise-0011-s110",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 0.3887210632469309,
+            "pct_positive": 1.0,
+            "values": [
+              0.3887210632469309,
+              0.3887210632469309,
+              0.3887210632469309,
+              0.3887210632469309,
+              0.3887210632469309
+            ],
+            "worst": 0.3887210632469309
+          },
+          "passed_gate": false,
+          "pbo": 0.0,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "dsr_below_threshold"
+          ],
+          "wfe": 5.069036267965344
+        }
+      ],
+      "floors_intact": true,
+      "instrument": "MNQ",
+      "kill_rate": 0.5,
+      "mutation_ids": [
+        "mut-birth-window-0000-s99",
+        "mut-birth-tune-0001-s100",
+        "mut-birth-noise-0010-s109",
+        "mut-birth-noise-0011-s110"
+      ],
+      "n_admitted": 4,
+      "n_governance_rejected": 0,
+      "n_human_recorded": 0,
+      "n_hypotheses": 4,
+      "n_killed": 2,
+      "n_mutations": 4,
+      "n_noise_mutations": 2,
+      "n_noise_promoted": 0,
+      "n_promoted": 2,
+      "n_trials_end": 12,
+      "n_trials_start": 4,
+      "reject_reason_counts": {
+        "doubt": 1,
+        "dsr_below_threshold": 2,
+        "missing_or_undefined_wfe": 1
+      },
+      "risk_core_intact": true,
+      "seed": 99
+    },
+    {
+      "admitted_ids": [
+        "mut-birth-window-0000-s123",
+        "mut-birth-tune-0001-s124",
+        "mut-birth-noise-0010-s133",
+        "mut-birth-noise-0011-s134"
+      ],
+      "candidates": [
+        {
+          "dsr": 0.9999998977980726,
+          "hypothesis_id": "hyp-birth-window-0000-s123",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 6.17719913195633,
+            "pct_positive": 1.0,
+            "values": [
+              6.17719913195633,
+              6.17719913195633,
+              6.17719913195633,
+              6.17719913195633,
+              6.17719913195633
+            ],
+            "worst": 6.17719913195633
+          },
+          "passed_gate": true,
+          "pbo": 0.0,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 1.1231561036044542
+        },
+        {
+          "dsr": 0.9999645186346751,
+          "hypothesis_id": "hyp-birth-tune-0001-s124",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 5.130957389459278,
+            "pct_positive": 1.0,
+            "values": [
+              5.130957389459278,
+              5.130957389459278,
+              5.130957389459278,
+              5.130957389459278,
+              5.130957389459278
+            ],
+            "worst": 5.130957389459278
+          },
+          "passed_gate": true,
+          "pbo": 0.0,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 1.152782511651343
+        },
+        {
+          "dsr": 0.0042014080560520695,
+          "hypothesis_id": "hyp-birth-noise-0010-s133",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": -0.8498450307826766,
+            "pct_positive": 0.0,
+            "values": [
+              -0.8498450307826766,
+              -0.8498450307826766,
+              -0.8498450307826766,
+              -0.8498450307826766,
+              -0.8498450307826766
+            ],
+            "worst": -0.8498450307826766
+          },
+          "passed_gate": false,
+          "pbo": 0.0,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "missing_or_undefined_wfe",
+            "dsr_below_threshold",
+            "doubt"
+          ],
+          "wfe": null
+        },
+        {
+          "dsr": 0.32789043255819855,
+          "hypothesis_id": "hyp-birth-noise-0011-s134",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 1.0262602525648858,
+            "pct_positive": 1.0,
+            "values": [
+              1.0262602525648858,
+              1.0262602525648858,
+              1.0262602525648858,
+              1.0262602525648858,
+              1.0262602525648858
+            ],
+            "worst": 1.0262602525648858
+          },
+          "passed_gate": false,
+          "pbo": 0.0,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "dsr_below_threshold"
+          ],
+          "wfe": 2.0935559677980384
+        }
+      ],
+      "floors_intact": true,
+      "instrument": "ES",
+      "kill_rate": 0.5,
+      "mutation_ids": [
+        "mut-birth-window-0000-s123",
+        "mut-birth-tune-0001-s124",
+        "mut-birth-noise-0010-s133",
+        "mut-birth-noise-0011-s134"
+      ],
+      "n_admitted": 4,
+      "n_governance_rejected": 0,
+      "n_human_recorded": 0,
+      "n_hypotheses": 4,
+      "n_killed": 2,
+      "n_mutations": 4,
+      "n_noise_mutations": 2,
+      "n_noise_promoted": 0,
+      "n_promoted": 2,
+      "n_trials_end": 12,
+      "n_trials_start": 4,
+      "reject_reason_counts": {
+        "doubt": 1,
+        "dsr_below_threshold": 2,
+        "missing_or_undefined_wfe": 1
+      },
+      "risk_core_intact": true,
+      "seed": 123
+    },
+    {
+      "admitted_ids": [
+        "mut-birth-window-0000-s256",
+        "mut-birth-tune-0001-s257",
+        "mut-birth-noise-0010-s266",
+        "mut-birth-noise-0011-s267"
+      ],
+      "candidates": [
+        {
+          "dsr": 0.9999999632594005,
+          "hypothesis_id": "hyp-birth-window-0000-s256",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 6.259939577906604,
+            "pct_positive": 1.0,
+            "values": [
+              6.259939577906604,
+              6.259939577906604,
+              6.259939577906604,
+              6.259939577906604,
+              6.259939577906604
+            ],
+            "worst": 6.259939577906604
+          },
+          "passed_gate": true,
+          "pbo": 0.014285714285714285,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 1.0126942638120513
+        },
+        {
+          "dsr": 0.9994341185337998,
+          "hypothesis_id": "hyp-birth-tune-0001-s257",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 4.211648999140821,
+            "pct_positive": 1.0,
+            "values": [
+              4.211648999140821,
+              4.211648999140821,
+              4.211648999140821,
+              4.211648999140821,
+              4.211648999140821
+            ],
+            "worst": 4.211648999140821
+          },
+          "passed_gate": true,
+          "pbo": 0.014285714285714285,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 0.9941378490798422
+        },
+        {
+          "dsr": 0.009896611852975468,
+          "hypothesis_id": "hyp-birth-noise-0010-s266",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": -0.5946025051873859,
+            "pct_positive": 0.0,
+            "values": [
+              -0.5946025051873859,
+              -0.5946025051873859,
+              -0.5946025051873859,
+              -0.5946025051873859,
+              -0.5946025051873859
+            ],
+            "worst": -0.5946025051873859
+          },
+          "passed_gate": false,
+          "pbo": 0.014285714285714285,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "missing_or_undefined_wfe",
+            "dsr_below_threshold",
+            "negative_median_oos_after_costs",
+            "doubt"
+          ],
+          "wfe": null
+        },
+        {
+          "dsr": 0.026061382634534835,
+          "hypothesis_id": "hyp-birth-noise-0011-s267",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": -0.23198766707478324,
+            "pct_positive": 0.0,
+            "values": [
+              -0.23198766707478324,
+              -0.23198766707478324,
+              -0.23198766707478324,
+              -0.23198766707478324,
+              -0.23198766707478324
+            ],
+            "worst": -0.23198766707478324
+          },
+          "passed_gate": false,
+          "pbo": 0.014285714285714285,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "missing_or_undefined_wfe",
+            "dsr_below_threshold",
+            "doubt"
+          ],
+          "wfe": null
+        }
+      ],
+      "floors_intact": true,
+      "instrument": "NQ",
+      "kill_rate": 0.5,
+      "mutation_ids": [
+        "mut-birth-window-0000-s256",
+        "mut-birth-tune-0001-s257",
+        "mut-birth-noise-0010-s266",
+        "mut-birth-noise-0011-s267"
+      ],
+      "n_admitted": 4,
+      "n_governance_rejected": 0,
+      "n_human_recorded": 0,
+      "n_hypotheses": 4,
+      "n_killed": 2,
+      "n_mutations": 4,
+      "n_noise_mutations": 2,
+      "n_noise_promoted": 0,
+      "n_promoted": 2,
+      "n_trials_end": 12,
+      "n_trials_start": 4,
+      "reject_reason_counts": {
+        "doubt": 2,
+        "dsr_below_threshold": 2,
+        "missing_or_undefined_wfe": 2,
+        "negative_median_oos_after_costs": 1
+      },
+      "risk_core_intact": true,
+      "seed": 256
+    },
+    {
+      "admitted_ids": [
+        "mut-birth-window-0000-s1024",
+        "mut-birth-tune-0001-s1025",
+        "mut-birth-noise-0010-s1034",
+        "mut-birth-noise-0011-s1035"
+      ],
+      "candidates": [
+        {
+          "dsr": 0.9999999979331564,
+          "hypothesis_id": "hyp-birth-window-0000-s1024",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 6.530743330867409,
+            "pct_positive": 1.0,
+            "values": [
+              6.530743330867409,
+              6.530743330867409,
+              6.530743330867409,
+              6.530743330867409,
+              6.530743330867409
+            ],
+            "worst": 6.530743330867409
+          },
+          "passed_gate": true,
+          "pbo": 0.0,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 1.1819387873671958
+        },
+        {
+          "dsr": 0.999999986666786,
+          "hypothesis_id": "hyp-birth-tune-0001-s1025",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 6.230741915431964,
+            "pct_positive": 1.0,
+            "values": [
+              6.230741915431964,
+              6.230741915431964,
+              6.230741915431964,
+              6.230741915431964,
+              6.230741915431964
+            ],
+            "worst": 6.230741915431964
+          },
+          "passed_gate": true,
+          "pbo": 0.0,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 1.1077244004726587
+        },
+        {
+          "dsr": 0.054823703812547975,
+          "hypothesis_id": "hyp-birth-noise-0010-s1034",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 0.01878630995049608,
+            "pct_positive": 1.0,
+            "values": [
+              0.01878630995049608,
+              0.01878630995049608,
+              0.01878630995049608,
+              0.01878630995049608,
+              0.01878630995049608
+            ],
+            "worst": 0.01878630995049608
+          },
+          "passed_gate": false,
+          "pbo": 0.0,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "missing_or_undefined_wfe",
+            "dsr_below_threshold",
+            "negative_median_oos_after_costs",
+            "doubt"
+          ],
+          "wfe": null
+        },
+        {
+          "dsr": 0.058560425023762686,
+          "hypothesis_id": "hyp-birth-noise-0011-s1035",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 0.08196256780063442,
+            "pct_positive": 1.0,
+            "values": [
+              0.08196256780063442,
+              0.08196256780063442,
+              0.08196256780063442,
+              0.08196256780063442,
+              0.08196256780063442
+            ],
+            "worst": 0.08196256780063442
+          },
+          "passed_gate": false,
+          "pbo": 0.0,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "dsr_below_threshold"
+          ],
+          "wfe": 0.7627918230605724
+        }
+      ],
+      "floors_intact": true,
+      "instrument": "MES",
+      "kill_rate": 0.5,
+      "mutation_ids": [
+        "mut-birth-window-0000-s1024",
+        "mut-birth-tune-0001-s1025",
+        "mut-birth-noise-0010-s1034",
+        "mut-birth-noise-0011-s1035"
+      ],
+      "n_admitted": 4,
+      "n_governance_rejected": 0,
+      "n_human_recorded": 0,
+      "n_hypotheses": 4,
+      "n_killed": 2,
+      "n_mutations": 4,
+      "n_noise_mutations": 2,
+      "n_noise_promoted": 0,
+      "n_promoted": 2,
+      "n_trials_end": 12,
+      "n_trials_start": 4,
+      "reject_reason_counts": {
+        "doubt": 1,
+        "dsr_below_threshold": 2,
+        "missing_or_undefined_wfe": 1,
+        "negative_median_oos_after_costs": 1
+      },
+      "risk_core_intact": true,
+      "seed": 1024
+    },
+    {
+      "admitted_ids": [
+        "mut-birth-window-0000-s4096",
+        "mut-birth-tune-0001-s4097",
+        "mut-birth-noise-0010-s4106",
+        "mut-birth-noise-0011-s4107"
+      ],
+      "candidates": [
+        {
+          "dsr": 0.9999999998827827,
+          "hypothesis_id": "hyp-birth-window-0000-s4096",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 6.7700738854798495,
+            "pct_positive": 1.0,
+            "values": [
+              6.7700738854798495,
+              6.7700738854798495,
+              6.7700738854798495,
+              6.7700738854798495,
+              6.7700738854798495
+            ],
+            "worst": 6.7700738854798495
+          },
+          "passed_gate": true,
+          "pbo": 0.0,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 1.0222370193147903
+        },
+        {
+          "dsr": 0.9999999565432461,
+          "hypothesis_id": "hyp-birth-tune-0001-s4097",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": 6.4341509263868275,
+            "pct_positive": 1.0,
+            "values": [
+              6.4341509263868275,
+              6.4341509263868275,
+              6.4341509263868275,
+              6.4341509263868275,
+              6.4341509263868275
+            ],
+            "worst": 6.4341509263868275
+          },
+          "passed_gate": true,
+          "pbo": 0.0,
+          "planted": true,
+          "promoted": true,
+          "reject_reasons": [],
+          "wfe": 1.123130773013947
+        },
+        {
+          "dsr": 0.02497678936533132,
+          "hypothesis_id": "hyp-birth-noise-0010-s4106",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": -0.2833286779127373,
+            "pct_positive": 0.0,
+            "values": [
+              -0.2833286779127373,
+              -0.2833286779127373,
+              -0.2833286779127373,
+              -0.2833286779127373,
+              -0.2833286779127373
+            ],
+            "worst": -0.2833286779127373
+          },
+          "passed_gate": false,
+          "pbo": 0.0,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "missing_or_undefined_wfe",
+            "dsr_below_threshold",
+            "doubt"
+          ],
+          "wfe": null
+        },
+        {
+          "dsr": 0.036750240360254316,
+          "hypothesis_id": "hyp-birth-noise-0011-s4107",
+          "n_oos_windows": 9,
+          "oos_distribution": {
+            "median": -0.10462070341992569,
+            "pct_positive": 0.0,
+            "values": [
+              -0.10462070341992569,
+              -0.10462070341992569,
+              -0.10462070341992569,
+              -0.10462070341992569,
+              -0.10462070341992569
+            ],
+            "worst": -0.10462070341992569
+          },
+          "passed_gate": false,
+          "pbo": 0.0,
+          "planted": false,
+          "promoted": false,
+          "reject_reasons": [
+            "missing_or_undefined_wfe",
+            "dsr_below_threshold",
+            "doubt"
+          ],
+          "wfe": null
+        }
+      ],
+      "floors_intact": true,
+      "instrument": "MNQ",
+      "kill_rate": 0.5,
+      "mutation_ids": [
+        "mut-birth-window-0000-s4096",
+        "mut-birth-tune-0001-s4097",
+        "mut-birth-noise-0010-s4106",
+        "mut-birth-noise-0011-s4107"
+      ],
+      "n_admitted": 4,
+      "n_governance_rejected": 0,
+      "n_human_recorded": 0,
+      "n_hypotheses": 4,
+      "n_killed": 2,
+      "n_mutations": 4,
+      "n_noise_mutations": 2,
+      "n_noise_promoted": 0,
+      "n_promoted": 2,
+      "n_trials_end": 12,
+      "n_trials_start": 4,
+      "reject_reason_counts": {
+        "doubt": 2,
+        "dsr_below_threshold": 2,
+        "missing_or_undefined_wfe": 2
+      },
+      "risk_core_intact": true,
+      "seed": 4096
+    }
+  ]
+}

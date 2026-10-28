@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from lumina_core.agent_orchestration.schemas_research import (
 from lumina_core.engine.agent_blackboard import AgentBlackboard
 from lumina_research.agents.provenance import ProvenanceAuthority
 from lumina_research.evolution.governance import GovernanceError, ReviewAuthority, ReviewError, read_adr
+from lumina_research.evolution import integrity as integrity_mod
 from lumina_research.evolution.integrity import (
     IntegrityError,
     assert_canonical_floors,
@@ -25,9 +27,10 @@ from lumina_research.evolution.integrity import (
     capture_integrity,
     refuse_protected_write,
 )
-from lumina_research.evolution.loop import EvolutionRuntime
-from lumina_research.evolution.mutations import copy_genome
+from lumina_research.evolution.loop import EvolutionIntegrityError, EvolutionRuntime
+from lumina_research.evolution.mutations import copy_genome, mutation_to_draft
 from lumina_research.evolution.reflector import ReflectorAgent
+from lumina_research.evolution.regime import RegimeAction, throttled_quantity
 from lumina_research.evolution.report import (
     MultiSeedEvolutionReport,
     SeedEvolution,
@@ -55,11 +58,19 @@ def test_require_feasible_and_copy_genome_bounds() -> None:
     parent = default_parent()
     require_feasible(parent)
     with pytest.raises(MutationRefused, match="n_obs"):
-        copy_genome(parent, n_obs=100)
+        copy_genome(parent, n_obs=800)
     with pytest.raises(MutationRefused, match="sigma"):
         copy_genome(parent, sigma=1.0)
     child = copy_genome(parent, mu=0.003)
     assert child.mu == pytest.approx(0.003)
+    with pytest.raises(MutationRefused, match="is_size"):
+        copy_genome(parent, is_size=10)
+    with pytest.raises(MutationRefused, match="oos_size"):
+        copy_genome(parent, oos_size=5)
+    with pytest.raises(MutationRefused, match="walk-forward"):
+        copy_genome(parent, is_size=120, oos_size=60)
+    with pytest.raises(MutationRefused, match="quantity"):
+        copy_genome(parent, quantity=20.0)
 
 
 @pytest.mark.unit
@@ -74,6 +85,25 @@ def test_integrity_helpers_and_refuse_write(tmp_path: Path) -> None:
 
         class _RT(EvolutionRuntime):  # type: ignore[misc]
             pass
+    broken = replace(snap, live_risk_hash="0" * 64)
+    with pytest.raises(IntegrityError, match="lumina_core/risk drifted"):
+        assert_intact(broken)
+    with pytest.raises(IntegrityError, match="research Risk Core drifted"):
+        assert_intact(replace(snap, research_risk_hash="0" * 64))
+    with pytest.raises(IntegrityError, match="gate_thresholds.toml drifted"):
+        assert_intact(replace(snap, thresholds_toml_hash="0" * 64))
+    with pytest.raises(IntegrityError, match="thresholds.py drifted"):
+        assert_intact(replace(snap, thresholds_py_hash="0" * 64))
+    with pytest.raises(IntegrityError, match="gate.py drifted"):
+        assert_intact(replace(snap, gate_py_hash="0" * 64))
+    with pytest.raises(IntegrityError, match="gate floor constants drifted"):
+        assert_intact(replace(snap, floors=(0.0, 0.0, 0.0, 0.0, 0.0)))
+    with pytest.raises(IntegrityError, match="Risk Core config drifted"):
+        assert_intact(replace(snap, risk_file=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)))
+    with pytest.raises(IntegrityError, match="bound validation gate rebound"):
+        assert_intact(replace(snap, bound_gate_id=0))
+    with pytest.raises(IntegrityError, match="evaluate_candidate monkeypatched"):
+        assert_intact(replace(snap, evaluate_id=0))
 
 
 @pytest.mark.unit
@@ -141,6 +171,8 @@ def test_canonical_bytes_and_mac_ok(tmp_path: Path) -> None:
     assert authority.mac_ok(canonical_governance(gov), gmac) is True
     MutationProposed.model_validate({**fields, "provenance_mac": mac})
     ParameterGenome.model_validate(default_parent().model_dump())
+    with pytest.raises(KeyError, match="reasons"):
+        canonical_governance({**gov, "reasons": object()})
 
 
 @pytest.mark.unit
@@ -181,6 +213,26 @@ def test_reflector_without_generators_paths(tmp_path: Path) -> None:
 
         class _Ref(ReflectorAgent):  # type: ignore[misc]
             pass
+    proposed = agent.propose(
+        kind="noise",
+        target="genome",
+        genome=default_parent().model_copy(update={"mu": 0.0, "planted": False, "kind": "noise"}),
+        rationale=_rationale(),
+        seed=2,
+        parent_config_id="p",
+        config_id="cfg-ok",
+    )
+    dumped = proposed.model_dump(mode="json")
+    assert agent._guard("rogue", dumped) is False
+    assert agent._guard("reflector_agent", {"mutation_id": "x"}) is False
+    dumped["provenance_mac"] = 1
+    assert agent._guard("reflector_agent", dumped) is False
+    qty_bad = default_parent()
+    with pytest.raises(Exception, match="non-positive"):
+        throttled_quantity(
+            qty_bad,
+            RegimeAction(size_multiplier=0.0, throttle=True, vol="high", trend="down"),
+        )
 
 
 @pytest.mark.unit
@@ -243,3 +295,114 @@ def test_proposed_accessor(tmp_path: Path) -> None:
     runtime.birth.tune(default_parent(), seed=2, index=0)
     assert len(runtime.reflector.proposed()) == 1
     assert runtime.governance.decisions() == ()
+
+
+@pytest.mark.unit
+def test_review_verify_mismatches_and_governance_guard(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    adr = write_adr(tmp_path / "adr", "genome")
+    review = runtime.reviews.sign_review(
+        reviewer_id="steve",
+        adr_bytes=adr.read_bytes(),
+        verdict="approve",
+        config_id="c",
+        kind="noise",
+        target="genome",
+    )
+    assert runtime.reviews.verify_review(
+        review,
+        adr_bytes=b"other-adr",
+        config_id="c",
+        kind="noise",
+        target="genome",
+    ) is False
+    assert runtime.reviews.verify_review(
+        review.model_copy(update={"reviewer_id": "reflector_agent"}),
+        adr_bytes=adr.read_bytes(),
+        config_id="c",
+        kind="noise",
+        target="genome",
+    ) is False
+    assert runtime.reviews.verify_review(
+        review,
+        adr_bytes=adr.read_bytes(),
+        config_id="other",
+        kind="noise",
+        target="genome",
+    ) is False
+    mutation = runtime.birth.noise_child(default_parent(), seed=1, index=0)
+    decision = runtime.governance.admit(mutation)
+    dumped = decision.model_dump(mode="json")
+    assert runtime.governance._guard("rogue", dumped) is False
+    assert runtime.governance._guard("governance_agent", {"mutation_id": "x"}) is False
+    dumped["provenance_mac"] = 1
+    assert runtime.governance._guard("governance_agent", dumped) is False
+
+
+@pytest.mark.unit
+def test_canonical_floor_and_risk_drift_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(integrity_mod, "FLOOR_DSR_PROBABILITY_MIN", 0.1)
+    with pytest.raises(IntegrityError, match="dsr floor"):
+        assert_canonical_floors()
+    monkeypatch.setattr(integrity_mod, "FLOOR_DSR_PROBABILITY_MIN", 0.95)
+    monkeypatch.setattr(integrity_mod, "FLOOR_WFE_MIN", 0.0)
+    with pytest.raises(IntegrityError, match="wfe floor"):
+        assert_canonical_floors()
+    monkeypatch.setattr(integrity_mod, "FLOOR_WFE_MIN", 0.5)
+    monkeypatch.setattr(integrity_mod, "FLOOR_PBO_HARD_REJECT", 0.9)
+    with pytest.raises(IntegrityError, match="pbo hard"):
+        assert_canonical_floors()
+    monkeypatch.setattr(integrity_mod, "FLOOR_PBO_HARD_REJECT", 0.50)
+    monkeypatch.setattr(integrity_mod, "FLOOR_PBO_WARNING", 0.9)
+    with pytest.raises(IntegrityError, match="pbo warning"):
+        assert_canonical_floors()
+    monkeypatch.setattr(integrity_mod, "FLOOR_PBO_WARNING", 0.25)
+    monkeypatch.setattr(integrity_mod, "FLOOR_MIN_OOS_WINDOWS", 1)
+    with pytest.raises(IntegrityError, match="min OOS"):
+        assert_canonical_floors()
+    monkeypatch.setattr(integrity_mod, "_parse_limits", lambda: (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
+    with pytest.raises(IntegrityError, match="limits.toml"):
+        assert_canonical_risk()
+
+
+@pytest.mark.unit
+def test_mutation_to_draft_refuses_forbidden_and_protected(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    action = RegimeAction(size_multiplier=1.0, throttle=False, vol="low", trend="up")
+    forbidden = runtime.reflector.propose(
+        kind="strategy_switch",
+        target="bypass",
+        genome=default_parent(),
+        rationale=_rationale(),
+        seed=1,
+        parent_config_id="p",
+        config_id="sw",
+    )
+    with pytest.raises(MutationRefused, match="forbidden"):
+        mutation_to_draft(forbidden, action=action)
+    protected = runtime.reflector.propose(
+        kind="risk_core_change",
+        target="lumina_research/risk_core/limits.toml",
+        genome=default_parent(),
+        rationale=_rationale(),
+        seed=2,
+        parent_config_id="p",
+        config_id="rk",
+    )
+    with pytest.raises(MutationRefused, match="protected"):
+        mutation_to_draft(protected, action=action)
+
+
+@pytest.mark.unit
+def test_applied_protected_change_fail_closes_process(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    mutation = runtime.birth.noise_child(default_parent(), seed=1, index=0)
+    original = runtime.governance.admit
+
+    def lie(payload: object) -> object:
+        decision = original(payload)
+        return decision.model_copy(update={"applied": True})
+
+    object.__setattr__(runtime.governance, "admit", lie)
+    with pytest.raises(EvolutionIntegrityError, match="applied a protected change"):
+        runtime.process((mutation,), seed=1)

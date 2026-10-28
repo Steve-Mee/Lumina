@@ -18,6 +18,8 @@ from lumina_core.agent_orchestration.schemas_research import (
 )
 from lumina_research.evolution.loop import EvolutionIntegrityError
 from lumina_research.evolution.reflector import ReflectorRefused
+from lumina_research.evolution.regime import RegimeObservation
+from lumina_research.evolution.seal import canonical_mutation
 from lumina_research.evolution.types import (
     GENOME_TARGET,
     THRESHOLD_TARGET,
@@ -27,7 +29,7 @@ from lumina_research.fitness import FitnessRefused, compute_fitness
 from lumina_research.validation import gate as gate_mod
 from lumina_research.validation import pipeline as pipeline_mod
 from lumina_research.validation.types import GateReport
-from tests.research.phase3_harness import dummy_genome, make_runtime
+from tests.research.phase3_harness import dummy_genome, make_runtime, write_adr
 
 
 @pytest.mark.unit
@@ -175,23 +177,29 @@ def test_fitness_still_refuses_in_sample_pnl(tmp_path: Path) -> None:
 def test_rogue_cannot_publish_mutation_or_governance(tmp_path: Path) -> None:
     runtime = make_runtime(tmp_path)
     bus = runtime.bus
+    mutation = runtime.reflector.propose(
+        kind="noise",
+        target=GENOME_TARGET,
+        genome=dummy_genome().model_copy(update={"mu": 0.0, "planted": False, "kind": "noise"}),
+        rationale=evolution_rationale("Unsigned mutation publish must hit the issuer guard xx"),
+        seed=1,
+        parent_config_id="parent",
+        config_id="guard-mut",
+    )
+    unsigned = mutation.model_dump(mode="json")
+    unsigned["provenance_mac"] = "0" * 64
     with pytest.raises(PermissionError):
-        bus.publish(topic=RESEARCH_MUTATION_TOPIC, producer="rogue_agent", payload={"x": 1})
-    with pytest.raises(PermissionError):
-        bus.publish(
-            topic=RESEARCH_MUTATION_TOPIC,
-            producer=REFLECTOR_AGENT_ID,
-            payload={"mutation_id": "x"},
-        )
-    with pytest.raises(PermissionError):
-        bus.publish(topic=RESEARCH_GOVERNANCE_TOPIC, producer=GOVERNANCE_AGENT_ID, payload={"x": 1})
+        bus.publish(topic=RESEARCH_MUTATION_TOPIC, producer="rogue_agent", payload=unsigned)
+    with pytest.raises(PermissionError, match="issuer guard"):
+        bus.publish(topic=RESEARCH_MUTATION_TOPIC, producer=REFLECTOR_AGENT_ID, payload=unsigned)
+    decision = runtime.governance.admit(mutation)
+    gov = decision.model_dump(mode="json")
+    gov["provenance_mac"] = "0" * 64
+    with pytest.raises(PermissionError, match="issuer guard"):
+        bus.publish(topic=RESEARCH_GOVERNANCE_TOPIC, producer=GOVERNANCE_AGENT_ID, payload=gov)
     fresh = EventBus()
     with pytest.raises(PermissionError, match="issuer guard"):
-        fresh.publish(
-            topic=RESEARCH_MUTATION_TOPIC,
-            producer=REFLECTOR_AGENT_ID,
-            payload={"mutation_id": "x"},
-        )
+        fresh.publish(topic=RESEARCH_MUTATION_TOPIC, producer=REFLECTOR_AGENT_ID, payload=unsigned)
 
 
 @pytest.mark.unit
@@ -225,3 +233,64 @@ def test_allowed_mutation_with_non_genome_target_is_rejected(tmp_path: Path) -> 
     decision = runtime.governance.admit(mutation)
     assert decision.admitted is False
     assert "target_not_genome" in decision.reasons
+
+
+@pytest.mark.unit
+def test_foreign_mutation_without_local_trial_is_fail_closed(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    other_dir = tmp_path / "other"
+    other_dir.mkdir()
+    foreign = make_runtime(other_dir)
+    mutation = foreign.birth.noise_child(dummy_genome(), seed=1, index=0)
+    with pytest.raises(EvolutionIntegrityError, match="trial counting skipped"):
+        runtime.process((mutation,), seed=1)
+
+
+@pytest.mark.unit
+def test_process_honors_regime_observation_without_switching(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    mutation = runtime.birth.tune(dummy_genome(), seed=4, index=0)
+    report = runtime.process(
+        (mutation,),
+        seed=4,
+        regime_obs=RegimeObservation(vol="high", trend="down"),
+    )
+    assert report.n_admitted == 1
+    assert report.n_hypotheses == 1
+
+
+@pytest.mark.unit
+def test_unknown_kind_and_invalid_review_payload_are_rejected(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    mutation = runtime.reflector.propose(
+        kind="noise",
+        target=GENOME_TARGET,
+        genome=dummy_genome(),
+        rationale=evolution_rationale("Unknown kind must classify as forbidden and stay unapplied"),
+        seed=12,
+        parent_config_id="parent",
+        config_id="unknown-kind",
+    )
+    payload = mutation.model_dump(mode="json")
+    payload["kind"] = "not_a_kind"
+    payload["provenance_mac"] = runtime.authority.mac(canonical_mutation(payload))
+    decision = runtime.governance.admit(payload)
+    assert decision.admitted is False
+    assert decision.applied is False
+    assert any(item.startswith("forbidden:") for item in decision.reasons)
+    adr = write_adr(tmp_path / "adr", THRESHOLD_TARGET, name="0059-bad-review.md")
+    protected = runtime.reflector.propose(
+        kind="threshold_change",
+        target=THRESHOLD_TARGET,
+        genome=dummy_genome(),
+        rationale=evolution_rationale("Malformed review object must not unlock a threshold write"),
+        seed=13,
+        parent_config_id="parent",
+        config_id="bad-review",
+        adr_path=adr.name,
+    )
+    bad = protected.model_dump(mode="json")
+    bad["review"] = {"reviewer_id": "steve"}
+    bad["provenance_mac"] = runtime.authority.mac(canonical_mutation(bad))
+    decision2 = runtime.governance.admit(bad)
+    assert "review_invalid" in decision2.reasons
