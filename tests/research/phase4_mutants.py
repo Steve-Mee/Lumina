@@ -328,7 +328,7 @@ def run_mutation_campaign(
     )
 
 
-def write_mutation_reports(report: MutationReport, directory: Path) -> None:
+def write_mutation_reports(report: MutationReport, directory: Path, *, stem: str = "phase4_mutation") -> None:
     directory.mkdir(parents=True, exist_ok=True)
     body = {
         "n_mutants": report.n_mutants,
@@ -357,7 +357,7 @@ def write_mutation_reports(report: MutationReport, directory: Path) -> None:
             for item in report.survivors
         ],
     }
-    (directory / "phase4_mutation.json").write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    (directory / f"{stem}.json").write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     lines = [
         "# Phase 4 monitoring mutation testing",
         "",
@@ -382,7 +382,7 @@ def write_mutation_reports(report: MutationReport, directory: Path) -> None:
     if not report.survivors:
         lines.append("| (none) | |")
     lines.append("")
-    (directory / "phase4_mutation.md").write_text("\n".join(lines), encoding="utf-8")
+    (directory / f"{stem}.md").write_text("\n".join(lines), encoding="utf-8")
 
 
 def iter_descriptions(mutants: Iterable[Mutant]) -> tuple[str, ...]:
