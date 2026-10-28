@@ -9,12 +9,32 @@ Binding decisions (plan authors, approved by Steve), restated as implementation 
 1. **No rewrite.** `lumina_research` stays a separate propose-only layer. Integration is Event Bus + hexagonal ports.
 2. **Keep** the NT8 AddOn bridge / Execution Fabric (gRPC), the independent fail-closed live Risk Core, data ingest if point-in-time correct, the order lifecycle, typed contracts, Constitution, and safety layers. **Isolate** old birth/evolution/fitness that bypasses the new gates or mixes research into the execution path.
 3. **Messages:** `SignalIntent` / `OrderIntent` (`strategy_id`, `direction`, `size`, `timestamp`, `expected_horizon`) and `FillEvent` (`fill_price`, `qty`, `slippage`, `commission`). Fills feed the decay monitor and cost calibration from **one** source of truth.
-4. **SIM safety:** live Risk Core rejects any account not on an **explicit SIM whitelist**. Live needs a manual, logged `LIVE_RELEASE` plus an ADR, outside research agents. That config is not agent-mutable. Tests must prove there is no bypass.
-5. **Order of work:** shadow first (signals logged, hypothetical fills via `cost_model`, no orders). Real SIM orders only after **2–3 independent survivors** and the empirical monitoring thresholds.
-6. **Failure:** fail-closed. Stale data or lost connection → no new orders, server-side cancel / reduce-to-flat, broker as source of truth, reconcile on reconnect. Monitor alarm with an open position → de-weight/reduce; full close only on a hard Risk Core limit. Log and alert everything.
-7. **Ticks:** ES/NQ and MES/MNQ have separate costs, reported in ticks **and** dollars.
+4. **SIM safety:** live Risk Core rejects any account not on an **explicit SIM whitelist**. Live needs `LIVE_RELEASE` (HMAC-signed review/token + human-reviewed logged ADR; see D4), outside research agents. That config is not agent-mutable. Tests must prove there is no bypass.
+5. **Order of work:** shadow first (signals logged, hypothetical fills calibrated to ADR-0055, no orders). Real SIM orders only after **2–3 independent survivors** whose Validation Gate ran on **point-in-time NT bars** (D2), first on **MES/MNQ** (D5).
+6. **Failure:** fail-closed. Stale data or lost connection → no new orders, server-side cancel / reduce-to-flat, broker as source of truth, reconcile on reconnect. Monitor alarm with an open position: research **proposes** de-weight/reduce; Risk Core or Position Manager **executes** (D7). Log and alert everything.
+7. **Ticks:** ES/NQ and MES/MNQ have separate costs, reported in ticks **and** dollars. Cost SSOT is ADR-0055 (D3).
 
 This plan names existing files, existing tests, and the exact new files each phase must add. It does not invent a second execution stack.
+
+---
+
+## Decisions (Steve, 2026-10-28)
+
+Plan authors, approved by Steve. These close the six questions in the first draft of this plan and add a seventh. They are implementation law for S0–S3. A config flag **alone** is never a control.
+
+| ID | Decision |
+|----|----------|
+| **D1** | **Hard-freeze / hard-block** `supervisor_tick_exec` and **every equivalent path that can place orders without the Validation Gate** during S0 and S1. A `research_execution_mode` (or `mode: sim`) yaml key is **not** enough. This is an **S0 prerequisite**. Tests must prove there is no parallel order path. Flatten / cancel / emergency reduce remain allowed. |
+| **D2** | S3 survivors come **only** from `passes_validation_gate` on **real point-in-time NT closed bars** (ADR-0053/0054). Synthetic `materialize()` / planted_edge tapes are for **acceptance tests, calibration, and unit tests only**. They cannot count as S3 survivors. |
+| **D3** | Cost source of truth is **ADR-0055**: commission from `lumina_core/market/nt_fees.py`; **slippage lives in the fill price**. The research `CostModel` **calibrates to** that card. On discrepancy, **execution-side wins** (broker fill + NT card), not the four-leg research estimate. |
+| **D4** | `LIVE_RELEASE` is an **HMAC-signed review/token**. The HMAC secret is **outside agent reach**. A human-reviewed, logged ADR is required. The **live Risk Core verifies the signature**. Invalid or missing signature → reject. A plain file plus hash **without** HMAC is too weak and is refused. |
+| **D5** | First S3 instruments are **MES and MNQ**. Scale to **ES/NQ only after stability** on micros (separate costs, ticks and $). |
+| **D6** | Refuse a `SignalIntent` (and the hypothesis that would produce it) **without `expected_horizon`**. No silent default (not 20, not `oos_size`). `HypothesisAgent` **may set one explicitly**; that value is **logged and gated**. |
+| **D7** | Alarm with an open position: research **only proposes** de-weight/reduce (`research.signal.deweighted` / suspend / retire). The **live Risk Core or a Position Manager executes**. Act within **1–5 minutes or the next bar**, depending on severity. Default reduce is **50%**. **Critical** (hard drawdown limit, prolonged disconnect, critical severity) → **flatten**. Log and escalate everything. Broker is SSOT; reconcile on reconnect. |
+
+Closed questions: former Q1→D1, Q2→D2, Q3→D3, Q4→D4, Q5→D5, Q6→D6. D7 is the seventh answer (alarm authority). Remaining real questions (only) are **OQ1–OQ4** in §4.2. Inventory market-data rows are **MD1–MD7**; live Risk Core inventory rows stay **R1–R15**.
+
+**This revision (2026-10-28, docs-only):** adds this Decisions table and retunes S0–S3. It does not change runtime, Risk Core, or Fabric code.
 
 ---
 
@@ -29,13 +49,15 @@ lumina_research (propose-only)
            │
            ▼
 KEEP ResearchBridge  (NEW, lumina_core/research_bridge/)
-  S0: PromotionCandidate → SignalIntent (log only)
-      → hypothetical FillEvent via lumina_research.validation.cost_model
+  S0 prerequisite: hard-block ungated place_order paths (D1)
+  S0: PromotionCandidate → SignalIntent (log only; expected_horizon required)
+      → hypothetical FillEvent using ADR-0055 commission + fill-price slippage (D3)
       → observe() on LivePerformanceMonitor
       → NEVER PlaceOrderCommand / place_order()
   S3: SignalIntent → OrderIntent → AdmissionChain → FinalArbitration
       → FabricGrpcClient → ExecutionFabric → NtAccountOrderGateway
       ← OrderEvent → FillEvent (broker SSOT) → monitor + cost calibrator
+      MES/MNQ first (D5). Alarm: research proposes; Risk Core / Position Manager executes (D7).
 ```
 
 `lumina_core` today does **not** import `lumina_research` (repo-wide grep: zero hits under `lumina_core/` and `integrations/`). The bridge is the first allowed KEEP consumer of research **events**, not of research internals except the already-public `CostModel` / `GateReport.as_promotion_fragments()` for shadow fills and evidence mapping.
@@ -63,7 +85,7 @@ Verdict key: **KEEP** = reuse as-is (do not duplicate). **ADAPT** = keep the mod
 | E2 | Composition root | `lumina_core/engine/lumina_engine.py` | KEEP | Product engine. |
 | E3 | Operator/engine place | `lumina_core/engine/operations_service_orders.py` `place_order()` | KEEP (product) / ISOLATE from research | Calls `enforce_pre_trade_gate` then `PolicyEngine.execute_order`. |
 | E4 | Policy execute | `lumina_core/engine/policy_engine.py` `execute_order()` | KEEP | AdmissionChain block message: `"AdmissionChain blocked order: {reason}"`. |
-| E5 | Supervisor auto-place | `lumina_core/engine/supervisor_tick_exec.py` `run_tick_exec()` | ISOLATE from research | On `BUY`/`SELL` + confluence, `paper` uses `PaperSimulator`; **any other `trade_mode` calls `app.place_order(signal, qty)`**. This is the live dream/confluence path. It does not read `PromotionCandidate`. Research must not be wired into `ctx.signal`. |
+| E5 | Supervisor auto-place | `lumina_core/engine/supervisor_tick_exec.py` `run_tick_exec()` | **HARD-BLOCK in S0/S1 (D1)** | On `BUY`/`SELL` + confluence, `paper` uses `PaperSimulator`; **any other `trade_mode` calls `app.place_order(signal, qty)`**. Ungated vs Validation Gate. S0 must tripwire this path in code, not via yaml. Equivalent callers: `operations_service_orders.place_order`, `policy_engine.execute_order`, `reasoning_service.submit_order`/`execute_order`, `trade_workers.submit_order_with_risk_check`, `paper_trade_executor` broker submit, `PaperSimulator.try_open`. Emergency flatten (`lumina_os/backend/emergency_order_endpoints.py`) stays allowed. |
 | E6 | Order gatekeeper | `lumina_core/order_gatekeeper/gate.py` `enforce_pre_trade_gate()` | KEEP | Canonical pre-trade admission for risk-bearing intents. |
 | E7 | Admission steps | `lumina_core/order_gatekeeper/admission_steps.py` | KEEP / ADAPT in S1 | Equity snapshot: stale → `equity_snapshot_stale`. Modes requiring snapshot: `real`, `paper`, `sim_real_guard` (`engine_helpers.MODES_REQUIRING_EQUITY_SNAPSHOT`). **`sim` is not in that set.** |
 | E8 | Admission chain | `lumina_core/risk/admission_chain.py` | KEEP | Steps: `session_equity_sync` → `risk_policy` → `final_arbitration` → `constitution` → `audit_write`. REAL bypass forbidden. |
@@ -79,7 +101,7 @@ End-to-end product path (KEEP):
 
 `LuminaEngine` / `OperationsOrdersMixin.place_order` → `enforce_pre_trade_gate` + `PolicyEngine.execute_order` → `NinjaTraderBroker.submit_order` → `FabricGrpcClient.place_order_sync` (`BrainMessage.place_order`) → `ExecutionFabricService.HandlePlace` → `NtAccountOrderGateway.PlaceOrder` → `Account.CreateOrder` + `Account.Submit` → `OrderEvent` on `TradingStream` → Brain fill/reconcile.
 
-`config.yaml` today: `mode: sim`, `broker.backend: live`, `broker.live_provider: ninjatrader`, `broker.ninjatrader.account_name: Sim101`. `ConfigLoader._resolve_runtime_modes` reads `trade_mode` or `mode`. **The desk is already in a mode that may submit NT orders** from E5, independent of research.
+`config.yaml` today: `mode: sim`, `broker.backend: live`, `broker.live_provider: ninjatrader`, `broker.ninjatrader.account_name: Sim101`. `ConfigLoader._resolve_runtime_modes` reads `trade_mode` or `mode`. **The desk is already in a mode that may submit NT orders** from E5, independent of research. D1 forbids leaving that path live during S0/S1.
 
 ### 1.2 gRPC / Execution Fabric / NT8 AddOn
 
@@ -120,11 +142,11 @@ End-to-end product path (KEEP):
 | R8 | REAL multi-gate | `lumina_core/risk/real_multi_gate.py` | KEEP | Human `approve-real` milestone. Not named `LIVE_RELEASE`. |
 | R9 | Shadow aperture | `lumina_core/risk/shadow.py`, `shadow_human_approval.py` | KEEP | DNA/risk-shadow (ADR-0002). **Not** the research SHADOW execution mode of this plan. Do not overload the name in code: use `research_execution_mode=shadow`. |
 | R10 | Aperture tripwire | `lumina_core/risk/aperture_guard.py` | KEEP | Constitution invariant #7: no structural bypass in `real` / `sim_real_guard`. |
-| R11 | Live cost model | `lumina_core/risk/cost_model.py` `TradeExecutionCostModel` | KEEP | Fees from `lumina_core/market/nt_fees.py` (ADR-0055). Slippage is a paper/risk simulator; ADR-0055: do not add a cash tick on top of a fill price. |
-| R12 | Cost calibrator | `lumina_core/risk/cost_model_calibrator.py` | ADAPT S2 | Reads `event=="reconciled"` from `logs/trade_fill_audit.jsonl`. Uses `slippage_points` + `commission` on that row. Not wired to research `observe()`. |
-| R13 | NT fee card | `lumina_core/market/nt_fees.py` | KEEP | Free-plan all-in per side: ES/NQ `$2.87` (1.39+0.19+1.29), MES/MNQ `$0.94` (0.36+0.19+0.39). Separate roots. No MES fallback for unknown root. |
+| R11 | Live cost model | `lumina_core/risk/cost_model.py` `TradeExecutionCostModel` | KEEP (execution SSOT with R13) | Fees from `lumina_core/market/nt_fees.py` (ADR-0055). Slippage is a paper/risk simulator; ADR-0055: do not add a cash tick on top of a fill price. D3: this side wins on discrepancy. |
+| R12 | Cost calibrator | `lumina_core/risk/cost_model_calibrator.py` | ADAPT S2 | Reads `event=="reconciled"` from `logs/trade_fill_audit.jsonl`. Uses `slippage_points` + `commission` on that row. Not wired to research `observe()`. S2 also calibrates research `CostModel` **toward** this SSOT. |
+| R13 | NT fee card | `lumina_core/market/nt_fees.py` | KEEP — **cost SSOT (D3)** | Free-plan all-in per side: ES/NQ `$2.87` (1.39+0.19+1.29), MES/MNQ `$0.94` (0.36+0.19+0.39). Separate roots. No MES fallback for unknown root. |
 | R14 | Research Risk Core | `lumina_research/risk_core/` | ISOLATE (from live writes) | Additional filter. `RiskConfig` frozen (`config.py`). `propose_order` → Approved/Rejected/Scaled. Stdlib-only (AST). Survivors still face live Risk Core. |
-| R15 | `LIVE_RELEASE` | — | **ABSENT** | Repo-wide search: zero matches. Closest: `real_account_blocked_pending_promotion_adr` (Python guards + C# gateway) and `evaluate_real_capital_readiness`. |
+| R15 | `LIVE_RELEASE` | — | **ABSENT** — S1 must add HMAC token (D4), not a bare flag | Repo-wide search: zero matches. Closest: `real_account_blocked_pending_promotion_adr` and `evaluate_real_capital_readiness`. Research `SignedReview` HMAC (`schemas_research.py`) is the pattern to reuse; the secret must not live in `config.yaml` or agent-writable state. |
 
 ### 1.4 Account handling — does a SIM whitelist exist?
 
@@ -148,15 +170,15 @@ What exists instead (KEEP as building blocks, ADAPT into an explicit list):
 
 | ID | Surface | Path | Verdict | Evidence |
 |----|---------|------|---------|----------|
-| D1 | NT 1m Last SSOT | ADR-0053, `lumina_core/engine/nt_bar_ssot.py` | KEEP | Decision OHLC = NT 1-minute Last bars. Tape never writes `ohlc_1min`. Fail-closed on missing/zero high/low. |
-| D2 | Closed vs forming | `lumina_core/engine/market_data_manager.py` `partition_closed_and_forming` | KEEP | “A timestamp still in the future is forming and must not enter the closed book (ADR-0053 / ADR-0054).” |
-| D3 | HTF bars | ADR-0054 | KEEP | Native NT 5/15/30/60/240; no silent TradingHours fallback. |
-| D4 | History fetch | `lumina_core/engine/market_data_history_fetch.py` | KEEP / ISOLATE CrossTrade | NT Fabric `RequestHistoricalData` when `live_provider=ninjatrader`. CrossTrade = “legacy emergency only”. |
-| D5 | Fabric MD providers | `LuminaNt8AddOn/NtHistoricalDataProvider.cs`, `NtLiveBarProvider.cs`, `NtLiveMarketDataProvider.cs` | KEEP | Product ingest. |
-| D6 | Research tapes | `lumina_research/agents/synthetic.py` `materialize()` | ISOLATE from live ingest | Deterministic gauss / planted_edge. **No network. Not NT bars.** Phase 2/3/4 tests run on this tape. There is **no** research walk-forward on NT PIT bars yet. |
-| D7 | Research purge/embargo | `lumina_research/validation/purge.py`, `cpcv.py` | KEEP (research) | Validation Gate refuses missing purge/embargo. |
+| MD1 | NT 1m Last SSOT | ADR-0053, `lumina_core/engine/nt_bar_ssot.py` | KEEP | Decision OHLC = NT 1-minute Last bars. Tape never writes `ohlc_1min`. Fail-closed on missing/zero high/low. |
+| MD2 | Closed vs forming | `lumina_core/engine/market_data_manager.py` `partition_closed_and_forming` | KEEP | “A timestamp still in the future is forming and must not enter the closed book (ADR-0053 / ADR-0054).” |
+| MD3 | HTF bars | ADR-0054 | KEEP | Native NT 5/15/30/60/240; no silent TradingHours fallback. |
+| MD4 | History fetch | `lumina_core/engine/market_data_history_fetch.py` | KEEP / ISOLATE CrossTrade | NT Fabric `RequestHistoricalData` when `live_provider=ninjatrader`. CrossTrade = “legacy emergency only”. |
+| MD5 | Fabric MD providers | `LuminaNt8AddOn/NtHistoricalDataProvider.cs`, `NtLiveBarProvider.cs`, `NtLiveMarketDataProvider.cs` | KEEP | Product ingest. |
+| MD6 | Research tapes | `lumina_research/agents/synthetic.py` `materialize()` | ISOLATE from live ingest | Deterministic gauss / planted_edge. **No network. Not NT bars.** Phase 2/3/4 tests run on this tape. There is **no** research walk-forward on NT PIT bars yet. |
+| MD7 | Research purge/embargo | `lumina_research/validation/purge.py`, `cpcv.py` | KEEP (research) | Validation Gate refuses missing purge/embargo. |
 
-**PIT verdict for live ingest:** KEEP. Forming-bar split and NT Last SSOT are the correct live book. **PIT verdict for research candidates today:** they are **not** validated on that book; they are validated on synthetic series. Connecting survivors to NT without a PIT research tape is a gap (G-PIT below), not a reason to replace D1–D5.
+**PIT verdict for live ingest:** KEEP. Forming-bar split and NT Last SSOT are the correct live book. **PIT verdict for research candidates today:** they are **not** validated on that book; they are validated on synthetic series. Decision **D2**: S3 survivors **require** a PIT NT-bar Validation Gate (mandatory S2.5). Synthetic tapes remain test-only (inventory **MD6** `materialize()`, not decision D6).
 
 ### 1.6 Event Bus
 
@@ -197,9 +219,9 @@ What exists instead (KEEP as building blocks, ADAPT into an explicit list):
 | ID | Surface | Path | Verdict | Evidence |
 |----|---------|------|---------|----------|
 | P1 | Validation Gate | `lumina_research/validation/gate.py` `passes_validation_gate` | KEEP | Doubt = reject. Floors in `gate_thresholds.toml`. |
-| P2 | Cost model | `validation/cost_model.py` | KEEP (shadow fills) | Four legs; `ticks_for_fill` returns ticks **and** `total_usd`. Tests: `tests/research/test_cost_model.py` (ES tick_value 12.50 vs MES 1.25; MES commission_ticks > ES; both 0.25 tick). |
+| P2 | Cost model | `validation/cost_model.py` | ADAPT S2 (calibrate to ADR-0055) | Four legs today; `ticks_for_fill` returns ticks **and** `total_usd`. Tests: `tests/research/test_cost_model.py`. D3: commission must match the NT card; extra legs are estimates that calibrate to execution fills; they must not undercut ADR-0055. |
 | P3 | Contracts | `validation/contracts.py` | KEEP | ES/NQ/MES/MNQ. Commission ticks = Free-plan USD / tick_value (`2.87/12.50` ES, `0.94/1.25` MES) — same dollars as ADR-0055, different unit. Half-spread 0.5 ticks on all four. |
-| P4 | Agents | `agents/hypothesis.py`, `validation_agent.py`, `promotion.py`, `loop.py` | KEEP | Bus-wired. Promotion requires sealed PASS + research Risk Core. |
+| P4 | Agents | `agents/hypothesis.py`, `validation_agent.py`, `promotion.py`, `loop.py` | KEEP / ADAPT D6 | Bus-wired. Promotion requires sealed PASS + research Risk Core. `HypothesisProposed` has **no** `expected_horizon` today (`schemas_research.py` L131–156). D6: HypothesisAgent sets `expected_horizon` explicitly; missing → `HypothesisRefused`; logged; ValidationAgent refuses if absent. |
 | P5 | Evolution | `evolution/` | KEEP | Propose-only. ADR-0057. |
 | P6 | Monitoring | `monitoring/monitor.py` `observe(signal_id, metric)` | ADAPT input | Scalar `float` vs sealed OOS. Stages `active → deweighted → suspended → retired`. Weights only fall. **No `FillEvent`.** ADR-0058. |
 | P7 | Registry | `monitoring/registry.py` | KEEP | Admit only sealed `PromotionCandidate` + `ValidationResult`. Direct insert refused (`test_phase4_bypass.py`). |
@@ -217,7 +239,7 @@ What exists instead (KEEP as building blocks, ADAPT into an explicit list):
 | S4 | Stale equity | admission `equity_snapshot_stale` | KEEP for REAL/`sim_real_guard` | Not applied in `sim` (gap vs binding “stale data → no new orders” if S3 uses `sim`). |
 | S5 | Stale/bad bars | `nt_bar_ssot.validate_nt_bar` | KEEP | Fail-closed `BarRejected`. |
 | S6 | Broker SSOT | `GetAccountState` / NT `Account.Positions` | KEEP | Reconcile on auth `StateSync`. |
-| S7 | Monitor vs flatten | ADR-0058 + EmergencyFlattenPolicy | ADAPT (policy glue) | Research monitor **cannot** send reduce-only (isolation). Binding: alarm + open position → de-weight/reduce; full close **only** on hard Risk Core limit. That reduce must be a KEEP consumer of `research.signal.deweighted`, not the monitor placing. |
+| S7 | Monitor vs flatten | ADR-0058 + EmergencyFlattenPolicy | ADAPT S3 per **D7** | Research monitor **cannot** send reduce-only (isolation). It **proposes** de-weight/reduce. Live Risk Core or Position Manager **executes** within 1–5 min or the next bar. Default 50% reduce. Critical (hard DD, prolonged disconnect, critical severity) → flatten. Broker SSOT. |
 
 ### 1.10 Message-field gap (binding vs code)
 
@@ -244,21 +266,21 @@ Numbered. Each gap is a missing behavior or a contradicting behavior, with evide
 |----|---------|--------------|----------|-----------|
 | G-MSG | `SignalIntent` / `OrderIntent` / `FillEvent` with named fields | `SignalIntent` absent. `OrderIntent` and `FillEvent` exist with different fields (`extra=forbid`, so adding required fields is a breaking schema change unless optional-with-default). `TradeIntent` / `ExecutionFill` / `OrderProposal` / `PromotionCandidate` are four other shapes. | Blocker for a typed bridge | S0 (add `SignalIntent` + aliases; do not fork a fifth fill type) |
 | G-ADAPT | Research survivors enter the program via Event Bus | `lumina_core` does not import `lumina_research`. No subscriber of `research.promotion.candidate` outside research agents. `PromotionCandidate` never becomes a signal, order, or log line in KEEP. | Blocker | S0 |
-| G-SHDW | Shadow = log signals, hypothetical fills, **no orders** | No `research_execution_mode`. `mode: sim` already allows NT submit (E5 + G19). Paper mode blocks **market data** too, so it cannot be “shadow with NT PIT bars”. | Blocker | S0 (new flag, not a rewrite of trade_mode) |
+| G-SHDW | Shadow = log signals, hypothetical fills, **no orders** | No `research_execution_mode`. `mode: sim` already allows NT submit (E5 + G19). Paper mode blocks **market data** too. | Blocker | **S0 prerequisite D1** (hard-block) plus shadow bridge |
 | G-WL | Explicit SIM whitelist; unknown account rejected | Prefix heuristic (`Sim*`, `DEMO*`, Playback, Backtest). Any `SimFoo` matches. Empty configured name in `sim` still returns ok if connected is non-empty (`guards.py` only mismatches when `configured` is truthy). | Safety | S1 |
-| G-LIVE | Manual logged `LIVE_RELEASE` + ADR, outside agents | Flag absent. REAL is blocked by `real_account_blocked_pending_promotion_adr` + multi-gate, but there is no single logged release object, no ADR hash on the order path, and no test named for `LIVE_RELEASE`. | Safety | S1 |
-| G-MUT | Config not agent-mutable; tests prove no bypass | `FORBIDDEN_PARAMETER_KEYS` does not include account/whitelist/`live_release`/`mode`. Hot reload can change `trade_mode`. Research governance cannot write Risk Core files, but that is a different config surface. | Safety | S1 |
+| G-LIVE | HMAC `LIVE_RELEASE` + ADR, Risk Core verifies, secret outside agents (D4) | Flag absent. A yaml `enabled: true` plus SHA would be **too weak** (D4). | Safety | S1 |
+| G-MUT | Config not agent-mutable; tests prove no bypass | `FORBIDDEN_PARAMETER_KEYS` does not include account/whitelist/`live_release`/`mode`. Hot reload can change `trade_mode`. HMAC secret must never be in agent-writable config. | Safety | S1 |
 | G-FILL | Fills → decay monitor **and** cost calibration from one SSOT | Monitor: `observe(signal_id, float)`. Calibrator: `trade_fill_audit.jsonl` `reconciled`. Fabric fill `commission=0.0`. `FillEvent` has no slippage. Two pipelines, neither is research-aware. | Blocker for honest decay | S2 |
-| G-COST | One cost story; ticks and $; ES/NQ ≠ MES/MNQ | Research `CostModel` adds half-spread + slippage + √impact **as cash** on hypothetical/backtest returns. ADR-0055: slippage lives in the fill price; the card is cash commission only. Dollars on the card **match** research Free-plan commissions ($2.87 mini, $0.94 micro). The **slippage accounting disagrees**. Live `TradeExecutionCostModel` is a third object. | Truth-seeking | S2 (pick SSOT; see Q3) |
+| G-COST | ADR-0055 is SSOT; research calibrates to it; execution wins (D3) | Research `CostModel` adds half-spread + slippage + √impact **as cash**. ADR-0055: slippage lives in the fill price; card is cash commission. Dollars on the card **match** Free-plan commissions ($2.87 mini, $0.94 micro). Accounting disagrees. | Truth-seeking | S2 (calibrate; do not let research undercut the card) |
 | G-SIMBYP | Independent fail-closed Risk Core on SIM orders | `risk_gates.check_can_trade` returns OK and **bypasses all caps** when `sim_mode or not enforce_rules`. Orchestrator sets `enforce_rules` only for `real`. S3 on `trade_mode=sim` would place NT orders with Brain risk caps off. Fabric `PreTradeRiskEngine` is the remaining size cap (`config.yaml` `max_position_size: 2`). | Safety | S1 policy + S3 mode = `sim_real_guard` with `enforce_rules` aligned to `risk_enforced` |
-| G-PGATE | Live `PromotionGate` is the only live promotion path; research must pass Validation Gate first | Live gate does not require sealed `GateReport` / TrialRegistry. Defaults weaker on DSR (0.0 vs 0.95) and window count (5 vs 6). `as_promotion_fragments()` unused. | Skip-gate residual | S3 (AND with sealed research report); optional tighten in S0 if shadow admission should already require it |
-| G-PIT | Research on point-in-time NT data | Research `materialize()` is synthetic. No NT-bar candidate pipeline. Live ingest **is** PIT-correct. | Honesty of “survivors” | S0 data note; S3 entry criterion (Q2) |
-| G-ENG | Isolate old paths that mix research into execution or skip gates | E5 still auto-places on confluence. `build_challengers` still emits. Live PromotionGate evidence dict still open. Archive is isolated. Research itself is isolated. | Mix / skip | S0 isolate research from E5; S3 must not call `place_order` from supervisor |
-| G-RED | Monitor alarm + open position → de-weight/reduce; flatten only on hard Risk Core limit | Monitor can publish `research.signal.deweighted` (weight falls, research `propose_order` sizes down). Nothing in KEEP turns that into a **reduce-only** Fabric order. Fabric flatten is watchdog/emergency, not decay. | Binding miss | S3 (KEEP consumer); S0 logs the intent only |
+| G-PGATE | Live `PromotionGate` is the only live promotion path; research must pass Validation Gate first | Live gate does not require sealed `GateReport` / TrialRegistry. Defaults weaker on DSR (0.0 vs 0.95) and window count (5 vs 6). `as_promotion_fragments()` unused. | Skip-gate residual | S3 (AND with sealed research report on **NT PIT** evidence) |
+| G-PIT | S3 survivors only from Validation Gate on real NT closed bars (D2) | Research `materialize()` is synthetic. No NT-bar candidate pipeline. Live ingest **is** PIT-correct. | Honesty of “survivors” | **S2.5 mandatory** then S3 |
+| G-ENG | Isolate / hard-block ungated order paths (D1) | E5 still auto-places on confluence. Also: `reasoning_service`, `trade_workers`, `paper_trade_executor`, `PaperSimulator.try_open`. Archive is isolated. | Mix / skip | **S0 prerequisite** + keep blocked through S1 |
+| G-RED | Alarm + open position: research proposes; Risk Core/Position Manager executes (D7) | Monitor can publish `research.signal.deweighted`. Nothing in KEEP executes a reduce-only or timed flatten. Fabric flatten is watchdog/emergency, not decay. | Binding miss | S3 executor + SLA tests; S0/S1 only log proposals (no open research positions if D1 holds) |
 | G-CS | C# account tests | Python `test_ninjatrader_guards.py` covers prefix/mismatch. **Zero** Fabric.Tests for `only_sim_accounts_allowed`. | Bypass in AddOn | S1 |
 | G-DOC | Architecture lists research | `docs/architecture.md` omits `lumina_research` / `research.*`. | Observability | S0 (docs in the implementation PRs; this plan is the spec) |
-| G-HORIZ | `expected_horizon` | Nowhere in contracts. Needed for decay window alignment vs ADR-0058 rolling 20-day default. | Contract | S0 schema |
-| G-SURV | 2–3 independent survivors before SIM orders | None on NT tape. Phase 2 loop produces sealed candidates from **planted_edge vs noise** synthetic series. Phase 4 floors are synthetic-campaign numbers. | Process | S3 gate (definition in §3.4) |
+| G-HORIZ | No silent default for `expected_horizon` (D6) | Nowhere on `HypothesisProposed` / `PromotionCandidate` / `SignalIntent`. CPCV `label_horizon` is a different concept (purge t1). | Contract | S0 schema + HypothesisAgent + gate |
+| G-SURV | 2–3 independent **NT-PIT** survivors before SIM orders (D2, D5) | None on NT tape. Phase 2 loop produces sealed candidates from **planted_edge vs noise**. Phase 4 floors are synthetic-campaign numbers. | Process | S2.5 + S3; synthetics never count |
 
 Gaps this plan **does not** treat as missing (already KEEP):
 
@@ -279,6 +301,7 @@ Global rules for every phase:
 - `archive/birth-v1/` stays untouched.
 - Each phase is its own PR (or two, if C# + Python). Rollback is a flag first, git revert second.
 - Constitution: fail-closed; doubt = no new order.
+- Decisions D1–D7 override earlier draft recommendations in this file.
 
 ### 3.0 Shared contracts (introduced in S0, frozen after)
 
@@ -306,7 +329,7 @@ Pydantic (`extra=forbid`, frozen):
 | `direction` | `BUY\|SELL` | mapped from research side |
 | `size` | float > 0 | research-approved quantity (already Risk-Core-scaled) |
 | `timestamp` | datetime UTC | intent time |
-| `expected_horizon` | timedelta or int bars | required; refuse if missing |
+| `expected_horizon` | int bars ≥ 1 | **required (D6)**. No default. Missing → schema/refuse, no log fill. |
 | `validation_mac` | str 64 | copy from candidate |
 | `issue_mac` | str 64 | copy from candidate |
 | `source` | literal `research_bridge` | |
@@ -317,14 +340,14 @@ Pydantic (`extra=forbid`, frozen):
 - `expected_horizon_bars: int = 0`
 - `submitted_at_utc: datetime | None = None`
 
-Binding `timestamp` = `submitted_at_utc`. Binding `direction` = existing `side`. Binding `size` = existing `quantity`. S3 refuses research-originated intents with empty `strategy_id` or `expected_horizon_bars < 1`.
+Binding `timestamp` = `submitted_at_utc`. Binding `direction` = existing `side`. Binding `size` = existing `quantity`. Research-originated intents with empty `strategy_id` or `expected_horizon_bars < 1` are refused in S0 and S3 (D6). Do not copy `oos_size` or the monitor window of 20 into this field.
 
 **`FillEvent` (reconciler dataclass ADAPT)** — add:
 
 - `slippage_ticks: float = 0.0`
 - `slippage_usd: float = 0.0`
 - `commission_ticks: float = 0.0`
-- `source: literal["broker","hypothetical_cost_model"] = "broker"`
+- `source: literal["broker","hypothetical_adr0055"] = "broker"`
 - property `fill_price` → `price`, `qty` → `quantity` (binding names without renaming the SSOT fields)
 
 Do **not** create a third fill type. Map `ExecutionFill` ↔ `FillEvent` 1:1 in the translator.
@@ -333,79 +356,105 @@ Issuer guard: only `research_bridge` (and in S2 `fill_translator`) may publish `
 
 ---
 
-### 3.1 S0 — Shadow wiring
+### 3.1 S0 — Shadow wiring (D1 freeze is a prerequisite)
 
-**Goal.** Sealed `PromotionCandidate`s become logged `SignalIntent`s. Hypothetical fills are produced by `CostModel.ticks_for_fill` / `apply_costs`, reported in ticks and $, per root. **Zero** `PlaceOrderCommand`. **Zero** `place_order()`. Monitor `observe()` is fed from those hypothetical net returns so decay plumbing is real before SIM.
+**Goal.** (1) **Hard-block every ungated order path** so SHADOW means no NT/paper/SIM orders except flatten/cancel. (2) Sealed `PromotionCandidate`s become logged `SignalIntent`s with a required `expected_horizon`. (3) Hypothetical fills use **ADR-0055 commission** and **slippage in the fill price** (D3), reported in ticks and $. **Zero** `PlaceOrderCommand`. **Zero** risk-increasing `place_order()`. Monitor `observe()` may be fed from those hypothetical net returns so decay plumbing is real before SIM.
 
-**Does not** turn off the existing dream/confluence SIM path (E5). It **must not** read research events. See Q1.
+A yaml `research_execution_mode: shadow` is **not** the control. The freeze is a **code tripwire** that fails closed even if `mode: sim` and even if the yaml key is missing or set to `sim`.
 
-#### Files
+#### S0 prerequisite — ungated order freeze (D1)
+
+Must land in the same S0 PR as the bridge (or a stacked PR that **merges before** the bridge is enabled). If the freeze tests are red, the bridge must not subscribe.
+
+Block **new risk-increasing orders** from these product callers (evidence in §1.1 / grep):
+
+| Path | Symbol |
+|------|--------|
+| `lumina_core/engine/supervisor_tick_exec.py` | `run_tick_exec` → `app.place_order` |
+| `lumina_core/engine/operations_service_orders.py` | `place_order` |
+| `lumina_core/engine/policy_engine.py` | `execute_order` → `broker.submit_order` |
+| `lumina_core/engine/reasoning_service.py` | `submit_order` / `execute_order` |
+| `lumina_core/trade_workers.py` | `submit_order_with_risk_check` |
+| `lumina_core/engine/paper_trade_executor.py` | `broker.submit_order` |
+| `lumina_core/engine/paper_simulator.py` | `try_open` |
+
+**Allow** during the freeze (do not break fail-closed exits):
+
+- Fabric watchdog cancel / session-touched flatten (`HeartbeatWatchdog`, `EmergencyFlattenPolicy`).
+- Operator emergency flatten/cancel: `lumina_os/backend/emergency_order_endpoints.py`.
+- Risk-reducing / flatten intents tagged `reduce_only` or emergency (Admission `is_risk_reducing_side`).
+
+Implementation shape: NEW `lumina_core/order_gatekeeper/ungated_place_block.py` with `assert_validation_gate_or_block(source, *, reduce_only) -> tuple[bool, str]`. Call it at the **start** of `OperationsOrdersMixin.place_order` and `PolicyEngine.execute_order` (the two funnels). Supervisor and reasoning go through those funnels today; still add an explicit guard in `run_tick_exec` so a future bypass of `place_order` cannot skip it. Reason code: `UNGATED_PLACE_BLOCKED_S0`. S3 later allows `source_agent="research_bridge"` **only** when `sim_gate` passes; that allow-list is **empty** in S0/S1.
+
+AST inventory test: every production (non-`tests/`, non-`archive/`) call to `place_order` / `execute_order` / `submit_order` / `try_open` is either behind this block or on the emergency/flatten allow-list. New callers without the block fail CI.
+
+#### Files (bridge + freeze)
 
 | Action | Path |
 |--------|------|
+| NEW | `lumina_core/order_gatekeeper/ungated_place_block.py` — D1 tripwire |
+| ADAPT | `operations_service_orders.py`, `policy_engine.py`, `supervisor_tick_exec.py`, `reasoning_service.py`, `trade_workers.py`, `paper_trade_executor.py`, `paper_simulator.py` — call the tripwire |
 | NEW | `lumina_core/research_bridge/__init__.py` |
 | NEW | `lumina_core/research_bridge/port.py` — `ResearchExecutionPort` (Protocol: `on_candidate`, `shadow_fill`, `assert_no_broker_submit`) |
-| NEW | `lumina_core/research_bridge/shadow_runtime.py` — subscribe `RESEARCH_PROMOTION_TOPIC`; verify MAC via existing `ProvenanceAuthority` pattern used by monitoring; emit `SignalIntent`; call cost model; emit `FillEvent(source=hypothetical_cost_model)`; call `LivePerformanceMonitor.observe`; append JSONL |
-| NEW | `lumina_core/research_bridge/horizon.py` — require `expected_horizon`; default mapping from candidate genome `oos_size` only if Steve answers Q6; otherwise refuse until field present on candidate (ADAPT `PromotionCandidate` with optional `expected_horizon_bars` default 0 = refuse) |
-| NEW | `lumina_core/research_bridge/jsonl.py` — `state/research_shadow.jsonl` (UTC, strategy_id, intent, breakdown ticks+$ ) |
+| NEW | `lumina_core/research_bridge/shadow_runtime.py` — subscribe `RESEARCH_PROMOTION_TOPIC`; verify MAC; emit `SignalIntent`; hypothetical fill per D3; `observe`; JSONL |
+| NEW | `lumina_core/research_bridge/horizon.py` — require `expected_horizon_bars ≥ 1`; **no default**; missing → refuse (D6) |
+| NEW | `lumina_core/research_bridge/jsonl.py` — `state/research_shadow.jsonl` |
 | NEW | `lumina_core/agent_orchestration/schemas_research_execution.py` |
-| NEW | `lumina_core/ports/research_execution.py` — re-export Protocol (hexagonal; keep `ports/execution.py` unchanged) |
-| ADAPT | `lumina_core/agent_orchestration/schemas.py` — register three topics in `EVENT_BUS_TOPIC_MODELS` **and** `CRITICAL_EVENT_BUS_TOPICS` |
-| ADAPT | `schemas_research.py` — optional `expected_horizon_bars` on `PromotionCandidate` (default 0) |
-| ADAPT | `lumina_core/risk/schemas.py` — optional OrderIntent fields listed above |
+| NEW | `lumina_core/ports/research_execution.py` |
+| ADAPT | `schemas.py` — register three topics in `EVENT_BUS_TOPIC_MODELS` **and** `CRITICAL_EVENT_BUS_TOPICS` |
+| ADAPT | `schemas_research.py` — **`expected_horizon_bars: int` required ≥ 1** on `HypothesisProposed` and `PromotionCandidate` (no default). `HypothesisAgent._accept` refuses if the generator did not set it; log the value. |
+| ADAPT | `lumina_research/agents/hypothesis.py`, `agents/generators.py` — generators must supply horizon explicitly; ValidationAgent rejects missing/zero. |
+| ADAPT | `lumina_core/risk/schemas.py` — optional OrderIntent fields listed in §3.0 |
 | ADAPT | `lumina_core/engine/trade_reconciler/schemas.py` — FillEvent slippage/source/aliases |
-| ADAPT | `lumina_core/broker/ninjatrader/promotion_gate.py` — **do not** add submit for a fake `shadow` trade_mode in S0. Shadow is `research_execution_mode`, a separate config key. |
-| NEW | `config.yaml` key `research_execution_mode: shadow` (legal values `off\|shadow\|sim`; default `shadow` in code if missing = **off** fail-closed until operator sets it) |
-| NEW | `docs/adr/0059-research-bridge-shadow-first.md` — records this plan’s binding in ADR form (Steve signs) |
-| ADAPT | `docs/architecture.md` — add Research context + `research.*` + bridge |
+| ADAPT | `lumina_core/broker/ninjatrader/promotion_gate.py` — do **not** add submit for a fake `shadow` trade_mode |
+| NEW | `config.yaml` key `research_execution_mode: shadow` (legal `off\|shadow\|sim`; **missing = off**). This key is **observability**, not the freeze. |
+| NEW | `docs/adr/0059-research-bridge-shadow-first.md` |
+| ADAPT | `docs/architecture.md` — Research context + freeze + bridge |
 | NEW tests | see below |
-| FORBIDDEN | any edit to `lumina_core/risk/risk_controller.py`, `admission_chain.py` behavior, Fabric HandlePlace, `NtAccountOrderGateway.PlaceOrder` |
+| FORBIDDEN | relaxing `risk_gates` SIM bypass; Fabric `HandlePlace` allow; `NtAccountOrderGateway.PlaceOrder` allow; silent horizon defaults; counting synthetic candidates as live survivors |
 
-`shadow_runtime` may import `lumina_research.validation.cost_model` and `lumina_research.agents.provenance` (public). It must not import `lumina_research.risk_core` for sizing (candidate already carries scaled quantity). It must not import `lumina_core.broker`.
+`shadow_runtime` may import `lumina_research.agents.provenance` and `lumina_core.market.nt_fees` (ADR-0055). It may import research `CostModel` **only** to record the research estimate **beside** the execution-side numbers for later calibration (D3). Hypothetical **FillEvent** fields that feed the monitor/calibrator-preview must be execution-side: commission from `nt_fees.fee_components`, slippage from (hypothetical fill price − reference) / tick_size, **not** an added cash tick. If the two disagree, log `cost_discrepancy` and **keep execution-side**. Stale/missing closed NT bar → no hypothetical fill, log `shadow_fill_refused:stale_or_missing_market`.
 
-Hypothetical fill recipe (evidence-based, uses existing API):
-
-1. `spec = spec_for(instrument)` (`validation/contracts.py`).
-2. `CostModel().ticks_for_fill(spec=spec, quantity=size, market=MarketSnapshot(...))` using the last **closed** NT bar’s volume/ATR when MD is up; if MD stale/missing → **no hypothetical fill**, log `shadow_fill_refused:stale_or_missing_market`, do not `observe()` (fail-closed, matches binding “stale data”).
-3. Record `commission_ticks`, `half_spread_ticks`, `slippage_ticks`, `impact_ticks`, `total_ticks`, `total_usd` on the FillEvent + JSONL.
-4. Net return for `observe()`: `-total_usd / equity` on the fill bar (shadow has no edge until a signal model is bound). Do not invent a mid-price edge. If a research signal function does not exist yet (today `materialize()` is the only tape), S0 observe-feed is **cost-only** plus an explicit `shadow_mark="cost_only"` so we do not pretend PnL is alpha.
-
-S0 does **not** require a new strategy engine. If there is no live signal function, shadow still proves: candidate → intent log → cost ticks/$ → monitor input → no orders.
+S0 does **not** require a new strategy engine. Synthetic Phase 2 loops remain valid **unit/acceptance** wiring tests (D2). They must tag `tape=synthetic` so they cannot be mistaken for S3 survivors.
 
 #### Tests (S0)
 
 | Test file | What it proves |
 |-----------|----------------|
-| `tests/research_bridge/test_shadow_never_places.py` | With a sealed candidate, monkeypatch `FabricGrpcClient.place_order_sync`, `NinjaTraderBroker.submit_order`, `OperationsOrdersMixin.place_order`, `NtAccountOrderGateway` (if imported): **none called**. AST/import: `research_bridge` does not import `lumina_core.broker.ninjatrader.broker`. |
-| `tests/research_bridge/test_signal_intent_fields.py` | Published payload has `strategy_id, direction, size, timestamp, expected_horizon`. Missing horizon → refuse, no JSONL fill. |
-| `tests/research_bridge/test_hypothetical_costs_per_root.py` | Same size/market: ES vs MES vs NQ vs MNQ produce **different** `total_usd` and **different** `commission_ticks`; all report both ticks and USD; tick_size 0.25. Reuse numbers from `test_cost_model.py`. |
-| `tests/research_bridge/test_stale_market_no_fill.py` | Forming-only book or empty OHLC → no FillEvent, no observe, intent still logged with `fill=refused`. |
-| `tests/research_bridge/test_unsigned_candidate_refused.py` | Forged `PromotionCandidate` (same cases as `test_phase2_bypass.py` / `test_phase4_bypass.py`) does not log a SignalIntent. |
+| `tests/order_gatekeeper/test_ungated_place_block.py` | `run_tick_exec` with `BUY`/`SELL` + high confluence **does not** call `place_order` / Fabric / `PaperSimulator.try_open`. `OperationsOrdersMixin.place_order("BUY", 1)` returns false / blocked with `UNGATED_PLACE_BLOCKED_S0`. `policy_engine.execute_order` same. `submit_order_with_risk_check` same. Flatten/cancel/`reduce_only` still reaches broker mock. |
+| `tests/order_gatekeeper/test_ungated_place_inventory.py` | AST scan of `lumina_core/**/*.py` and `lumina_os/**/*.py`: every `place_order`/`execute_order`/`submit_order`/`try_open` is either the block helper, emergency flatten, or a listed allow. Fail on a new caller. |
+| `tests/order_gatekeeper/test_yaml_mode_is_not_enough.py` | `research_execution_mode=sim` **and** `mode=sim` in a fixture config still blocks ungated place (D1: config alone is not enough). |
+| `tests/research_bridge/test_shadow_never_places.py` | Sealed candidate: Fabric `place_order_sync` / `NinjaTraderBroker.submit_order` not called. |
+| `tests/research_bridge/test_signal_intent_fields.py` | Payload has `strategy_id, direction, size, timestamp, expected_horizon`. Missing horizon → refuse, no JSONL fill. `oos_size=30` without horizon still refuses. |
+| `tests/research/test_hypothesis_horizon_required.py` | HypothesisAgent without explicit horizon raises `HypothesisRefused`. With horizon, experiment JSONL contains the value. |
+| `tests/research_bridge/test_hypothetical_costs_adr0055.py` | MES qty 1 commission_usd = 0.94; ES = 2.87; MNQ ≠ NQ. Slippage_usd comes from fill vs reference, not a fourth cash leg. Research four-leg total if higher is logged as discrepancy; FillEvent uses execution-side. |
+| `tests/research_bridge/test_stale_market_no_fill.py` | Forming-only book → no FillEvent, no observe, intent logged `fill=refused`. |
+| `tests/research_bridge/test_unsigned_candidate_refused.py` | Forged candidate does not log a SignalIntent. |
 | `tests/research_bridge/test_issuer_guard.py` | `hypothesis_agent` cannot publish `research.execution.signal_intent`. |
-| `tests/research_bridge/test_supervisor_unaffected.py` | `run_tick_exec` with a research candidate on the bus does not change `ctx.signal`. Research does not leak into E5. |
-| `tests/agent_orchestration/test_research_execution_topics_additive.py` | Existing `research.*` and KEEP topics unchanged (copy pattern from `test_research_topics_additive.py`). |
-| ADAPT `tests/research/test_phase2_isolation.py` | `lumina_research.agents` still must not import broker / live risk. Bridge is KEEP, not under `lumina_research/`. |
+| `tests/research_bridge/test_supervisor_cannot_place.py` | Replaces former `test_supervisor_unaffected`: supervisor cannot place **and** cannot change `ctx.signal` into a research order. |
+| `tests/agent_orchestration/test_research_execution_topics_additive.py` | Existing topics unchanged. |
+| ADAPT `tests/research/test_phase2_isolation.py` | Agents still must not import broker / live risk. |
 
 #### Acceptance (S0)
 
-1. Operator can run the Phase 2 loop (synthetic) **or** replay a sealed JSONL candidate through the bridge.
-2. `state/research_shadow.jsonl` contains one SignalIntent per admitted candidate and, iff closed NT (or fixture) market exists, one hypothetical FillEvent with four-leg ticks + USD per root.
-3. `LivePerformanceMonitor.series(strategy_id)` grows only from bridge observe, never from supervisor fills.
-4. No Fabric `place_order` in logs; Fabric tests unchanged and green.
-5. `research_execution_mode=off` → bridge does not subscribe (fail-closed default if key missing).
+1. Ungated BUY/SELL from supervisor, ops `place_order`, policy, reasoning, trade_workers, and paper open **cannot** reach NT or paper simulator. Emergency flatten still can.
+2. Setting yaml to `sim` does not lift the freeze.
+3. `state/research_shadow.jsonl` contains SignalIntents with explicit `expected_horizon`; missing horizon produces zero fills.
+4. Hypothetical FillEvent commission matches ADR-0055 per root; ticks and $ both present.
+5. Synthetic Phase 2 loop may still run as a **test**; its candidates are labeled synthetic and are not S3 survivors.
 6. ADR-0059 merged or attached.
 
 #### Rollback (S0)
 
-Set `research_execution_mode: off` (or delete the key: code treats missing as off). Delete `state/research_shadow.jsonl` if desired. No positions exist. Git revert of the S0 PR removes the bridge; research Phases 1–4 remain.
+Revert the S0 PR: freeze lifts **and** bridge unsubscribes together (do not lift freeze while leaving a half-wired bridge). `research_execution_mode: off`. No research positions should exist if D1 held. Research Phases 1–4 remain.
 
 ---
 
 ### 3.2 S1 — SIM whitelist and `LIVE_RELEASE` guard
 
-**Goal.** Risk Core (Python) **and** Fabric (C#) reject any account not on an explicit operator list. `LIVE_RELEASE` is a logged, ADR-backed, human-only object. Agents cannot flip it. Tests include bypass/attack cases. **Still no research SIM orders.**
+**Goal.** Risk Core (Python) **and** Fabric (C#) reject any account not on an explicit operator list. `LIVE_RELEASE` is an **HMAC-signed review/token** (D4) plus a human-reviewed logged ADR; the live Risk Core verifies the signature; invalid or missing → reject. Agents cannot mint, rotate, or read the HMAC secret. Tests include bypass/attack cases. **Still no research SIM orders.** D1 freeze **stays on**.
 
-S1 may run in parallel with S0 once ADR-0059 exists, but must not enable S3.
+S1 may follow S0 once ADR-0059 exists. It must not enable S3 and must not lift the ungated-place block.
 
 #### Files
 
@@ -421,12 +470,15 @@ S1 may run in parallel with S0 once ADR-0059 exists, but must not enable S3.
 | ADAPT | `FabricConfig.cs` — `string[] SimAccountWhitelist` from `fabric.json` |
 | ADAPT | `lumina_launcher/services/nt_account_store.py` — write the same list to `config.yaml` and `fabric.json` (operator UI already copies names) |
 | ADAPT | `tauri-app/src/lib/ntAccountNames.ts` — UI copy: whitelist, not “starts with Sim” |
-| NEW | `lumina_core/risk/live_release.py` — `LiveRelease` frozen record: `enabled: bool`, `adr_path: str`, `adr_sha256: str`, `approved_by: str`, `approved_at_utc: datetime`, `signature: str`. `enabled` true only if all fields valid **and** `enabled` is true. Missing file/key = disabled. |
-| ADAPT | `guards.py` REAL branch — require `live_release.enabled`; else `live_release_required` (keep `real_account_blocked_pending_promotion_adr` as a second reason if demo name) |
-| ADAPT | `NtAccountOrderGateway.PlaceOrder` REAL branch — same check from `fabric.json` `LiveRelease.enabled` (default false) |
+| NEW | `lumina_core/risk/live_release.py` — `LiveRelease` frozen record verified **inside the live Risk Core**: `enabled: bool`, `adr_path: str`, `adr_sha256: str`, `approved_by: str` (must not be a research/agent id), `approved_at_utc: datetime`, `mac: str` (HMAC-SHA256 hex, 64 chars). `verify(secret) -> (ok, reason)`. Missing record, missing/short mac, wrong mac, agent `approved_by`, or `enabled` false → reject. **A file that has `adr_sha256` but no mac is refused** (`live_release_hmac_required`) — D4 forbids plain file+hash. |
+| NEW | HMAC secret: env `LUMINA_LIVE_RELEASE_SECRET` (same class as `LUMINA_FABRIC_TOKEN`). Not in `config.yaml`, not in `fabric.json`, not in the Event Bus, not readable from `lumina_research/**`. Empty/missing secret → every REAL check fails closed (`live_release_secret_missing`). |
+| ADAPT | `lumina_core/risk/final_arbitration.py` or a dedicated admission step `live_release` — Risk Core calls `LiveRelease.verify`. Do not verify only in the broker façade. |
+| ADAPT | `guards.py` REAL branch — require Core-verified live_release; else `live_release_required`. Keep `real_account_blocked_pending_promotion_adr` as a second reason if demo name. |
+| ADAPT | `NtAccountOrderGateway.PlaceOrder` REAL branch — defense in depth: reject `ModeContext=real` unless Fabric has seen a **Brain-attested** live-release ok (do not duplicate the secret into C# if that would copy it into `%APPDATA%`). Prefer: Brain never sends REAL `mode_context` unless Core verified; Fabric rejects REAL when `LiveReleaseEnabled` is false (operator boolean **is not** sufficient without Brain attestation). |
 | ADAPT | `lumina_core/code_evolution/operators.py` `FORBIDDEN_PARAMETER_KEYS` — add `live_release`, `sim_account_whitelist`, `account_name`, `RealAccountName`, `research_execution_mode`, `mode`, `trade_mode` |
-| ADAPT | `lumina_core/code_evolution/proposal.py` `FORBIDDEN_TARGET_PREFIXES` — add `config.yaml`, `fabric.json`, `lumina_core/risk/live_release`, `lumina_core/risk/sim_account_guard` |
-| ADAPT | `lumina_core/runtime_config_reloader.py` — refuse hot-reload of whitelist / `live_release` / `research_execution_mode` / `trade_mode` (log `config_reload_refused:protected_key`). Operator change requires process restart. |
+| ADAPT | `lumina_core/code_evolution/proposal.py` `FORBIDDEN_TARGET_PREFIXES` — add `config.yaml`, `fabric.json`, `lumina_core/risk/live_release`, `lumina_core/risk/sim_account_guard`, `order_gatekeeper/ungated_place_block` |
+| ADAPT | `lumina_core/runtime_config_reloader.py` — refuse hot-reload of whitelist / `live_release` / `research_execution_mode` / `trade_mode` / freeze (log `config_reload_refused:protected_key`). Operator change requires process restart. |
+| ADAPT | Isolation AST: `lumina_research/**` must not reference `LUMINA_LIVE_RELEASE_SECRET` or `live_release.py`. |
 | ADAPT | `lumina_core/risk/orchestration.py` — `enforce_rules = resolve_mode_capabilities(trade_mode).risk_enforced` (closes G-SIMBYP for `sim_real_guard`). **Do not** turn `sim` into risk_enforced in this step (that would change current learning mode). S3 will not use `sim` for research orders. |
 | NEW | `docs/adr/0060-sim-whitelist-and-live-release.md` |
 | NEW tests | below |
@@ -446,9 +498,11 @@ live_release:
   adr_sha256: ""
   approved_by: ""
   approved_at_utc: ""
-  signature: ""
+  mac: ""
 research_execution_mode: shadow
 ```
+
+Committed `mac` must stay empty. The operator stores the HMAC secret only in the environment (or OS secret store). Launchers must not write the secret into `config.yaml` or `fabric.json`.
 
 Empty `sim_account_whitelist:` (or omitted) **denies** every account. That is the opposite of today’s “configured empty → skip match”.
 
@@ -462,8 +516,8 @@ Python:
 | `tests/broker/test_sim_whitelist_empty_denies.py` | `whitelist=[]` + `Sim101` → deny. Missing key → deny. |
 | `tests/broker/test_sim_whitelist_case.py` | Exact NT name; document casefold policy (recommend casefold match, store canonical). |
 | `tests/risk/test_admission_whitelist_step.py` | AdmissionChain without the step fails closed in `sim`/`sim_real_guard`/`real`. Step sees connected account `LiveAcct` → reject. |
-| `tests/risk/test_live_release.py` | `enabled=false` → REAL submit denied. `enabled=true` but empty `adr_sha256` / signature → denied. Valid record → Python gate returns ok **only** for the live-release check (other REAL gates still apply). |
-| `tests/risk/test_live_release_attack.py` | (1) env `TRADE_MODE=real` without live_release → deny. (2) hot-reload payload flipping `live_release.enabled` → `config_reload_refused`. (3) code-evolution parameter tweak `live_release` → `forbidden_parameter_key`. (4) research `GovernanceGate.apply_protected` still `refuse_protected_write`. (5) agent publishes Event Bus event `runtime.config.reload_requested` with live_release true → reloader refuses. |
+| `tests/risk/test_live_release.py` | `enabled=false` → REAL denied. `enabled=true` with `adr_sha256` but **empty mac** → `live_release_hmac_required` (D4). Wrong mac → reject. Missing secret env → reject. Valid HMAC + human `approved_by` + ADR hash → this check ok (other REAL gates still apply). Agent id as `approved_by` → reject. |
+| `tests/risk/test_live_release_attack.py` | (1) env `TRADE_MODE=real` without live_release → deny. (2) hot-reload flipping `enabled` → refused. (3) code-evolution tweak → `forbidden_parameter_key`. (4) research governance cannot write. (5) bus reload request → refused. (6) research AST forbids the secret name. (7) truncated/flipped mac → reject. (8) `ungated_place_block` still on: even a valid LIVE_RELEASE does **not** allow S0/S1 SIM research orders. |
 | `tests/code_evolution/test_forbidden_whitelist_keys.py` | `FORBIDDEN_PARAMETER_KEYS` contains the new names; sandbox worker copy in `sandboxed_code_worker.py` updated to match. |
 | `tests/risk/test_orchestrator_enforce_rules_follows_capabilities.py` | `sim_real_guard` ⇒ `enforce_rules True`; `sim` ⇒ False; `real` ⇒ True. |
 | ADAPT `tests/broker/test_ninjatrader_guards.py` | Old “DEMO allowed in sim when names match” **fails** unless DEMO is on the whitelist. Update tests to the new law; do not keep the prefix allow. |
@@ -473,16 +527,16 @@ C# (new; gap G-CS):
 | Test | Proves |
 |------|--------|
 | `integrations/ninjatrader8/Lumina.Execution.Fabric.Tests/SimWhitelistTests.cs` | Empty whitelist → reject. Name not in list → `sim_account_not_whitelisted`. `Sim101` in list → admit past **this** check (other gates still run). Prefix `Sim999` not in list → reject. |
-| `LiveReleaseTests.cs` | `ModeContext=real` and `LiveRelease.enabled=false` → reject even on a Sim name. `enabled=true` still does not bind a live brokerage name in S1 (keep `real_account_blocked` until a later live ADR). |
+| `LiveReleaseTests.cs` | `ModeContext=real` without Brain-attested live-release → reject even on a Sim name. A Fabric boolean without HMAC attestation is not sufficient. S1 still does not bind a live brokerage name (`real_account_blocked`). |
 
 #### Acceptance (S1)
 
-1. A SIM order attempt (from the **existing** engine path or a unit-level `check_account_match`) to an account not on the list is rejected in Python **and** C#.
-2. Empty list denies `Sim101`.
-3. `LIVE_RELEASE` cannot be enabled by hot reload, code evolution, or research governance.
-4. Repo `config.yaml` remains `live_release.enabled: false`.
-5. Isolation tests still pass.
-6. ADR-0060 exists.
+1. A SIM order attempt to an account not on the list is rejected in Python **and** C#. Empty list denies `Sim101`.
+2. Prefix `Sim999` not on the list is rejected.
+3. `LIVE_RELEASE` without HMAC, with a wrong HMAC, or with a missing secret is rejected by the **Risk Core**. File+hash without mac is rejected.
+4. Repo `config.yaml` remains `live_release.enabled: false` and `mac: ""`. Secret is not in git.
+5. D1 freeze still blocks ungated places (including with yaml `mode: sim`).
+6. Isolation tests still pass. ADR-0060 exists.
 
 #### Rollback (S1)
 
@@ -492,7 +546,7 @@ C# (new; gap G-CS):
 
 ### 3.3 S2 — Fill feedback to monitor and cost calibration
 
-**Goal.** One fill SSOT. Broker fills (and S0 hypothetical fills) share `FillEvent`. Decay monitor and cost calibrator both consume that type. Commission and slippage are non-zero when the card/model says they are. Ticks and $ are both logged per root.
+**Goal.** One fill SSOT. Broker fills (and S0 hypothetical fills) share `FillEvent`. Decay monitor and cost calibrator both consume that type. **ADR-0055 is SSOT** (D3): commission from the NT card; slippage from fill price vs reference. The research `CostModel` **calibrates to** those broker fills. On discrepancy, **execution-side wins**. Ticks and $ are both logged per root. MES/MNQ are calibrated **separately** from ES/NQ.
 
 #### Files
 
@@ -503,17 +557,17 @@ C# (new; gap G-CS):
 | ADAPT | `lumina_core/broker/ninjatrader/fabric_mapper.py` `order_event_to_fill` — stamp `commission` from `lumina_core.market.nt_fees.fee_components` (Free-plan all-in × qty). Do not leave `0.0`. Slippage: `slippage_ticks = (fill_price - reference_price) / tick_size` when reference is on the originating `OrderIntent`; else omit (do not invent). |
 | ADAPT | `lumina_core/engine/trade_reconciler/fill_normalization_mixin.py` — copy slippage/commission onto `FillEvent`. |
 | ADAPT | `lumina_core/engine/trade_reconciler/finalize_mixin.py` — `reconciled` JSONL includes `slippage_ticks`, `slippage_usd`, `commission_ticks`, `commission`, `fill_price`, `qty`, `strategy_id`, `source`. |
-| ADAPT | `lumina_core/risk/cost_model_calibrator.py` — read those fields; group **by root** (ES vs MES separate running bias). Do not mix mini and micro in one `instrument` bucket. |
-| ADAPT | `lumina_research/monitoring/loop.py` / KEEP bridge — **KEEP calls `observe`**. Monitoring still does not import broker (isolation). Bridge is the anti-corruption layer. |
-| ADAPT | `ExecutionFill` — optional `slippage` / `commission_ticks` with defaults 0; `extra=forbid` so add fields, don’t allow unknown. |
-| ADAPT | `scripts/validation/run_cost_model_calibration.py` — pass-through; assert per-root output. |
-| NEW tests | below |
-| FORBIDDEN | research importing `lumina_core.broker`; changing ADR-0055 card formula; Fabric proto commission field (stamp in Brain) |
+| ADAPT | `lumina_core/risk/cost_model_calibrator.py` — read those fields; group **by root** (ES vs MES separate). Do not mix mini and micro. |
+| NEW | `lumina_research/validation/cost_calibrate.py` (or KEEP-side writer that **does not** let agents mutate `limits.toml`) — compare research four-leg estimate to ADR-0055 + observed fill slippage; write `state/research_cost_calibration.json`. Research coefficients may **tighten** (never cheapen commission below the card). Execution-side numbers remain the FillEvent SSOT. |
+| ADAPT | `lumina_research/monitoring/loop.py` / KEEP bridge — **KEEP calls `observe`**. Monitoring still does not import broker. |
+| ADAPT | `ExecutionFill` — optional `slippage` / `commission_ticks` with defaults 0; `extra=forbid`. |
+| ADAPT | `scripts/validation/run_cost_model_calibration.py` — per-root; assert research estimate ≥ execution commission (never undercut the card). |
+| NEW tests | see below |
+| FORBIDDEN | research importing `lumina_core.broker`; changing ADR-0055 card formula; using research four-leg cash as FillEvent commission; Fabric proto commission field |
 
-Hypothetical S0 fills already have `source=hypothetical_cost_model`. S2 translator accepts both sources. Calibrator **must** tag hypothetical vs broker so we never calibrate the live card against cost-model fiction. Two state files:
+`source=hypothetical_adr0055` (S0) vs `source=broker` (S2/S3). Live calibrator **`state/cost_model_calibration.json`** is **broker fills only**. Research calibration file is separate. Hypothetical fills never write the live calibrator.
 
-- `state/cost_model_calibration.json` — **broker** fills only (KEEP meaning).
-- `state/research_shadow_cost.json` — hypothetical vs later broker, for S3 promotion evidence (reality gap).
+On discrepancy (research total_usd ≠ commission_card + fill_slippage): log `cost_discrepancy`; **FillEvent and live calibrator keep execution-side**; research file records the delta for honesty.
 
 #### Tests (S2)
 
@@ -524,16 +578,19 @@ Hypothetical S0 fills already have `source=hypothetical_cost_model`. S2 translat
 | `tests/broker/test_fabric_mapper_commission.py` | MES qty 1 commission = 0.94; ES qty 1 = 2.87; MNQ ≠ NQ. Not 0.0. |
 | `tests/broker/test_fill_slippage_ticks.py` | BUY fill 1 tick above reference → `slippage_ticks=1`, `slippage_usd=tick_value`. |
 | `tests/risk/test_cost_model_calibration_per_root.py` | ES and MES rows do not share a rolling mean. |
-| `tests/research_bridge/test_hypothetical_excluded_from_live_calibration.py` | `source=hypothetical_cost_model` never writes `state/cost_model_calibration.json`. |
+| `tests/research_bridge/test_hypothetical_excluded_from_live_calibration.py` | `source=hypothetical_adr0055` never writes `state/cost_model_calibration.json`. |
+| `tests/research/test_cost_model_does_not_undercut_card.py` | After calibration, research commission_usd ≥ ADR-0055 all-in for that root; slippage is not added as a second cash ticket on a fill that already moved. |
+| `tests/research_bridge/test_discrepancy_execution_wins.py` | Fixture where research four-leg > card: FillEvent.commission stays card; discrepancy logged. |
 | `tests/research/test_phase4_isolation.py` | still no broker import from `lumina_research/monitoring`. |
-| ADAPT `tests/risk/test_cost_model_calibration.py` | new fields. |
+| ADAPT `tests/risk/test_cost_model_calibration.py` | new fields; per-root MES vs ES. |
 
 #### Acceptance (S2)
 
-1. A fixture broker fill with known price/qty produces identical `(fill_price, qty, slippage, commission)` in JSONL, `FillEvent`, calibrator input, and (if mapped) monitor observe.
-2. Commission is the ADR-0055 Free-plan all-in, per root, in $; ticks = `$ / tick_value_usd`.
-3. Hypothetical fills never pollute live calibration.
-4. Isolation tests green.
+1. A fixture broker fill with known price/qty produces identical `(fill_price, qty, slippage, commission)` in JSONL, `FillEvent`, live calibrator input, and (if mapped) monitor observe.
+2. Commission is the ADR-0055 Free-plan all-in, per root, in $; ticks = `$ / tick_value_usd`; slippage is fill vs reference, not a cash tick on the card.
+3. Research four-leg estimate cannot undercut the card; execution-side wins on discrepancy.
+4. Hypothetical fills never pollute live calibration.
+5. Isolation tests green.
 
 #### Rollback (S2)
 
@@ -541,26 +598,47 @@ Stop the translator subscription; monitor can still be fed by S0 hypothetical pa
 
 ---
 
+### 3.3.1 S2.5 — PIT NT-bar tape for the Validation Gate (mandatory, D2)
+
+**Goal.** Research candidates that might become S3 survivors are evaluated with `passes_validation_gate` on **closed NT Last bars** (ADR-0053/0054), not on `lumina_research/agents/synthetic.py`. Synthetic tapes remain for unit, campaign, mutation, and calibration tests only.
+
+| Action | Path |
+|--------|------|
+| NEW | `lumina_research/validation/nt_tape.py` — read-only adapter: closed-book OHLC from KEEP `MarketDataManager` / fixture replay → returns series for `evaluate_candidate`. Forming bars refused. Look-ahead = reject. |
+| ADAPT | `ValidationAgent` — production/survivor path requires `tape_kind="nt_pit"` provenance on `ValidationResult` (new required field or fail-closed default `synthetic`). |
+| ADAPT | `PromotionAgent` — refuse candidate if validation `tape_kind != "nt_pit"` when `admit_for_sim=true`. Tests may still promote synthetic **only** into test registries. |
+| NEW tests | `tests/research/test_nt_tape_no_lookahead.py`, `tests/research/test_synthetic_cannot_be_survivor.py` |
+| FORBIDDEN | downloading vendor CSV as a silent substitute for NT closed bars; using planted_edge gauss as `nt_pit`. |
+
+Acceptance: a fixture of NT closed MES/MNQ bars produces a `ValidationResult` with `tape_kind=nt_pit`; the same candidate on `materialize()` is `tape_kind=synthetic` and `check_sim_entry.py` will not count it.
+
+Rollback: revert S2.5; S3 cannot enable (gate fails closed with `survivors_not_nt_pit`).
+
+---
+
 ### 3.4 S3 — SIM orders, gated
 
-**Goal.** Research-originated `OrderIntent`s may reach Fabric **only if** all gates below pass. Still **not** LIVE. `LIVE_RELEASE.enabled` remains false. Account must be on the S1 whitelist.
+**Goal.** Research-originated `OrderIntent`s may reach Fabric **only if** all gates below pass. Still **not** LIVE (`LIVE_RELEASE` HMAC must verify as disabled / not valid for REAL). Account on the S1 whitelist. First instruments **MES and MNQ only** (D5). Ungated supervisor remains blocked unless **OQ1** says otherwise after S3; the **only** new allow is `source_agent="research_bridge"` after `sim_gate`.
 
 #### Entry criteria (machine-checkable)
 
 All must be true; missing evidence = reject (`research_sim_gated`):
 
-1. `research_execution_mode: sim` set by operator **restart** (not hot reload).
-2. `live_release.enabled: false` (S3 is SIM; if this is true, refuse research S3 until a later live ADR — do not mix).
+1. `research_execution_mode: sim` set by operator **restart** (not hot reload). Yaml alone does not lift D1 for ungated paths.
+2. `live_release.enabled` is false **or** HMAC does not verify as a REAL release. S3 is SIM; mixing REAL release with first SIM is refused.
 3. Connected NT account ∈ `sim_account_whitelist`.
-4. Trade mode is **`sim_real_guard`** (not `sim`), with `ENABLE_SIM_REAL_GUARD=true`, so Brain risk caps are on (G-SIMBYP closed). Session guard + equity snapshot apply (`MODES_REQUIRING_EQUITY_SNAPSHOT`).
-5. **Survivors:** ≥ 2 and ≤ N (operator cap) **independent** signals in `LiveSignalRegistry` with `stage in {active, deweighted}` (not suspended/retired), each with:
-   - sealed `PromotionCandidate` + `ValidationResult` (`passes_validation_gate` true);
+4. Trade mode is **`sim_real_guard`** (not `sim`), with `ENABLE_SIM_REAL_GUARD=true`. Session guard + equity snapshot apply.
+5. Instrument ∈ **{MES, MNQ}**. ES/NQ `OrderIntent` → `sim_instrument_not_yet_released` until a later stability ADR.
+6. **Survivors:** ≥ 2 and ≤ N **independent** signals in `LiveSignalRegistry` with `stage in {active, deweighted}`, each with:
+   - sealed `PromotionCandidate` + `ValidationResult` with `passes_validation_gate` true;
+   - **`tape_kind="nt_pit"`** (D2). `tape_kind="synthetic"` never counts, even if the gate passed in a unit test;
    - distinct `hypothesis_id`;
-   - pairwise correlation of shadow observe series below a fixed cap (reuse research cluster: ES family vs NQ family counts as independent; two MES clones of the same `config_id` do not);
-   - shadow fill history ≥ `expected_horizon` and ≥ ADR-0058 window (`CONFIRM_WINDOWS` and monitor `window`, default 20) **from FillEvent SSOT** (hypothetical allowed for the first S3 enable only if Q2 says so; default recommendation: **NT-tape or NT-bar replay PIT**, not planted_edge gauss).
-6. Empirical monitoring thresholds **on that shadow series** (not only the synthetic campaign in `tests/research/test_phase4_campaign.py`): FAR and detection floors from `lumina_research/monitoring/acceptance.py` either (a) still hold on the campaign harness **and** (b) live/shadow FAR on healthy control signals ≤ 5%. If (b) cannot be measured yet, **do not enable** S3 (doubt = reject).
-7. Live `PromotionGate.evaluate` on `GateReport.as_promotion_fragments()` **plus** HMAC verification of the same `ValidationResult` used by the registry. Fail if fragments and MAC disagree.
-8. Twin/human: existing `sim_real_guard` approval_required in `config.yaml` (`sim.approval_required: true`) stays on.
+   - independent families: two clones of the same `config_id` do not count; MES+MNQ may count as two if hypotheses differ;
+   - explicit `expected_horizon_bars ≥ 1` (D6);
+   - shadow/PIT fill history ≥ `expected_horizon` and ≥ ADR-0058 window from **FillEvent SSOT** (broker or S0 hypothetical **on NT bars**, not gauss).
+7. Empirical monitoring thresholds on that **NT-bar** shadow series (synthetic campaign in `test_phase4_campaign.py` is necessary but **not sufficient**). If live/shadow FAR on healthy NT-tape controls cannot be measured, **do not enable** S3.
+8. Live `PromotionGate.evaluate` on `GateReport.as_promotion_fragments()` **plus** HMAC of the same NT-PIT `ValidationResult`. Dictionary-only evidence → reject.
+9. Twin/human: `sim.approval_required: true` stays on.
 
 If any check fails, bridge stays in shadow behavior even if the yaml says `sim`.
 
@@ -568,44 +646,49 @@ If any check fails, bridge stays in shadow behavior even if the yaml says `sim`.
 
 | Action | Path |
 |--------|------|
-| ADAPT | `lumina_core/research_bridge/shadow_runtime.py` → split `sim_runtime.py` or mode switch inside bridge: `shadow` logs; `sim` builds live `OrderIntent` and calls **existing** `enforce_pre_trade_gate` + `FinalArbitration` + `NinjaTraderBroker.submit_order`. No new broker. |
-| ADAPT | `operations_service_orders.py` / policy — research orders enter **only** through the bridge, with `source_agent="research_bridge"` and `strategy_id` set. Supervisor E5 **must refuse** `source_agent=research_bridge` if somehow invoked (defense). |
-| NEW | `lumina_core/research_bridge/sim_gate.py` — implements entry criteria 1–8; returns `(ok, reason)`. |
-| ADAPT | `lumina_core/evolution/promotion_gate.py` — **require** optional `validation_mac` / `report_sha256` when `source=research`. Dictionary-only evidence without MAC **rejects** for research-sourced DNA. Do not silently accept nightly report dicts for research strategies. |
-| NEW | `lumina_core/research_bridge/reduce_on_decay.py` — subscribe `RESEARCH_DEWEIGHT_TOPIC` / `SUSPEND` / `RETIRE`; if open position for `strategy_id`, submit **reduce-only** `OrderIntent` through the same AdmissionChain. Suspend/retire → flatten **that strategy’s** qty, not the whole account, unless Risk Core hard limit fires (kill switch / daily loss / Fabric daily loss). Emergency account flatten remains Fabric watchdog (KEEP). |
-| ADAPT | `fabric_mapper.order_to_place_command` — set `reduce_only` true for decay reduces; `mode_context=sim_real_guard`; `correlation_id` = strategy_id + client_order_id. |
-| ADAPT | `config.yaml` — do not commit `research_execution_mode: sim`; operator sets it locally after the gate script passes. |
-| NEW | `scripts/research/check_sim_entry.py` — prints survivors, FAR, whitelist, live_release, mode; exit 0 only if criteria pass. |
+| ADAPT | `ungated_place_block.py` — allow-list **only** `source_agent="research_bridge"` after `sim_gate` ok. Supervisor confluence still blocked. |
+| ADAPT | `lumina_core/research_bridge/shadow_runtime.py` → `sim_runtime.py`: `sim` builds live `OrderIntent` (MES/MNQ only) and calls **existing** `enforce_pre_trade_gate` + `FinalArbitration` + `NinjaTraderBroker.submit_order`. No new broker. |
+| NEW | `lumina_core/research_bridge/sim_gate.py` — entry criteria 1–9; returns `(ok, reason)`. |
+| ADAPT | `lumina_core/evolution/promotion_gate.py` — require `validation_mac` / `report_sha256` / `tape_kind=nt_pit` when `source=research`. |
+| NEW | `lumina_core/risk/alarm_executor.py` — **D7 executor** in the Risk Core context (not in `lumina_research`). Subscribes to `research.signal.deweighted` / `suspended` / `retired` / `research.guardian.finding`. Research still only **proposes**. This module (with `LivePositionManager` for book qty) **executes** reduce/flatten through AdmissionChain. SLA: default alarm → next bar or ≤ 5 min; **critical** → ≤ 1 min. Default size: **50% of that strategy’s qty** (`reduce_only`). Critical (hard DD limit, prolonged disconnect, `GuardianSeverity` critical) → **flatten** that strategy’s qty (and account flatten if Core kill-switch / Fabric emergency says so). Log + escalate every proposal, every execution, every SLA miss. Broker `GetAccountState` is SSOT after. |
+| ADAPT | `lumina_core/engine/live_position_manager.py` — book qty for the executor; does not decide severity. |
+| ADAPT | `fabric_mapper.order_to_place_command` — `reduce_only` true for D7 reduces; `mode_context=sim_real_guard`; `correlation_id` = strategy_id + client_order_id. |
+| ADAPT | `config.yaml` — do not commit `research_execution_mode: sim`. |
+| NEW | `scripts/research/check_sim_entry.py` — survivors with `tape_kind=nt_pit`, FAR, whitelist, live_release HMAC disabled, MES/MNQ, freeze allow-list; exit 0 only if criteria pass. |
 | NEW tests | below |
-| FORBIDDEN | `LIVE_RELEASE.enabled: true`; `trade_mode: real`; relaxing `risk_gates` SIM bypass for `sim` mode “to make S3 easier”; importing archive birth. |
+| FORBIDDEN | `LIVE_RELEASE` HMAC valid for REAL; `trade_mode: real`; ES/NQ research orders; synthetic survivors; research calling `place_order`; relaxing SIM cap bypass; archive birth. |
 
 #### Tests (S3)
 
 | Test | Proves |
 |------|--------|
-| `tests/research_bridge/test_sim_gate_requires_survivors.py` | 0 or 1 survivor → no `place_order`. 2 independent → gate ok **in fixture**. Two clones same `config_id` → not independent. |
-| `tests/research_bridge/test_sim_gate_mode.py` | `trade_mode=sim` (learning, caps bypassed) → refuse research orders. `sim_real_guard` + env → ok. `real` → refuse (`live_release` false). |
-| `tests/research_bridge/test_sim_still_shadow_when_yaml_lies.py` | yaml `sim` but survivors < 2 → still no Fabric call. |
-| `tests/research_bridge/test_research_order_hits_admission.py` | Mock chain: whitelist, constitution, arbitration all invoked; a reject anywhere → no Fabric. |
-| `tests/research_bridge/test_promotion_gate_requires_mac.py` | Research-sourced evidence dict without MAC → reject. |
-| `tests/research_bridge/test_decay_reduce_only.py` | Deweight with open qty → one reduce-only order, not flatten-all. Retire → qty to 0 for that strategy. Kill-switch → existing Risk Core path (full block / flatten policy unchanged). |
-| `tests/research_bridge/test_disconnect_no_new_orders.py` | Reuse `check_disconnect_policy` / SAFE_MODE: research bridge does not retry place while disconnected. |
-| `tests/research_bridge/test_stale_equity_blocks_sim.py` | `sim_real_guard` + stale snapshot → no new research order (reduce-only still allowed if `is_risk_reducing_side`). |
-| C# | Existing heartbeat/flatten tests still pass; whitelist tests from S1 still pass. |
+| `tests/research_bridge/test_sim_gate_requires_survivors.py` | 0 or 1 survivor → no `place_order`. 2 independent **nt_pit** → gate ok in fixture. Two clones same `config_id` → not independent. Two **synthetic** gate-passes → still refuse. |
+| `tests/research_bridge/test_sim_gate_mes_mnq_only.py` | ES/NQ OrderIntent refused with `sim_instrument_not_yet_released`. MES/MNQ allowed when other gates pass. |
+| `tests/research_bridge/test_sim_gate_mode.py` | `trade_mode=sim` → refuse research orders. `sim_real_guard` + env → ok. `real` → refuse. |
+| `tests/research_bridge/test_sim_still_shadow_when_yaml_lies.py` | yaml `sim` but survivors < 2 or synthetic-only → no Fabric call. D1 still blocks supervisor. |
+| `tests/research_bridge/test_research_order_hits_admission.py` | Whitelist, constitution, arbitration invoked; reject anywhere → no Fabric. |
+| `tests/research_bridge/test_promotion_gate_requires_mac.py` | Evidence dict without MAC or without `nt_pit` → reject. |
+| `tests/risk/test_alarm_executor_default_reduce.py` | Deweight proposal + open qty 2 → executor submits reduce-only qty 1 (50%) through AdmissionChain. Research modules are not in the stack trace of `submit_order`. |
+| `tests/risk/test_alarm_executor_critical_flatten.py` | Hard DD / prolonged disconnect / critical guardian finding → flatten that strategy (qty to 0). Account-wide flatten only if Core kill-switch / Fabric emergency fires. |
+| `tests/risk/test_alarm_executor_sla.py` | Default proposal executed by next bar or ≤ 5 min in the fake clock. Critical ≤ 1 min. SLA miss → log + escalate (OQ3: flatten-on-miss still open). |
+| `tests/research_bridge/test_disconnect_no_new_orders.py` | SAFE_MODE / disconnect: no new research places; reconcile on reconnect. |
+| `tests/research_bridge/test_stale_equity_blocks_sim.py` | Stale snapshot → no **new** research order; reduce-only still allowed if `is_risk_reducing_side`. |
+| `tests/research/test_monitor_cannot_place.py` | AST: `lumina_research/monitoring` still has no broker/`place_order` import. |
+| C# | Heartbeat/flatten + S1 whitelist tests still pass. |
 
 #### Acceptance (S3)
 
-1. `python scripts/research/check_sim_entry.py` exit 0 on the operator desk.
-2. First research order is on a **whitelisted SIM** account, `mode_context=sim_real_guard`, `LIVE_RELEASE` false.
-3. Fills return on `TradingStream`, become `FillEvent(source=broker)`, update monitor and live calibrator (S2).
+1. `python scripts/research/check_sim_entry.py` exit 0: ≥2 independent **nt_pit** survivors, MES/MNQ, whitelist, `sim_real_guard`, LIVE_RELEASE HMAC not enabling REAL.
+2. First research order is MES or MNQ on a **whitelisted SIM** account. ES/NQ research orders are rejected.
+3. Fills return on `TradingStream`, become `FillEvent(source=broker)` with ADR-0055 commission, update monitor and live calibrator.
 4. Kill NT or Brain: Fabric SAFE + cancel non-protected; no new places; reconcile on reconnect (`GetAccountState`).
-5. Decay: size down, not account-wide flatten, unless a hard Risk Core / Fabric daily-loss limit fires.
-6. Logs/alerts: every reject (`sim_gate`, admission, Fabric) in JSONL + existing Telegram `real_safety` matrix **not** spammed; use `ops` / `evolution` channels (`config.yaml` notification_matrix).
+5. Alarm: research JSONL shows a **proposal**; Risk Core `alarm_executor` JSONL shows the **execution** (50% or flatten) within SLA. Research did not call Fabric.
+6. Logs/alerts: every reject and every alarm execution; Telegram `ops` / `evolution`, not a `real_safety` spam path.
 
 #### Rollback (S3)
 
-1. Immediate: `research_execution_mode: shadow` + restart. Bridge stops placing. Open research positions: operator or `reduce_on_decay` on a synthetic “retire all research” guardian finding — **prefer reduce-only per strategy**. Account-wide flatten only if Risk Core kill switch engages.
-2. Git revert S3 PR. S0–S2 remain.
+1. Immediate: `research_execution_mode: shadow` + restart. Bridge allow-list empties (D1 freeze fully on again). Open research positions: `alarm_executor` on a retire-all **proposal** (50% then flatten if critical), or operator emergency flatten. Account-wide flatten only if Core kill-switch / Fabric emergency.
+2. Git revert S3 PR. S0–S2.5 remain.
 3. Fabric watchdog unchanged.
 
 ---
@@ -618,50 +701,45 @@ If any check fails, bridge stays in shadow behavior even if the yaml says `sim`.
 - Use `archive/birth-v1/` fitness or curricula.
 - Trust prefix `Sim*` as a whitelist.
 - Calibrate live costs on hypothetical fills.
-- Flatten the whole book because a monitor z-test fired.
+- Flatten the whole book because a monitor z-test fired (D7: default is 50% of **that strategy**; account flatten is Core/Fabric critical only).
+- Count synthetic planted_edge candidates as S3 survivors (D2).
+- Accept `LIVE_RELEASE` as a yaml flag or file+SHA without HMAC (D4).
+- Silent-default `expected_horizon` from `oos_size` or 20 (D6).
+- First-wave ES/NQ research SIM orders (D5).
+- Let research execute de-weight (D7).
 
 ---
 
-## 4. Risks and open questions for Steve
+## 4. Risks and remaining open questions
 
 ### 4.1 Risks (real)
 
 | Risk | Why it is real | Mitigation |
 |------|----------------|------------|
-| Existing `mode: sim` already submits NT orders from `supervisor_tick_exec` | Desk can trade **without** research gates while we “start in SHADOW” for research only | Q1. Bridge isolation test `test_supervisor_unaffected`. Do not claim the desk is shadow-only unless E5 is frozen. |
-| Two cost theories (research four-leg cash vs ADR-0055 “slippage in the fill”) | Shadow PnL and live calibration will disagree if both run unlabeled | S2 splits state files; Q3. |
-| Live `PromotionGate` DSR floor 0.0 vs research 0.95 | A research survivor could be re-judged by a weaker live gate, or the reverse | S3 requires MAC **and** research floors; do not lower `gate_thresholds.toml`. |
-| `sim` Risk Core cap bypass | S3 on `sim` would be NT orders with Brain caps off | S3 hard-requires `sim_real_guard`. |
-| `@LuminaFabricHost.cs` gitignored | S1 C# whitelist lives in `fabric.json`; a stale AddOn build could skip new checks | Operator rebuild/heal after S1; add a Fabric version/capability ping if missing. |
-| Synthetic “survivors” look like 2–3 | Phase 2 planted_edge will pass the gate on gauss tapes without NT PIT | Q2; default S3 refuse synthetic-only. |
-| Reduce-on-decay vs session-touched flatten | Mis-wiring could flatten the operator’s manual SIM trades | Reduce only client_order_ids in `fill_index`; EmergencyFlattenPolicy stays session-touched for **Brain disconnect**, not decay. |
-| AdmissionChain step add is a Risk Core change | Binding said “no Risk Core code” for **this** docs PR; S1 **will** touch it | Separate S1 PR, human review, ADR-0060, tests above. This plan PR does not apply that change. |
+| Ungated `mode: sim` path | E5 and siblings can submit without the Validation Gate **today** | D1 hard-block in S0; AST inventory test; yaml cannot lift it |
+| S0 freeze touches the order funnel | `place_order` / `execute_order` wrappers change in S0 | Separate review of the freeze diff; flatten/emergency remain allowed; this docs PR does not apply it |
+| Dual cost numbers until S2 calibrates | Research four-leg vs ADR-0055 | D3: FillEvent is execution-side; log discrepancy; never undercut the card |
+| Live `PromotionGate` DSR floor 0.0 vs research 0.95 | Weaker live gate on dict evidence | S3 requires MAC + `nt_pit` + research floors |
+| `sim` Risk Core cap bypass | S3 on `sim` would be NT orders with Brain caps off | S3 requires `sim_real_guard` |
+| `@LuminaFabricHost.cs` gitignored | Stale AddOn could skip S1 whitelist | Operator rebuild after S1 |
+| Synthetic candidates look like survivors | Phase 2 planted_edge will PASS on gauss | D2 + `tape_kind`; `check_sim_entry.py` refuses synthetic |
+| Alarm executor vs session-touched flatten | Wrong wiring could flatten operator SIM trades | D7 executes **per strategy_id** in `fill_index`; Fabric emergency stays session-touched for Brain death |
+| HMAC secret handling | Secret in env can leak via logs/debug | Never log secret; AST ban in research; missing secret = reject |
+| S1 AdmissionChain step is a Risk Core change | Required by whitelist + LIVE_RELEASE verify | S1 PR + ADR-0060 + human review; not this docs PR |
 
-### 4.2 Open questions (only real ones; the plan cannot honestly choose)
+### 4.2 Remaining open questions (only real ones)
 
-**Q1.** While research is in SHADOW, should the **existing** confluence/`place_order` path (`supervisor_tick_exec`, `config.yaml` `mode: sim`) keep sending SIM orders to NT, or freeze it (`research_execution_mode=shadow` also sets a desk-level `execution_hold` except flatten/cancel)?
+Former Q1–Q6 are **closed** (Decisions D1–D6). D7 closed the alarm-authority question. IDs **OQ*** avoid collision with inventory Risk Core rows R1–R15. These are still unspecified:
 
-This plan cannot call the desk “shadow first” if E5 still fires. Recommendation if you do not answer: **leave E5 as-is** (KEEP product), document it as a parallel path, and do not advertise SHADOW as “no NT orders from Lumina”.
+**OQ1.** After S3 enables the research_bridge allow-list, does **ungated** confluence / `supervisor_tick_exec` stay **permanently dead**, or can it be re-armed for non-research orders once research SIM is gated? D1 only mandates the freeze during S0/S1.
 
-**Q2.** What is an “independent survivor”? Specifically: may S3 enable on **synthetic** planted_edge candidates that passed Phases 1–4, or only on candidates whose Validation Gate ran on **NT closed bars** (PIT, ADR-0053)?
+**OQ2.** Map ADR-0058 stages to D7 actions. Default deweight → 50% reduce is set. Are `research.signal.suspended` and `research.signal.retired` **flatten-that-strategy**, or additional 50% steps? Binding names flatten only for **critical** (hard DD, prolonged disconnect, critical severity).
 
-Default if unanswered: **NT PIT bars required**. That implies a research data adapter (read-only closed book → `materialize` replacement) **before** S3, which is a new slice between S0 and S3 (call it S2.5 if needed). It is not in S0 because S0 can prove wiring on cost-only hypothetical fills without claiming alpha.
+**OQ3.** If the Risk Core / Position Manager **misses the SLA** (1–5 min / next bar), does that miss **escalate to critical flatten**, or only log/alert and retry? Fail-closed suggests escalate; Steve did not say.
 
-**Q3.** For hypothetical S0 fills and for live calibration, which cost SSOT wins when they disagree: `lumina_research.validation.cost_model` (commission + half-spread + slippage + impact as cash) or ADR-0055 `nt_fees` (commission cash; slippage in fill price)?
+**OQ4.** Numeric independence test for “2–3 independent survivors” (correlation cap, or only distinct `hypothesis_id` + instrument family). Without a number, `check_sim_entry.py` cannot be fully deterministic.
 
-Recommendation: **broker/live calibration = ADR-0055 card + observed fill slippage**. **Research Validation Gate** keeps the four-leg model (charter). Shadow JSONL stores **both** breakdowns. Do not silently replace the charter model.
-
-**Q4.** `LIVE_RELEASE` signature: reuse research `SignedReview` HMAC (`schemas_research.py`) with `reviewer_id` not an agent, or a separate operator file under `%APPDATA%\LUMINA\live_release.json` plus ADR-0060 hash only?
-
-Either is fail-closed. Need one so S1 tests have a golden fixture. Recommendation: **file + ADR hash + human name + UTC**, HMAC optional (launcher already writes `fabric.json` without HMAC).
-
-**Q5.** First SIM instrument for S3: MES/MNQ (micro, $0.94/side) or ES/NQ (mini, $2.87/side, 10× tick value on ES vs MES)? Binding only says **separate** costs. Recommendation: **MES or MNQ** on Sim101 until survivors exist, because Fabric `max_position_size: 2` still hurts more on ES.
-
-**Q6.** `expected_horizon`: who sets it? PromotionCandidate today has no field. Options: (a) refuse until the hypothesis carries bars/time, (b) default to monitor window 20, (c) default to genome `oos_size` (30 in the schema default).
-
-Recommendation: **(a) refuse in S0 if missing**; ADAPT `HypothesisProposed` / `PromotionCandidate` with required `expected_horizon_bars ≥ 1` in the same S0 PR. That is a research schema change but not a Risk Core change.
-
-No other questions are blocking. Dual Event Bus vs gRPC, “rewrite the AddOn”, and “merge research into `lumina_core/engine`” are already decided (no).
+Not blocking for S0–S3: Event Bus vs gRPC (keep both), rewrite AddOn (no), merge research into `lumina_core/engine` (no), LIVE_RELEASE secret store (use env `LUMINA_LIVE_RELEASE_SECRET` like `LUMINA_FABRIC_TOKEN`), horizon unit (bars, `expected_horizon_bars ≥ 1`), numeric “stability” gate to scale MES/MNQ → ES/NQ (D5; later ADR).
 
 ---
 
@@ -670,11 +748,11 @@ No other questions are blocking. Dual Event Bus vs gRPC, “rewrite the AddOn”
 | PR | Content | Touches Risk Core / Fabric? |
 |----|---------|------------------------------|
 | This PR | `docs/plans/INTEGRATION_PLAN_research_to_nt8.md` only | No |
-| S0 | Bridge + schemas + ADR-0059 + tests | No (config key only) |
-| S1 | Whitelist + LIVE_RELEASE + admission step + C# + ADR-0060 + attack tests | **Yes** (admission step, guards, C# place reject). Human review required. |
-| S2 | Fill translator + mapper commission/slippage + per-root calibrator | Mapper/reconciler only; not risk limits |
-| S2.5 (if Q2 = NT PIT) | Research tape from closed NT bars | Read-only MD |
-| S3 | sim_runtime + sim_gate + reduce-on-decay + PromotionGate MAC | Order path via **existing** admission; no LIVE_RELEASE |
+| S0 | **D1 freeze** + bridge + horizon schema + ADR-0059 + parallel-path tests | **Yes** (order-funnel tripwire). Flatten/emergency remain. Human review. |
+| S1 | Whitelist + HMAC `LIVE_RELEASE` in Risk Core + C# + ADR-0060 + attack tests. Freeze stays on. | **Yes** (admission step, Core verify, C# reject). Human review. |
+| S2 | Fill translator + ADR-0055 stamp + research calibrates to execution | Mapper/reconciler/calibrator; not risk limits |
+| S2.5 | **Mandatory** NT-PIT tape for Validation Gate (D2) | Read-only MD |
+| S3 | sim_runtime + sim_gate (MES/MNQ, nt_pit survivors) + `alarm_executor` (D7) + PromotionGate MAC | Order path via **existing** admission; research still propose-only on alarms |
 
 Each PR: `ruff` + `mypy --strict` + `pyright` + targeted pytest; C# `dotnet test` on Fabric.Tests when G/S1/S3.
 
@@ -689,9 +767,10 @@ Each PR: `ruff` + `mypy --strict` + `pyright` + targeted pytest; C# `dotnet test
 | Isolate old birth/evolution | §1.7, G-ENG, O1–O14 |
 | SignalIntent / OrderIntent / FillEvent fields | §1.10, §3.0, G-MSG |
 | Fills → monitor + calibration, one SSOT | §3.3, E13, G-FILL |
-| Explicit SIM whitelist; LIVE_RELEASE; not agent-mutable; bypass tests | §1.4, §3.2, G-WL, G-LIVE, G-MUT |
-| Shadow first; SIM after 2–3 survivors + empirical floors | §3.1, §3.4, G-SURV, P9 |
-| Fail-closed stale/disconnect; broker SSOT; reduce vs hard flatten | G11–G13, S3–S6, G-RED, §3.4 reduce_on_decay |
-| ES/NQ vs MES/MNQ ticks and $ | P2, P3, R13, S0 cost tests, S2 mapper tests |
+| Explicit SIM whitelist; HMAC LIVE_RELEASE; not agent-mutable; bypass tests | §1.4, §3.2, D4, G-WL, G-LIVE, G-MUT |
+| Shadow first; hard-block ungated places (D1); SIM after 2–3 **nt_pit** survivors | Decisions, §3.1, §3.3.1, §3.4, G-SURV, G-ENG |
+| Fail-closed stale/disconnect; broker SSOT; research proposes, Core executes (D7) | Decisions D7, G11–G13, S7, G-RED, `alarm_executor` |
+| ES/NQ vs MES/MNQ ticks and $; ADR-0055 SSOT (D3); MES/MNQ first (D5) | D3, D5, P2, P3, R13, S0/S2 tests |
+| `expected_horizon` required, no silent default (D6) | Decisions D6, G-HORIZ, HypothesisAgent, SignalIntent |
 
-*End of plan. No runtime behavior changes in the commit that adds this file.*
+*End of plan. No runtime behavior changes in the commit that updates this file.*
