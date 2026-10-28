@@ -193,6 +193,7 @@ def test_m5_residual_split_modules_exist() -> None:
         "lumina_core/birth/awakening_hole_tax_run.py",
         "lumina_core/birth/awakening_hole_tax_path.py",
         "lumina_core/engine/visualization_charts_window.py",
+        "lumina_core/agent_orchestration/schemas_research_continuity.py",
         "lumina_core/maturity/playground/sense_brief_fields.py",
     ]
     missing = [
