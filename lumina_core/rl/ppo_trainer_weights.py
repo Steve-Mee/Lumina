@@ -17,7 +17,7 @@ logger = get_logger("lumina.rl.ppo")
 
 def _sb3_ppo_load(path: str | Path) -> Any | None:
     try:
-        from lumina_core.birth.physics_preflight import import_sb3_ppo
+        from lumina_core.rl.training_defaults import import_sb3_ppo
 
         return import_sb3_ppo().load(str(path))
     except ModuleNotFoundError:

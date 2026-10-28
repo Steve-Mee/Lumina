@@ -7,8 +7,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lumina_core.birth.curriculum import CurriculumStage
-from lumina_core.birth.stage_pass_receipt import StagePassReceipt
+from types import SimpleNamespace
+
 from lumina_core.notifications.milestone_events import (
     MilestoneCategory,
     MilestoneEvent,
@@ -66,8 +66,8 @@ def test_milestone_seed_prevents_resend(tmp_path: Path) -> None:
         training_mode="certified",
     )
     event = curriculum_stage_passed_event(
-        CurriculumStage.STAGE1_TREND,
-        StagePassReceipt(
+        "stage1_trend",
+        SimpleNamespace(
             stage="stage1_trend",
             trades=120,
             wins=70,
@@ -104,8 +104,8 @@ def test_stage_passed_uses_birth_milestones_kind(tmp_path: Path) -> None:
     notifier = MilestoneNotifier(workspace_root=tmp_path, telegram=telegram)
     notifier._enabled = True
     event = curriculum_stage_passed_event(
-        CurriculumStage.STAGE2_RANGE,
-        StagePassReceipt(
+        "stage2_range",
+        SimpleNamespace(
             stage="stage2_range",
             trades=250,
             wins=74,
@@ -124,8 +124,8 @@ def test_stage_passed_uses_birth_milestones_kind(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_curriculum_stage_event_summary() -> None:
     event = curriculum_stage_passed_event(
-        CurriculumStage.STAGE2_RANGE,
-        StagePassReceipt(
+        "stage2_range",
+        SimpleNamespace(
             stage="stage2_range",
             trades=150,
             wins=90,

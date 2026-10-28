@@ -21,7 +21,6 @@ from lumina_launcher.core.onboarding import (
     should_skip_wizard,
 )
 from lumina_launcher.core.workspace_root import resolve_birth_workspace_root
-from lumina_launcher.services.birth_service import birth_service as _default_birth_service
 from lumina_launcher.services.hardware_service import HardwareService
 from lumina_launcher.services.model_service import ModelService
 from lumina_launcher.services.setup_persist import (
@@ -40,18 +39,8 @@ def _setup_endpoints_mod() -> Any | None:
     return sys.modules.get("backend.setup_endpoints")
 
 
-def _resolve_birth_service() -> Any:
-    """Prefer ``backend.setup_endpoints.birth_service`` when patched by tests."""
-    mod = _setup_endpoints_mod()
-    if mod is not None:
-        patched = getattr(mod, "birth_service", None)
-        if patched is not None:
-            return patched
-    return _default_birth_service
-
-
 def _workspace_root() -> Path:
-    return resolve_birth_workspace_root(_resolve_birth_service().workspace_root)
+    return resolve_birth_workspace_root()
 
 
 def _services() -> tuple[SetupService, ConfigManager, FirstBootManager, SmartSetupService, HardwareService, ModelService]:
@@ -201,24 +190,11 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
     ]
     credentials_missing = scan_missing_credentials(config_manager)
     setup_complete = setup.is_setup_complete()
-    _birth = _resolve_birth_service()
-    birth_raw = _birth.get_status()
-    if not isinstance(birth_raw, dict):
-        birth_raw = {}
-    birth_status = str(birth_raw.get("status", "idle"))
-    artifacts_ok = _birth.artifacts_ok()
-    certificate_ok = _birth.certificate_ok()
-    from lumina_core.maturity.birth_exit import is_birth_exit_sufficient
-
-    birth_exit_ok = bool(is_birth_exit_sufficient(_workspace_root()))
-    from lumina_core.birth.birth_certificate import validate_certificate_artifacts
-    from lumina_core.birth.config import load_birth_v2_config
-
-    thresholds = load_birth_v2_config(_workspace_root()).certificate_thresholds
-    _cert_valid, certificate_reason, _cert = validate_certificate_artifacts(
-        _workspace_root(),
-        thresholds=thresholds,
-    )
+    birth_status = "archived"
+    artifacts_ok = False
+    certificate_ok = False
+    birth_exit_ok = False
+    certificate_reason = "BIRTH_V1_ARCHIVED"
 
     # Prefer setup_endpoints flag when that module is loaded (tests may patch it).
     import sys
@@ -293,15 +269,15 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
         ),
         "birth": {
             "status": birth_status,
-            "message": birth_raw.get("message", ""),
-            "progress": birth_raw.get("progress"),
+            "message": "Birth-v1 archived (Validation Gate).",
+            "progress": None,
             "artifacts_ok": artifacts_ok,
             "artifacts_label": "Artifacts OK" if artifacts_ok else "Artifacts missing",
             "certificate_ok": certificate_ok,
             "birth_exit_ok": birth_exit_ok,
             "certificate_reason": certificate_reason,
-            "evolution_proof_ok": _birth.evolution_proof_ok(),
-            "real_trading_eligible": _birth.real_trading_eligible(),
+            "evolution_proof_ok": False,
+            "real_trading_eligible": False,
         },
         "intelligence": intelligence_payload,
         "organs_truth_v1": organs_truth,

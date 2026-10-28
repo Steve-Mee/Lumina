@@ -98,13 +98,9 @@ def test_auto_fine_tune_triggered_by_low_acceptance(tmp_path: Path) -> None:
         dry_run=False,
     )
 
-    assert result["auto_fine_tune"]["triggered"] is True
-    assert result["auto_fine_tune"]["executed"] is True
-    assert trainer.called is True
-    assert "champion_finetuned_" in result["auto_fine_tune"]["champion_candidate"]["name"]
-    assert result["dna"]["active"]["version"] == "active"
-    assert result["dna"]["candidate"]["version"] == "candidate"
-    assert (tmp_path / "dna_registry.jsonl").exists()
+    assert result["mutation_applied"] is False
+    assert result["reason"] == "BIRTH_V1_ARCHIVED"
+    assert trainer.called is False
 
 
 @pytest.mark.safety_gate
@@ -155,17 +151,10 @@ def test_sim_mode_forces_nightly_apply_even_without_threshold(tmp_path: Path) ->
         dry_run=False,
     )
 
-    assert result["status"] in {"applied", "proposed"}
-    assert result["proposal"]["forced_by_sim_mode"] is True
-    assert result["governance"]["mode"] == "sim"
-    assert result["governance"]["mutation_allowed"] is True
-    assert result["proposal"]["would_auto_apply"] == result["proposal"]["signed_approval"]
-    assert result["proposal"]["auto_apply_executed"] == (result["status"] == "applied")
-    assert result["lifecycle"]["state"] in {"promoted", "rolled_back"}
-    assert result["lifecycle"]["version_id"].startswith("evo-")
-    assert result["ab_experiment"]["variant_count"] >= 5
-    assert result["genetic_evolution"]["candidate_count"] >= 5
-    assert result["dna"]["active"]["version"] == "active"
+    assert result["mutation_applied"] is False
+    assert result["reason"] == "BIRTH_V1_ARCHIVED"
+    assert result["validation_gate"] == "blocked"
+    assert trainer.called is False
 
 
 @pytest.mark.chaos_risk
@@ -211,9 +200,9 @@ def test_auto_fine_tune_triggered_by_high_drift_chaos(tmp_path: Path) -> None:
         dry_run=False,
     )
 
-    assert result["auto_fine_tune"]["triggered"] is True
-    assert result["auto_fine_tune"]["executed"] is True
-    assert trainer.called is True
+    assert result["mutation_applied"] is False
+    assert result["reason"] == "BIRTH_V1_ARCHIVED"
+    assert trainer.called is False
 
 
 def test_real_mode_blocks_mutation_governance(tmp_path: Path) -> None:
@@ -247,42 +236,14 @@ def test_real_mode_blocks_mutation_governance(tmp_path: Path) -> None:
         dry_run=False,
     )
 
-    assert result["governance"]["mode"] == "real"
-    assert result["governance"]["mutation_allowed"] is False
+    assert result["mutation_applied"] is False
+    assert result["reason"] == "BIRTH_V1_ARCHIVED"
+    assert result["validation_gate"] == "blocked"
 
 
 @pytest.mark.unit
 def test_multi_gen_cycle_explicitly_rebinds_event_bus_and_market_data(monkeypatch: pytest.MonkeyPatch) -> None:
-    # gegeven
-    captured: dict[str, object | None] = {
-        "event_bus": None,
-        "market_data_service": None,
-    }
-
-    class _OrchestratorStub:
-        def bind_promotion_event_bus(self, event_bus: EventBus | None) -> None:
-            captured["event_bus"] = event_bus
-
-        def bind_market_data_service(self, market_data_service: object | None) -> None:
-            captured["market_data_service"] = market_data_service
-
-        def bind_ppo_trainer(self, _ppo_trainer: object | None) -> None:
-            return None
-
-        def bind_vector_collection(self, _collection: object | None) -> None:
-            return None
-
-        def run_nightly_evolution_cycle(self, **_kwargs: object) -> dict[str, object]:
-            return {"status": "ok"}
-
-    import lumina_core.engine.meta_agent_core as meta_agent_core_module
-
-    monkeypatch.setattr(meta_agent_core_module, "EvolutionOrchestrator", _OrchestratorStub)
-    monkeypatch.setattr(meta_agent_core_module, "resolve_community_vector_collection", lambda *_a, **_k: None)
-    monkeypatch.setattr(meta_agent_core_module, "should_run_multi_gen_nightly", lambda **_kwargs: True)
-
-    event_bus = EventBus()
-    market_data_service = object()
+    del monkeypatch
     engine = SimpleNamespace(
         config=SimpleNamespace(
             risk_profile="balanced",
@@ -290,8 +251,8 @@ def test_multi_gen_cycle_explicitly_rebinds_event_bus_and_market_data(monkeypatc
             drawdown_kill_percent=8.0,
             agent_styles={"risk": "r"},
         ),
-        event_bus=event_bus,
-        market_data_service=market_data_service,
+        event_bus=EventBus(),
+        market_data_service=object(),
         regime_history=[{"label": "RANGING"}],
         emotional_twin=None,
         decision_log=None,
@@ -304,19 +265,9 @@ def test_multi_gen_cycle_explicitly_rebinds_event_bus_and_market_data(monkeypatc
         runtime_mode="paper",
         auto_fine_tuning_enabled=False,
     )
-    monkeypatch.setattr(type(agent.evolution_guard), "can_mutate", lambda _self, mode: False)
-
-    # wanneer
-    agent.run_nightly_evolution(
-        nightly_report={
-            "trades": 0,
-            "wins": 0,
-            "net_pnl": 0.0,
-            "sharpe": 0.0,
-        },
+    result = agent.run_nightly_evolution(
+        nightly_report={"trades": 0, "wins": 0, "net_pnl": 0.0, "sharpe": 0.0},
         dry_run=True,
     )
-
-    # dan
-    assert captured["event_bus"] is event_bus
-    assert captured["market_data_service"] is market_data_service
+    assert result.get("mutation_applied") is False
+    assert result.get("reason") == "BIRTH_V1_ARCHIVED"

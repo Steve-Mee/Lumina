@@ -8,7 +8,6 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from lumina_core.birth.curriculum import CurriculumStage
 from lumina_core.config_loader import ConfigLoader
 from lumina_core.notifications.milestone_events import (
     MilestoneEvent,
@@ -155,7 +154,7 @@ class MilestoneNotifier:
             if mid:
                 seeded.add(mid)
 
-        if CurriculumStage.STAGE5_PROBE_HANDOFF.value in stages_passed:
+        if "stage5_probe_handoff" in stages_passed:
             seeded.add("curriculum_stage5_probe_passed")
 
         if str(training_mode).strip().lower() == "practice" and phase_norm == "practice_completed":

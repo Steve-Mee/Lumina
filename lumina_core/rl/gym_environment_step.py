@@ -31,12 +31,9 @@ class RLTradingEnvironmentStepMixin:
         qty = max(1, int(1 + np.clip(action_arr[1], 0.0, 1.0) * 9))
         if is_birth and bool(getattr(self.config, "force_qty_one", False)):
             qty = 1
-        try:
-            from lumina_core.birth.birth_constitution_guard import BIRTH_MIN_STOP_PCT
+        from lumina_core.rl.training_defaults import MIN_STOP_PCT
 
-            _stop_lo = float(BIRTH_MIN_STOP_PCT)
-        except Exception:
-            _stop_lo = 0.0004
+        _stop_lo = float(MIN_STOP_PCT)
         stop_pct = float(np.clip(action_arr[2], _stop_lo, 0.02))
         target_pct = float(np.clip(action_arr[3], _stop_lo * 1.25, 0.05))
         # Birth soft-prior: pull macro stops toward calibrated default geometry.
@@ -45,14 +42,7 @@ class RLTradingEnvironmentStepMixin:
             and bool(getattr(self.config, "soft_prior_stops", True))
             and side != 0
         ):
-            try:
-                from lumina_core.birth.birth_trade_geometry import (
-                    SOFT_PRIOR_DEFAULT_MULTIPLE,
-                )
-
-                _soft_mult = float(SOFT_PRIOR_DEFAULT_MULTIPLE)
-            except Exception:
-                _soft_mult = 2.5
+            _soft_mult = 2.5
             cal_s = float(getattr(self.config, "default_stop_pct", 0.0012) or 0.0012)
             cal_t = float(getattr(self.config, "default_target_pct", 0.0020) or 0.0020)
             if stop_pct > cal_s * _soft_mult:
@@ -277,36 +267,21 @@ class RLTradingEnvironmentStepMixin:
                 fill_pv = self.fill_point_value()
                 slippage_cost += abs(exit_fill - mark) * close_qty * fill_pv
                 fees_cost += self._fees_usd(quantity=close_qty, sides=1)
-                if is_birth:
-                    from lumina_core.birth.notional_cap import birth_fill_pnl_usd
-
-                    realized_pnl = birth_fill_pnl_usd(
-                        entry_price=close_entry,
-                        exit_price=exit_fill,
-                        side=self._position,
-                        quantity=close_qty,
-                    )
-                else:
-                    realized_pnl = self.valuation_engine.pnl_dollars(
-                        symbol=self.instrument,
-                        entry_price=close_entry,
-                        exit_price=exit_fill,
-                        side=self._position,
-                        quantity=close_qty,
-                    )
+                realized_pnl = self.valuation_engine.pnl_dollars(
+                    symbol=self.instrument,
+                    entry_price=close_entry,
+                    exit_price=exit_fill,
+                    side=self._position,
+                    quantity=close_qty,
+                )
                 self._close_qty = close_qty
                 self._close_entry_price = close_entry
-                try:
-                    from lumina_core.birth.foundation_metrics import intended_risk_usd
-
-                    self._close_risk_usd = intended_risk_usd(
-                        stop_pct=float(close_stop_pct),
-                        entry_price=float(close_entry),
-                        qty=int(close_qty),
-                        point_value=float(fill_pv),
-                    )
-                except Exception:
-                    self._close_risk_usd = abs(float(close_stop_pct)) * abs(float(close_entry)) * float(close_qty) * 5.0
+                self._close_risk_usd = (
+                    abs(float(close_stop_pct))
+                    * abs(float(close_entry))
+                    * float(close_qty)
+                    * float(fill_pv)
+                )
                 self._position = 0
                 self._qty = 0
                 self._entry_price = 0.0
@@ -386,16 +361,7 @@ class RLTradingEnvironmentStepMixin:
             )
 
         if self.config.range_patience_active and self.trade_mode == "birth" and not trade_closed:
-            from lumina_core.birth.stage3_inband_gym import apply_gym_birth_occupancy_reward
-
-            reward += apply_gym_birth_occupancy_reward(
-                self,
-                row=row,
-                side_bucket=int(side_bucket),
-                trade_closed=bool(trade_closed),
-                close_stop_pct=float(close_stop_pct),
-                close_net=float(rl_close_accounting_net_usd),
-            )
+            pass
 
         self._idx += 1
         terminated = self._idx >= min(len(self.data) - 1, self.config.max_steps)

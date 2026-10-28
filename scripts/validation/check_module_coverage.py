@@ -12,20 +12,8 @@ ROOT = Path(__file__).resolve().parents[2]
 REPORT_PATH = ROOT / "reports" / "module_coverage.xml"
 
 MODULE_COVERAGE_MANIFEST: tuple[str, ...] = (
-    "lumina_core/birth/organism_autonomy.py",
-    "lumina_core/birth/organism_autonomy_handler.py",
-    "lumina_core/birth/meta_controller_handler.py",
-    "lumina_core/birth/adaptation_recovery_engine.py",
-    "lumina_core/birth/birth_bus_client.py",
-    "lumina_core/birth/birth_bus_choreography.py",
-    "lumina_core/birth/birth_bus_serde.py",
-    "lumina_core/birth/birth_handler_registry.py",
-    "lumina_core/birth/wall_adaptation_handler.py",
     "lumina_core/agent_orchestration/event_bus.py",
     "lumina_core/agent_orchestration/schemas.py",
-    "lumina_core/birth/birth_constitution_guard.py",
-    "lumina_core/birth/constitution_enforcer.py",
-    "lumina_core/birth/death_spiral_guard.py",
     "lumina_core/risk/aperture_guard.py",
     "lumina_core/risk/shadow.py",
 )
@@ -36,13 +24,6 @@ def _cov_source(module_path: str) -> str:
     return module_path.replace("/", ".").removesuffix(".py")
 
 TEST_TARGETS: tuple[str, ...] = (
-    "tests/birth/test_birth_bus_client_fallbacks.py",
-    "tests/birth/test_birth_bus_client_coverage.py",
-    "tests/birth/test_birth_bus_client.py",
-    "tests/birth/test_meta_controller_handler_signals.py",
-    "tests/birth/test_wall_adaptation_handler_signals.py",
-    "tests/birth/test_safety_guard_coverage.py",
-    "tests/birth",
     "tests/agent_orchestration",
     "tests/safety",
     "tests/risk/test_shadow_risk_evaluator.py",

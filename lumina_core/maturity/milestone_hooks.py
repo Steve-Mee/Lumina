@@ -77,14 +77,6 @@ def hook_birth_certificate_issued(
         },
     )
     try_record_milestone(workspace_root, "deck_unlocked")
-    # Durable continuum checkpoint → Phase Hub (never re-run birth on restart)
-    try:
-        from lumina_core.maturity.maturity_service import maturity_service
-
-        maturity_service.configure_workspace(Path(workspace_root))
-        maturity_service.mark_birth_complete_from_artifacts()
-    except Exception as exc:
-        logger.debug("maturity.continuum.birth_hook_failed: %s", exc)
 
 
 def hook_evolution_proof_passed(

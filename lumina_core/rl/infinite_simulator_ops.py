@@ -24,14 +24,8 @@ logger = get_logger("lumina.simulation.nightly")
 
 class InfiniteSimulatorOpsMixin:
     def _load_real_historical_ticks(self, days_back: int, limit: int) -> list[dict[str, Any]]:
-        from lumina_core.birth.history_loader import load_historical_ticks
-
-        return load_historical_ticks(
-            market_data_service=self.market_data_service,
-            runtime=self.runtime,
-            days_back=days_back,
-            limit=limit,
-        )
+        del days_back, limit
+        return []
 
     def _generate_synthetic_ticks(self, n_ticks: int, seed: int, start_price: float = 5000.0) -> list[dict[str, Any]]:
         rng = random.Random(seed)

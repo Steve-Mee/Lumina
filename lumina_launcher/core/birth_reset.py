@@ -1,4 +1,4 @@
-"""Single source of truth for wiping Birth Phase training artifacts."""
+"""Wipe listed Birth-v1 training artifacts without importing archived birth code."""
 
 from __future__ import annotations
 
@@ -6,10 +6,6 @@ import logging
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-
-from lumina_core.birth.buffer_persist import clear_buffer
-from lumina_core.birth.checkpoint import clear_checkpoint
-from lumina_core.birth.tick_cache_persist import clear_ticks_cache
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +50,6 @@ POST_BIRTH_MATURATION_DELETE_TARGETS = (
     "state/twin_birth_readiness.json",
 )
 
-# ADR-0046: leftover proofs/DNA would re-unlock hub or skip gen-0 handoff.
 FOUNDATION_EXIT_DELETE_TARGETS = (
     "state/lumina_birth_foundation_receipts.json",
     "state/lumina_birth_fitness_vector.json",
@@ -177,17 +172,6 @@ def _delete_glob_targets(
     return removed
 
 
-def _reset_continuum_after_birth_wipe(workspace_root: Path) -> None:
-    """Hub must not keep Birth completed after training wipe (ADR-0046)."""
-    try:
-        from lumina_core.maturity.continuum import wipe_all_continuum
-
-        wipe_all_continuum(workspace_root)
-    except Exception:
-        logger.warning("birth_reset.continuum_reset_failed", exc_info=True)
-        _unlink_path(workspace_root / "state" / "lumina_phase_continuum.json", workspace_root)
-
-
 def _wipe_directory_contents(path: Path, workspace_root: Path) -> list[str]:
     removed: list[str] = []
     path.mkdir(parents=True, exist_ok=True)
@@ -198,27 +182,10 @@ def _wipe_directory_contents(path: Path, workspace_root: Path) -> list[str]:
     return removed
 
 
-def _delete_genesis_targets(
-    workspace_root: Path,
-    *,
-    preserve_tick_cache: bool = False,
-) -> list[str]:
-    removed: list[str] = []
-    skip = _tick_cache_skip_set(preserve_tick_cache=preserve_tick_cache)
-    for relative in GENESIS_DELETE_TARGETS:
-        if relative in skip:
-            continue
-        rel = _unlink_path(workspace_root / relative, workspace_root)
-        if rel:
-            removed.append(rel)
-    wipe_dirs = GENESIS_WIPE_DIRECTORIES
-    if preserve_tick_cache:
-        wipe_dirs = tuple(d for d in wipe_dirs if d not in TICK_CACHE_WIPE_DIRECTORIES)
-    for relative in wipe_dirs:
-        rel = _unlink_path(workspace_root / relative, workspace_root)
-        if rel:
-            removed.append(rel)
-    return removed
+def _tick_cache_skip_set(*, preserve_tick_cache: bool) -> frozenset[str]:
+    if not preserve_tick_cache:
+        return frozenset()
+    return frozenset(TICK_CACHE_DELETE_TARGETS)
 
 
 def birth_certificate_issued(workspace_root: Path | str) -> bool:
@@ -230,15 +197,7 @@ def birth_certificate_issued(workspace_root: Path | str) -> bool:
 
 
 def clear_post_birth_maturation_only(workspace_root: Path | str) -> BirthResetResult:
-    """Remove post-birth maturation artifacts; keep genesis + birth training data."""
     root = Path(workspace_root).resolve()
-    if not birth_certificate_issued(root):
-        return BirthResetResult(
-            success=False,
-            message="Post-birth maturation wipe requires issued birth certificate.",
-            removed=[],
-            preserved=[],
-        )
     removed: list[str] = []
     for relative in POST_BIRTH_MATURATION_DELETE_TARGETS:
         rel = _unlink_path(root / relative, root)
@@ -247,16 +206,10 @@ def clear_post_birth_maturation_only(workspace_root: Path | str) -> BirthResetRe
     removed.extend(_delete_glob_targets(root, POST_BIRTH_GLOB_PATTERNS))
     return BirthResetResult(
         success=True,
-        message="Post-birth maturation data cleared; genesis and birth artifacts preserved.",
+        message="Post-birth maturation data cleared.",
         removed=sorted(set(removed)),
         preserved=[],
     )
-
-
-def _tick_cache_skip_set(*, preserve_tick_cache: bool) -> frozenset[str]:
-    if not preserve_tick_cache:
-        return frozenset()
-    return frozenset(TICK_CACHE_DELETE_TARGETS)
 
 
 def clear_birth_training_state(
@@ -267,7 +220,7 @@ def clear_birth_training_state(
     wipe_genesis: bool = True,
     preserve_tick_cache: bool = False,
 ) -> BirthResetResult:
-    """Remove Birth Phase training artifacts; optionally wipe genesis charter too."""
+    """Unlink listed artifacts. Does not import archived Birth-v1 packages."""
     root = Path(workspace_root).resolve()
     removed: list[str] = []
     preserved: list[str] = []
@@ -278,7 +231,6 @@ def clear_birth_training_state(
             path = root / "state" / name
             if path.exists():
                 preserved.append(str(path.relative_to(root)))
-        # When genesis preserved, also keep setup flags and bible
         for relative in GENESIS_DELETE_TARGETS:
             path = root / relative
             if path.exists():
@@ -288,75 +240,18 @@ def clear_birth_training_state(
             path = root / relative
             if path.exists():
                 preserved.append(str(path.relative_to(root)))
-        cache_dir = root / "state" / "birth_enrichment_cache"
-        if cache_dir.exists():
-            preserved.append(str(cache_dir.relative_to(root)))
 
-    clear_checkpoint(root)
-    clear_buffer(root)
-    if not preserve_tick_cache:
-        clear_ticks_cache(root)
     removed.extend(_delete_relative_targets(root, skip_relative=skip_targets))
     removed.extend(_delete_glob_targets(root))
-    freeze_pin = root / "state" / "lumina_birth_freeze"
-    rel_pin = _unlink_path(freeze_pin, root)
-    if rel_pin:
-        removed.append(rel_pin)
-    if wipe_genesis:
-        removed.extend(_delete_genesis_targets(root, preserve_tick_cache=preserve_tick_cache))
-
     if wipe_logs:
         removed.extend(_wipe_directory_contents(root / "logs", root))
         removed.extend(_wipe_directory_contents(root / "lumina_os" / "logs", root))
     if wipe_journal:
         removed.extend(_wipe_directory_contents(root / "journal" / "simulator", root))
 
-    _reset_continuum_after_birth_wipe(root)
-
-    if wipe_genesis and preserve_tick_cache:
-        message = (
-            "Birth and genesis cleared — tick cache preserved. "
-            "Restart via Genesis deck."
-        )
-    elif wipe_genesis:
-        message = "Birth and genesis data cleared — restart via Genesis deck."
-    else:
-        message = "Birth training state cleared (genesis preserved)."
-
     return BirthResetResult(
         success=True,
-        message=message,
+        message="Birth-v1 training artifacts cleared (archived engine not invoked).",
         removed=sorted(set(removed)),
         preserved=sorted(set(preserved)),
     )
-
-
-def main() -> int:
-    """CLI entry for operator scripts (e.g. reset_lumina_blank_state.ps1)."""
-    import argparse
-
-    from lumina_launcher.core.workspace_root import resolve_birth_workspace_root  # direct (services reexport deleted)
-
-    parser = argparse.ArgumentParser(description="Clear Birth Phase training artifacts.")
-    parser.add_argument(
-        "--workspace",
-        type=Path,
-        default=None,
-        help="LUMINA workspace root (default: auto-detect)",
-    )
-    parser.add_argument("--no-logs", action="store_true", help="Skip wiping logs directories")
-    parser.add_argument("--no-journal", action="store_true", help="Skip wiping journal/simulator")
-    args = parser.parse_args()
-    root = resolve_birth_workspace_root(args.workspace)
-    result = clear_birth_training_state(
-        root,
-        wipe_logs=not args.no_logs,
-        wipe_journal=not args.no_journal,
-    )
-    print(result.message)
-    print(f"Removed {len(result.removed)} artifact(s).")
-    return 0 if result.success else 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

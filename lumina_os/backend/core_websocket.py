@@ -127,12 +127,12 @@ async def post_core_mode(body: OperatorModeRequest) -> OperatorModeResponse:
     global _operator_mode_override
 
     if body.mode == "real":
-        from lumina_launcher.services.birth_service import birth_service
+        from lumina_launcher.core.workspace_root import resolve_birth_workspace_root
         from lumina_core.risk.real_multi_gate import real_mode_switch_allowed
         from lumina_core.maturity.milestone_hooks import hook_real_trading_live
 
         # H2: multi-gate — maturation + explicit human approve-real (Twin cannot substitute)
-        eligible, blockers = real_mode_switch_allowed(birth_service.workspace_root)
+        eligible, blockers = real_mode_switch_allowed(resolve_birth_workspace_root())
         if not eligible:
             try:
                 from lumina_core.notifications.attention_events import real_trading_blocked_event
@@ -140,7 +140,7 @@ async def post_core_mode(body: OperatorModeRequest) -> OperatorModeResponse:
 
                 notify_problem(
                     real_trading_blocked_event(blockers=blockers, source="command_deck"),
-                    workspace_root=birth_service.workspace_root,
+                    workspace_root=resolve_birth_workspace_root(),
                 )
             except Exception:
                 pass
@@ -152,7 +152,7 @@ async def post_core_mode(body: OperatorModeRequest) -> OperatorModeResponse:
                     "twin_cannot_bypass": True,
                 },
             )
-        hook_real_trading_live(birth_service.workspace_root, mode="real")
+        hook_real_trading_live(resolve_birth_workspace_root(), mode="real")
 
     _operator_mode_override = body.mode
     logger.info("Operator mode override set to %s", body.mode)

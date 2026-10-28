@@ -35,16 +35,9 @@ def migrate_from_milestones(workspace_root: Path | str) -> dict[str, Any]:
             "exit_proofs": ["genesis_contract_signed"] if "genesis_contract_signed" in reached else [],
         }
 
-    # Birth (H7 / ADR-0036): survival exit SSOT — not Perfect Birth / promotion
-    try:
-        from lumina_core.maturity.birth_exit import evaluate_birth_exit
-
-        birth_decision = evaluate_birth_exit(workspace_root)
-        birth_done = bool(birth_decision.exited)
-        birth_proofs = list(birth_decision.proofs)
-    except Exception:
-        birth_done = False
-        birth_proofs = []
+    # Birth-v1 exit proofs are archived; do not invent a completed birth.
+    birth_done = False
+    birth_proofs: list[str] = []
 
     if birth_done:
         if MaturationPhase.BIRTH.value not in completed:
@@ -63,13 +56,8 @@ def migrate_from_milestones(workspace_root: Path | str) -> dict[str, Any]:
         data["active_phase"] = MaturationPhase.BIRTH.value
 
     if birth_done:
-        try:
-            from lumina_core.maturity.awakening.law import evaluate_awakening_exit
-
-            awake_ok, _awake_missing, awake_learned = evaluate_awakening_exit(workspace_root)
-        except Exception:
-            awake_ok = False
-            awake_learned = {}
+        awake_ok = False
+        awake_learned: dict[str, object] = {}
         if awake_ok:
             completed.append(MaturationPhase.AWAKENING.value)
             data["phase_records"][MaturationPhase.AWAKENING.value] = {

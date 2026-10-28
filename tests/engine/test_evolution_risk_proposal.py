@@ -23,6 +23,7 @@ from pydantic import ValidationError
 from unittest.mock import MagicMock
 
 from lumina_core.agent_orchestration.schemas import RiskConfigMutationProposal
+from lumina_core.engine.errors import LuminaError
 from lumina_core.engine.evolution_risk_proposal import apply_risk_config_mutation
 from lumina_core.engine.proposal_generator import ProposalGenerator
 from lumina_core.experiments.ab_framework import ABExperimentFramework
@@ -258,19 +259,16 @@ def test_meta_apply_candidate_delegates_constructs_model_and_applies(monkeypatch
         "decision_context_id": "nightly-2026-06-07-001",
     }
 
-    # when (call the method under test)
-    meta._apply_candidate(cand)
+    with pytest.raises(LuminaError) as captured:
+        meta._apply_candidate(cand)
+    assert captured.value.code == "VALIDATION_GATE_REQUIRED"
+    assert FakeEngine.config.max_risk_percent == 1.0
 
-    # then (mutation happened via the new typed path)
-    assert FakeEngine.config.max_risk_percent == 1.8
-    # (If we had a spy on apply_risk_config_mutation we could assert the proposal
-    # had shadow_result_ref populated from "experiment_id"; the manual smoke above
-    # already covers the contract. Here we just prove delegation works end-to-end.)
-
-    # Also prove no-risk-keys path is a no-op (no crash, no mutation of unrelated)
     cand_no_risk = {"name": "no-risk", "hyperparam_suggestion": {"fast_path_threshold": 0.9}}
-    meta._apply_candidate(cand_no_risk)
-    assert FakeEngine.config.max_risk_percent == 1.8  # still the previous value
+    with pytest.raises(LuminaError) as captured_no_risk:
+        meta._apply_candidate(cand_no_risk)
+    assert captured_no_risk.value.code == "VALIDATION_GATE_REQUIRED"
+    assert FakeEngine.config.max_risk_percent == 1.0
 
 
 # Optional: quick negative for extra fields reaching apply via candidate
@@ -317,11 +315,10 @@ def test_meta_apply_candidate_with_extra_in_suggestion_is_fail_closed_at_apply(m
         "shadow_experiment_id": "dummy-ref-for-extra-test",  # required for mandatory shadow at apply (sub-slice 2)
     }
 
-    # Delegation in meta only forwards the known risk keys (extra is ignored safely).
-    # The apply fn still has defense-in-depth for unknown keys (unit test covers).
-    # We just ensure no crash and the valid risk key is applied.
-    meta._apply_candidate(bad_cand)
-    assert FakeEngine.config.max_risk_percent == 2.0  # valid key applied; extra stripped at delegation
+    with pytest.raises(LuminaError) as captured:
+        meta._apply_candidate(bad_cand)
+    assert captured.value.code == "VALIDATION_GATE_REQUIRED"
+    assert FakeEngine.config.max_risk_percent == 1.0
 
 
 # =============================================================================

@@ -5,8 +5,6 @@ import logging
 from pathlib import Path
 from typing import Any, Protocol
 
-from ..evolution.meta_swarm import MetaSwarm, meta_swarm_governance_enabled, parallel_realities_from_config
-
 from lumina_core.evolution.audit_writer import AuditWriterProtocol
 
 
@@ -90,44 +88,14 @@ class AnomalyDetector:
         }
 
     def meta_swarm_nightly_payload(self, report: dict[str, Any], base: dict[str, Any]) -> dict[str, Any]:
-        if not meta_swarm_governance_enabled():
-            return {
-                "enabled": False,
-                "allow_promotion": True,
-                "collective_score": None,
-                "risk_veto": False,
-                "round_two": [],
-            }
-        health = float(self.dna_fitness(base))
-        hours = int(report.get("sim_duration_hours", 24) or 24)
-        sim_days = max(1, (hours + 23) // 24)
-        ctx: dict[str, Any] = {
-            "winner_fitness": health,
-            "previous_fitness": health,
-            "nightly_report": dict(report),
-            "mode": str(self._owner.runtime_mode),
-            "sim_days": sim_days,
-            "parallel_realities": int(parallel_realities_from_config()),
-            "generation": 0,
-            "neuro_winner_accepted": False,
-            "winner_prompt_id": "nightly_meta_review",
-        }
-        consensus = MetaSwarm().deliberate(ctx)
+        del report, base
         return {
-            "enabled": True,
-            "allow_promotion": bool(consensus.allow_promotion),
-            "collective_score": round(float(consensus.collective_score), 6),
-            "risk_veto": bool(consensus.risk_veto),
-            "challenge_log": list(consensus.challenge_log),
-            "round_two": [
-                {
-                    "agent": v.agent_id,
-                    "approve": bool(v.approve),
-                    "score": round(float(v.score), 4),
-                    "veto": bool(v.veto),
-                }
-                for v in consensus.round_two
-            ],
+            "enabled": False,
+            "allow_promotion": False,
+            "collective_score": None,
+            "risk_veto": True,
+            "round_two": [],
+            "reason": "BIRTH_V1_ARCHIVED",
         }
 
     def meta_review(self, report: dict[str, Any]) -> dict[str, Any]:

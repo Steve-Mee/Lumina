@@ -7,9 +7,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from lumina_core.market.archive_repair import open_holes, repair_next_hole
+from lumina_core.market.archive_repair import MINUTE_NS, open_holes, repair_next_hole
 from lumina_core.market.minute_bars import MinuteBar, append_minute, archive_path, load_minutes
-from lumina_core.maturity.playground.sentence_window import MINUTE_NS
 
 ET = ZoneInfo("America/New_York")
 

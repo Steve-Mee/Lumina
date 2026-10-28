@@ -6,6 +6,7 @@ Sunday 18:00 ET through Friday 17:00 ET. Monday–Thursday 17:00–18:00 ET is t
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+from typing import Any
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
@@ -84,6 +85,26 @@ def globex_session_date(moment: datetime) -> date:
     if local.hour >= 18:
         return (local + timedelta(days=1)).date()
     return local.date()
+
+
+def row_session_date(row: dict[str, Any]) -> date | None:
+    """Session date from an explicit field or a Globex timestamp. Does not invent dates."""
+    explicit = str(row.get("session_date") or "").strip()
+    if len(explicit) >= 10:
+        try:
+            return date.fromisoformat(explicit[:10])
+        except ValueError:
+            pass
+    ts = str(row.get("ts") or "").strip()
+    if not ts:
+        return None
+    try:
+        parsed = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return globex_session_date(parsed)
 
 
 def closed_sentence(moment: datetime) -> str | None:

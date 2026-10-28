@@ -107,13 +107,9 @@ def save_continuum(workspace_root: Path | str, data: dict[str, Any]) -> None:
 
 
 def _birth_artifacts_ok(workspace_root: Path | str) -> bool:
-    """Legacy name: Foundation exit only. Certificate files alone are not enough."""
-    try:
-        from lumina_core.maturity.birth_exit import is_birth_exit_sufficient
-
-        return bool(is_birth_exit_sufficient(workspace_root))
-    except Exception:
-        return False
+    """Birth-v1 exit proofs are archived. Foundation artifacts alone are not enough."""
+    del workspace_root
+    return False
 
 
 def _birth_learned_snapshot(workspace_root: Path | str) -> dict[str, Any]:

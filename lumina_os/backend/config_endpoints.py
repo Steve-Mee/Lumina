@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
@@ -11,6 +12,11 @@ from backend.setup_endpoints import _services, _workspace_root
 from lumina_launcher.core.onboarding import extract_config_defaults
 from lumina_launcher.services.bot_config_persist import persist_bot_config
 from lumina_launcher.services.setup_persist import is_sim_envelope_sealed
+from lumina_launcher.services.setup_persist_sim import (
+    is_numeric_sim_seal,
+    sim_envelope_sealed_path,
+    write_sim_envelope_sealed,
+)
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -79,19 +85,24 @@ async def save_bot_config(body: BotConfigRequest) -> dict[str, object]:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     root = _workspace_root()
-    from lumina_core.maturity.playground.envelope import (
-        envelope_sealed_for_pass,
-        write_operator_seal,
-    )
-
     if body.seal_sim_envelope:
-        write_operator_seal(
+        write_sim_envelope_sealed(
             root,
+            sealed=True,
+            source="bot_config_seal",
             daily_loss_cap=float(body.risk.daily_loss_cap or 0.0),
             max_total_open_risk=float(body.risk.max_total_open_risk),
-            source="bot_config_seal",
         )
-    playground_sealed = envelope_sealed_for_pass(root)
+    seal_raw: dict[str, object] = {}
+    seal_path = sim_envelope_sealed_path(root)
+    if seal_path.is_file():
+        try:
+            loaded = json.loads(seal_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            loaded = {}
+        if isinstance(loaded, dict):
+            seal_raw = loaded
+    playground_sealed = is_numeric_sim_seal(seal_raw)
 
     config = config_manager.load_yaml_config()
     env_values = config_manager.parse_env_file()

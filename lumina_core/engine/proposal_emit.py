@@ -10,6 +10,7 @@ from typing import Any
 
 from ..evolution.dna_registry import PolicyDNA
 from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+from lumina_core.engine.errors import ErrorSeverity, LuminaError
 from lumina_core.engine.evolution_risk_proposal import ensure_candidate_has_shadow_ref
 
 
@@ -72,18 +73,15 @@ class ProposalEmitMixin:
     ) -> PolicyDNA | None:
         if not should_promote or winner_dna is None:
             return active_dna
-        registry = self.dna_registry()
-        promoted = PolicyDNA.create(
-            prompt_id=winner_dna.prompt_id,
-            version="active",
-            content=winner_dna.content,
-            fitness_score=winner_dna.fitness_score,
-            generation=max(int(winner_dna.generation), int(active_dna.generation) + 1 if active_dna else 1),
-            parent_ids=[winner_dna.hash],
-            mutation_rate=0.0,
-            lineage_hash=self.dna_lineage_hash(),
+        raise LuminaError(
+            severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+            code="VALIDATION_GATE_REQUIRED",
+            message=(
+                "Birth-v1 DNA promotion is archived. PromotionGate plus the "
+                "RESEARCH_CHARTER Validation Gate are required (Phase 1)."
+            ),
+            context={"winner": str(getattr(winner_dna, "hash", ""))},
         )
-        return registry.register_dna(promoted)
 
     def register_active_dna(
         self,

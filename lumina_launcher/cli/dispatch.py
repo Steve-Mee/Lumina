@@ -137,23 +137,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if raw[0] == "birth":
-        from lumina_launcher.birth.status_cli import (
-            run_birth_status,
-            run_birth_watch,
-            run_phase2_status,
+        print(
+            "Birth-v1 CLI is archived (insufficient Validation Gate). "
+            "See RESEARCH_CHARTER.md.",
+            file=sys.stderr,
         )
-
-        args = parse_argv(raw)
-        if args.birth_command == "status":
-            return run_birth_status(as_json=bool(args.json))
-        if args.birth_command == "watch":
-            return run_birth_watch(interval_sec=max(1, int(args.interval)))
-        if args.birth_command == "phase2-status":
-            return run_phase2_status(
-                as_json=bool(getattr(args, "json", False)),
-                window_hours=int(getattr(args, "window_hours", 24) or 24),
-            )
-        print("Unknown birth subcommand.", file=sys.stderr)
         return 2
 
     if raw[0] == "twin":

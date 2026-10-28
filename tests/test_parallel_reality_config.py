@@ -15,7 +15,8 @@ from lumina_core.evolution.parallel_reality_config import (
     resolve_parallel_realities,
     save_parallel_realities_session,
 )
-from lumina_core.evolution.meta_swarm import parallel_realities_from_config
+
+parallel_realities_from_config = resolve_parallel_realities
 
 
 def test_clamp_parallel_bounds() -> None:

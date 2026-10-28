@@ -4,8 +4,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from pathlib import Path
-
 from lumina_core.logging_utils import get_logger
 from lumina_core.rl.ppo_evolution_logger import PPOEvolutionLogger
 
@@ -22,27 +20,8 @@ def _heartbeat_birth_ppo_progress(
 ) -> None:
     """Keep lumina_birth_progress.json moving during PPO; never clobber stage pct."""
     try:
-        from lumina_core.birth.progress import read_birth_progress, write_birth_progress
-
-        root = Path.cwd()
-        prev = read_birth_progress(root)
-        if not prev:
-            return
-        write_birth_progress(
-            root,
-            stage=str(prev.get("stage") or "training_running"),
-            phase="ppo_training",
-            message=str(message),
-            progress_pct=float(prev.get("progress_pct") or 0.0),
-            cumulative_trades=int(prev.get("cumulative_trades") or prev.get("trades_done") or 0),
-            target_trades=int(prev.get("target_trades") or 0),
-            ppo_steps=int(prev.get("ppo_steps") or 0),
-            birth_start_time=float(prev.get("birth_start_time") or 0.0),
-            ppo_batch_steps=int(current),
-            ppo_batch_total=int(total),
-            ppo_batch_progress_pct=round(float(ppo_pct), 2),
-            ppo_elapsed_sec=round(float(elapsed_sec), 1),
-        )
+        del message, current, total, ppo_pct, elapsed_sec
+        return
     except Exception:
         logger.debug("ppo.birth_progress_heartbeat_failed", exc_info=True)
 

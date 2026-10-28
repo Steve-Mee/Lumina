@@ -39,7 +39,9 @@ class LocalInferenceEngine(LocalInferenceProvidersMixin):
         self.context = context
         self.config_path = Path("config.yaml")
         self.config_mtime = 0.0
+        self._config_stamp: tuple[int, int] = (0, 0)
         self.config = self._load_config()
+        self._config_stamp = self._config_file_stamp()
         self.logger = getattr(context, "logger", _DEFAULT_LOGGER)
         self.profile = self.config["hardware_profile"]
         self.backend_override: str | None = None
@@ -64,20 +66,26 @@ class LocalInferenceEngine(LocalInferenceProvidersMixin):
 
         ConfigLoader.invalidate()
         self.config_mtime = self.config_path.stat().st_mtime if self.config_path.exists() else 0.0
+        self._config_stamp = self._config_file_stamp()
         return dict(ConfigLoader.get())
 
-    def _reload_config_if_needed(self) -> None:
+    def _config_file_stamp(self) -> tuple[int, int]:
         try:
-            current_mtime = self.config_path.stat().st_mtime
-        except FileNotFoundError:
+            st = self.config_path.stat()
+        except OSError:
+            return (0, 0)
+        return (int(st.st_mtime_ns), int(st.st_size))
+
+    def _reload_config_if_needed(self) -> None:
+        stamp = self._config_file_stamp()
+        if stamp == self._config_stamp:
             return
-        if current_mtime > self.config_mtime:
-            self.config = self._load_config()
-            self._ollama_install_cache_ts = 0.0
-            self._ollama_install_cache_host = None
-            self._ollama_install_cache_names = None
-            if self.backend_override is None:
-                self.active_provider = str(self.config.get("inference", {}).get("primary_provider", "ollama"))
+        self.config = self._load_config()
+        self._ollama_install_cache_ts = 0.0
+        self._ollama_install_cache_host = None
+        self._ollama_install_cache_names = None
+        if self.backend_override is None:
+            self.active_provider = str(self.config.get("inference", {}).get("primary_provider", "ollama"))
 
     def _ensure_metric_buckets(self) -> None:
         self.cost_tracker.setdefault("local_inference_requests", 0)

@@ -17,10 +17,18 @@ def _base_evidence() -> PromotionGateEvidence:
             "sharpe_positive_pct": 0.75,
             "pbo": 0.2,
             "dsr": 0.35,
+            "purge_applied": True,
+            "embargo_applied": True,
+            "regime_volatility_checked": True,
+            "regime_trend_checked": True,
         },
         cv_walk_forward={
             "windows": 8,
             "sharpe_positive_pct": 0.75,
+            "purge_applied": True,
+            "embargo_applied": True,
+            "regime_volatility_checked": True,
+            "regime_trend_checked": True,
         },
         reality_gap_stats={
             "band_status": "YELLOW",

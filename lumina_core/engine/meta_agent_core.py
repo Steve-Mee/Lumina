@@ -19,8 +19,7 @@ from .valuation_engine import ValuationEngine
 from .anomaly_detector import AnomalyDetector
 from lumina_core.evolution.audit_writer import EvolutionAuditWriter
 from .proposal_generator import ProposalGenerator
-from lumina_core.evolution.mutation_executor import apply_evolution_candidate
-from lumina_core.evolution.nightly_cycle import run_nightly_evolution_cycle
+from lumina_core.engine.evolution_config import load_evolution_config, should_run_multi_gen_nightly
 from .meta_agent_nightly import MetaAgentNightlyMixin
 
 
@@ -139,10 +138,36 @@ class SelfEvolutionMetaAgent(MetaAgentNightlyMixin):
         )
 
     def run_nightly_evolution(self, *, nightly_report: dict[str, Any], dry_run: bool = False) -> dict[str, Any]:
-        return run_nightly_evolution_cycle(self, nightly_report=nightly_report, dry_run=dry_run)
+        """Review-only nightly: meta_review stays live; mutations stay blocked."""
+        del dry_run
+        report = self._hydrate_report_from_blackboard(dict(nightly_report or {}))
+        meta_review = self._meta_review(report)
+        weakest = self._weakest_regime(meta_review)
+        out = dict(report)
+        out["meta_review"] = meta_review
+        out["best_candidate"] = {
+            "name": "review_only",
+            "regime_focus": weakest,
+            "source": "meta_review",
+        }
+        out["mutation_applied"] = False
+        out["dry_run"] = True
+        out["validation_gate"] = "blocked"
+        out["reason"] = "BIRTH_V1_ARCHIVED"
+        out["archived_birth_v1"] = True
+        return out
 
     def _apply_candidate(self, candidate: dict[str, Any]) -> None:
-        apply_evolution_candidate(self, candidate)
+        raise LuminaError(
+            severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+            code="VALIDATION_GATE_REQUIRED",
+            message=(
+                "Birth-v1 mutation is archived. New signals require RESEARCH_CHARTER "
+                "Validation Gate (Phase 1). Candidate refused: "
+                f"{str((candidate or {}).get('name', 'unknown'))}."
+            ),
+            context={"candidate": str((candidate or {}).get("name", "unknown"))},
+        )
 
     def _dna_registry(self) -> DNARegistry:
         return self.dna_registry
@@ -353,14 +378,11 @@ class SelfEvolutionMetaAgent(MetaAgentNightlyMixin):
         return self._audit_writer.last_hash()
 
 
-# Backward-compatible facade for dream_integration and legacy tests.
 from lumina_bible.chroma_community import resolve_community_vector_collection
-from lumina_core.evolution.evolution_orchestrator import EvolutionOrchestrator
-from lumina_core.evolution.meta_agent_config import should_run_multi_gen_nightly
 
 __all__ = [
-    "EvolutionOrchestrator",
     "SelfEvolutionMetaAgent",
+    "load_evolution_config",
     "resolve_community_vector_collection",
     "should_run_multi_gen_nightly",
 ]

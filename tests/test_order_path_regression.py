@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
@@ -387,3 +388,42 @@ def test_check_pre_trade_risk_real_respects_session_guard():
     ok, reason = check_pre_trade_risk(app, "MES", "NEUTRAL", 10.0, order_side="BUY")
     assert ok is False
     assert "rollover" in reason.lower()
+
+
+def test_place_order_invokes_risk_core_gate_before_broker(monkeypatch) -> None:
+    """Live order intent still passes Risk Core/safety gates before broker submit."""
+    from lumina_core.engine import operations_service_orders as orders_mod
+
+    svc, container = _make_service("sim")
+    sequence: list[str] = []
+    original_gate = orders_mod.enforce_pre_trade_gate
+
+    def tracking_gate(*args: Any, **kwargs: Any) -> Any:
+        sequence.append("risk_core")
+        return original_gate(*args, **kwargs)
+
+    fill = SimpleNamespace(accepted=True, status="FILLED", message="ok")
+
+    def tracking_submit(*args: Any, **kwargs: Any) -> Any:
+        sequence.append("broker")
+        return fill
+
+    monkeypatch.setattr(orders_mod, "enforce_pre_trade_gate", tracking_gate)
+    container.broker.submit_order.side_effect = tracking_submit
+    assert svc.place_order("BUY", 1) is True
+    assert sequence[0] == "risk_core"
+    assert "broker" in sequence
+    assert sequence.index("risk_core") < sequence.index("broker")
+
+
+def test_place_order_has_no_playground_crawl_path() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "lumina_core"
+        / "engine"
+        / "operations_service_orders.py"
+    ).read_text(encoding="utf-8")
+    assert "playground" not in source
+    assert "resolve_crawl_submission" not in source
+    assert "note_order_reject" not in source
+    assert "enforce_pre_trade_gate" in source

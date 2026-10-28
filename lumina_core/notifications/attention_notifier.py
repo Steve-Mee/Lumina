@@ -6,7 +6,6 @@ import json
 import logging
 import threading
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -124,65 +123,8 @@ class AttentionNotifier:
         return bool(result.get("accepted"))
 
     def _write_progress_attention(self, event: AttentionEvent) -> None:
-        if event.category.value != "birth":
-            return
-        if event.reason_code == "birth_interrupted":
-            from lumina_core.birth.checkpoint import read_checkpoint_payload
-
-            if read_checkpoint_payload(self._workspace_root):
-                logger.debug(
-                    "attention.skip_progress_write reason=recoverable_checkpoint reason_code=%s",
-                    event.reason_code,
-                )
-                return
-        try:
-            from lumina_core.birth.progress import (
-                merge_birth_progress_extra,
-                read_birth_progress,
-                write_birth_progress,
-            )
-
-            prev = read_birth_progress(self._workspace_root)
-            attention_fields = {
-                "needs_attention": True,
-                "attention_reason_code": event.reason_code,
-                "attention_summary": event.summary,
-                "attention_recommended_actions": list(event.recommended_actions),
-                "attention_notified_at": datetime.now(timezone.utc).isoformat(),
-            }
-            merged = merge_birth_progress_extra(prev, attention_fields)
-            # Raptor v9: do not pass keys already set as explicit kwargs.
-            reserved = {
-                "stage",
-                "phase",
-                "message",
-                "progress_pct",
-                "cumulative_trades",
-                "trades_done",
-                "total_trades",
-                "target_trades",
-                "ppo_steps",
-                "birth_start_time",
-                "timestamp",
-                "elapsed_sec",
-            }
-            extra = {k: v for k, v in merged.items() if k not in reserved}
-            write_birth_progress(
-                self._workspace_root,
-                stage=str(prev.get("stage", "attention") or "attention"),
-                phase=str(prev.get("phase", "attention") or "attention"),
-                message=str(prev.get("message") or event.summary),
-                progress_pct=float(prev.get("progress_pct", 0) or 0),
-                cumulative_trades=int(
-                    prev.get("cumulative_trades", prev.get("trades_done", 0)) or 0
-                ),
-                target_trades=int(prev.get("target_trades", 0) or 0),
-                ppo_steps=int(prev.get("ppo_steps", 0) or 0),
-                birth_start_time=float(prev.get("birth_start_time", 0) or 0),
-                **extra,
-            )
-        except Exception as exc:
-            logger.warning("attention.progress_write_failed: %s", exc)
+        del event
+        return
 
     def _load_dedupe(self) -> dict[str, float]:
         if not self._dedupe_path.is_file():

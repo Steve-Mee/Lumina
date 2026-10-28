@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any
 
 import pytest
@@ -9,7 +10,29 @@ from lumina_core.evolution.community_knowledge import append_community_queue_ite
 from lumina_core.evolution.dna_registry import PolicyDNA
 from lumina_core.evolution.evolution_guard import EvolutionGuard
 from lumina_core.evolution.lumina_bible import LuminaBible
-from lumina_core.evolution.multi_day_sim_runner import ShadowFill, SimResult
+
+
+@dataclass(slots=True)
+class ShadowFill:
+    day_index: int
+    side: str
+    qty: int
+    entry_price: float
+    exit_price: float
+    pnl: float
+    reason: str
+
+
+@dataclass(slots=True)
+class SimResult:
+    dna_hash: str
+    day_count: int
+    avg_pnl: float
+    max_drawdown_ratio: float
+    regime_fit_bonus: float
+    fitness: float
+    shadow_mode: bool = False
+    hypothetical_fills: list[ShadowFill] | None = None
 
 
 class _FakeSimRunner:

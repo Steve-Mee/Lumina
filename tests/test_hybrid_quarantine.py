@@ -112,28 +112,3 @@ def test_arch_sandbox_default_does_not_invent_delta() -> None:
     assert score == pytest.approx(5.0)
 
 
-@pytest.mark.unit
-def test_multi_day_strict_returns_neg_inf_on_rng_path() -> None:
-    from lumina_core.evolution.dna_registry import PolicyDNA
-    from lumina_core.evolution.multi_day_sim_runner import MultiDaySimRunner
-
-    runner = MultiDaySimRunner()
-    variant = PolicyDNA(
-        prompt_id="test",
-        version="1",
-        hash="abc123",
-        content="{}",
-        fitness_score=0.0,
-        generation=0,
-        parent_ids=(),
-    )
-    with patch("lumina_core.hybrid_quarantine.require_true_backtest", return_value=True):
-        result = runner._evaluate_single_variant(
-            variant,
-            days=3,
-            report={"net_pnl": 10.0, "sharpe": 1.0, "max_drawdown": 1.0, "account_equity": 50000.0},
-            shadow_mode=False,
-            real_market_data=False,
-            true_backtest_mode=False,
-        )
-    assert result.fitness == float("-inf")

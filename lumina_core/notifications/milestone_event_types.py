@@ -6,22 +6,20 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from lumina_core.birth.curriculum import CurriculumStage
-
 _STAGE_LABELS: dict[str, str] = {
-    CurriculumStage.STAGE1_TREND.value: "Stage 1 — Closed loop",
-    CurriculumStage.STAGE2_RANGE.value: "Stage 2 — Selectivity",
-    CurriculumStage.STAGE3_MIXED.value: "Stage 3 — Mixed regimes",
-    CurriculumStage.STAGE4_VIABLE_PLANT.value: "Stage 4 — Viable plant",
-    CurriculumStage.STAGE5_PROBE_HANDOFF.value: "Stage 5 — Probe & handoff",
+    "stage1_trend": "Stage 1 — Closed loop",
+    "stage2_range": "Stage 2 — Selectivity",
+    "stage3_mixed": "Stage 3 — Mixed regimes",
+    "stage4_viable_plant": "Stage 4 — Viable plant",
+    "stage5_probe_handoff": "Stage 5 — Probe & handoff",
 }
 
 _STAGE_MILESTONE_IDS: dict[str, str] = {
-    CurriculumStage.STAGE1_TREND.value: "curriculum_stage1_trend_passed",
-    CurriculumStage.STAGE2_RANGE.value: "curriculum_stage2_range_passed",
-    CurriculumStage.STAGE3_MIXED.value: "curriculum_stage3_mixed_passed",
-    CurriculumStage.STAGE4_VIABLE_PLANT.value: "curriculum_stage4_viable_passed",
-    CurriculumStage.STAGE5_PROBE_HANDOFF.value: "curriculum_stage5_probe_passed",
+    "stage1_trend": "curriculum_stage1_trend_passed",
+    "stage2_range": "curriculum_stage2_range_passed",
+    "stage3_mixed": "curriculum_stage3_mixed_passed",
+    "stage4_viable_plant": "curriculum_stage4_viable_passed",
+    "stage5_probe_handoff": "curriculum_stage5_probe_passed",
 }
 
 

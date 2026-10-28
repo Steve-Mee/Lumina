@@ -157,9 +157,8 @@ def _or2_aperture(workspace: Path) -> dict[str, Any]:
 
 
 def _or3_perfect_birth(workspace: Path) -> dict[str, Any]:
-    from lumina_core.birth.perfect_birth_gate import build_perfect_birth_campaign_report
-
-    report = build_perfect_birth_campaign_report(workspace)
+    del workspace
+    report: dict[str, Any] = {"unlock_valid": False, "would_pass": False, "checklist": []}
     unlock = bool(report.get("unlock_valid"))
     would = bool(report.get("would_pass") or report.get("campaign_ready_to_declare"))
     checklist = report.get("checklist") if isinstance(report.get("checklist"), list) else []
@@ -282,12 +281,19 @@ def _or4_twin(workspace: Path) -> dict[str, Any]:
 
 
 def _or5_champion_freeze(workspace: Path, progress: dict[str, Any]) -> dict[str, Any]:
-    from lumina_core.birth.starship_swarm_gates import build_champion_freeze_verification_report
-
-    report = build_champion_freeze_verification_report(progress=progress)
-    freeze = bool(report.get("freeze_active") or report.get("rejected_no_lift"))
-    accepted = bool(report.get("champion_accepted"))
-    auto_ok = bool(report.get("ok", True))
+    del workspace
+    freeze = bool(progress.get("swarm_rejected_no_lift")) and not bool(
+        progress.get("swarm_champion_accepted")
+    )
+    accepted = bool(progress.get("swarm_champion_accepted"))
+    auto_ok = True
+    report: dict[str, Any] = {
+        "freeze_active": freeze,
+        "rejected_no_lift": freeze,
+        "champion_accepted": accepted,
+        "ok": True,
+        "message": "Birth-v1 freeze board archived; status from progress JSON only.",
+    }
 
     if freeze and not accepted:
         status = "blocked"
@@ -342,9 +348,14 @@ def _or5_champion_freeze(workspace: Path, progress: dict[str, Any]) -> dict[str,
 
 
 def _or6_recovery_theater(workspace: Path, progress: dict[str, Any]) -> dict[str, Any]:
-    from lumina_core.birth.recovery_compress import build_recovery_theater_ops_report
-
-    report = build_recovery_theater_ops_report(progress)
+    del workspace
+    report: dict[str, Any] = {
+        "theater": False,
+        "next_action": "none",
+        "active": "none",
+        "ok": True,
+        "flags": {},
+    }
     theater = bool(report.get("theater"))
     next_action = str(report.get("next_action") or "none")
     active = str(report.get("active") or "none")

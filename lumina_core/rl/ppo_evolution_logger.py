@@ -22,7 +22,7 @@ _LIVE_LOGGER_BASE: type[Any] | None = None
 
 
 def _require_sb3_base_callback() -> type[Any]:
-    from lumina_core.birth.physics_preflight import require_sb3_base_callback
+    from lumina_core.rl.training_defaults import require_sb3_base_callback
 
     return require_sb3_base_callback()
 

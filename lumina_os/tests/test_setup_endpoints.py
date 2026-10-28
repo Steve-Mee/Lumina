@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from starlette.requests import Request
 
 from backend import setup_endpoints as se
+from backend import setup_endpoints_fabric as se_fabric
 from lumina_launcher.core.onboarding import (
     compute_onboarding_steps,
     resolve_app_surface,
@@ -495,16 +496,13 @@ def test_build_onboarding_payload_exposes_certificate_fields(
     with patch.object(se, "_workspace_root", return_value=tmp_path):
         with patch.object(se, "_probe_backend", return_value={"reachable": True, "url": "http://127.0.0.1:8000"}):
             with patch.object(se, "_model_catalog_payload", return_value=[]):
-                with patch(
-                    "lumina_core.birth.birth_certificate.validate_certificate_artifacts",
-                    return_value=(False, "holdout_regimes_insufficient", None),
-                ):
-                    payload = se.build_onboarding_payload(serving_request=True)
+                payload = se.build_onboarding_payload(serving_request=True)
 
     assert payload["birth"]["certificate_ok"] is False
-    assert payload["birth"]["certificate_reason"] == "holdout_regimes_insufficient"
-    assert payload["app_surface"] == "birth"
-    assert payload["app_surface_reason"] == "certificate_failed"
+    assert payload["birth"]["certificate_reason"] == "BIRTH_V1_ARCHIVED"
+    assert payload["birth"]["status"] == "archived"
+    assert payload["app_surface"] == "hub"
+    assert payload["app_surface_reason"] == "maturation_hub"
 
 
 @pytest.mark.unit
@@ -659,8 +657,12 @@ async def test_configure_rejects_missing_credentials() -> None:
     config_manager = MagicMock()
     config_manager.parse_env_file.return_value = {}
     mock_services = (setup, config_manager, MagicMock(), MagicMock(), MagicMock(), MagicMock())
-    with patch.object(se, "_services", return_value=mock_services):
-        with patch.object(se, "scan_missing_credentials", return_value=["LUMINA_JWT_SECRET_KEY"]):
+    with patch.object(se_fabric, "_services", return_value=mock_services):
+        with patch.object(
+            se_fabric,
+            "scan_missing_credentials",
+            return_value=["LUMINA_JWT_SECRET_KEY"],
+        ):
             with pytest.raises(Exception) as exc:
                 await se.configure_setup(se.ConfigureRequest())
             assert "LUMINA_JWT_SECRET_KEY" in str(exc.value)

@@ -8,6 +8,7 @@ extend-exclude = [
   "journal",
   "lumina_vector_db",
   "lumina_core/broker/ninjatrader/generated",
+  "archive",
 ]
 
 [lint.per-file-ignores]

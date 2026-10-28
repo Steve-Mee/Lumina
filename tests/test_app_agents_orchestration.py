@@ -151,7 +151,7 @@ def test_meta_orchestrator_nightly_reflection_dry_run(container_with_stub_app, m
     orch = c.meta_agent_orchestrator
     assert orch is not None
 
-    from lumina_core.evolution.orchestrator_core import EvolutionOrchestrator
+    from lumina_core.evolution.orchestrator import EvolutionOrchestrator
 
     def _stub_multi_gen_cycle(self, **kwargs: Any) -> dict[str, Any]:
         return {"status": "stub_ok", "generations": int(kwargs.get("generations", 0) or 0)}

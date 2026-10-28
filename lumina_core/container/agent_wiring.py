@@ -10,7 +10,7 @@ from lumina_core.agent_orchestration import AgentBlackboard, MetaAgentOrchestrat
 from lumina_core.engine.canonical_training import InfiniteSimulator, PPOTrainer
 from lumina_core.engine.emotional_twin_agent import EmotionalTwinAgent
 from lumina_core.engine.swarm_manager import SwarmManager
-from lumina_core.evolution.meta_agent_config import load_evolution_config
+from lumina_core.engine.evolution_config import load_evolution_config
 
 if TYPE_CHECKING:
     from lumina_core.container import ApplicationContainer
@@ -78,14 +78,7 @@ def wire_intelligence_agents(container: "ApplicationContainer") -> None:
         container.meta_agent_orchestrator = None  # type: ignore[assignment]
         container.engine.meta_agent_orchestrator = None
 
-    try:
-        from lumina_core.evolution.challenger_venue.attach import attach_challenger_surfaces
-
-        attach_challenger_surfaces(container.engine, workspace=".")
-    except Exception:
-        import logging
-
-        logging.getLogger(__name__).exception("challenger_surfaces.attach_failed")
+    # Birth-v1 challenger venue is archived; PromotionGate remains the live path.
 
 
 def wire_swarm(container: "ApplicationContainer") -> None:

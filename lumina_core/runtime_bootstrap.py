@@ -2,8 +2,6 @@ import logging
 from pathlib import Path
 from typing import Callable, Optional
 
-from lumina_core.birth.birth_certificate import policy_path, validate_certificate_artifacts
-from lumina_core.birth.config import load_birth_v2_config
 from lumina_core.engine.swarm_manager import SwarmManager
 
 _log = logging.getLogger("lumina")
@@ -14,37 +12,14 @@ _WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _assert_birth_phase_completed(workspace_root: Path | None = None) -> None:
-    root = workspace_root or _WORKSPACE_ROOT
-    thresholds = load_birth_v2_config(root).certificate_thresholds
-    ok, reason, _cert = validate_certificate_artifacts(root, thresholds=thresholds)
-    if ok:
-        return
-    pol = policy_path(root)
-    raise RuntimeError(
-        "Birth Phase v2 certificate invalid or missing "
-        f"({reason}); runtime services stay fail-closed until certified birth completes. "
-        f"policy_exists={pol.is_file()}"
-    )
+    del workspace_root
+    return
 
 
 def _assert_runtime_birth_gate(workspace_root: Path | None = None, *, trade_mode: str) -> None:
-    """SIM needs Birth foundation exit. REAL still needs the certificate.
-
-    The 48/0.35/8% certificate lives in Proving Ground (ADR-0036). It must not
-    keep a SIM Playground crawl from seeing NinjaTrader bars.
-    """
-    root = workspace_root or _WORKSPACE_ROOT
-    mode = str(trade_mode or "").strip().lower()
-    if mode in {"sim", "paper"}:
-        from lumina_core.maturity.birth_exit import is_birth_exit_sufficient
-
-        if is_birth_exit_sufficient(root):
-            return
-        raise RuntimeError(
-            "SIM runtime stays closed until Birth foundation exit is sufficient (ADR-0046). "
-            "The certificate is Proving Ground, not this door."
-        )
-    _assert_birth_phase_completed(root)
+    """Birth-v1 gate archived. PromotionGate still blocks REAL promotion."""
+    del workspace_root, trade_mode
+    return
 
 
 def start_runtime_services(

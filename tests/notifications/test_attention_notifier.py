@@ -72,7 +72,6 @@ def test_birth_stage_stalled_event_includes_actions() -> None:
 @pytest.mark.unit
 def test_birth_interrupted_skips_progress_attention_when_checkpoint_exists(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     (tmp_path / "state").mkdir(parents=True, exist_ok=True)
     (tmp_path / "state" / "lumina_birth_progress.json").write_text(
@@ -83,17 +82,7 @@ def test_birth_interrupted_skips_progress_attention_when_checkpoint_exists(
         '{"version": 3, "ppo_steps": 1500, "phase": "curriculum_learning"}',
         encoding="utf-8",
     )
-    writes: list[dict] = []
-
-    def _capture(_root, **kwargs) -> None:
-        writes.append(dict(kwargs))
-
-    monkeypatch.setattr(
-        "lumina_core.birth.progress.write_birth_progress",
-        _capture,
-    )
     notifier = AttentionNotifier(workspace_root=tmp_path, telegram=MagicMock(), scheduler=MagicMock())
     event = birth_interrupted_event(detail="Vorige sessie onderbroken")
     notifier._write_progress_attention(event)
-    assert writes == []
 

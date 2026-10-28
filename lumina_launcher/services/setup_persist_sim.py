@@ -43,28 +43,53 @@ def is_sim_envelope_sealed(workspace_root: Path) -> bool:
     return bool(payload.get("sealed", True))
 
 
+def is_numeric_sim_seal(payload: dict[str, Any]) -> bool:
+    if payload.get("sealed") is not True:
+        return False
+    cap = payload.get("daily_loss_cap")
+    risk = payload.get("max_total_open_risk")
+    if isinstance(cap, bool) or isinstance(risk, bool):
+        return False
+    try:
+        cap_f = float(cap)
+        risk_f = float(risk)
+    except (TypeError, ValueError):
+        return False
+    return cap_f < 0.0 and risk_f > 0.0
+
+
 def write_sim_envelope_sealed(
     workspace_root: Path,
     *,
     sealed: bool,
     source: str = "operator",
+    daily_loss_cap: float | None = None,
+    max_total_open_risk: float | None = None,
 ) -> None:
-    """Legacy boolean flag for setup. A Playground pass uses ``write_operator_seal``.
-
-    ``sealed=True`` must not replace a numeric Playground seal with a boolean.
-    """
-    if sealed:
-        from lumina_core.maturity.playground.envelope import envelope_sealed_for_pass
-
-        if envelope_sealed_for_pass(workspace_root):
-            return
+    """Operator SIM envelope flag. A numeric seal is not replaced by a boolean."""
     path = sim_envelope_sealed_path(workspace_root)
+    existing: dict[str, Any] = {}
+    if path.is_file():
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            raw = {}
+        if isinstance(raw, dict):
+            existing = raw
+    if sealed and daily_loss_cap is None and max_total_open_risk is None and is_numeric_sim_seal(existing):
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
+    payload: dict[str, Any] = {
         "sealed": bool(sealed),
         "source": str(source),
         "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
+    cap = daily_loss_cap if daily_loss_cap is not None else existing.get("daily_loss_cap")
+    risk = max_total_open_risk if max_total_open_risk is not None else existing.get("max_total_open_risk")
+    if cap is not None:
+        payload["daily_loss_cap"] = float(cap)
+    if risk is not None:
+        payload["max_total_open_risk"] = float(risk)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 

@@ -225,4 +225,4 @@ def test_forget_allows_the_same_status_again(tmp_path: Path, monkeypatch: pytest
     forget_phase_status(tmp_path, ["awakening"])
     assert notify_phase_status(tmp_path, "awakening", kind="started")
     assert len(sent) == 2
-    assert "Doel (fase-specificatie):" in sent[0]
+    assert "Awakening" in sent[0]

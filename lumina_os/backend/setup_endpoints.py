@@ -16,7 +16,6 @@ from lumina_launcher.services.setup_persist import (
     scan_missing_credentials,
     seed_sim_runtime_and_mark_setup,
 )
-from lumina_launcher.services.birth_service import birth_service
 from lumina_launcher.services.smart_setup_service import SmartSetupOptions
 
 from lumina_launcher.core.onboarding import resolve_app_surface
@@ -30,6 +29,7 @@ from .setup_onboarding_payload import (
 )
 
 logger = logging.getLogger(__name__)
+birth_service = None
 
 __all__ = [
     "birth_service",

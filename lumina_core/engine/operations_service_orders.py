@@ -9,7 +9,9 @@ from datetime import datetime, timezone
 
 from lumina_core.broker.broker_bridge.schemas import AccountInfo, Order
 from lumina_core.engine.errors import ErrorSeverity, LuminaError, format_error_code, log_structured
+from lumina_core.engine.live_position_manager import LivePositionManager
 from lumina_core.logging_utils import get_logger, log_event, log_runtime_trace, runtime_trace_enabled
+from lumina_core.maturity.milestone_hooks import try_record_milestone
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
 from lumina_core.risk.policy_engine import PolicyEngine
 
@@ -55,12 +57,6 @@ class OperationsOrdersMixin:
                                      session + risk enforcement for production-parity validation.
           real   – real money; full SessionGuard + HardRiskController enforcement.
         """
-        from lumina_core.maturity.playground.crawl import (
-            crawl_order_intent,
-            note_order_reject,
-            resolve_crawl_submission,
-        )
-
         app = self._app()
         trade_mode = self.engine.config.trade_mode
 
@@ -74,32 +70,19 @@ class OperationsOrdersMixin:
                     action=str(action),
                     qty=int(qty),
                 )
-            note_order_reject("paper_mode")
-            return False
-
-        intent = crawl_order_intent()
-        submission = resolve_crawl_submission(intent, str(trade_mode))
-        if isinstance(submission, dict) and submission.get("reject"):
-            note_order_reject(str(submission["reject"]))
             return False
 
         _dream = self.engine.get_current_dream_snapshot()
         symbol = str(self.engine.config.instrument)
         hold_until = float(_dream.get("hold_until_ts", 0.0) or 0.0)
-        if isinstance(submission, dict):
-            symbol = str(submission["symbol"])
-            hold_until = float(submission["hold_until_ts"])
         with self.engine.live_data_lock:
             _price = float(
                 self.engine.live_quotes[-1]["last"]
                 if self.engine.live_quotes
                 else (self.engine.ohlc_1min["close"].iloc[-1] if len(self.engine.ohlc_1min) else 0.0)
             )
-        if isinstance(submission, dict) and submission.get("stop_px"):
-            _stop = float(submission["stop_px"])
-        else:
-            fallback = _price * 0.99 if action.upper() == "BUY" else _price * 1.01
-            _stop = float(_dream.get("stop", fallback) or fallback)
+        fallback = _price * 0.99 if action.upper() == "BUY" else _price * 1.01
+        _stop = float(_dream.get("stop", fallback) or fallback)
         _proposed_risk = abs(_price - _stop)
         _risk_ok, _risk_reason = enforce_pre_trade_gate(
             self.engine,
@@ -139,24 +122,16 @@ class OperationsOrdersMixin:
                 str(trade_mode).upper(),
                 gateway_result.get("reason"),
             )
-            note_order_reject("gateway_hold")
             return False
 
         if not _risk_ok:
             app.logger.warning(f"place_order blocked by gatekeeper [mode={str(trade_mode).upper()}]: {_risk_reason}")
-            note_order_reject("risk_blocked")
             return False
 
         try:
             dream_snapshot = self.engine.get_current_dream_snapshot()
-            from lumina_core.maturity.playground.crawl import crawl_order_intent
-
-            intent = crawl_order_intent()
             stop_loss = float(dream_snapshot.get("stop", 0) or 0)
             take_profit = float(dream_snapshot.get("target", 0) or 0)
-            if isinstance(intent, dict) and intent.get("stop_px") and intent.get("target_px"):
-                stop_loss = float(intent["stop_px"])
-                take_profit = float(intent["target_px"])
             order = Order(
                 symbol=symbol,
                 side=str(action).upper(),
@@ -226,7 +201,6 @@ class OperationsOrdersMixin:
                         fill_px = float(lf.price)
                         fill_qty = max(fill_qty, int(lf.quantity))
                 # D2 sub-slice 8: thin delegation to LivePositionManager (shared live state).
-                from lumina_core.engine.live_position_manager import LivePositionManager
                 LivePositionManager(app=self, engine=self.engine).update_on_real_fill(
                     signed_qty=int(signed_qty),
                     fill_px=float(fill_px) if fill_px > 0.0 else 0.0,
@@ -246,116 +220,24 @@ class OperationsOrdersMixin:
                     est_latency_ms=round(est_latency_ms, 1),
                 )
                 try:
-                    from lumina_core.maturity.milestone_hooks import try_record_milestone
-                    from lumina_core.maturity.playground.crawl import (
-                        crawl_order_intent,
-                        note_order_reject,
-                        note_venue_fill,
-                    )
-                    from lumina_core.maturity.playground.fills import record_orderpath_fill
-
                     workspace = getattr(self.engine.config, "workspace_root", None) or getattr(
                         self.app, "workspace_root", None
                     )
-                    filled_for_playground = False
                     if workspace and str(trade_mode).lower() in {"sim", "sim_real_guard"}:
-                        oid = str(
-                            getattr(result, "order_id", None) or getattr(result, "id", None) or ""
-                        ).strip()
-                        intent = crawl_order_intent()
-                        if oid and fill_px > 0.0:
-                            filled_for_playground = True
-                            record_orderpath_fill(
-                                workspace,
-                                order_id=oid,
-                                fill_px=float(fill_px),
-                                qty=int(fill_qty or qty),
-                                instrument=symbol,
-                                mode=str(trade_mode).lower(),
-                                source="ops_place_order",
-                                kind="fill",
-                                policy=intent is not None,
-                            )
-                            if intent is not None and stop_loss > 0.0:
-                                note_venue_fill(
-                                    order_id=oid,
-                                    fill_px=float(fill_px),
-                                    stop_px=float(stop_loss),
-                                )
-                            try:
-                                from lumina_core.maturity.continuum import load_continuum
-                                from lumina_core.maturity.apprenticeship.tape import (
-                                    record_orderpath_fill as record_apprentice_fill,
-                                )
-
-                                active = str(load_continuum(workspace).get("active_phase") or "")
-                                mode_now = str(trade_mode).lower()
-                                if active == "apprenticeship" and mode_now == "sim_real_guard":
-                                    order_pnl = getattr(result, "realized_pnl", None)
-                                    if order_pnl is None:
-                                        order_pnl = getattr(result, "pnl", None)
-                                    pnl_f = None
-                                    if order_pnl is not None and order_pnl != "":
-                                        pnl_f = float(order_pnl)
-                                    record_apprentice_fill(
-                                        workspace,
-                                        order_id=oid,
-                                        fill_px=float(fill_px),
-                                        qty=int(fill_qty or qty),
-                                        instrument=str(
-                                            getattr(self.engine.config, "instrument", "") or ""
-                                        ),
-                                        mode=mode_now,
-                                        source="ops_place_order",
-                                        kind="close" if pnl_f is not None else "fill",
-                                        policy=True,
-                                        pnl=pnl_f,
-                                    )
-                                if active == "proving_ground" and mode_now in {"sim", "sim_real_guard"}:
-                                    from lumina_core.maturity.proving_ground.tape import (
-                                        record_orderpath_fill as record_pg_fill,
-                                    )
-
-                                    order_pnl = getattr(result, "realized_pnl", None)
-                                    if order_pnl is None:
-                                        order_pnl = getattr(result, "pnl", None)
-                                    pnl_pg = None
-                                    if order_pnl is not None and order_pnl != "":
-                                        pnl_pg = float(order_pnl)
-                                    record_pg_fill(
-                                        workspace,
-                                        order_id=oid,
-                                        fill_px=float(fill_px),
-                                        qty=int(fill_qty or qty),
-                                        instrument=str(
-                                            getattr(self.engine.config, "instrument", "") or ""
-                                        ),
-                                        mode=mode_now,
-                                        source="ops_place_order",
-                                        kind="close" if pnl_pg is not None else "fill",
-                                        policy=True,
-                                        pnl=pnl_pg,
-                                    )
-                            except Exception:
-                                logger.exception("playground.orderpath_sidecar_failed")
-                            try_record_milestone(
-                                workspace,
-                                "first_sim_order_placed",
-                                metadata={"action": action, "qty": int(qty), "mode": trade_mode},
-                            )
-                            try_record_milestone(
-                                workspace,
-                                "sim_mirror_api_ok",
-                                metadata={"broker": type(brk).__name__},
-                            )
-                    if not filled_for_playground:
-                        note_order_reject("accepted_without_fill_px")
+                        try_record_milestone(
+                            workspace,
+                            "first_sim_order_placed",
+                            metadata={"action": action, "qty": int(qty), "mode": trade_mode},
+                        )
+                        try_record_milestone(
+                            workspace,
+                            "sim_mirror_api_ok",
+                            metadata={"broker": type(brk).__name__},
+                        )
                 except Exception:
-                    logger.exception("playground.orderpath_record_failed")
-                    note_order_reject("accepted_without_fill_px")
+                    logger.exception("ops.milestone_record_failed")
                 return True
             app.logger.error(f"Order failed {result.status} ({result.message})")
-            note_order_reject("submit_failed")
             return False
         except Exception as exc:
             code = format_error_code("OPS_PLACE_ORDER", exc, fallback="SUBMIT_FAILED")
@@ -367,7 +249,6 @@ class OperationsOrdersMixin:
             )
             log_structured(err)
             app.logger.error(f"Place order error [{code}]: {exc}")
-            note_order_reject("submit_failed")
             return False
 
     def emergency_stop(self) -> None:

@@ -9,8 +9,6 @@ import pytest
 import yaml
 
 from lumina_core.agent_orchestration.event_bus import EventBus
-from lumina_core.birth.birth_handler_registry import BirthHandlerRegistry
-from lumina_core.birth.config import BirthCurriculumConfig, BirthRewardConfig
 from lumina_core.config.atomic_yaml import atomic_write_yaml, read_yaml_stable
 from lumina_core.config_loader import ConfigLoader
 from lumina_core.container import ApplicationContainer, ConfigService
@@ -167,18 +165,6 @@ def test_apply_config_reload_rejects_twin_blocked_auto_approve(
     assert result.applied is False
     assert result.rejected_reason == "twin_oversight_blocked"
     assert "auto_approve_real" in result.immutable_fields
-
-
-@pytest.mark.unit
-def test_birth_handler_registry_sync_birth_cfg() -> None:
-    bus = EventBus()
-    curriculum = BirthCurriculumConfig(stage1_trend_trades=1111)
-    reward = BirthRewardConfig(expectancy_coeff=0.33)
-    registry = BirthHandlerRegistry(bus, BirthCurriculumConfig(), BirthRewardConfig())
-    registry.sync_birth_cfg(curriculum, reward)
-    assert registry.curriculum_cfg.stage1_trend_trades == 1111
-    assert registry.reward_cfg.expectancy_coeff == pytest.approx(0.33)
-    assert registry.meta.controller.baseline_reward.expectancy_coeff == pytest.approx(0.33)
 
 
 @pytest.mark.unit

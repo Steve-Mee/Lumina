@@ -52,7 +52,7 @@ from lumina_core.engine.portfolio_var_allocator import PortfolioVaRAllocator
 from lumina_core.engine.valuation_engine import ValuationEngine
 from lumina_agents.news_agent import NewsAgent
 from lumina_core.engine.emotional_twin_agent import EmotionalTwinAgent
-from lumina_core.evolution.meta_agent_config import load_evolution_config as load_evolution_config
+from lumina_core.engine.evolution_config import load_evolution_config as load_evolution_config
 from lumina_core.engine.canonical_training import InfiniteSimulator, PPOTrainer
 from lumina_core.logging_utils import build_logger as build_logger, flush_logger_handlers
 from lumina_core.monitoring import ObservabilityService

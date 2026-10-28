@@ -7,7 +7,7 @@ from lumina_core.config_loader import ConfigLoader
 from lumina_core.agent_orchestration.event_bus import ConstitutionViolation, EventBus
 
 from .approval_twin_agent import ApprovalTwinAgent
-from .fitness_evaluator import utcnow
+from .clock import utcnow
 from .promotion_gate import PromotionGateDecision
 from .shadow_run_storage import load_shadow_runs, save_shadow_runs
 from .veto_window import VetoWindow

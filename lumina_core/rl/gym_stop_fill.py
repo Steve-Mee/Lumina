@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from lumina_core.birth.birth_trade_geometry import SEGMENT_BREAK_KEY
+from lumina_core.rl.training_defaults import SEGMENT_BREAK_KEY
 
 STOP_TARGET_SLIP_TICKS = 1.0
 
