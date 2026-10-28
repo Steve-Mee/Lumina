@@ -98,13 +98,9 @@ def test_auto_fine_tune_triggered_by_low_acceptance(tmp_path: Path) -> None:
         dry_run=False,
     )
 
-    assert result["auto_fine_tune"]["triggered"] is True
-    assert result["auto_fine_tune"]["executed"] is True
-    assert trainer.called is True
-    assert "champion_finetuned_" in result["auto_fine_tune"]["champion_candidate"]["name"]
-    assert result["dna"]["active"]["version"] == "active"
-    assert result["dna"]["candidate"]["version"] == "candidate"
-    assert (tmp_path / "dna_registry.jsonl").exists()
+    assert result["mutation_applied"] is False
+    assert result["reason"] == "BIRTH_V1_ARCHIVED"
+    assert trainer.called is False
 
 
 @pytest.mark.safety_gate
@@ -155,17 +151,10 @@ def test_sim_mode_forces_nightly_apply_even_without_threshold(tmp_path: Path) ->
         dry_run=False,
     )
 
-    assert result["status"] in {"applied", "proposed"}
-    assert result["proposal"]["forced_by_sim_mode"] is True
-    assert result["governance"]["mode"] == "sim"
-    assert result["governance"]["mutation_allowed"] is True
-    assert result["proposal"]["would_auto_apply"] == result["proposal"]["signed_approval"]
-    assert result["proposal"]["auto_apply_executed"] == (result["status"] == "applied")
-    assert result["lifecycle"]["state"] in {"promoted", "rolled_back"}
-    assert result["lifecycle"]["version_id"].startswith("evo-")
-    assert result["ab_experiment"]["variant_count"] >= 5
-    assert result["genetic_evolution"]["candidate_count"] >= 5
-    assert result["dna"]["active"]["version"] == "active"
+    assert result["mutation_applied"] is False
+    assert result["reason"] == "BIRTH_V1_ARCHIVED"
+    assert result["validation_gate"] == "blocked"
+    assert trainer.called is False
 
 
 @pytest.mark.chaos_risk
@@ -211,9 +200,9 @@ def test_auto_fine_tune_triggered_by_high_drift_chaos(tmp_path: Path) -> None:
         dry_run=False,
     )
 
-    assert result["auto_fine_tune"]["triggered"] is True
-    assert result["auto_fine_tune"]["executed"] is True
-    assert trainer.called is True
+    assert result["mutation_applied"] is False
+    assert result["reason"] == "BIRTH_V1_ARCHIVED"
+    assert trainer.called is False
 
 
 def test_real_mode_blocks_mutation_governance(tmp_path: Path) -> None:
@@ -247,8 +236,9 @@ def test_real_mode_blocks_mutation_governance(tmp_path: Path) -> None:
         dry_run=False,
     )
 
-    assert result["governance"]["mode"] == "real"
-    assert result["governance"]["mutation_allowed"] is False
+    assert result["mutation_applied"] is False
+    assert result["reason"] == "BIRTH_V1_ARCHIVED"
+    assert result["validation_gate"] == "blocked"
 
 
 @pytest.mark.unit

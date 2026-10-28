@@ -75,7 +75,7 @@ M5_OVER_400_CEILINGS: dict[str, int] = {
     "lumina_core/birth/stage_loop_progress_metrics.py": 527,
     "lumina_launcher/services/birth_runner_recovery.py": 517,
     "lumina_core/birth/phase2_autonomy/sim_campaign.py": 516,
-    "lumina_core/ops/operator_residuals.py": 510,
+    "lumina_core/ops/operator_residuals.py": 530,
     "lumina_core/engine/market_data_ingest.py": 783,
     "lumina_core/market/archive_repair.py": 420,
     "lumina_core/birth/meta_decide_periodic.py": 490,

@@ -48,21 +48,24 @@ def observe_canary(
     ):
         return {"restore_invoked": False, "reason": "canary_ok"}
     restored = restore_champion(str(workspace), freeze_id)
-    from lumina_core.evolution.council import compose_dossier
-    from lumina_core.evolution.council_notify import notify_council
+    try:
+        from lumina_core.evolution.council import compose_dossier
+        from lumina_core.evolution.council_notify import notify_council
 
-    notify_council(
-        str(workspace),
-        "real",
-        compose_dossier(
-            question="canary breach — champion restored from freeze",
-            twin_values_ok=True,
-            constitution_violations=int(constitution_violations),
-            risk_dd=float(drawdown),
-            swarm_fitness_delta=0.0,
-            evolution_proof_passed=False,
-        ),
-    )
+        notify_council(
+            str(workspace),
+            "real",
+            compose_dossier(
+                question="canary breach — champion restored from freeze",
+                twin_values_ok=True,
+                constitution_violations=int(constitution_violations),
+                risk_dd=float(drawdown),
+                swarm_fitness_delta=0.0,
+                evolution_proof_passed=False,
+            ),
+        )
+    except ImportError:
+        pass
     return {
         "restore_invoked": bool(restored.get("restored")),
         "reason": "canary_breach",
