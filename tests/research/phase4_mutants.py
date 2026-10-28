@@ -74,6 +74,10 @@ def _swap_op(op: ast.operator | ast.cmpop | ast.boolop) -> ast.AST | None:
         ast.GtE: ast.LtE(),
         ast.Eq: ast.NotEq(),
         ast.NotEq: ast.Eq(),
+        ast.Is: ast.IsNot(),
+        ast.IsNot: ast.Is(),
+        ast.In: ast.NotIn(),
+        ast.NotIn: ast.In(),
         ast.And: ast.Or(),
         ast.Or: ast.And(),
     }
@@ -96,26 +100,32 @@ class _Mutator(ast.NodeTransformer):
 
     def visit_Compare(self, node: ast.Compare) -> ast.AST:
         self.generic_visit(node)
-        if node.ops and self._hit("compare"):
+        if node.ops:
             swapped = _swap_op(node.ops[0])
-            if swapped is not None:
+            if swapped is not None and self._hit("compare"):
                 node.ops[0] = swapped  # type: ignore[assignment]
         return node
 
     def visit_BinOp(self, node: ast.BinOp) -> ast.AST:
         self.generic_visit(node)
-        if self._hit("binop"):
-            swapped = _swap_op(node.op)
-            if swapped is not None:
-                node.op = swapped  # type: ignore[assignment]
+        swapped = _swap_op(node.op)
+        if swapped is not None and self._hit("binop"):
+            node.op = swapped  # type: ignore[assignment]
         return node
 
     def visit_BoolOp(self, node: ast.BoolOp) -> ast.AST:
         self.generic_visit(node)
-        if self._hit("boolop"):
-            swapped = _swap_op(node.op)
-            if swapped is not None:
-                node.op = swapped  # type: ignore[assignment]
+        swapped = _swap_op(node.op)
+        if swapped is not None and self._hit("boolop"):
+            node.op = swapped  # type: ignore[assignment]
+        return node
+
+    def visit_UnaryOp(self, node: ast.UnaryOp) -> ast.AST:
+        self.generic_visit(node)
+        if isinstance(node.op, ast.USub) and self._hit("unary"):
+            node.op = ast.UAdd()
+        elif isinstance(node.op, ast.Not) and self._hit("not"):
+            return node.operand
         return node
 
     def visit_Raise(self, node: ast.Raise) -> ast.AST:
@@ -140,8 +150,12 @@ class _Mutator(ast.NodeTransformer):
 
     def visit_Constant(self, node: ast.Constant) -> ast.AST:
         value = node.value
-        if isinstance(value, float) and value in {0.0, 1.0, 0.5} and self._hit("const-float"):
+        if isinstance(value, bool):
+            return node
+        if isinstance(value, float) and value in {0.0, 0.5, 1.0, 0.05, 0.10, 0.80} and self._hit("const-float"):
             return ast.Constant(value=1.0 if value == 0.0 else 0.0)
+        if isinstance(value, int) and value in {0, 1, 2, 3} and self._hit("const-int"):
+            return ast.Constant(value=0 if value else 1)
         return node
 
 
@@ -158,6 +172,7 @@ def _mutants_for_file(name: str) -> Iterator[Mutant]:
     original = path.read_text(encoding="utf-8")
     try:
         tree = ast.parse(original)
+        original_unparsed = ast.unparse(tree)
     except SyntaxError:
         return
     n_sites = _site_count(tree)
@@ -173,7 +188,7 @@ def _mutants_for_file(name: str) -> Iterator[Mutant]:
             compile(source, str(path), "exec")
         except (SyntaxError, ValueError):
             continue
-        if source == original:
+        if source == original_unparsed:
             continue
         yield Mutant(path=rel, description=f"{name}:{mutator.applied}#{index}", source=source)
 

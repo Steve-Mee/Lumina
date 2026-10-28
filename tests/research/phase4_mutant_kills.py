@@ -19,6 +19,7 @@ from lumina_core.agent_orchestration.schemas_research import (
 from lumina_research.agents.provenance import ProvenanceAuthority
 from lumina_research.evolution.integrity import capture_integrity
 from lumina_research.evolution.regime import RegimeAction
+from lumina_research.monitoring import config as continuity_config
 from lumina_research.monitoring.acceptance import (
     CAMPAIGN_MIN_SEEDS,
     CAMPAIGN_MIN_SIGNALS,
@@ -35,7 +36,7 @@ from lumina_research.monitoring.acceptance import (
 from lumina_research.monitoring.capacity import CapacityController, _needed, _sums
 from lumina_research.monitoring.config import ContinuityConfigError, config_from_mapping, load_default_config
 from lumina_research.monitoring.guardian import GuardianAgent
-from lumina_research.monitoring.loop import ContinuityIntegrityError, ContinuityRuntime
+from lumina_research.monitoring.loop import ContinuityIntegrityError, ContinuityRuntime, run_phase4_detection
 from lumina_research.monitoring.monitor import LivePerformanceMonitor
 from lumina_research.monitoring.registry import LiveSignalRegistry
 from lumina_research.monitoring.replenish import ReplenishAgent
@@ -209,6 +210,11 @@ def _config_battery() -> None:
     _refuse_msg(ContinuityConfigError, "must be in (0, 1)", config_from_mapping, {**_raw(), "sprt_alpha": 0.0})
     _refuse_msg(ContinuityConfigError, "must be in (0, 1)", config_from_mapping, {**_raw(), "sprt_alpha": 1.0})
     _refuse_msg(ContinuityConfigError, "must be a number", config_from_mapping, {**_raw(), "equity": "x"})
+    packaged = Path(continuity_config.__file__).with_name("limits.toml")
+    with TemporaryDirectory() as tmp:
+        loose = Path(tmp) / "loose.toml"
+        loose.write_text(packaged.read_text(encoding="utf-8").replace("equity = 100000.0", "equity = 1000000000.0"), encoding="utf-8")
+        _refuse_msg(ContinuityConfigError, "equity", load_default_config, loose)
 
 
 def _statistics_battery() -> None:
@@ -286,8 +292,12 @@ def _types_battery() -> None:
         raise AssertionError("stage ranks drifted")
     if stage_from_rank(0) != "active" or stage_from_rank(2) != "suspended" or stage_from_rank(9) != "retired":
         raise AssertionError("stage_from_rank drifted")
+    if stage_from_rank(1) != "deweighted":
+        raise AssertionError("rank 1 must be deweighted")
     if stage_weight("deweighted", deweight_multiplier=0.5) != 0.5:
         raise AssertionError("deweight multiplier must be 0.5")
+    if stage_weight("active", deweight_multiplier=0.5) != 1.0:
+        raise AssertionError("active weight must stay 1.0")
     if tighter_stage("active", "retired") != "retired" or tighter_stage("retired", "active") != "retired":
         raise AssertionError("tighter_stage must be monotonic")
     if finite_series((1.0, 2.0)) != (1.0, 2.0):
@@ -336,6 +346,8 @@ def _seal_battery(authority: ProvenanceAuthority) -> None:
     seen: set[str] = set()
     if accept_mac(authority, canonical_admission(body), digest, seen) is not True:
         raise AssertionError("first accept_mac must pass")
+    if accept_mac(authority, canonical_admission(body), digest, None) is not True:
+        raise AssertionError("accept_mac with no seen-set must pass")
     if accept_mac(authority, canonical_admission(body), digest, seen) is not False:
         raise AssertionError("replayed MAC must be refused")
     if accept_mac(authority, canonical_admission(body), 1, seen) is not False:
@@ -474,6 +486,32 @@ def _book_battery(tmp: Path) -> None:
         dsr=0.99,
     )
     _refuse_msg(ContinuityRefused, "trial_replay", registry.admit, replay_c, replay_v)
+    prov_c, prov_v = seal_promotion_pair(
+        authority,
+        hypothesis_id="hyp-prov",
+        config_id="hyp-prov",
+        trial_id=21,
+        instrument="MES",
+        quantity=2.0,
+        notional=10_000.0,
+        oos=RICH_OOS,
+        n_oos_windows=9,
+        dsr=0.99,
+    )
+    _refuse_msg(
+        ContinuityRefused,
+        "promotion provenance_invalid",
+        registry.admit,
+        prov_c.model_copy(update={"issue_mac": "ab" * 32}),
+        prov_v,
+    )
+    _refuse_msg(
+        ContinuityRefused,
+        "validation provenance_invalid",
+        registry.admit,
+        prov_c,
+        prov_v.model_copy(update={"provenance_mac": "cd" * 32}),
+    )
     lowered = registry.apply_stage("hyp-ok", "deweighted")
     if lowered.weight != 0.5 or lowered.stage != "deweighted":
         raise AssertionError("deweight must apply packaged 0.5 multiplier")
@@ -582,6 +620,24 @@ def _book_battery(tmp: Path) -> None:
     cap = cfg.max_cluster_notional_pct * cfg.equity
     if cluster_total > cap + 1e-6:
         raise AssertionError("cluster cap must bind MES+ES")
+    if cluster_total <= 1.0:
+        raise AssertionError("cluster cap must not wipe remaining notional")
+    live_sz = registry.require("hyp-sz")
+    if live_sz.capacity_scale <= 1e-9:
+        raise AssertionError("signal cap must not round-trip through equity inversion")
+    post = sizer.propose("hyp-sz", quantity=2.0, price=5_000.0, at=now)
+    if post.kind is DecisionKind.APPROVED and post.quantity > 2.0 + 1e-9:
+        raise AssertionError("post-cap size must stay at or below base quantity")
+    if post.quantity > 1e-9 and abs(float(post.notional) / float(post.quantity) - 5_000.0) > 0.05:
+        raise AssertionError("notional must be quantity times price")
+    _refuse_msg(
+        ContinuityRefused,
+        "cannot increase",
+        capacity._emit,
+        registry.require("hyp-sz"),
+        previous_scale=0.1,
+        reasons=("signal",),
+    )
 
     snapshot = capture_integrity()
     guardian = GuardianAgent(
@@ -595,6 +651,20 @@ def _book_battery(tmp: Path) -> None:
     missing_trials = guardian.scan(cadence="daily", baseline=snapshot, trials=())
     if missing_trials.n_violations < 1:
         raise AssertionError("missing trial log must violate")
+    if missing_trials.n_ok + missing_trials.n_warn + missing_trials.n_violations != missing_trials.n_checks:
+        raise AssertionError("guardian counts must partition findings")
+    if missing_trials.n_ok < 1:
+        raise AssertionError("intact Risk Core must still emit ok findings")
+    broken_live = replace(snapshot, live_risk_hash="0" * 64)
+    broken = guardian.scan(cadence="daily", baseline=snapshot, trials=(), live=broken_live)
+    if broken.passed is True or "hyp-sz" not in broken.suspend_proposals:
+        raise AssertionError("Risk Core hash miss must suspend live signals")
+    try:
+        guardian.scan(cadence="daily", baseline=snapshot, trials=(), live=object())  # type: ignore[arg-type]
+    except ContinuityRefused:
+        pass
+    else:
+        raise AssertionError("guardian must fail closed on a broken snapshot")
     checks = {item.check_id for item in guardian.findings() if item.signal_id == "hyp-sz"}
     needed = {
         "wf_oos_windows",
@@ -629,6 +699,15 @@ def _book_battery(tmp: Path) -> None:
     ]
     if not wf_rows:
         raise AssertionError("n_oos_windows=9 must pass wf_oos_windows")
+    happy_ids = ("oos_distribution_size", "cpcv_purge_embargo", "dsr_present", "costs", "regimes")
+    for check_id in happy_ids:
+        rows = [
+            item
+            for item in guardian.findings()
+            if item.signal_id == "hyp-sz" and item.check_id == check_id and item.passed is True
+        ]
+        if not rows:
+            raise AssertionError(f"hyp-sz must pass {check_id}")
 
     replenish = ReplenishAgent(
         bus=bus,
@@ -642,6 +721,28 @@ def _book_battery(tmp: Path) -> None:
         raise AssertionError("book should be above the active floor after admits")
     if replenish.maybe_request(seed=1) is not None:
         raise AssertionError("replenish must no-op above the floor")
+    g_live = registry.require("hyp-g")
+    registry._signals["hyp-g"] = replace(g_live, admission_mac="0" * 64)
+    _refuse_msg(ContinuityRefused, "signal_tampered", monitor.observe, "hyp-g", 0.8)
+    _refuse_msg(ContinuityRefused, "signal_tampered", monitor.apply_guardian_suspend, "hyp-g", "x")
+    _refuse_msg(
+        ContinuityRefused,
+        "signal_tampered",
+        sizer.propose,
+        "hyp-g",
+        quantity=2.0,
+        price=5_000.0,
+        at=now,
+    )
+    _refuse_msg(
+        ContinuityRefused,
+        "cannot increase",
+        monitor._emit_stage,
+        registry.require("hyp-sz"),
+        previous_weight=0.1,
+        stage="deweighted",
+        reason="up",
+    )
 
 
 def _pair(authority: ProvenanceAuthority, hyp: str, trial: int) -> tuple[object, object]:
@@ -712,6 +813,56 @@ def _runtime_battery(root: Path) -> None:
         raise AssertionError("replay must not change the book")
     empty = ContinuityRuntime(audit_path=root / "audit2.jsonl", experiment_log_path=root / "exp2.jsonl")
     _refuse_msg(ContinuityRefused, "generator counts", empty.replenish.maybe_request, seed=1)
+    _refuse_msg(ContinuityRefused, "cadence must be daily or weekly", runtime.guardian_scan, "monthly")
+    duplicate = seal_promotion_pair(
+        runtime.authority,
+        hypothesis_id="hyp-live",
+        config_id="hyp-live",
+        trial_id=77,
+        instrument="MES",
+        quantity=2.0,
+        notional=10_000.0,
+        oos=RICH_OOS,
+        n_oos_windows=9,
+        dsr=0.99,
+    )[0]
+    runtime.promotion._issued.append(duplicate)
+    skipped = runtime.ingest_promotions()
+    if skipped != ():
+        raise AssertionError("already-live promotions must be skipped")
+    ghost_c, _ghost_v = seal_promotion_pair(
+        runtime.authority,
+        hypothesis_id="ghost",
+        config_id="ghost",
+        trial_id=78,
+        instrument="MES",
+        quantity=2.0,
+        notional=10_000.0,
+        oos=RICH_OOS,
+        n_oos_windows=9,
+        dsr=0.99,
+    )
+    runtime.promotion._issued.append(ghost_c)
+    _refuse_msg(ContinuityRefused, "promotion without ValidationResult", runtime.ingest_promotions)
+    tiny = run_phase4_detection(
+        audit_path=root / "det-audit.jsonl",
+        experiment_log_path=root / "det-exp.jsonl",
+        n_healthy=1,
+        n_decaying=1,
+        n_days=40,
+        decay_start=8,
+        seed=1,
+    )
+    if tiny.n_healthy != 1 or tiny.n_decaying != 1:
+        raise AssertionError("tiny detection campaign shape drifted")
+    if tiny.detection_rate < 1.0:
+        raise AssertionError("abrupt decay must be detected")
+    decaying = [item for item in tiny.paths if item.decaying]
+    if not decaying or decaying[0].time_to_detect is None or decaying[0].time_to_detect < 1:
+        raise AssertionError("TTD must be measured from decay onset")
+    healthy = [item for item in tiny.paths if not item.decaying]
+    if healthy and healthy[0].false_alarm and healthy[0].final_stage == "active":
+        raise AssertionError("active healthy path is not a false alarm")
     object.__setattr__(runtime, "_snapshot", replace(runtime._snapshot, live_risk_hash="deadbeef"))
     try:
         runtime.observe("hyp-live", 0.8)
