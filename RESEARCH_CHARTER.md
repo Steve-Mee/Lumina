@@ -35,6 +35,8 @@ Phase 1 lives in `lumina_research/validation/` (`walk_forward`, `cpcv`, `dsr`, `
 
 Phase 3 (`lumina_research/evolution/`): birth may open new windows and tune parameters. Every mutation is a `TrialRegistry` trial and must pass the Phase 1 gate via the Phase 2 event flow. Regime detection may size or throttle, never hard-switch strategy. Risk Core and gate thresholds cannot be changed by evolution without an ADR plus a signed human review, and even then the evolutionary path does not apply the write.
 
+Phase 4 (`lumina_research/monitoring/`): live paper/shadow performance is compared to the promotion-time OOS distribution. Significant decay de-weights, then suspends, then retires (exposure only falls). Capacity caps scale back over-concentration. A scheduled guardian scan checks this charter. Replenishment requests new hypotheses through the Phase 2 factory; new signals still require the Validation Gate, PromotionAgent, and Risk Core. Monitoring must not import into `risk_core` or mutate it.
+
 ## Independent Risk Core (untouchable)
 - Position sizing, max drawdown limits, leverage caps, correlation exposure, kill switches and Dead Man’s Switch live outside the evolutionary path.
 - Agents may only *propose*. The Risk Core decides and can always reject.

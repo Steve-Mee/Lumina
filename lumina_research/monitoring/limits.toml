@@ -1,0 +1,31 @@
+# Phase 4 continuity / live-monitoring limits. Frozen at load.
+# Monitoring may only reduce exposure. Risk Core / gate floors are not keys here.
+
+window = 20
+method = "combined"
+z_deweight = -1.65
+z_suspend = -2.33
+z_retire = -2.88
+percentile_deweight = 0.10
+percentile_suspend = 0.05
+percentile_retire = 0.01
+cusum_k = 0.5
+cusum_h_deweight = 3.0
+cusum_h_suspend = 5.0
+cusum_h_retire = 8.0
+sprt_delta = 1.0
+sprt_alpha = 0.05
+sprt_beta = 0.10
+deweight_multiplier = 0.5
+min_observations = 20
+max_signal_notional_pct = 0.08
+max_instrument_notional_pct = 0.16
+max_family_notional_pct = 0.18
+max_cluster_notional_pct = 0.15
+min_active_signals = 2
+min_capacity_weight = 1.0
+replenish_count = 4
+pbo_promote_max = 0.25
+pbo_reject_min = 0.50
+min_oos_windows = 6
+equity = 100000.0
