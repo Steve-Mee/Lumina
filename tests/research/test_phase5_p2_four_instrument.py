@@ -131,6 +131,8 @@ def test_four_instrument_missing_es_nq_is_fail_closed(tmp_path: Path) -> None:
     assert "mr-es-20-1.5" not in ids
     comparison = (reports / COMPARISON_NAME).read_text(encoding="utf-8")
     assert "MES/MNQ cost-fix effect" in comparison
+    assert "### MES cost-fix effect" in comparison
+    assert "### MNQ cost-fix effect" in comparison
     assert "comm/trade" in comparison
     assert ES_NQ_NEEDED.split("(")[0].strip() in comparison or "PIT NT8 1m" in comparison
 

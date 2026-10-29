@@ -172,14 +172,9 @@ def write_comparison(
         old = base_rows.get(spec.config_id, {})
         new = fix_rows.get(spec.config_id, {})
         lines.append(_delta_row(spec.config_id, spec.instrument, old, new))
+    lines.extend(_mes_mnq_summaries(base_rows, fix_rows))
     lines.extend(
         [
-            "",
-            "### MNQ commission artefact",
-            "",
-            "1.1.0 skipped both commission sides on same-bar 16/8 round trips, so MNQ",
-            "commission/trade sat near $0.08 while MES sat near $1.16. 1.2.0 charges",
-            "both $0.94 sides ($1.88 RT) whenever a fill bar is in-position.",
             "",
             "## Four-root table (cost/trade vs gross/trade)",
             "",
@@ -197,9 +192,9 @@ def write_comparison(
             "",
             "## ES/NQ data",
             "",
-            f"- usable: `{es_status.data.usable}` stopped: `{es_status.stopped}` "
-            f"reason: `{es_status.stop_reason or '(ran)'}`",
-            f"- missing: {missing}",
+            f"- discover_data usable (any root on the mount): `{es_status.data.usable}`",
+            f"- this batch stopped: `{es_status.stopped}` reason: `{es_status.stop_reason or '(ran)'}`",
+            f"- missing roots for this batch: {missing}",
             f"- planted_detected: `{es_status.planted_detected}` null_detected: `{es_status.null_detected}`",
             f"- needed if fail-closed: {ES_NQ_NEEDED}",
             "",
@@ -276,6 +271,51 @@ def _fmt(value: float | None, digits: int = 4) -> str:
     if value is None:
         return "n/a"
     return f"{value:.{digits}g}"
+
+
+def _mean_comm_trade(
+    rows: Mapping[str, Mapping[str, object]],
+    config_ids: tuple[str, ...],
+) -> float | None:
+    values = [_per_trade(rows.get(config_id, {}), "commission_usd") for config_id in config_ids]
+    present = [item for item in values if item is not None]
+    if not present:
+        return None
+    return sum(present) / float(len(present))
+
+
+def _mes_mnq_summaries(
+    base_rows: Mapping[str, Mapping[str, object]],
+    fix_rows: Mapping[str, Mapping[str, object]],
+) -> list[str]:
+    by_root: dict[str, list[str]] = {"MES": [], "MNQ": []}
+    for spec in first_cycle_specs():
+        by_root[spec.instrument].append(spec.config_id)
+    mes = tuple(by_root["MES"])
+    mnq = tuple(by_root["MNQ"])
+    return [
+        "",
+        "### MES cost-fix effect",
+        "",
+        f"- configs: `{len(mes)}` (same 16/8 geometry, CostModel 1.2.0)",
+        f"- mean commission/trade: `{_fmt(_mean_comm_trade(base_rows, mes))}` → "
+        f"`{_fmt(_mean_comm_trade(fix_rows, mes))}` (ADR-0055 $1.88 RT)",
+        "- Gross per trade is almost unchanged. Net worsens because previously skipped",
+        "  same-bar commission and mixed-ADV ETH slippage are now charged.",
+        "- Verdict stays 9/9 kill. No survivor. Holdout still sealed.",
+        "",
+        "### MNQ cost-fix effect",
+        "",
+        f"- configs: `{len(mnq)}` (same 16/8 geometry, CostModel 1.2.0)",
+        f"- mean commission/trade: `{_fmt(_mean_comm_trade(base_rows, mnq))}` → "
+        f"`{_fmt(_mean_comm_trade(fix_rows, mnq))}` (was ~10× too cheap vs MES)",
+        "- 1.1.0 skipped both $0.94 sides on same-bar 16/8 round trips, which MNQ",
+        "  1m ranges hit more often than MES. 1.2.0 charges $1.88 RT whenever the",
+        "  fill bar is in-position, matching MES.",
+        "- Verdict stays 3/3 kill. No survivor. Holdout still sealed.",
+        "- Extra D13 trials: MNQ planted+null ran on this rerun (per-instrument",
+        "  control). That adds two registry trials vs the 1.1.0 table; DSR stays 0.",
+    ]
 
 
 def _delta_row(
