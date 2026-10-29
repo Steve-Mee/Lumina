@@ -674,7 +674,12 @@ class TestLearningMode:
         controller.state.daily_pnl = -2000.0  # Well below cap
         allowed, reason = controller.check_can_trade("MES", "trending_up", 1000.0)
         assert allowed is True
-        assert "learning" in reason.lower() or "bypassed" in reason.lower()
+        assert (
+            "learning" in reason.lower()
+            or "bypassed" in reason.lower()
+            or "advisory" in reason.lower()
+            or "enforce_rules=false" in reason.lower()
+        )
 
     def test_learning_mode_with_kill_switch_engaged(self):
         """Kill-switch should be bypassed in learning mode."""
@@ -688,7 +693,12 @@ class TestLearningMode:
         # Should still allow trading in learning mode
         allowed, reason = controller.check_can_trade("MES", "trending_up", 100.0)
         assert allowed is True
-        assert "learning" in reason.lower() or "bypassed" in reason.lower()
+        assert (
+            "learning" in reason.lower()
+            or "bypassed" in reason.lower()
+            or "advisory" in reason.lower()
+            or "enforce_rules=false" in reason.lower()
+        )
 
     def test_set_enforce_rules_switches_mode(self):
         """set_enforce_rules() should toggle enforcement."""
@@ -704,7 +714,12 @@ class TestLearningMode:
         controller.set_enforce_rules(False)
         allowed, reason = controller.check_can_trade("MES", "trending_up", 100.0)
         assert allowed is True  # Should be allowed now
-        assert "learning" in reason.lower() or "bypassed" in reason.lower()
+        assert (
+            "learning" in reason.lower()
+            or "bypassed" in reason.lower()
+            or "advisory" in reason.lower()
+            or "enforce_rules=false" in reason.lower()
+        )
 
     def test_learning_mode_does_not_fail_closed_on_low_margin_confidence(self):
         """Learning mode keeps advisory behavior and bypasses confidence hard-block."""
@@ -719,7 +734,12 @@ class TestLearningMode:
 
         allowed, reason = controller.check_can_trade("MES", "trending_up", 100.0)
         assert allowed is True
-        assert "learning" in reason.lower() or "bypassed" in reason.lower()
+        assert (
+            "learning" in reason.lower()
+            or "bypassed" in reason.lower()
+            or "advisory" in reason.lower()
+            or "enforce_rules=false" in reason.lower()
+        )
 
     def test_health_check_respects_learning_mode(self):
         """health_check_market_open should pass in learning mode."""

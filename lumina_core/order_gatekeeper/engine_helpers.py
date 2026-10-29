@@ -8,9 +8,9 @@ from lumina_core.engine.errors import ErrorSeverity, LuminaError
 from lumina_core.logging_utils import get_logger
 
 _LOG = get_logger("lumina.trading.gate")
-# NEEDS HUMAN REVIEW (ADR-0064 Proposed).
-# Research team decision (relayed by Steve 2026-10-29): stale equity blocks
-# new orders in mode sim as well.
+# Research team decision (relayed by Steve 2026-10-29).
+# ADR-0064 follow-up Accepted (research team 2026-10-29 22:08, sha 991138fd,
+# not Steve): stale equity blocks new orders in mode sim as well. Fail-closed.
 MODES_REQUIRING_EQUITY_SNAPSHOT = frozenset({"real", "paper", "sim_real_guard", "sim"})
 
 

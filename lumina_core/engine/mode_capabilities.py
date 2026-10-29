@@ -28,12 +28,13 @@ _MODES: dict[str, ModeCapabilities] = {
     ),
     "sim": ModeCapabilities(
         requires_live_broker=True,
-        # NEEDS HUMAN REVIEW (ADR-0064 Proposed).
-        # Research team decision (relayed by Steve 2026-10-29): close Brain
-        # caps-bypass in mode sim. Desk sim still is_learning_mode, but caps
-        # must enforce (supersedes ADR-0061 "sim stays learning-mode" for caps).
-        # VaR/ES and MC stay advisory in desk sim; do not treat this flag as
-        # a VaR/ES hard-block (admission_risk_steps._var_es_mc_is_hard).
+        # Research team decision (relayed by Steve 2026-10-29).
+        # ADR-0064 follow-up Accepted (research team 2026-10-29 22:08,
+        # sha 991138fd, not Steve): caps-bypass is NOT approved. Hard Brain
+        # caps stay. Desk sim still is_learning_mode. VaR/ES and MC stay
+        # advisory in desk sim; do not treat this flag as a VaR/ES hard-block
+        # (admission_risk_steps._var_es_mc_is_hard). Cap *values* are
+        # propose-only — this flag does not change daily_loss_cap numbers.
         risk_enforced=True,
         session_guard_enforced=True,
         eod_force_close_enabled=False,

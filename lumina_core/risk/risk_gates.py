@@ -33,12 +33,17 @@ class RiskGatesMixin:
         raise NotImplementedError
 
     def check_can_trade(self, symbol: str, regime: str, proposed_risk: float) -> tuple[bool, str]:
-        # NEEDS HUMAN REVIEW (ADR-0064 Proposed).
-        # Research team decision (relayed by Steve 2026-10-29): close Brain
-        # caps-bypass in mode sim. sim_mode must not skip caps; advisory remains
-        # only when enforce_rules is False.
+        # ADR-0064 follow-up Accepted (research team 2026-10-29 22:08,
+        # sha 991138fd, not Steve): caps-bypass is NOT approved. sim_mode must
+        # not skip caps. Advisory remains only when enforce_rules is False
+        # (explicit, logged, temporary; tests/paper). Cap values unchanged.
+        # Research team decision (relayed by Steve 2026-10-29).
         if not self.enforce_rules:
-            return True, "OK (SIM learning mode – all caps bypassed)"
+            logger.info(
+                "risk_caps_advisory_exception enforce_rules=False "
+                "(explicit temporary exception; not a SIM caps-bypass)"
+            )
+            return True, "OK (explicit advisory exception: enforce_rules=False; not a SIM caps-bypass)"
 
         if self.state.kill_switch_engaged:
             return False, f"KILL SWITCH ENGAGED: {self.state.kill_switch_reason} (since {self.state.kill_switch_time})"
@@ -312,10 +317,15 @@ class RiskGatesMixin:
         return max(0.0, remaining.total_seconds() / 60.0)
 
     def should_force_close_eod(self) -> tuple[bool, str]:
-        # NEEDS HUMAN REVIEW (ADR-0064 Proposed). Same sim_mode bypass as
-        # check_can_trade:36-37; close it. Advisory only when not enforce_rules.
+        # ADR-0064 follow-up: caps-bypass not approved. Same close as
+        # check_can_trade. Advisory only when not enforce_rules.
+        # Research team decision (relayed by Steve 2026-10-29).
         if not self.enforce_rules:
-            return False, "SIM/learning mode"
+            logger.info(
+                "eod_force_close_advisory_exception enforce_rules=False "
+                "(explicit temporary exception; not a SIM caps-bypass)"
+            )
+            return False, "explicit advisory exception: enforce_rules=False"
         limits = self._active_limits
         if not limits.enforce_session_guard:
             return False, "session guard disabled"

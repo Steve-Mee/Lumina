@@ -118,6 +118,7 @@ def build_admission_step_handlers(
         )
         # Research team decision (relayed by Steve 2026-10-29): stale equity
         # blocks new orders also in mode sim; log + alert.
+        # Follow-up 2026-10-29 22:08 (sha 991138fd): Accepted, fail-closed.
         logging.error(
             "equity_snapshot_stale_block mode=%s reason=%s source=%s",
             mode,

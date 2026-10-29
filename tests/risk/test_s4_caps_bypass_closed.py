@@ -1,4 +1,4 @@
-"""Brain caps-bypass in mode sim is closed (ADR-0064 Proposed / needs human review)."""
+"""Brain caps-bypass in mode sim is closed (ADR-0064 follow-up Accepted)."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def test_advisory_path_remains_when_not_enforced() -> None:
     controller.state.daily_pnl = -2000.0
     allowed, reason = controller.check_can_trade("MES", "trending_up", 100.0)
     assert allowed is True
-    assert "bypass" in reason.lower() or "learning" in reason.lower()
+    assert "enforce_rules=false" in reason.lower() or "advisory" in reason.lower()
 
 
 @pytest.mark.unit
