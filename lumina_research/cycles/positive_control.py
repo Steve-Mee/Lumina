@@ -165,38 +165,41 @@ def run_controls(
     null_exec = execute_control(tape, null, root=root)
     pos_tape = _gate_tape(tape, pos_exec, root=root)
     null_tape = _gate_tape(tape, null_exec, root=root)
-    planted_eval = evaluate_candidate(
-        agent_id="positive_control",
-        config_id="control-planted-session",
-        gross_returns=pos_tape[0],
-        positions=pos_tape[1],
-        markets=pos_tape[2],
-        spec=root,
-        registry=registry,
-        peer_net_returns=(null_tape[0],),
-        audit_path=audit_path,
-        is_size=is_size,
-        oos_size=oos_size,
-        has_fit_step=False,
-        market_returns=market_returns,
-        n_days=n_days,
-    )
-    null_eval = evaluate_candidate(
-        agent_id="positive_control",
-        config_id="control-null-shuffle",
-        gross_returns=null_tape[0],
-        positions=null_tape[1],
-        markets=null_tape[2],
-        spec=root,
-        registry=registry,
-        peer_net_returns=(pos_tape[0],),
-        audit_path=audit_path,
-        is_size=is_size,
-        oos_size=oos_size,
-        has_fit_step=False,
-        market_returns=market_returns,
-        n_days=n_days,
-    )
+    try:
+        planted_eval = evaluate_candidate(
+            agent_id="positive_control",
+            config_id="control-planted-session",
+            gross_returns=pos_tape[0],
+            positions=pos_tape[1],
+            markets=pos_tape[2],
+            spec=root,
+            registry=registry,
+            peer_net_returns=(null_tape[0],),
+            audit_path=audit_path,
+            is_size=is_size,
+            oos_size=oos_size,
+            has_fit_step=False,
+            market_returns=market_returns,
+            n_days=n_days,
+        )
+        null_eval = evaluate_candidate(
+            agent_id="positive_control",
+            config_id="control-null-shuffle",
+            gross_returns=null_tape[0],
+            positions=null_tape[1],
+            markets=null_tape[2],
+            spec=root,
+            registry=registry,
+            peer_net_returns=(pos_tape[0],),
+            audit_path=audit_path,
+            is_size=is_size,
+            oos_size=oos_size,
+            has_fit_step=False,
+            market_returns=market_returns,
+            n_days=n_days,
+        )
+    except Exception as exc:
+        raise PositiveControlFailed(f"control evaluation failed: {exc}") from exc
     null_detected = _detected(null_eval, null_median=None)
     pos_detected = _detected(planted_eval, null_median=null_eval.report.median_oos_after_costs)
     report = ControlReport(

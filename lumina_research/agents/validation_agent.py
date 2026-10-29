@@ -128,6 +128,8 @@ class ValidationAgent(Frozen):
                 raise ValueError("expected_horizon_missing")
             gross, positions, markets = self._tape(hypothesis)
             market_returns = _float_series(extra.get("market_returns"))
+            if market_returns is None:
+                market_returns = tuple(float(item) for item in gross)
             n_days_raw = extra.get("n_days", 0)
             evaluation = self._evaluate(
                 agent_id=VALIDATION_AGENT_ID,

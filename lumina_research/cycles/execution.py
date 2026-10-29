@@ -1,7 +1,9 @@
-"""Conservative research execution: trade-through fills, exit at stop/target.
+"""Conservative research execution: trade-through entries, stop/target exits.
 
 Gross on an exit bar is booked at the stop or target price (or the open on a
-gap-through). Session-end flatten and a time-stop close at the bar close.
+gap-through). Stops fill on touch (assume stopped). Targets require trade-through
+(do not book a win on a mere touch). Session-end flatten and a time-stop close
+at the bar close.
 """
 
 from __future__ import annotations
@@ -218,7 +220,7 @@ def _bracket_exit(
         target_px = entry + target
         if bar.open < stop_px:
             return bar.open, "stop"
-        if bar.low < stop_px:
+        if bar.low <= stop_px:
             return stop_px, "stop"
         if bar.open > target_px:
             return bar.open, "target"
@@ -229,7 +231,7 @@ def _bracket_exit(
     target_px = entry - target
     if bar.open > stop_px:
         return bar.open, "stop"
-    if bar.high > stop_px:
+    if bar.high >= stop_px:
         return stop_px, "stop"
     if bar.open < target_px:
         return bar.open, "target"

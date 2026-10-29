@@ -139,7 +139,7 @@ def evaluate_candidate(
             parameter_stability=0.0 if decay else 1.0,
         )
         purge_applied = True
-        embargo_applied = embargo >= 0
+        embargo_applied = embargo > 0
         bootstrap = block_bootstrap_sharpes(net)
     results = ValidationResults(
         agent_id=agent_id,

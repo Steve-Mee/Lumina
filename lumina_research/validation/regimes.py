@@ -24,9 +24,11 @@ def regime_robustness(
 ) -> RegimeSnapshot:
     series = tuple(float(item) for item in returns)
     n = len(series)
+    if market_returns is None:
+        return RegimeSnapshot.missing()
     if n < max(vol_window, trend_window) + 2:
         return RegimeSnapshot.missing()
-    labels = tuple(float(item) for item in market_returns) if market_returns is not None else series
+    labels = tuple(float(item) for item in market_returns)
     if len(labels) != n:
         return RegimeSnapshot.missing()
     vol = _rolling_vol(labels, vol_window)

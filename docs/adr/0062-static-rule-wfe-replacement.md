@@ -1,4 +1,4 @@
-# ADR-0061: Static-rule WFE replacement (A2) and CPCV skip (A3)
+# ADR-0062: Static-rule WFE replacement (A2) and CPCV skip (A3)
 
 **Status:** Proposed
 **Date:** 2026-10-29
@@ -81,3 +81,4 @@ First principles:
   `block_bootstrap.py`
 - Charter: `RESEARCH_CHARTER.md`
 - Related: `docs/adr/0059-research-phase5-empirical-proof-and-fabric-ports.md`
+- Numbering: ADR-0061 is S1 SIM whitelist / LIVE_RELEASE. This decision is 0062.

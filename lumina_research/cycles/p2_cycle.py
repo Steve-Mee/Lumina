@@ -52,7 +52,7 @@ def pin_tape(tape: LoadedTape) -> LoadedTape:
 
 def prepare_for_purpose(tape: LoadedTape, *, purpose: str) -> PreparedTape:
     pinned = pin_tape(tape)
-    bars = access_bars(pinned, purpose=purpose)
+    bars = access_bars(pinned, purpose=purpose, pinned_start_ns=pinned.holdout_start_ns)
     if len(bars) < MIN_BARS:
         raise ValueError(f"{tape.instrument} {purpose} split is shorter than {MIN_BARS} bars")
     return prepare_tape(tape.instrument, bars)

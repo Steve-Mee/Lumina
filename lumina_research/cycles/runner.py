@@ -99,7 +99,7 @@ def run_research_cycles(
     elif status.usable and _usable_for_gate(status):
         prepared = _prepare_map(specs, status, purpose="gate")
         specs = with_walk_forward_sizes(specs, prepared)
-        holdout_prepared = _prepare_map(specs, status, purpose="evaluation")
+        holdout_prepared = {}
     bus = EventBus()
     registry = TrialRegistry(audit)
     generator = EconomicCatalogGenerator(specs)

@@ -1,7 +1,7 @@
 """Static-rule OOS tests (researchers A2). WFE is not required without a fit step.
 
 DSR and PBO floors are unchanged. These tests replace the WFE requirement only
-when ``has_fit_step`` is false. See ADR-0061.
+when ``has_fit_step`` is false. See ADR-0062.
 """
 
 from __future__ import annotations
