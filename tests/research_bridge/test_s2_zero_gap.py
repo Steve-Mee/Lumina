@@ -32,6 +32,7 @@ REQUIRED_TESTS = (
     "tests/research_bridge/s2_mutant_kills.py",
     "tests/research_bridge/s2_mutants.py",
     "tests/research_bridge/test_s2_mutation.py",
+    "tests/research_bridge/test_s2_codecov_gaps.py",
 )
 
 

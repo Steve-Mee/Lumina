@@ -249,7 +249,7 @@ def run_daily_calibration(
     try:
         want_root = contract_root(instrument)
     except CostCardError:
-        want_root = _normalize_symbol(instrument, "MES")
+        want_root = "MES"
     model = TradeExecutionCostModel.from_config({}, instrument=want_root)
     rows = load_reconciled_rows(audit_path, since_day=since_day)
 

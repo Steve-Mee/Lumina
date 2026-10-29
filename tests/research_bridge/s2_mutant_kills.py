@@ -18,6 +18,7 @@ from lumina_core.agent_orchestration.schemas_research_execution import (
     RESEARCH_EXECUTION_SIGNAL_TOPIC,
 )
 from lumina_core.engine.trade_reconciler.schemas import FillEvent
+from lumina_core.research_bridge import binding_policy as binding_mod
 from lumina_core.research_bridge.binding_policy import (
     D7_CRITICAL_SLA_SECONDS,
     D7_DEFAULT_SLA_SECONDS,
@@ -52,7 +53,7 @@ from lumina_core.research_bridge.fill_stamp import (
 )
 from lumina_core.research_bridge import fill_translator as translator_mod
 from lumina_core.research_bridge.fill_translator import FillTranslator, TranslateRefused, observe_metric
-from lumina_core.risk.cost_model_calibrator import load_reconciled_rows
+from lumina_core.risk.cost_model_calibrator import load_reconciled_rows, run_daily_calibration
 from lumina_research.validation.contracts import spec_for as research_spec_for
 from lumina_research.validation.cost_calibrate import (
     CostCalibrateRefused,
@@ -176,6 +177,11 @@ def _stamp_battery() -> None:
     try:
         stamp_slippage(symbol="MES", side="BUY", fill_price=5000.0, reference_price=0.0, qty=1)
         _fail("zero reference must refuse")
+    except FillStampRefused:
+        pass
+    try:
+        stamp_slippage(symbol="NOTAROOT", side="BUY", fill_price=5000.0, reference_price=5000.0, qty=1)
+        _fail("unknown root slippage")
     except FillStampRefused:
         pass
 
@@ -488,6 +494,55 @@ def _binding_battery() -> None:
     )
     if missing is not False or why4 != "survivors_corr_unavailable":
         _fail(f"corr none {missing} {why4}")
+    try:
+        sla_decision(1, True)  # type: ignore[arg-type]
+        _fail("bool elapsed")
+    except BindingPolicyRefused:
+        pass
+    nan_ok, nan_why = independent(
+        hypothesis_id="h1",
+        family="trend",
+        other_hypothesis_id="h2",
+        other_family="meanrev",
+        config_id="c1",
+        other_config_id="c2",
+        correlation=float("nan"),
+    )
+    if nan_ok is not False or nan_why != "survivors_corr_unavailable":
+        _fail(f"nan corr {nan_ok} {nan_why}")
+    bool_ok, bool_why = independent(
+        hypothesis_id="h1",
+        family="trend",
+        other_hypothesis_id="h2",
+        other_family="meanrev",
+        config_id="c1",
+        other_config_id="c2",
+        correlation=True,  # type: ignore[arg-type]
+    )
+    if bool_ok is not False or bool_why != "survivors_corr_unavailable":
+        _fail(f"bool corr {bool_ok} {bool_why}")
+    wide_ok, wide_why = independent(
+        hypothesis_id="h1",
+        family="trend",
+        other_hypothesis_id="h2",
+        other_family="meanrev",
+        config_id="c1",
+        other_config_id="c2",
+        correlation=1.5,
+    )
+    if wide_ok is not False or wide_why != "survivors_corr_unavailable":
+        _fail(f"wide corr {wide_ok} {wide_why}")
+    orig_frac = SUSPEND_REDUCE_FRACTION
+    binding_mod.SUSPEND_REDUCE_FRACTION = 2.0
+    try:
+        try:
+            reduce_qty("suspended", 2)
+            _fail("non-partial reduce")
+        except BindingPolicyRefused as exc:
+            if "reduce_qty_not_partial" not in str(exc):
+                _fail(str(exc))
+    finally:
+        binding_mod.SUSPEND_REDUCE_FRACTION = orig_frac
 
 
 def _research_calibrate_battery() -> None:
@@ -840,6 +895,67 @@ def _gap_battery() -> None:
     sres = split_t.ingest(raw_other, client_order_id="cid-1")
     if sres.observed is not True:
         _fail("explicit client_order_id must win over raw")
+    with tempfile.TemporaryDirectory(prefix="s2cal-") as cal_tmp:
+        cal_root = Path(cal_tmp)
+        audit = cal_root / "audit.jsonl"
+        audit.write_text(
+            '{"event":"reconciled","ts":"2026-05-01T10:00:00+00:00","symbol":"NOTAROOT",'
+            '"quantity":1,"commission":0.94,"slippage_usd":1.25,"source":"broker"}\n',
+            encoding="utf-8",
+        )
+        unknown_inst = run_daily_calibration(
+            audit_path=audit,
+            state_path=cal_root / "unknown.json",
+            instrument="NOTAROOT",
+        )
+        if unknown_inst.sample_count != 0:
+            _fail("unknown instrument must not calibrate")
+    try:
+        observe_metric(_fill(price=5000.25))
+    except TranslateRefused:
+        _fail("finite observe metric")
+    inf_fill = _fill()
+    inf_fill.slippage_usd = float("inf")
+    try:
+        observe_metric(inf_fill)
+        _fail("inf observe metric")
+    except TranslateRefused as exc:
+        if "observe_metric_non_finite" not in str(exc):
+            _fail(str(exc))
+    hold_index = FillIndex()
+    hold_index.remember("cid-1", "hyp-s2", 8)
+    hold_t = FillTranslator(index=hold_index, bus=EventBus())
+    hold_res = hold_t.ingest(_fill(side="HOLD"), client_order_id="cid-1")
+    if hold_res.published is not False:
+        _fail("HOLD must not publish")
+    try:
+        FillTranslator().ingest(
+            {
+                "symbol": "MES",
+                "side": "BUY",
+                "qty": "x",
+                "fill_price": 5000.0,
+                "source": "broker",
+                "ts": "2026-10-29T12:00:00+00:00",
+            }
+        )
+        _fail("qty x")
+    except TranslateRefused:
+        pass
+    try:
+        FillTranslator().ingest(
+            {
+                "symbol": "MES",
+                "side": "BUY",
+                "qty": 1,
+                "fill_price": 5000.0,
+                "source": "broker",
+                "ts": "not-a-timestamp",
+            }
+        )
+        _fail("bad ts")
+    except TranslateRefused:
+        pass
 
 
 def run() -> None:
