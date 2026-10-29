@@ -48,6 +48,7 @@ from lumina_research.cycles.positive_control import (
     CONTROL_STOP_TICKS,
     CONTROL_TARGET_TICKS,
     CONTROL_TIME_STOP_BARS,
+    PLANTED_POWER_FLOOR_MAGNITUDES,
     PLANTED_POWER_MAGNITUDES,
     PositiveControlFailed,
     execute_control,
@@ -956,7 +957,10 @@ def test_planted_magnitude_scales_median_oos_linearly(tmp_path: Path) -> None:
     )
     assert half.positive.median_oos == pytest.approx(0.5 * full.positive.median_oos, rel=1e-12, abs=1e-18)
     assert PLANTED_POWER_MAGNITUDES == (1.0, 0.5, 0.25)
+    assert PLANTED_POWER_FLOOR_MAGNITUDES == (0.125, 0.0625)
     assert scale_control_net((2.0, -4.0), 0.25) == (0.5, -1.0)
+    assert scale_control_net((2.0, -4.0), 0.125) == (0.25, -0.5)
+    assert scale_control_net((2.0, -4.0), 0.0625) == (0.125, -0.25)
     with pytest.raises(PositiveControlFailed, match="planted_magnitude"):
         require_planted_magnitude(0.0)
 

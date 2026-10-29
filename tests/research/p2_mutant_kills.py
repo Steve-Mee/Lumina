@@ -88,6 +88,7 @@ from lumina_research.cycles.positive_control import (
     CONTROL_TARGET_TICKS,
     CONTROL_TIME_STOP_BARS,
     FADE_MIDPOINT_ATR,
+    PLANTED_POWER_FLOOR_MAGNITUDES,
     PLANTED_POWER_MAGNITUDES,
     _detected,
     execute_control,
@@ -1091,6 +1092,8 @@ def _kill_atr_geometry() -> None:
         _fail("run_controls must accept planted_magnitude for the 21:29 power rerun")
     if PLANTED_POWER_MAGNITUDES != (1.0, 0.5, 0.25):
         _fail("power magnitudes must stay 1.0, 0.5, 0.25")
+    if PLANTED_POWER_FLOOR_MAGNITUDES != (0.125, 0.0625):
+        _fail("power-floor magnitudes must stay 0.125, 0.0625")
     if DSR_ONLY_KILLS != frozenset({"p2a-or-bo-es", "p2a-rm-es", "p2a-pb-es", "p2a-gap-es"}):
         _fail("four DSR-only kills must stay frozen")
     if UNBRACKET_HORIZONS != (16, 60, 120):

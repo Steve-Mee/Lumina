@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -12,11 +13,14 @@ from lumina_research.cycles.midpoint_d13 import (
     POWER_NULL_LEAK,
     POWER_PROBLEM,
     GeometryScore,
+    magnitude_label,
     overall_verdict,
     power_verdict,
+    run_midpoint_power_floor,
 )
 from lumina_research.cycles.positive_control import (
     FADE_MIDPOINT_ATR,
+    PLANTED_POWER_FLOOR_MAGNITUDES,
     PLANTED_POWER_MAGNITUDES,
     horizon_note,
     required_midpoint_controls,
@@ -118,6 +122,25 @@ def test_cli_midpoint_power_is_a_control_cycle(tmp_path: Path, monkeypatch: pyte
 
 
 @pytest.mark.unit
+def test_cli_midpoint_power_floor_is_a_control_cycle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = build_parser()
+    args = parser.parse_args(["research", "--cycle", "midpoint-power-floor", "--es-csv", "local.csv"])
+    assert args.cycle == "midpoint-power-floor"
+
+    class _Leak:
+        null_leaked = True
+
+    monkeypatch.setattr("lumina_research.proof.cli.run_midpoint_power_floor", lambda **_kwargs: _Leak())
+    assert proof_main(["research", "--cycle", "midpoint-power-floor", "--work-dir", str(tmp_path)]) == 2
+
+    class _Measured:
+        null_leaked = False
+
+    monkeypatch.setattr("lumina_research.proof.cli.run_midpoint_power_floor", lambda **_kwargs: _Measured())
+    assert proof_main(["research", "--cycle", "midpoint-power-floor", "--work-dir", str(tmp_path)]) == 0
+
+
+@pytest.mark.unit
 def test_cli_midpoint_d13_requires_es_csv(tmp_path: Path) -> None:
     assert (
         proof_main(
@@ -143,6 +166,20 @@ def test_required_midpoints_stay_locked() -> None:
 @pytest.mark.unit
 def test_power_magnitudes_stay_locked() -> None:
     assert PLANTED_POWER_MAGNITUDES == (1.0, 0.5, 0.25)
+    assert PLANTED_POWER_FLOOR_MAGNITUDES == (0.125, 0.0625)
+    assert magnitude_label(0.125) == "0p125"
+    assert magnitude_label(0.0625) == "0p0625"
+
+
+@pytest.mark.unit
+def test_power_floor_rejects_unlocked_magnitudes(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="locked to 0.125, 0.0625"):
+        run_midpoint_power_floor(
+            work_dir=tmp_path,
+            report_dir=tmp_path,
+            es_csv=tmp_path / "es.csv",
+            magnitudes=(0.1, 0.05),
+        )
 
 
 @pytest.mark.unit
@@ -191,6 +228,24 @@ def test_limited_es_preregister_is_not_an_executed_run() -> None:
     assert "**Not executed.**" in text
     assert "p2l-mr-es" in text
     assert "p2l-vx-es" in text
+    assert "p2l-tod-es" in text
+    assert "TOD decision: keep" in text
+    assert "n configs stays 6" in text
     assert "NQ closed" in text
     assert "p2a-or-bo-es" in text
     assert "SIM / REAL" in text
+    assert "Do not start this run" in text
+
+
+@pytest.mark.unit
+def test_power_floor_preregister_locks_125_and_625_before_a_run() -> None:
+    text = Path("experiments/reports/phase5_p2_midpoint_power_floor_preregister_2026-10-29.md").read_text(
+        encoding="utf-8"
+    )
+    assert "0.125" in text
+    assert "0.0625" in text
+    assert "No strategy-run" in text
+    assert "passed_gate" in text
+    answers = Path("docs/research/ONDERZOEKERS-ANTWOORDEN-POWER-S4-20261029T2208.md")
+    digest = hashlib.sha256(answers.read_bytes()).hexdigest()
+    assert digest == "991138fdd4b741041e3288387dd8aaf89a09652329ada7eec7eaa0f037bfae9d"

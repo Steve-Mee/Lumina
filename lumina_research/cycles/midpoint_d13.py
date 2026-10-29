@@ -23,6 +23,7 @@ from lumina_research.cycles.null_model import (
 from lumina_research.cycles.null_only import load_pre_holdout_es, prepare_pre_holdout
 from lumina_research.cycles.p2_cycle import market_series
 from lumina_research.cycles.positive_control import (
+    PLANTED_POWER_FLOOR_MAGNITUDES,
     PLANTED_POWER_MAGNITUDES,
     ControlReport,
     build_control_dailies,
@@ -43,10 +44,14 @@ JSON_NAME = "phase5_p2_midpoint_d13.json"
 MD_NAME = "phase5_p2_midpoint_d13.md"
 POWER_JSON_NAME = "phase5_p2_midpoint_power.json"
 POWER_MD_NAME = "phase5_p2_midpoint_power.md"
+POWER_FLOOR_JSON_NAME = "phase5_p2_midpoint_power_floor.json"
+POWER_FLOOR_MD_NAME = "phase5_p2_midpoint_power_floor.md"
 PREREG_NAME = "phase5_p2_midpoint_d13_preregister_2026-10-29.md"
 POWER_PREREG_NAME = "phase5_p2_midpoint_power_preregister_2026-10-29.md"
+POWER_FLOOR_PREREG_NAME = "phase5_p2_midpoint_power_floor_preregister_2026-10-29.md"
 ANSWERS_NAME = "ONDERZOEKERS-ANTWOORDEN-NULLVAL-20261029T1924.md"
 POWER_ANSWERS_NAME = "ONDERZOEKERS-ANTWOORDEN-MIDPOINT-20261029T2129.md"
+POWER_FLOOR_ANSWERS_NAME = "ONDERZOEKERS-ANTWOORDEN-POWER-S4-20261029T2208.md"
 POWER_CLEAN = "clean"
 POWER_PROBLEM = "power_problem"
 POWER_NULL_LEAK = "null_leak"
@@ -79,6 +84,8 @@ class GeometryScore:
     planted_reject_reasons: tuple[str, ...] = ()
     planted_pbo: float = 0.0
     planted_pbo_n_configs: int = 0
+    planted_n_oos_windows: int = 0
+    planted_n_positive_oos: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +123,8 @@ class MidpointPowerCycle:
     holdout_asserted: bool
     prereg_sha256: str
     full_magnitude_clean: bool
+    null_leaked: bool = False
+    csv_sha256: str = ""
 
 
 def power_verdict(*, planted_detected: bool, n_edge: int, n_seeds: int) -> str:
@@ -126,6 +135,12 @@ def power_verdict(*, planted_detected: bool, n_edge: int, n_seeds: int) -> str:
     if planted_detected:
         return POWER_CLEAN
     return POWER_PROBLEM
+
+
+def magnitude_label(magnitude: float) -> str:
+    """Stable work-dir suffix; 0.125 stays 0p125, not 0p12."""
+    text = f"{magnitude:.4f}".rstrip("0").rstrip(".")
+    return text.replace(".", "p")
 
 
 def overall_verdict(scores: tuple[GeometryScore, ...]) -> str:
@@ -216,13 +231,82 @@ def run_midpoint_power(
     magnitudes: tuple[float, ...] = PLANTED_POWER_MAGNITUDES,
 ) -> MidpointPowerCycle:
     """100%/50%/25% planted magnitude under locked midpoints. Control only."""
+    return _run_power_bands(
+        work_dir=work_dir,
+        report_dir=report_dir,
+        es_csv=es_csv,
+        repo_root=repo_root,
+        magnitudes=magnitudes,
+        locked=PLANTED_POWER_MAGNITUDES,
+        json_name=POWER_JSON_NAME,
+        md_name=POWER_MD_NAME,
+        prereg_name=POWER_PREREG_NAME,
+        answers_name=POWER_ANSWERS_NAME,
+        title="P2 midpoint power (2026-10-29 21:29)",
+        magnitude_blurb=(
+            "magnitudes: `1.00`, `0.50`, `0.25` of known size "
+            "(linear scale of costed session net)"
+        ),
+        cycle_name="midpoint-power",
+        lock_error="midpoint-power magnitudes are locked to 1.0, 0.5, 0.25",
+    )
+
+
+def run_midpoint_power_floor(
+    *,
+    work_dir: Path,
+    report_dir: Path = DEFAULT_REPORTS,
+    es_csv: Path | None = None,
+    repo_root: Path | None = None,
+    magnitudes: tuple[float, ...] = PLANTED_POWER_FLOOR_MAGNITUDES,
+) -> MidpointPowerCycle:
+    """12.5%/6.25% planted magnitude under locked midpoints. Control only."""
+    return _run_power_bands(
+        work_dir=work_dir,
+        report_dir=report_dir,
+        es_csv=es_csv,
+        repo_root=repo_root,
+        magnitudes=magnitudes,
+        locked=PLANTED_POWER_FLOOR_MAGNITUDES,
+        json_name=POWER_FLOOR_JSON_NAME,
+        md_name=POWER_FLOOR_MD_NAME,
+        prereg_name=POWER_FLOOR_PREREG_NAME,
+        answers_name=POWER_FLOOR_ANSWERS_NAME,
+        title="P2 midpoint power floor (2026-10-29 22:08)",
+        magnitude_blurb=(
+            "magnitudes: `0.125`, `0.0625` of known size "
+            "(linear scale of costed session net; detection floor)"
+        ),
+        cycle_name="midpoint-power-floor",
+        lock_error="midpoint-power-floor magnitudes are locked to 0.125, 0.0625",
+    )
+
+
+def _run_power_bands(
+    *,
+    work_dir: Path,
+    report_dir: Path,
+    es_csv: Path | None,
+    repo_root: Path | None,
+    magnitudes: tuple[float, ...],
+    locked: tuple[float, ...],
+    json_name: str,
+    md_name: str,
+    prereg_name: str,
+    answers_name: str,
+    title: str,
+    magnitude_blurb: str,
+    cycle_name: str,
+    lock_error: str,
+) -> MidpointPowerCycle:
     root = repo_root if repo_root is not None else _REPO
     if es_csv is None:
-        raise ValueError("midpoint-power requires a local pre-holdout ES CSV")
-    if magnitudes != PLANTED_POWER_MAGNITUDES:
-        raise ValueError("midpoint-power magnitudes are locked to 1.0, 0.5, 0.25")
+        raise ValueError(f"{cycle_name} requires a local pre-holdout ES CSV")
+    if magnitudes != locked:
+        raise ValueError(lock_error)
     work_dir.mkdir(parents=True, exist_ok=True)
     report_dir.mkdir(parents=True, exist_ok=True)
+    csv_sha = hashlib.sha256(es_csv.read_bytes()).hexdigest()
     tape = load_pre_holdout_es(es_csv)
     assert_no_holdout_timestamps(tape.bars)
     prepared = prepare_pre_holdout(tape)
@@ -246,8 +330,9 @@ def run_midpoint_power(
             null_builder=NULL_BUILDER,
         )
         for magnitude in magnitudes:
-            mag_label = f"{magnitude:.2f}".replace(".", "p")
-            registry = TrialRegistry(work_dir / f"midpoint_power_{name}_{mag_label}.jsonl")
+            mag_label = magnitude_label(float(magnitude))
+            stem = f"{cycle_name.replace('-', '_')}_{name}_{mag_label}.jsonl"
+            registry = TrialRegistry(work_dir / stem)
             report = run_controls(
                 prepared=packed,
                 registry=registry,
@@ -284,22 +369,32 @@ def run_midpoint_power(
         )
         for magnitude in magnitudes
     )
-    prereg = root / "experiments" / "reports" / POWER_PREREG_NAME
+    prereg = root / "experiments" / "reports" / prereg_name
     prereg_sha = hashlib.sha256(prereg.read_bytes()).hexdigest() if prereg.is_file() else ""
-    full = next(item for item in bands if item.magnitude == 1.0)
+    full = next((item for item in bands if item.magnitude == 1.0), None)
     cycle = MidpointPowerCycle(
         bands=bands,
-        json_path=report_dir / POWER_JSON_NAME,
-        md_path=report_dir / POWER_MD_NAME,
+        json_path=report_dir / json_name,
+        md_path=report_dir / md_name,
         n_days_es=n_days,
         n_bars_es=len(tape.bars),
         es_first_ts=_iso_utc(tape.bars[0].ts_ns),
         es_last_ts=_iso_utc(tape.bars[-1].ts_ns),
         holdout_asserted=True,
         prereg_sha256=prereg_sha,
-        full_magnitude_clean=full.all_clean,
+        full_magnitude_clean=bool(full is not None and full.all_clean),
+        null_leaked=any(band.overall_verdict == POWER_NULL_LEAK for band in bands),
+        csv_sha256=csv_sha,
     )
-    _write_power_reports(cycle, repo_root=root)
+    _write_power_reports(
+        cycle,
+        repo_root=root,
+        answers_name=answers_name,
+        prereg_name=prereg_name,
+        title=title,
+        magnitude_blurb=magnitude_blurb,
+        locked_magnitudes=locked,
+    )
     return cycle
 
 
@@ -347,6 +442,8 @@ def _score_geometry(
         planted_reject_reasons=tuple(report.positive.reject_reasons),
         planted_pbo=float(report.positive.pbo),
         planted_pbo_n_configs=int(report.positive.pbo_n_configs),
+        planted_n_oos_windows=int(report.positive.n_oos_windows),
+        planted_n_positive_oos=int(report.positive.n_positive_oos),
     )
 
 
@@ -381,6 +478,13 @@ def _geometry_payload(score: GeometryScore) -> dict[str, object]:
         "planted_reject_reasons": list(score.planted_reject_reasons),
         "planted_pbo": score.planted_pbo,
         "planted_pbo_n_configs": score.planted_pbo_n_configs,
+        "planted_n_oos_windows": score.planted_n_oos_windows,
+        "planted_n_positive_oos": score.planted_n_positive_oos,
+        "exact_oos": (
+            f"{score.planted_n_positive_oos}/{score.planted_n_oos_windows}"
+            if score.planted_n_oos_windows
+            else ""
+        ),
     }
 
 
@@ -455,17 +559,27 @@ def _write_reports(cycle: MidpointD13Cycle, *, repo_root: Path) -> None:
     cycle.md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _write_power_reports(cycle: MidpointPowerCycle, *, repo_root: Path) -> None:
-    answers = repo_root / "docs" / "research" / POWER_ANSWERS_NAME
+def _write_power_reports(
+    cycle: MidpointPowerCycle,
+    *,
+    repo_root: Path,
+    answers_name: str,
+    prereg_name: str,
+    title: str,
+    magnitude_blurb: str,
+    locked_magnitudes: tuple[float, ...],
+) -> None:
+    answers = repo_root / "docs" / "research" / answers_name
     answers_sha = hashlib.sha256(answers.read_bytes()).hexdigest() if answers.is_file() else ""
     payload = {
         "generated_at": utc_now_iso(),
         "cost_model_version": COST_MODEL_VERSION,
-        "answers": POWER_ANSWERS_NAME,
+        "answers": answers_name,
         "answers_present": answers.is_file(),
         "answers_sha256": answers_sha,
-        "prereg": POWER_PREREG_NAME,
+        "prereg": prereg_name,
         "prereg_sha256": cycle.prereg_sha256,
+        "csv_sha256": cycle.csv_sha256,
         "holdout_pin": P2_HOLDOUT_START_UTC.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "holdout_asserted": cycle.holdout_asserted,
         "holdout_opened": False,
@@ -477,12 +591,13 @@ def _write_power_reports(cycle: MidpointPowerCycle, *, repo_root: Path) -> None:
         "calibrated_positive_share": NULL_CALIBRATED_POSITIVE_SHARE,
         "a2_positive_share_min": STATIC_POSITIVE_SHARE_MIN,
         "fail_at": fail_closed_hit_count(len(default_null_seeds())),
-        "magnitudes": list(PLANTED_POWER_MAGNITUDES),
+        "magnitudes": list(locked_magnitudes),
         "n_days_es": cycle.n_days_es,
         "n_bars_es": cycle.n_bars_es,
         "es_first_ts": cycle.es_first_ts,
         "es_last_ts": cycle.es_last_ts,
         "full_magnitude_clean": cycle.full_magnitude_clean,
+        "null_leaked": cycle.null_leaked,
         "bands": [
             {
                 "planted_magnitude": band.magnitude,
@@ -495,26 +610,28 @@ def _write_power_reports(cycle: MidpointPowerCycle, *, repo_root: Path) -> None:
     }
     cycle.json_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     lines = [
-        "# P2 midpoint power (2026-10-29 21:29)",
+        f"# {title}",
         "",
         f"- generated_at: `{payload['generated_at']}`",
-        f"- answers: `{POWER_ANSWERS_NAME}` sha256 `{answers_sha}`",
-        f"- pre-register: `{POWER_PREREG_NAME}` sha256 `{cycle.prereg_sha256}`",
+        f"- answers: `{answers_name}` sha256 `{answers_sha}`",
+        f"- pre-register: `{prereg_name}` sha256 `{cycle.prereg_sha256}`",
+        f"- csv sha256: `{cycle.csv_sha256}`",
         f"- CostModel: `{COST_MODEL_VERSION}`",
         "- holdout pin `2026-01-28T23:00:00Z`: asserted absent, unopened",
         "- NQ: closed; templates: not run; strategy-run: not run",
         f"- builder: `{NULL_BUILDER}`; seeds: `{len(default_null_seeds())}`",
-        "- magnitudes: `1.00`, `0.50`, `0.25` of known size (linear scale of costed session net)",
+        f"- {magnitude_blurb}",
         f"- planted drempel: median OOS > 0, +OOS ≥ `{STATIC_POSITIVE_SHARE_MIN:.2f}`, no decay, beats null",
         f"- null fail-at: `{fail_closed_hit_count(len(default_null_seeds()))}/32` on 7/8 `n_edge`",
         f"- ES bars: `{cycle.n_bars_es}` sessions `{cycle.n_days_es}` first `{cycle.es_first_ts}` last `{cycle.es_last_ts}`",
         f"- full_magnitude_clean: `{cycle.full_magnitude_clean}`",
+        f"- null_leaked: `{cycle.null_leaked}`",
         "",
     ]
     for band in cycle.bands:
         lines.extend(
             [
-                f"## Magnitude {band.magnitude:.2f}",
+                f"## Magnitude {band.magnitude:g}",
                 "",
                 f"- overall_verdict: `{band.overall_verdict}`",
                 "",
@@ -524,15 +641,19 @@ def _write_power_reports(cycle: MidpointPowerCycle, *, repo_root: Path) -> None:
         )
         for item in band.geometries:
             reasons = ",".join(item.planted_reject_reasons) if item.planted_reject_reasons else ""
+            if item.planted_n_oos_windows:
+                oos = f"{item.planted_n_positive_oos}/{item.planted_n_oos_windows}"
+            else:
+                oos = f"{item.planted_pct_positive:.3f}"
             lines.append(
-                "| {name} | {tgt:g}/{stp:g} | {det} | {gate} | {med:.6g} | {pct:.3f} | {dsr:.3f} | {ncfg} | {a2} | {edge} | {reasons} | {verdict} |".format(
+                "| {name} | {tgt:g}/{stp:g} | {det} | {gate} | {med:.6g} | {oos} | {dsr:.3f} | {ncfg} | {a2} | {edge} | {reasons} | {verdict} |".format(
                     name=item.name,
                     tgt=item.target_atr,
                     stp=item.stop_atr,
                     det="yes" if item.planted_detected else "no",
                     gate="yes" if item.planted_passed_gate else "no",
                     med=item.planted_median_oos,
-                    pct=item.planted_pct_positive,
+                    oos=oos,
                     dsr=item.planted_dsr,
                     ncfg=item.planted_pbo_n_configs,
                     a2=item.exact_a2,

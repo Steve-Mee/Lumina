@@ -52,6 +52,8 @@ CONTROL_AGENT_ID = "positive_control"
 PLANTED_CONFIG_ID = "control-planted-session"
 # 21:29: known-size plant scaled after execution (same trades, linear PnL).
 PLANTED_POWER_MAGNITUDES = (1.0, 0.5, 0.25)
+# 22:08: detection-floor bands. Same geometry/seeds; not a rewrite of 100/50/25.
+PLANTED_POWER_FLOOR_MAGNITUDES = (0.125, 0.0625)
 # Team 17:34: fade 1.0/1.2 and breakout 1.8/0.9 are pre-registered midpoints,
 # not final. The positive control must pass under exactly these params.
 FADE_MIDPOINT_ATR = (1.0, 1.2)
@@ -127,6 +129,8 @@ class ControlOutcome:
     pbo: float = math.nan
     pbo_n_configs: int = 0
     magnitude: float = 1.0
+    n_oos_windows: int = 0
+    n_positive_oos: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -378,6 +382,9 @@ def _outcome(
     *,
     magnitude: float = 1.0,
 ) -> ControlOutcome:
+    oos_values = evaluation.report.oos_distribution.values
+    n_oos = len(oos_values)
+    n_pos = sum(1 for item in oos_values if item > 0.0)
     return ControlOutcome(
         name=name,
         detected=detected,
@@ -392,6 +399,8 @@ def _outcome(
         pbo=float(evaluation.report.pbo.pbo),
         pbo_n_configs=int(evaluation.report.pbo.n_configs),
         magnitude=float(magnitude),
+        n_oos_windows=int(n_oos),
+        n_positive_oos=int(n_pos),
     )
 
 
