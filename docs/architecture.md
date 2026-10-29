@@ -69,7 +69,7 @@ LUMINA gebruikt **bounded contexts** als domeingrenzen onder `lumina_core/` (zie
 | **Risk Management** | Risk gates, allocatie, Kelly-achtige begrenzing | [`lumina_core/risk/`](../lumina_core/risk/) | Via mixins/engine geïntegreerd; canoniek onder `risk/` |
 | **Agent Orchestration** | Event bus, engine↔blackboard bindingen | [`lumina_core/agent_orchestration/`](../lumina_core/agent_orchestration/) | Pub/sub en bindings centraliseren |
 | **Research** | Propose-only Validation Gate, hypotheses, monitoring | [`lumina_research/`](../lumina_research/) | Isolation: no live Risk Core, no NT broker. Research may only propose. |
-| **ResearchBridge (S0 SHADOW)** | `PromotionCandidate` → logged `SignalIntent` + ADR-0055 hypothetical fills | [`lumina_core/research_bridge/`](../lumina_core/research_bridge/) | Zero `PlaceOrderCommand`. Ungated places are code-frozen (D1/D8, ADR-0059). |
+| **ResearchBridge (S0 SHADOW)** | `PromotionCandidate` → logged `SignalIntent` + ADR-0055 hypothetical fills | [`lumina_core/research_bridge/`](../lumina_core/research_bridge/) | Zero `PlaceOrderCommand`. Ungated places are code-frozen (D1/D8, ADR-0060). |
 
 ```mermaid
 flowchart LR

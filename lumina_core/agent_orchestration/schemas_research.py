@@ -20,7 +20,7 @@ from lumina_core.agent_orchestration.schemas_research_execution import (  # noqa
     RESEARCH_EXECUTION_TOPIC_PRODUCERS,
     ResearchExecutionFill,
     ResearchExecutionOrderIntent,
-    SignalIntent,
+    SignalIntent as ResearchExecutionSignalIntent,
     guard_research_execution,
     guard_research_execution_fill,
 )
@@ -58,6 +58,31 @@ from lumina_core.agent_orchestration.schemas_research_continuity import (  # noq
     SignalRetired,
     SignalStage,
     SignalSuspended,
+)
+from lumina_core.agent_orchestration.schemas_research_ports import (  # noqa: F401
+    EXECUTION_ALERT_SCHEMA_VERSION,
+    FILL_AGENT_ID,
+    FILL_OBSERVED_SCHEMA_VERSION,
+    ORDER_INTENT_SCHEMA_VERSION,
+    PORTS_GUARDED_TOPICS,
+    PORTS_TOPIC_PRODUCERS,
+    RESEARCH_EXECUTION_ALERT_TOPIC,
+    RESEARCH_FILL_OBSERVED_TOPIC,
+    RESEARCH_ORDER_INTENT_TOPIC,
+    RESEARCH_SIGNAL_INTENT_TOPIC,
+    SAFETY_AGENT_ID,
+    SHADOW_AGENT_ID,
+    SIGNAL_INTENT_SCHEMA_VERSION,
+    AlertAction,
+    AlertKind,
+    ExecutionAlert,
+    ExecutionMode,
+    ExpectedHorizon,
+    FillSource,
+    IntentDirection,
+    ResearchFillEvent,
+    ResearchOrderIntent,
+    SignalIntent,
 )
 
 RESEARCH_HYPOTHESIS_TOPIC = "research.hypothesis.proposed"
@@ -98,6 +123,7 @@ EVENT_BUS_TOPIC_PRODUCERS: dict[str, frozenset[str]] = {
     RESEARCH_GOVERNANCE_TOPIC: frozenset({GOVERNANCE_AGENT_ID}),
     **CONTINUITY_TOPIC_PRODUCERS,
     **RESEARCH_EXECUTION_TOPIC_PRODUCERS,
+    **PORTS_TOPIC_PRODUCERS,
 }
 
 # HMAC issuer guards. Existing (non-research) topics cannot register a guard.
@@ -108,7 +134,7 @@ EVENT_BUS_GUARDED_TOPICS: frozenset[str] = frozenset(
         RESEARCH_MUTATION_TOPIC,
         RESEARCH_GOVERNANCE_TOPIC,
     }
-) | CONTINUITY_GUARDED_TOPICS | RESEARCH_EXECUTION_GUARDED_TOPICS
+) | CONTINUITY_GUARDED_TOPICS | RESEARCH_EXECUTION_GUARDED_TOPICS | PORTS_GUARDED_TOPICS
 
 _RATIONALE_MIN = 8
 
@@ -130,6 +156,8 @@ class EconomicRationale(BaseModel):
     other_side: str
     expected_regime: str
     falsification_criterion: str
+    holding_period: str = "synthetic-unspecified-holding"
+    survives_costs: str = "four-leg cost model applied at the Validation Gate"
 
     @field_validator(
         "mechanism",
@@ -137,6 +165,8 @@ class EconomicRationale(BaseModel):
         "other_side",
         "expected_regime",
         "falsification_criterion",
+        "holding_period",
+        "survives_costs",
     )
     @classmethod
     def _strip_required(cls, value: str) -> str:
@@ -154,7 +184,7 @@ class HypothesisProposed(BaseModel):
     trial_id: int = Field(ge=1)
     agent_id: str = Field(min_length=1)
     generator_id: str = Field(min_length=1)
-    kind: Literal["noise", "planted_edge"]
+    kind: Literal["noise", "planted_edge", "economic"]
     instrument: Literal["ES", "NQ", "MES", "MNQ"]
     seed: int
     n_obs: int = Field(ge=241)

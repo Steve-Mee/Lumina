@@ -1,8 +1,12 @@
-# ADR-0059: ResearchBridge SHADOW first (ungated-place freeze)
+# ADR-0060: ResearchBridge SHADOW first (ungated-place freeze)
 
 **Status:** Accepted  
 **Date:** 2026-10-28  
 **Deciders:** LUMINA Engineering
+
+Numbering note: this record was drafted as ADR-0059 on the S0 branch. Fase 5
+landed on `main` first and already occupies ADR-0059 (empirical proof and
+Fabric ports). The S0 freeze is unchanged; only the ADR number moved.
 
 ## Context
 
@@ -54,5 +58,6 @@ First principles:
 - Plan: `docs/plans/INTEGRATION_PLAN_research_to_nt8.md` (PR #62)
 - Cost card: `docs/adr/0055-nt-execution-cost.md`
 - Research continuity: `docs/adr/0058-research-continuity-live-monitoring.md`
+- Fase 5 empirical proof / Fabric ports: `docs/adr/0059-research-phase5-empirical-proof-and-fabric-ports.md`
 - Charter: `RESEARCH_CHARTER.md`
 - Constitution: `project-dna/lumina/constitution.md`

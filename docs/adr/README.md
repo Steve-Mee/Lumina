@@ -70,7 +70,8 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0056 | Playground rewrite: her research, one hand, budget and first sentences closed. Supersedes 0050 on the policy hand and the 150-trade exam. Not implemented | Accepted | 2026-10-04 | [0056-playground-learning-book.md](./0056-playground-learning-book.md) |
 | 0057 | Research self-evolution within bounds (Phase 3 birth, parameter tuning, ADR+signed review) | Accepted | 2026-10-28 | [0057-research-self-evolution-within-bounds.md](./0057-research-self-evolution-within-bounds.md) |
 | 0058 | Research continuity and live monitoring (Phase 4 decay, capacity, guardian, replenish) | Accepted | 2026-10-28 | [0058-research-continuity-live-monitoring.md](./0058-research-continuity-live-monitoring.md) |
-| 0059 | ResearchBridge SHADOW first: ungated-place freeze + hypothetical ADR-0055 fills | Accepted | 2026-10-28 | [0059-research-bridge-shadow-first.md](./0059-research-bridge-shadow-first.md) |
+| 0059 | Research Phase 5 empirical proof and Execution Fabric ports (no NT8 coupling, no orders) | Accepted | 2026-10-28 | [0059-research-phase5-empirical-proof-and-fabric-ports.md](./0059-research-phase5-empirical-proof-and-fabric-ports.md) |
+| 0060 | ResearchBridge SHADOW first: ungated-place freeze + hypothetical ADR-0055 fills | Accepted | 2026-10-28 | [0060-research-bridge-shadow-first.md](./0060-research-bridge-shadow-first.md) |
 
 ## Legacy notitie
 

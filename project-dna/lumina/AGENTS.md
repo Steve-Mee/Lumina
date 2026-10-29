@@ -38,6 +38,8 @@ Phase 3 (`lumina_research/evolution/`): birth/parameter mutations propose only. 
 
 Phase 4 (`lumina_research/monitoring/`): live vs OOS decay detection, staged de-weight/suspend/retire, capacity scale-back, guardian charter scan, replenishment via HypothesisAgent. Monitoring may only reduce exposure; all positive size still goes through research Risk Core `propose_order()`.
 
+Phase 5 (`lumina_research/proof/`, `cycles/`, `ports/`): empirical proof and Fabric *ports* only (ADR-0059). No NT8 coupling, no orders. Shadow logs `SignalIntent` and CostModel fills. SIM whitelist / LIVE_RELEASE are frozen; research agents cannot mutate them. Old birth/evolution that would skip the Validation Gate stays isolated (`archive/birth-v1/`).
+
 ## Phase 1 freeze
 
 Agents **may not write new signals**, strategy mutants, or birth curricula until the Validation Gate in `lumina_research/validation/` exists and is tested. Do not build on `archive/birth-v1/`. Research may only propose; the live Risk Core and `PromotionGate` remain the only promotion path.

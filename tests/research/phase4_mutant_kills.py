@@ -26,12 +26,26 @@ from lumina_research.monitoring.acceptance import (
     CONFIRM_WINDOWS,
     DETECTION_RATE_MIN,
     FAR_HEALTHY_MAX,
+    FAR_HIGH_VOL_EXTREME_NOT_A_PASS,
     FAR_HIGH_VOL_MAX,
+    FAR_HIGH_VOL_TARGET,
+    HIGH_VOL_CONFIRM_WINDOWS,
+    HIGH_VOL_REALIZED_MULT,
+    HIGH_VOL_REALIZED_WINDOW,
+    HIGH_VOL_TRAILING_PCT,
+    HIGH_VOL_TRAILING_WINDOW,
+    HIGH_VOL_VIX,
+    MATERIAL_DD_MULT,
+    MATERIAL_IC_RATIO,
+    MATERIAL_SHARPE_RATIO,
     MEANINGFUL_RAMP_DAYS,
+    MEDIUM_WINDOW,
     MUTATION_EQUIVALENT_MAX_FRAC,
     MUTATION_KILL_RATE_MIN,
     MUTATION_MIN_MUTANTS,
     TTD_MAX_TRADING_DAYS,
+    TTD_MEDIUM_MAX_TRADING_DAYS,
+    confirm_windows_for,
 )
 from lumina_research.monitoring.capacity import CapacityController, _needed, _sums
 from lumina_research.monitoring.config import ContinuityConfigError, config_from_mapping, load_default_config
@@ -73,6 +87,7 @@ from lumina_research.monitoring.types import (
     tighter_stage,
 )
 from lumina_research.risk_core.config import load_default_config as load_risk_config
+from tests.research.phase5_mutant_kills import run_phase5_kills
 from lumina_research.risk_core.engine import RiskCore
 from lumina_research.risk_core.types import DecisionKind
 from lumina_research.validation.cost_model import COST_MODEL_ID
@@ -151,6 +166,21 @@ def _config_battery() -> None:
         or FAR_HIGH_VOL_MAX != 0.10
         or DETECTION_RATE_MIN != 0.85
         or TTD_MAX_TRADING_DAYS != 15
+        or HIGH_VOL_CONFIRM_WINDOWS != 3
+        or TTD_MEDIUM_MAX_TRADING_DAYS != 45
+        or MATERIAL_DD_MULT != 1.5
+        or MATERIAL_IC_RATIO != 0.50
+        or MATERIAL_SHARPE_RATIO != 0.50
+        or FAR_HIGH_VOL_TARGET != 0.08
+        or FAR_HIGH_VOL_EXTREME_NOT_A_PASS != 0.12
+        or HIGH_VOL_REALIZED_WINDOW != 20
+        or HIGH_VOL_TRAILING_WINDOW != 252
+        or HIGH_VOL_TRAILING_PCT != 0.75
+        or HIGH_VOL_REALIZED_MULT != 1.50
+        or HIGH_VOL_VIX != 25.0
+        or MEDIUM_WINDOW != 40
+        or confirm_windows_for("normal") != 2
+        or confirm_windows_for("high_vol") != 3
     ):
         raise AssertionError("Steve Phase 4 acceptance floors drifted")
     cfg = load_default_config()
@@ -213,7 +243,9 @@ def _config_battery() -> None:
     packaged = Path(continuity_config.__file__).with_name("limits.toml")
     with TemporaryDirectory() as tmp:
         loose = Path(tmp) / "loose.toml"
-        loose.write_text(packaged.read_text(encoding="utf-8").replace("equity = 100000.0", "equity = 1000000000.0"), encoding="utf-8")
+        loose.write_text(
+            packaged.read_text(encoding="utf-8").replace("equity = 100000.0", "equity = 1000000000.0"), encoding="utf-8"
+        )
         _refuse_msg(ContinuityConfigError, "equity", load_default_config, loose)
 
 
@@ -677,9 +709,13 @@ def _book_battery(tmp: Path) -> None:
         "trial_logged",
         "admission_mac",
         "promotion_via_gate",
+        "sealed_gate_passage",
     }
     if not needed.issubset(checks):
         raise AssertionError(f"guardian rows missing {needed - checks}")
+    mut_rows = [item for item in guardian.findings() if item.check_id == "mutation_kill_rate"]
+    if not mut_rows:
+        raise AssertionError("mutation_kill_rate must be scanned")
     _admit(registry, authority, "hyp-pbo", 8, pbo=0.40, dsr=0.99)
     warn = guardian.scan(
         cadence="weekly",
@@ -872,10 +908,15 @@ def _runtime_battery(root: Path) -> None:
         raise AssertionError("observe after Risk Core drift must fail closed")
 
 
+def _phase5_battery() -> None:
+    run_phase5_kills()
+
+
 def run() -> None:
     _config_battery()
     _statistics_battery()
     _types_battery()
+    _phase5_battery()
     _seal_battery(ProvenanceAuthority())
     with TemporaryDirectory() as tmp:
         root = Path(tmp)

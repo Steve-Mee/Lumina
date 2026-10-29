@@ -29,12 +29,14 @@ from lumina_research.agents.payloads import (
 )
 from lumina_research.agents.provenance import ProvenanceAuthority
 from lumina_research.agents.synthetic import materialize
-from lumina_research.validation.cost_model import apply_costs
+from lumina_research.validation.cost_model import MarketSnapshot, apply_costs
 from lumina_research.validation.pipeline import CandidateEvaluation, evaluate_candidate, missing_evaluation
 from lumina_research.validation.trial_registry import TrialRegistry
 from lumina_research.validation.types import GateReport
 
 _Evaluate = Callable[..., CandidateEvaluation]
+Tape = tuple[tuple[float, ...], tuple[float, ...], tuple[MarketSnapshot, ...]]
+Materializer = Callable[[HypothesisProposed], Tape]
 
 
 class ValidationAgent(Frozen):
@@ -50,6 +52,7 @@ class ValidationAgent(Frozen):
     _evaluate: _Evaluate
     _equity: float
     _evaluations: list[CandidateEvaluation]
+    _materialize: Materializer | None
 
     def __init_subclass__(cls) -> None:
         raise TypeError("ValidationAgent cannot be subclassed")
@@ -64,6 +67,7 @@ class ValidationAgent(Frozen):
         blackboard: AgentBlackboard | None = None,
         audit_path: Path | None = None,
         equity: float = 100_000.0,
+        materializer: Materializer | None = None,
     ) -> None:
         self._bus = bus
         self._registry = registry
@@ -75,6 +79,7 @@ class ValidationAgent(Frozen):
         self._evaluations = []
         self._evaluate = evaluate_candidate
         self._equity = float(equity)
+        self._materialize = materializer
         self._freeze()
         bus.register_topic_guard(RESEARCH_VALIDATION_TOPIC, self._guard_validation)
         if blackboard is not None:
@@ -95,7 +100,7 @@ class ValidationAgent(Frozen):
         self._evaluations.clear()
         if not batch:
             return ()
-        nets = _peer_nets(batch, equity=self._equity)
+        nets = _peer_nets(batch, equity=self._equity, materialize_fn=self._tape)
         results: list[ValidationResult] = []
         for index, hypothesis in enumerate(batch):
             peers = tuple(nets[j] for j in range(len(nets)) if j != index)
@@ -114,7 +119,7 @@ class ValidationAgent(Frozen):
         try:
             if int(hypothesis.expected_horizon_bars) < 1:
                 raise ValueError("expected_horizon_missing")
-            gross, positions, markets = materialize(hypothesis)
+            gross, positions, markets = self._tape(hypothesis)
             evaluation = self._evaluate(
                 agent_id=VALIDATION_AGENT_ID,
                 config_id=hypothesis.config_id,
@@ -221,16 +226,23 @@ class ValidationAgent(Frozen):
     def _guard_validation(self, producer: str, payload: dict[str, object]) -> bool:
         return self._authority.guard_validation(producer, payload)
 
+    def _tape(self, hypothesis: HypothesisProposed) -> Tape:
+        mapper = self._materialize
+        if mapper is None:
+            return materialize(hypothesis)
+        return mapper(hypothesis)
+
 
 def _peer_nets(
     batch: tuple[HypothesisProposed, ...],
     *,
     equity: float,
+    materialize_fn: Materializer,
 ) -> tuple[tuple[float, ...], ...]:
     nets: list[tuple[float, ...]] = []
     for hypothesis in batch:
         try:
-            gross, positions, markets = materialize(hypothesis)
+            gross, positions, markets = materialize_fn(hypothesis)
             costed = apply_costs(
                 gross_returns=gross,
                 positions=positions,

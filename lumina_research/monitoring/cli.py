@@ -11,7 +11,9 @@ from typing import Sequence, cast
 from lumina_research.agents.objects import as_object_dict
 from lumina_research.monitoring.config import ContinuityConfigError, load_default_config
 from lumina_research.monitoring.loop import ContinuityIntegrityError, ContinuityRuntime
+from lumina_research.monitoring.mutation_report import evaluate_mutation_floor, resolve_mutation_report
 from lumina_research.monitoring.types import ContinuityRefused
+from lumina_research.monitoring.weekly import build_weekly_metrics, load_hypothesis_rows, write_weekly_metrics
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -26,6 +28,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", type=Path, default=None, help="Optional continuity limits.toml")
     parser.add_argument("--replenish", action="store_true", help="Request hypotheses if below floor (still gated)")
     parser.add_argument("--seed", type=int, default=20261028)
+    parser.add_argument(
+        "--mutation-report",
+        type=Path,
+        default=None,
+        help="Nightly monitoring mutation JSON (kill rate >= 0.80). Defaults to committed reports.",
+    )
     return parser
 
 
@@ -60,7 +68,31 @@ def run_scan(argv: Sequence[str] | None = None) -> int:
             config=config,
             evolution_log_dir=args.evolution_log_dir,
         )
-        report = runtime.guardian_scan(str(args.cadence), decisions=load_decisions(state_dir), report_dir=report_dir)
+        mutation_path = resolve_mutation_report(args.mutation_report, state_dir=state_dir)
+        report = runtime.guardian_scan(
+            str(args.cadence),
+            decisions=load_decisions(state_dir),
+            report_dir=report_dir,
+            mutation_report=mutation_path,
+        )
+        live_means: dict[str, float | None] = {}
+        window = int(runtime.config.window)
+        for item in runtime.registry.signals():
+            values = runtime.monitor.series(item.signal_id)
+            if not values:
+                live_means[item.signal_id] = None
+            else:
+                chunk = values[-window:]
+                live_means[item.signal_id] = sum(chunk) / float(len(chunk))
+        weekly = build_weekly_metrics(
+            hypotheses=load_hypothesis_rows(state_dir / "experiments.jsonl"),
+            signals=runtime.registry.signals(),
+            live_means=live_means,
+            guardian=report,
+            findings=runtime.guardian.findings(),
+            mutation=evaluate_mutation_floor(mutation_path),
+        )
+        write_weekly_metrics(weekly, report_dir)
         if bool(args.replenish):
             runtime.request_replenishment(seed=int(args.seed))
     except (ContinuityRefused, ContinuityConfigError, ContinuityIntegrityError) as exc:

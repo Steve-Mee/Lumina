@@ -23,8 +23,9 @@ from lumina_core.engine.agent_blackboard import AgentBlackboard
 from lumina_research.agents.frozen import Frozen
 from lumina_research.agents.payloads import dump_json
 from lumina_research.agents.provenance import ProvenanceAuthority
-from lumina_research.monitoring.acceptance import CONFIRM_WINDOWS
+from lumina_research.monitoring.acceptance import confirm_windows_for
 from lumina_research.monitoring.config import ContinuityConfig
+from lumina_research.monitoring.horizons import combined_assessment
 from lumina_research.monitoring.registry import LiveSignalRegistry
 from lumina_research.monitoring.report import log_decision
 from lumina_research.monitoring.seal import (
@@ -34,7 +35,6 @@ from lumina_research.monitoring.seal import (
     canonical_retire,
     canonical_suspend,
 )
-from lumina_research.monitoring.statistics import assess_decay
 from lumina_research.monitoring.types import ContinuityRefused, DecayAssessment, LiveSignal, stage_rank
 
 
@@ -113,7 +113,7 @@ class LivePerformanceMonitor(Frozen):
     def increase_weight(self, signal_id: str, weight: float) -> None:
         self._registry.increase_weight(signal_id, weight)
 
-    def observe(self, signal_id: str, metric: object) -> LiveSignal:
+    def observe(self, signal_id: str, metric: object, *, vix: float | None = None) -> LiveSignal:
         if isinstance(metric, bool) or not isinstance(metric, (int, float)):
             raise ContinuityRefused("non-finite live metric")
         value = float(metric)
@@ -124,7 +124,10 @@ class LivePerformanceMonitor(Frozen):
             raise ContinuityRefused("signal_tampered")
         history = self._series.setdefault(signal_id, [])
         history.append(value)
-        assessment = assess_decay(history, signal.oos_values, self._config)
+        combined = combined_assessment(
+            history, signal.oos_values, self._config, vix=vix, instrument=signal.instrument
+        )
+        assessment = combined.assessment
         if not assessment.ready:
             self._pending.pop(signal_id, None)
             return signal
@@ -136,7 +139,8 @@ class LivePerformanceMonitor(Frozen):
             self._pending[signal_id] = (assessment.stage, 1)
             return signal
         confirmed = previous[1] + 1
-        if confirmed < CONFIRM_WINDOWS:
+        needed = confirm_windows_for(assessment.vol_regime)
+        if confirmed < needed:
             self._pending[signal_id] = (assessment.stage, confirmed)
             return signal
         self._pending.pop(signal_id, None)
@@ -204,6 +208,8 @@ class LivePerformanceMonitor(Frozen):
             "cusum": assessment.cusum,
             "sprt_llr": assessment.sprt_llr,
             "stage": stage,
+            "vol_regime": assessment.vol_regime,
+            "horizon": assessment.horizon,
         }
         mac = self._authority.mac(canonical_decay(unsigned))
         event = DecayDetected.model_validate({**unsigned, "provenance_mac": mac})
@@ -214,7 +220,11 @@ class LivePerformanceMonitor(Frozen):
             agent_id=MONITOR_AGENT_ID,
             event="decay",
             signal_id=signal.signal_id,
-            metrics=dump_json(event),
+            metrics={
+                **dump_json(event),
+                "vol_regime": event.vol_regime,
+                "horizon": event.horizon,
+            },
             evolution_log_dir=self._evolution_log_dir,
         )
 

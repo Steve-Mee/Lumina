@@ -15,6 +15,7 @@ from lumina_core.agent_orchestration.event_bus import EventBus
 from lumina_core.agent_orchestration.schemas_research import (
     BIRTH_AGENT_ID,
     CAPACITY_AGENT_ID,
+    FILL_AGENT_ID,
     GOVERNANCE_AGENT_ID,
     GOVERNANCE_SCHEMA_VERSION,
     GUARDIAN_AGENT_ID,
@@ -24,6 +25,8 @@ from lumina_core.agent_orchestration.schemas_research import (
     REFLECTOR_AGENT_ID,
     REPLENISH_AGENT_ID,
     RESEARCH_GOVERNANCE_TOPIC,
+    SAFETY_AGENT_ID,
+    SHADOW_AGENT_ID,
     VALIDATION_AGENT_ID,
     GovernanceDecision,
     MutationKind,
@@ -66,6 +69,9 @@ _AGENT_IDS = frozenset(
         CAPACITY_AGENT_ID,
         GUARDIAN_AGENT_ID,
         REPLENISH_AGENT_ID,
+        SHADOW_AGENT_ID,
+        FILL_AGENT_ID,
+        SAFETY_AGENT_ID,
     }
 )
 _Signer = Callable[[bytes], str]

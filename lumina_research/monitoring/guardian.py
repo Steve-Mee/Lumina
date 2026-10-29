@@ -20,6 +20,7 @@ from lumina_research.agents.payloads import dump_json
 from lumina_research.agents.provenance import ProvenanceAuthority
 from lumina_research.evolution.integrity import IntegrityError, IntegritySnapshot, assert_intact
 from lumina_research.monitoring.config import ContinuityConfig
+from lumina_research.monitoring.mutation_report import evaluate_mutation_floor, resolve_mutation_report
 from lumina_research.monitoring.registry import LiveSignalRegistry
 from lumina_research.monitoring.report import GuardianReport, log_decision
 from lumina_research.monitoring.seal import accept_mac, canonical_guardian
@@ -39,6 +40,7 @@ class GuardianAgent(Frozen):
     _log_path: Path
     _blackboard: AgentBlackboard | None
     _evolution_log_dir: Path | None
+    _mutation_report: Path | None
     _findings: list[GuardianFinding]
     _seq: list[int]
     _seen: set[str]
@@ -56,6 +58,7 @@ class GuardianAgent(Frozen):
         experiment_log_path: Path,
         blackboard: AgentBlackboard | None = None,
         evolution_log_dir: Path | None = None,
+        mutation_report_path: Path | None = None,
     ) -> None:
         self._bus = bus
         self._registry = registry
@@ -64,6 +67,7 @@ class GuardianAgent(Frozen):
         self._log_path = experiment_log_path
         self._blackboard = blackboard
         self._evolution_log_dir = evolution_log_dir
+        self._mutation_report = mutation_report_path
         self._findings = []
         self._seq = [0]
         self._seen = set()
@@ -86,6 +90,7 @@ class GuardianAgent(Frozen):
         trials: Sequence[TrialRecord],
         decisions: Sequence[Mapping[str, object]] = (),
         live: IntegritySnapshot | None = None,
+        mutation_report: Path | None = None,
     ) -> GuardianReport:
         try:
             return self._scan_body(
@@ -94,6 +99,7 @@ class GuardianAgent(Frozen):
                 trials=trials,
                 decisions=decisions,
                 live=live,
+                mutation_report=mutation_report,
             )
         except ContinuityRefused:
             raise
@@ -108,6 +114,7 @@ class GuardianAgent(Frozen):
         trials: Sequence[TrialRecord],
         decisions: Sequence[Mapping[str, object]],
         live: IntegritySnapshot | None,
+        mutation_report: Path | None,
     ) -> GuardianReport:
         signals = self._registry.signals()
         emitted: list[GuardianFinding] = []
@@ -154,6 +161,40 @@ class GuardianAgent(Frozen):
                         required="unchanged live and research Risk Core",
                     )
                 )
+        mut_path = resolve_mutation_report(
+            mutation_report if mutation_report is not None else self._mutation_report
+        )
+        mut = evaluate_mutation_floor(mut_path)
+        emitted.append(
+            self._finding(
+                cadence=cadence,
+                check_id="mutation_kill_rate",
+                signal_id="*",
+                passed=mut.passed,
+                severity="ok" if mut.passed else "violation",
+                suspend_proposed=False,
+                metric="mutation_kill_rate",
+                observed=mut.observed,
+                required=mut.required,
+            )
+        )
+        if not mut.passed:
+            for signal in signals:
+                if signal.stage == "retired":
+                    continue
+                emitted.append(
+                    self._finding(
+                        cadence=cadence,
+                        check_id="mutation_kill_rate",
+                        signal_id=signal.signal_id,
+                        passed=False,
+                        severity="violation",
+                        suspend_proposed=True,
+                        metric="mutation_kill_rate",
+                        observed=mut.observed,
+                        required=mut.required,
+                    )
+                )
         trial_ids = {item.trial_id for item in trials}
         live_ids = {item.signal_id for item in signals}
         for signal in signals:
@@ -195,6 +236,9 @@ class GuardianAgent(Frozen):
         trial_ok = signal.trial_id in trial_ids
         sealed = self._registry.verify(signal)
         pbo_severity: GuardianSeverity = "violation" if pbo_hard else ("warn" if pbo_warn else "ok")
+        passage = bool(
+            sealed and windows_ok and thin_ok and purge_ok and dsr_ok and (not pbo_hard) and cost_ok and regime_ok and trial_ok
+        )
         rows: list[tuple[str, bool, GuardianSeverity, bool, str, str, str]] = [
             ("wf_oos_windows", windows_ok, "violation" if not windows_ok else "ok", not windows_ok, "n_oos_windows", str(signal.n_oos_windows), f">={self._config.min_oos_windows}"),
             ("oos_distribution_size", thin_ok, "violation" if not thin_ok else "ok", not thin_ok, "oos_values", str(len(signal.oos_values)), f">={MIN_LIVE_OOS_VALUES}"),
@@ -214,6 +258,15 @@ class GuardianAgent(Frozen):
             ("trial_logged", trial_ok, "violation" if not trial_ok else "ok", not trial_ok, "trial_id", str(signal.trial_id), "present in TrialRegistry"),
             ("admission_mac", sealed, "violation" if not sealed else "ok", not sealed, "admission_mac", "valid" if sealed else "tampered", "HMAC admission+state seal"),
             ("promotion_via_gate", sealed, "violation" if not sealed else "ok", not sealed, "admission", "sealed" if sealed else "unsealed", "PromotionCandidate+ValidationResult"),
+            (
+                "sealed_gate_passage",
+                passage,
+                "violation" if not passage else "ok",
+                (not passage) and signal.stage == "active",
+                "sealed_gate_passage",
+                "valid" if passage else "invalid",
+                "active signal: sealed PromotionCandidate+ValidationResult plus gate floors",
+            ),
         ]
         out: list[GuardianFinding] = []
         for check_id, passed, severity, suspend, metric, observed, required in rows:

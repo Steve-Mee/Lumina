@@ -55,9 +55,14 @@ A WebSocket design where Core hosts the socket inverts control: if Brain dies, n
 3. **Immediate CrossTrade removal** — Rejected; no SIM evidence for Fabric yet (ADR-0029).
 4. **Orders from AddOn without Brain admission** — Rejected; violates constitution / Final Arbitration.
 
+## Addendum — research-layer ports (2026-10-28)
+
+Phase 5 does **not** implement NT8/gRPC coupling and does not place orders. Typed Event Bus ports (`research.signal.intent`, `research.order.intent`, `research.fill.observed`, `research.execution.alert`) live in `lumina_research/ports/` and `schemas_research_ports.py`. Shadow mode logs `SignalIntent` / `ResearchOrderIntent` and `CostModel` hypothetical fills. Fabric `PlaceOrderCommand` / `OrderEvent` mapping, SIM whitelist enforcement inside live Risk Core, and `LIVE_RELEASE` remain a later ADR. See [ADR-0059](0059-research-phase5-empirical-proof-and-fabric-ports.md).
+
 ## Links
 
 - Blueprint: [LUMINA_Execution_Fabric_Blueprint_v1.1_EN.md](../../project-dna/lumina/evolution/LUMINA_Execution_Fabric_Blueprint_v1.1_EN.md)
 - ADR-0029: [Native NinjaTrader bridge](0029-ninjatrader-native-bridge.md) (broker façade; wire protocol superseded here)
+- ADR-0059: [Research Phase 5 empirical proof and Fabric ports](0059-research-phase5-empirical-proof-and-fabric-ports.md) (interfaces only; no coupling)
 - Integration: [ninjatrader-integration.md](../ninjatrader-integration.md)
 - Proto: `protos/lumina/execution/v1/fabric.proto`

@@ -66,4 +66,4 @@ If a floor is not reachable without weakening safety (looser z/percentile/CUSUM/
 
 - Charter: `RESEARCH_CHARTER.md`
 - Phase 1–3: `lumina_research/validation/`, `lumina_research/agents/`, `lumina_research/evolution/`
-- Related: `docs/adr/0057-research-self-evolution-within-bounds.md`, `docs/adr/0007-promotion-gate-real-mode.md`
+- Related: `docs/adr/0057-research-self-evolution-within-bounds.md`, `docs/adr/0007-promotion-gate-real-mode.md`, `docs/adr/0059-research-phase5-empirical-proof-and-fabric-ports.md`

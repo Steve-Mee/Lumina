@@ -8,7 +8,8 @@ LUMINA gebruikt gesplitste requirements-profielen zodat elke omgeving alleen ins
 - `requirements-trading.txt`: live/paper trading add-ons (market calendars, scheduler, notificaties).
 - `requirements-ml.txt`: Linux/WSL2 **Voice serving** extras (vLLM, transformers, ONNX). **Not** the Windows Birth / NinjaTrader first-boot path. **Not** the physics venv.
 - `requirements-birth-physics.txt`: Lungs pins (SB3, gymnasium). Torch CUDA wheel comes from `scripts/install_birth_physics_stack.py`.
-- `requirements-dev.txt`: test/lint/security tooling.
+- `requirements-dev.txt`: test/lint/pip-audit/SBOM tooling.
+- `requirements-audit.txt`: Safety CLI in its own venv (`filelock<4.0` vs production `filelock==4.2.4`).
 - `requirements.txt`: aggregator for a Linux ML node. Do not use this as Windows first-boot.
 
 ## Two organs
@@ -51,7 +52,9 @@ cyclonedx-py environment --output-format json --outfile docs/sbom.json
 Lokale dependency audits:
 
 ```bash
-python scripts/validation/run_safety_audit.py
+python -m venv .venv-audit
+.venv-audit/bin/pip install -r requirements-audit.txt
+.venv-audit/bin/python scripts/validation/run_safety_audit.py
 pip-audit --requirement requirements-core.txt
 pip-audit --requirement requirements-trading.txt
 ```

@@ -1,0 +1,118 @@
+{
+  "floor_passed": true,
+  "medium_passed": true,
+  "primary_high_vol_far": 0.0,
+  "primary_normal_far": 0.0,
+  "rows": [
+    {
+      "detection": 0.0,
+      "far": 0.0,
+      "n": 60,
+      "slice": "healthy_laplace",
+      "ttd_max": null,
+      "ttd_median": null
+    },
+    {
+      "detection": 1.0,
+      "far": 0.0,
+      "n": 60,
+      "slice": "abrupt_student",
+      "ttd_max": 8.0,
+      "ttd_median": 6.0
+    },
+    {
+      "detection": 1.0,
+      "far": 0.0,
+      "n": 60,
+      "slice": "gradual_smooth",
+      "ttd_max": 14.0,
+      "ttd_median": 13.0
+    },
+    {
+      "detection": 0.0,
+      "far": 0.0,
+      "n": 60,
+      "slice": "healthy_regime_switch",
+      "ttd_max": null,
+      "ttd_median": null
+    },
+    {
+      "detection": 0.0,
+      "far": 0.7333333333333333,
+      "n": 60,
+      "slice": "high_vol_mixture",
+      "ttd_max": null,
+      "ttd_median": null
+    },
+    {
+      "detection": 1.0,
+      "far": 0.0,
+      "n": 60,
+      "slice": "regime_laplace",
+      "ttd_max": 10.0,
+      "ttd_median": 7.0
+    },
+    {
+      "detection": 1.0,
+      "far": 0.0,
+      "n": 60,
+      "slice": "material_break",
+      "ttd_max": 5.0,
+      "ttd_median": 4.0
+    },
+    {
+      "detection": 1.0,
+      "far": 0.0,
+      "n": 60,
+      "slice": "slow_gradual_30",
+      "ttd_max": 20.0,
+      "ttd_median": 18.0
+    },
+    {
+      "detection": 1.0,
+      "far": 0.0,
+      "n": 60,
+      "slice": "slow_gradual_45",
+      "ttd_max": 25.0,
+      "ttd_median": 21.0
+    },
+    {
+      "detection": 1.0,
+      "far": 0.0,
+      "n": 60,
+      "slice": "slow_gradual_60",
+      "ttd_max": 30.0,
+      "ttd_median": 25.0
+    },
+    {
+      "detection": 1.0,
+      "far": 0.0,
+      "n": 286,
+      "slice": "regime=normal",
+      "ttd_max": 14.0,
+      "ttd_median": 6.0
+    },
+    {
+      "detection": 1.0,
+      "far": 0.0,
+      "n": 74,
+      "slice": "regime=high_vol",
+      "ttd_max": 10.0,
+      "ttd_median": 8.0
+    }
+  ],
+  "seeds": [
+    90210,
+    48151623,
+    73939133,
+    104729,
+    611953,
+    1299709,
+    15485863,
+    32452843,
+    49979687,
+    67867967
+  ],
+  "short_passed": true,
+  "stress_high_vol_mixture_far": 0.7333333333333333
+}
