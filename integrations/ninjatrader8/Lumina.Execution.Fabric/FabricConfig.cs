@@ -33,9 +33,12 @@ namespace Lumina.Execution.Fabric
         /// </summary>
         public string GatewayMode { get; set; } = "nt";
         public int HeartbeatTimeoutMs { get; set; } = 5000;
-        // Research team decision (relayed by Steve 2026-10-29): flatten-grace
-        // backup 30-60s (chosen 30000). ADR-0064 Proposed / needs human review.
-        public int FlattenGraceMs { get; set; } = 30000;
+        /// <summary>
+        /// ADR-0064 Accepted (research team 2026-10-29 23:09 sha cc904288):
+        /// flatten-grace is a hard 5s. No open-ended wait. Load/SetRisk pin here.
+        /// </summary>
+        public const int FlattenGraceHardMs = 5000;
+        public int FlattenGraceMs { get; set; } = FlattenGraceHardMs;
         public bool FlattenOnTimeout { get; set; } = true;
         public bool BindLocalhostOnly { get; set; } = true;
         public int MaxPositionSize { get; set; } = 10;
@@ -180,6 +183,12 @@ namespace Lumina.Execution.Fabric
             return new FabricConfig();
         }
 
+        public static int PinFlattenGraceMs(int requested)
+        {
+            // Hard 5s. Ignore requested (0 / 15s / 30–60s). No open-ended grace.
+            return FlattenGraceHardMs;
+        }
+
         public static FabricConfig LoadFromFile(string path)
         {
             var json = File.ReadAllText(path);
@@ -187,6 +196,7 @@ namespace Lumina.Execution.Fabric
             {
                 PropertyNameCaseInsensitive = true,
             }) ?? new FabricConfig();
+            cfg.FlattenGraceMs = PinFlattenGraceMs(cfg.FlattenGraceMs);
             return cfg;
         }
     }

@@ -16,6 +16,7 @@ S4_PATHS = (
     "lumina_core/research_bridge/sim_gate.py",
     "lumina_core/research_bridge/sim_runtime.py",
     "lumina_core/risk/alarm_executor.py",
+    "lumina_core/risk/prolonged_disconnect.py",
     "lumina_research/cycles/sim_plan.py",
     "scripts/research/check_sim_entry.py",
     "docs/adr/0064-s4-sim-entry-hardening.md",
@@ -30,6 +31,7 @@ S4_LOC_PATHS = (
     "lumina_core/research_bridge/sim_gate.py",
     "lumina_core/research_bridge/sim_runtime.py",
     "lumina_core/risk/alarm_executor.py",
+    "lumina_core/risk/prolonged_disconnect.py",
     "lumina_core/risk/risk_gates.py",
     "scripts/research/check_sim_entry.py",
 )
@@ -65,6 +67,7 @@ def test_named_s4_tests_exist() -> None:
         "tests/risk/test_s4_caps_bypass_closed.py",
         "tests/risk/test_s4_stale_equity_sim.py",
         "tests/risk/test_alarm_prolonged_disconnect.py",
+        "docs/research/ONDERZOEKERS-ANTWOORDEN-S4-PR73-20261029T2309.md",
         "docs/adr/0064-s4-sim-entry-hardening.md",
     )
     missing = [path for path in required if not (ROOT / path).is_file()]
@@ -88,6 +91,7 @@ def test_s4_source_label_is_research_team_relayed_by_steve() -> None:
         "lumina_core/engine/mode_capabilities.py",
         "lumina_core/order_gatekeeper/engine_helpers.py",
         "lumina_core/risk/alarm_executor.py",
+        "lumina_core/risk/prolonged_disconnect.py",
     )
     missing = [
         rel
@@ -97,7 +101,9 @@ def test_s4_source_label_is_research_team_relayed_by_steve() -> None:
     assert missing == []
     adr = (ROOT / "docs/adr/0064-s4-sim-entry-hardening.md").read_text(encoding="utf-8")
     assert "needs human review" in adr.lower()
-    assert "Partially Accepted" in adr
+    assert "**Status:** Accepted" in adr
     assert "caps-bypass is NOT approved" in adr or "Caps-bypass is NOT approved" in adr
     assert "LuminaProtective" in adr
     assert "fill-before-ATM" in adr
+    assert "cc904288" in adr
+    assert "30000" in adr

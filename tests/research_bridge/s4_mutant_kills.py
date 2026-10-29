@@ -31,6 +31,8 @@ from lumina_core.research_bridge.continuity_meter import (
 )
 from lumina_core.research_bridge.protective_attach import (
     ATM_STOP_ATR_MULTIPLE,
+    ATM_STOP_ATR_PERIOD,
+    ATM_TARGET_ATR_MULTIPLE,
     ATM_UNCONFIRMED,
     ATTACH_ATM,
     COMPANION_UNCONFIRMED,
@@ -63,6 +65,13 @@ from lumina_core.research_bridge.protective_stop import (
 from lumina_core.research_bridge.sim_gate import MIN_SURVIVORS, bind_sim_gate, evaluate
 from lumina_core.research_bridge.sim_runtime import SimRuntime
 from lumina_core.risk.alarm_executor import AlarmExecutor
+from lumina_core.risk.prolonged_disconnect import (
+    FLATTEN_GRACE_HARD_MS,
+    PROLONGED_DISCONNECT_MS,
+    pin_flatten_grace_ms,
+    registered_prolonged_disconnect_ms,
+    should_flatten_unprotected,
+)
 from lumina_core.risk.risk_controller import HardRiskController
 from lumina_core.risk.risk_limits import RiskLimits
 from lumina_research.agents.provenance import ProvenanceAuthority
@@ -412,6 +421,10 @@ def _kill_protective_attach() -> None:
         _fail("generic ATM markets drifted")
     if ATM_STOP_ATR_MULTIPLE != 1.5:
         _fail("ATM ATR stop multiple drifted")
+    if ATM_STOP_ATR_PERIOD != 14:
+        _fail("ATM ATR period drifted")
+    if ATM_TARGET_ATR_MULTIPLE != 2.0:
+        _fail("ATM ATR target multiple drifted")
     if PATH_ATM != "atm" or PATH_COMPANION != "companion" or PATH_REFUSED != "refused":
         _fail("attach path labels drifted")
     if ATTACH_ATM != "atm":
@@ -1045,6 +1058,77 @@ def _kill_prolonged() -> None:
         )
         if flat.flatten_on_prolonged_disconnect() is not None:
             _fail("flat flatten returned a value")
+        if FLATTEN_GRACE_HARD_MS != 5000:
+            _fail("flatten-grace drifted off 5s")
+        if pin_flatten_grace_ms(30000) != 5000 or pin_flatten_grace_ms(0) != 5000:
+            _fail("flatten-grace pin is open-ended")
+        if PROLONGED_DISCONNECT_MS != 30000:
+            _fail("prolonged-disconnect threshold drifted")
+        if registered_prolonged_disconnect_ms(45000) != 30000:
+            _fail("prolonged-disconnect registration drifted")
+        if should_flatten_unprotected(disconnected_ms=29999, has_confirmed_server_stop=False) is True:
+            _fail("sub-threshold disconnect flattened")
+        if should_flatten_unprotected(disconnected_ms=30000, has_confirmed_server_stop=False) is not True:
+            _fail("30s unprotected disconnect skipped flatten")
+        if should_flatten_unprotected(disconnected_ms=30000, has_confirmed_server_stop=True) is True:
+            _fail("confirmed server stop was flattened")
+        if should_flatten_unprotected(disconnected_ms=30000, has_confirmed_server_stop=None) is not True:
+            _fail("unknown stop status skipped flatten")
+        yaml = (ROOT / "config.yaml").read_text(encoding="utf-8")
+        if "flatten_grace_ms: 5000" not in yaml:
+            _fail("config flatten-grace not 5s")
+        if "flatten_grace_ms: 30000" in yaml:
+            _fail("config still has 30s flatten-grace")
+        if "prolonged_disconnect_ms: 30000" not in yaml:
+            _fail("config missing registered 30s disconnect")
+        gated_positions = LivePositionManager(app=SimpleNamespace())
+        gated_positions.set_strategy_qty("hyp-gate", 2)
+        gated = AlarmExecutor(
+            bus=EventBus(),
+            positions=gated_positions,
+            submitter=RecordingSubmitter(),
+            jsonl_path=Path(tmp) / "alarm-gate.jsonl",
+            clock=lambda: T0,
+        )
+        if gated.maybe_flatten_after_disconnect(instrument="MES", disconnected_ms=29999) != 0:
+            _fail("maybe_flatten fired under 30s")
+        if gated.positions.strategy_qty("hyp-gate") != 2:
+            _fail("maybe_flatten mutated qty under 30s")
+        n = gated.maybe_flatten_after_disconnect(
+            instrument="MES",
+            disconnected_ms=30000,
+            confirmed_server_stop_by_strategy={"hyp-gate": True},
+        )
+        if n != 0 or gated.positions.strategy_qty("hyp-gate") != 2:
+            _fail("maybe_flatten ignored confirmed ATM")
+        n = gated.maybe_flatten_after_disconnect(instrument="MES", disconnected_ms=30000)
+        if n != 1 or gated.positions.strategy_qty("hyp-gate") != 0:
+            _fail("maybe_flatten skipped unprotected 30s")
+        n = gated.maybe_flatten_after_disconnect(instrument="MES", disconnected_ms=30000)
+        if n != 0:
+            _fail("maybe_flatten counted a second flatten")
+        sot_positions = LivePositionManager(app=SimpleNamespace())
+        sot_positions._pos.live_position_qty = 1
+        sot = AlarmExecutor(
+            bus=EventBus(),
+            positions=sot_positions,
+            submitter=RecordingSubmitter(),
+            jsonl_path=Path(tmp) / "alarm-sot-stop.jsonl",
+            clock=lambda: T0,
+        )
+        kept = sot.maybe_flatten_after_disconnect(
+            instrument="MES",
+            disconnected_ms=30000,
+            confirmed_server_stop_by_strategy={"broker_sot": True},
+        )
+        if kept != 0:
+            _fail("broker_sot confirmed stop was flattened")
+        empty_name = from_mapping(
+            {"atm": {"templates_by_account": {"": "LuminaProtective"}}},
+            account="Sim101",
+        )
+        if resolve_atm_template(empty_name) != "":
+            _fail("empty mapping key became a template")
 
 
 if __name__ == "__main__":

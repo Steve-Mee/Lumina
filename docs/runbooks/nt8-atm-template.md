@@ -1,12 +1,42 @@
 # NT8 ATM template — operator steps (ADR-0064 option A)
 
-**Source:** research team 2026-10-29 16:36 (relayed by Steve) and follow-up
-2026-10-29 22:08 (sha256 `991138fd…`, research team, **not** Steve).
+**Source:** research team 2026-10-29 16:36 (relayed by Steve) and follow-ups
+2026-10-29 22:08 (sha256 `991138fd…`) and 23:09 (sha256 `cc904288…`),
+research team, **not** Steve.
 Primary protective path is a **server-side NinjaTrader ATM template**.
 This file is what CI cannot do. Do it **once** on PC_Home for Sim101.
 
 Committed yaml keeps `default_template: ""`, `fallback_companion: true`,
 `atm_confirm_timeout_ms: 5000` so GitHub CI uses option C. Live stays closed.
+
+## Probe checklist (PC_Home — preferred, not merge-blocking)
+
+Steve: do this **tomorrow** on **Sim101 only**. Never a live account. Never
+`LIVE_RELEASE`. Research team 23:09: preferred before merge, **not blocking**
+if local tests + CI are green and the fill-before-ATM residual is documented
+(it is, in ADR-0064).
+
+1. NinjaTrader 8 is running. Account selector = **Sim101**. Git `config.yaml`
+   still has `research_execution_mode: shadow`. Do not arm SIM for this probe.
+2. One ATM template named exactly `LuminaProtective` exists (ATR period 14,
+   stop 1.5×ATR, optional target 2.0×ATR, auto reverse off). No per-market copies.
+3. `%APPDATA%\LUMINA\fabric.json` has `"AtmStrategyTemplate": "LuminaProtective"`
+   and `"AtmStrategyTemplateByAccount": { "Sim101": "LuminaProtective" }`.
+   Restart NT8 after saving.
+4. Chart Trader, account **Sim101**, instrument **MES**: enable that ATM
+   template. Confirm Control Center → Orders shows the ATM child **stop** (and
+   target if set) as a **working server order**, not a chart drawing.
+5. Repeat step 4 once on **NQ** with the **same** template. Stop distance in
+   points must differ from MES (ATR scales). That is the point of one generic
+   template.
+6. If children are missing after a fill (**fill-before-ATM race**): wait at most
+   5s. Do **not** place a second MARKET. Companion STOP may appear; otherwise
+   flatten. Log it. This residual is documented and is not a merge blocker.
+7. Flatten or cancel the probe fills. Account stays **Sim101**. No live
+   account. No real money.
+
+Pass = steps 4–5 show server-side ATM children on MES and NQ. Fail on a
+connection = leave that connection's template empty so Brain uses option C.
 
 ## Name — one generic template
 
@@ -81,19 +111,15 @@ broker:
 
 Restart **NinjaTrader 8** after saving `fabric.json` so the AddOn reloads.
 
-## Probe after restart
+## Probe after restart (same checklist)
 
-1. Keep `research_execution_mode: shadow` until Steve accepts the remaining
-   ADR-0064 Proposed items.
-2. When SIM is later armed: one Fabric MARKET on Sim101 with template
-   `LuminaProtective`.
-3. In NT Control Center / Orders: entry fill plus ATM stop (and target).
-4. If ATM child orders are missing after a fill (**fill-before-ATM race**):
-   Brain waits at most `atm_confirm_timeout_ms` (5000). It does **not** retry
-   a second MARKET. Companion STOP (C) may attach if `fallback_companion` is
-   true. If ATM is still unconfirmed when the window closes, Risk Core
-   flattens (`unconfirmed_protective_stop`). Do not leave an unprotected
-   position.
+Use the **Probe checklist** at the top of this file. Keep
+`research_execution_mode: shadow`. When SIM is later armed: one Fabric MARKET
+on Sim101 with template `LuminaProtective`. Brain waits at most
+`atm_confirm_timeout_ms` (5000). It does **not** retry a second MARKET.
+Companion STOP (C) may attach if `fallback_companion` is true. If ATM is still
+unconfirmed when the window closes, Risk Core flattens
+(`unconfirmed_protective_stop`). Do not leave an unprotected position.
 
 ## Residual (option C) — kept
 

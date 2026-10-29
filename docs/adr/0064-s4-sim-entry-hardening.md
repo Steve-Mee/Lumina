@@ -1,10 +1,12 @@
 # ADR-0064: S4 SIM-entry hardening (continuity meter, D9, protective stops)
 
-**Status:** Partially Accepted  
+**Status:** Accepted  
 **Date:** 2026-10-29  
-**Deciders:** LUMINA Engineering — remaining items **need human review**  
+**Deciders:** LUMINA Engineering — Risk Core *apply* of prolonged-disconnect
+flatten still **needs human review** (clearly marked proposal). Live stays closed.  
 **Source:** research team decision (relayed by Steve 2026-10-29); follow-up
-research team 2026-10-29 22:08 sha256 `991138fd…` (**not** Steve)
+research team 2026-10-29 22:08 sha256 `991138fd…` (**not** Steve); follow-up
+research team 2026-10-29 23:09 sha256 `cc904288…` (**not** Steve)
 
 > **Follow-up 22:08 Accepted:** stale equity in `sim` (fail-closed);
 > Brain caps-bypass **not approved** (hard caps stay; no silent cap-value
@@ -12,9 +14,14 @@ research team 2026-10-29 22:08 sha256 `991138fd…` (**not** Steve)
 > ES/NQ/MES/MNQ; ATM+C kept; hard timeout + Risk Core flatten if ATM is not
 > confirmed in the short window (fill-before-ATM race).
 >
-> **Still Proposed / needs human review:** flatten-grace clamp, prolonged-disconnect
-> flatten, operator ATM probe on PC_Home. Do not treat this ADR as live law.
-> Live stays closed. Risk Core cap *values* remain propose-only.
+> **Follow-up 23:09 Accepted:** flatten-grace **hard 5s** (no open-ended);
+> prolonged-disconnect flatten at pre-registered **30000 ms**; PC_Home ATM
+> probe preferred, **not merge-blocking**. Residual fill-before-ATM race is
+> documented and not blocking.
+>
+> Live stays closed. Risk Core cap *values* remain propose-only. The
+> prolonged-disconnect flatten **implementation** in Risk Core is a marked
+> proposal pending signed human review before it is live law.
 
 ## Context
 
@@ -71,10 +78,22 @@ leftovers (caps-bypass, Telegram 6c) are the S4 scope. First principles:
    propose-only** — this ADR does not silently retune daily_loss_cap or
    streak numbers. **Accepted: bypass disabled; hard caps stay.**
 
-### PROPOSE — Risk Core / Fabric (**needs human review**)
-7. **Flatten-grace backup 30–60s** (chosen 30000 ms, clamp `[30000, 60000]`).
-8. **Prolonged disconnect:** on reconnect, AlarmExecutor reconciles with broker
-   as SoT then flattens open strategy qty via D9 stage `prolonged_disconnect`.
+### ACCEPTED (research team 23:09, sha cc904288)
+
+7. **Flatten-grace hard 5s.** `flatten_grace_ms` / Fabric `FlattenGraceMs` is
+   pinned to **5000**. No open-ended grace, no 15s leftover, no 30–60s band.
+   After heartbeat timeout, Fabric waits this 5s then flattens only instruments
+   this process placed. Fallback in the same window: companion STOP (C) or
+   immediate Risk Core flatten. **Accepted.**
+8. **Prolonged-disconnect flatten.** Pre-registered threshold
+   `prolonged_disconnect_ms: 30000` (approved band 30–60s; **chosen 30s**,
+   lower bound, fail-closed). On reconnect, if the disconnect lasted ≥ 30000 ms
+   **and** the strategy has no confirmed server-side stop (ATM or companion),
+   Risk Core flattens via D9 stage `prolonged_disconnect`. Unknown stop status
+   fail-closes to flatten. Confirmed ATM/C skip flatten (the stop is already on
+   NT). Code: `lumina_core/risk/prolonged_disconnect.py` plus
+   `AlarmExecutor.maybe_flatten_after_disconnect`. **Policy Accepted.
+   Risk Core apply is a marked proposal and still needs human review.**
 9. **Protective stops — A default, C fallback.**
    Research team decision (relayed by Steve 2026-10-29, 16:36) plus follow-up
    22:08 (sha 991138fd):
@@ -88,6 +107,12 @@ leftovers (caps-bypass, Telegram 6c) are the S4 scope. First principles:
      unconfirmed for that broker/connection. Residual: MARKET may fill
      before STOP is working. Hard timeout (default 5000 ms) then Risk Core
      flatten (`unconfirmed_protective_stop`). **Kept.**
+   - **Residual fill-before-ATM race (documented, not merge-blocking):**
+     NT `Submit` then `StartAtmStrategy` can fill the MARKET before ATM
+     children are working. Same 5s window as flatten-grace /
+     `atm_confirm_timeout_ms`. Brain does not retry a second MARKET. C may
+     attach; if ATM is still unconfirmed when the window closes, Risk Core
+     flattens. This residual is honest NT behaviour, not a blocker.
    - **ATM confirm window:** `atm_confirm_timeout_ms` (default 5000). If ATM
      is not confirmed in that short window after a fill (**fill-before-ATM
      race**), Brain may attach C; if C is off or also unconfirmed, Risk Core
@@ -143,10 +168,12 @@ What Steve/operator must do on PC_Home (not automatable here):
 
 ### Negative
 
-- Desk `sim` becomes cap-enforcing (**needs human review** — learning-mode tests change).
+- Desk `sim` is cap-enforcing (Accepted 22:08; learning-mode tests use the explicit `enforce_rules=False` advisory).
 - Daily NT-PIT tape is required before first SIM; 1m 241-bar fixture is not TTD evidence.
 - Companion STOP (C) still has a fill-before-stop race; flatten is the backup, not ATM.
-- ATM attach is not proven in GitHub CI (no NT8 process / template file).
+- Fill-before-ATM is a residual race (5s then C or flatten). Documented; not merge-blocking.
+- ATM attach is not proven in GitHub CI (no NT8 process / template file). PC_Home probe is preferred, not blocking.
+- Prolonged-disconnect flatten is Accepted policy; Risk Core apply still **needs human review**.
 
 ## Alternatives considered
 
@@ -167,9 +194,19 @@ changes already on `main` from S4 (stale equity in `sim`; close `sim_mode`
 caps short-circuit) are now Accepted. Any future cap-value change needs its
 own ADR + signed human review.
 
+## Follow-up 2026-10-29 23:09 (sha cc904288)
+
+Frozen answers: [`docs/research/ONDERZOEKERS-ANTWOORDEN-S4-PR73-20261029T2309.md`](../research/ONDERZOEKERS-ANTWOORDEN-S4-PR73-20261029T2309.md).
+
+Chosen disconnect threshold: **30000 ms**. Flatten-grace: **5000 ms** hard.
+
+**Risk Core proposal (not silently applied):** `maybe_flatten_after_disconnect`
+is the reconnect flatten. Do not treat it as live law until signed human
+review. Cap values still unchanged.
+
 ## Links
 
-- Decisions: research team (relayed by Steve 2026-10-29); follow-up research team 2026-10-29 22:08 sha 991138fd (not Steve)
+- Decisions: research team (relayed by Steve 2026-10-29); follow-up research team 2026-10-29 22:08 sha 991138fd (not Steve); follow-up research team 2026-10-29 23:09 sha cc904288 (not Steve)
 - Prior: `docs/adr/0059-research-phase5-empirical-proof-and-fabric-ports.md`, `docs/adr/0063-sim-orders-gated.md`, `docs/adr/0043-telegram-io-ssot.md`
 - Code: `lumina_core/research_bridge/continuity_meter.py`, `sim_gate.py`, `protective_stop.py`, `protective_attach.py`, `alerts.py`
 - Risk Core: `lumina_core/risk/risk_gates.py`, `lumina_core/engine/mode_capabilities.py`, `lumina_core/order_gatekeeper/engine_helpers.py`, `lumina_core/risk/alarm_executor.py`

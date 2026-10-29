@@ -87,7 +87,8 @@ broker:
       gateway_mode: nt
       heartbeat_interval_ms: 1000
       heartbeat_timeout_ms: 5000
-      flatten_grace_ms: 30000
+      flatten_grace_ms: 5000
+      prolonged_disconnect_ms: 30000
       bind_localhost_only: true
       max_position_size: 2
       max_orders_per_minute: 30
