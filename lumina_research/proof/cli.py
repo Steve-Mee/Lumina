@@ -9,7 +9,7 @@ from typing import Sequence
 
 from lumina_research.cycles.atr_cycle import run_atr_es_cycle
 from lumina_research.cycles.four_instrument import run_four_instrument_cycle
-from lumina_research.cycles.midpoint_d13 import POWER_CLEAN, run_midpoint_d13
+from lumina_research.cycles.midpoint_d13 import POWER_CLEAN, run_midpoint_d13, run_midpoint_power
 from lumina_research.cycles.null_audit import run_null_audit
 from lumina_research.cycles.null_lock import NullLeaks, assert_research_allowed
 from lumina_research.cycles.null_only import run_null_only, synthetic_drift_tape
@@ -40,15 +40,15 @@ def build_parser() -> argparse.ArgumentParser:
     research.add_argument("--data-dir", type=Path, default=None)
     research.add_argument(
         "--cycle",
-        choices=("first", "four-instrument", "null-audit", "atr-es", "null-only", "midpoint-d13"),
+        choices=("first", "four-instrument", "null-audit", "atr-es", "null-only", "midpoint-d13", "midpoint-power"),
         default="first",
-        help="first: MES/MNQ 12. four-instrument: cost-fix+ES/NQ. null-audit: D13 multi-seed. atr-es: ES ATR grid. null-only: FPR validation, no templates. midpoint-d13: planted+null under fade/breakout midpoints, no templates.",
+        help="first: MES/MNQ 12. four-instrument: cost-fix+ES/NQ. null-audit: D13 multi-seed. atr-es: ES ATR grid. null-only: FPR validation, no templates. midpoint-d13: planted+null under fade/breakout midpoints, no templates. midpoint-power: 100/50/25% planted magnitude, no templates.",
     )
     research.add_argument(
         "--es-csv",
         type=Path,
         default=None,
-        help="null-only / midpoint-d13: local pre-holdout ES CSV. Not committed.",
+        help="null-only / midpoint-d13 / midpoint-power: local pre-holdout ES CSV. Not committed.",
     )
     research.add_argument(
         "--reuse-mes-mnq",
@@ -108,6 +108,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 2
             if midpoint.overall_verdict != POWER_CLEAN:
                 sys.stderr.write(f"midpoint-d13: {midpoint.overall_verdict}; no strategy-run\n")
+                return 2
+            return 0
+        if str(args.cycle) == "midpoint-power":
+            try:
+                power = run_midpoint_power(
+                    work_dir=args.work_dir,
+                    report_dir=args.report_dir,
+                    es_csv=args.es_csv,
+                )
+            except ValueError as exc:
+                sys.stderr.write(f"midpoint-power: {exc}\n")
+                return 2
+            if not power.full_magnitude_clean:
+                sys.stderr.write("midpoint-power: 100% magnitude is not clean; no strategy-run\n")
                 return 2
             return 0
         if str(args.cycle) in {"first", "four-instrument", "atr-es"}:

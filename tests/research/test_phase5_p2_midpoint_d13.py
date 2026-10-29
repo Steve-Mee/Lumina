@@ -15,7 +15,12 @@ from lumina_research.cycles.midpoint_d13 import (
     overall_verdict,
     power_verdict,
 )
-from lumina_research.cycles.positive_control import FADE_MIDPOINT_ATR, horizon_note, required_midpoint_controls
+from lumina_research.cycles.positive_control import (
+    FADE_MIDPOINT_ATR,
+    PLANTED_POWER_MAGNITUDES,
+    horizon_note,
+    required_midpoint_controls,
+)
 from lumina_research.proof.cli import build_parser, main as proof_main
 
 
@@ -94,6 +99,25 @@ def test_cli_midpoint_d13_is_a_control_cycle(tmp_path: Path, monkeypatch: pytest
 
 
 @pytest.mark.unit
+def test_cli_midpoint_power_is_a_control_cycle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = build_parser()
+    args = parser.parse_args(["research", "--cycle", "midpoint-power", "--es-csv", "local.csv"])
+    assert args.cycle == "midpoint-power"
+
+    class _Dirty:
+        full_magnitude_clean = False
+
+    monkeypatch.setattr("lumina_research.proof.cli.run_midpoint_power", lambda **_kwargs: _Dirty())
+    assert proof_main(["research", "--cycle", "midpoint-power", "--work-dir", str(tmp_path)]) == 2
+
+    class _Clean:
+        full_magnitude_clean = True
+
+    monkeypatch.setattr("lumina_research.proof.cli.run_midpoint_power", lambda **_kwargs: _Clean())
+    assert proof_main(["research", "--cycle", "midpoint-power", "--work-dir", str(tmp_path)]) == 0
+
+
+@pytest.mark.unit
 def test_cli_midpoint_d13_requires_es_csv(tmp_path: Path) -> None:
     assert (
         proof_main(
@@ -114,6 +138,11 @@ def test_cli_midpoint_d13_requires_es_csv(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_required_midpoints_stay_locked() -> None:
     assert required_midpoint_controls() == (("fade", 1.0, 1.2), ("breakout", 1.8, 0.9))
+
+
+@pytest.mark.unit
+def test_power_magnitudes_stay_locked() -> None:
+    assert PLANTED_POWER_MAGNITUDES == (1.0, 0.5, 0.25)
 
 
 @pytest.mark.unit

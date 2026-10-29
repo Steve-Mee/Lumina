@@ -80,6 +80,7 @@ from lumina_research.cycles.null_model import (
     max_a2_hits,
     null_seed_is_false_edge,
 )
+from lumina_research.cycles.daily import daily_market_returns
 from lumina_research.cycles.positive_control import (
     BREAKOUT_MIDPOINT_ATR,
     CONTROL_ATR_MULTIPLE,
@@ -87,6 +88,7 @@ from lumina_research.cycles.positive_control import (
     CONTROL_TARGET_TICKS,
     CONTROL_TIME_STOP_BARS,
     FADE_MIDPOINT_ATR,
+    PLANTED_POWER_MAGNITUDES,
     _detected,
     execute_control,
     horizon_note,
@@ -158,6 +160,7 @@ from lumina_research.validation.types import (
     ValidationResults,
     WFESnapshot,
 )
+from tests.research.test_phase5_p2_fixes import _control_tape
 
 UTC = timezone.utc
 
@@ -1084,6 +1087,10 @@ def _kill_atr_geometry() -> None:
     control_params = inspect.signature(run_controls).parameters
     if "target_atr" not in control_params or "stop_atr" not in control_params:
         _fail("run_controls must accept pre-registered midpoint ATR params")
+    if "planted_magnitude" not in control_params:
+        _fail("run_controls must accept planted_magnitude for the 21:29 power rerun")
+    if PLANTED_POWER_MAGNITUDES != (1.0, 0.5, 0.25):
+        _fail("power magnitudes must stay 1.0, 0.5, 0.25")
     if DSR_ONLY_KILLS != frozenset({"p2a-or-bo-es", "p2a-rm-es", "p2a-pb-es", "p2a-gap-es"}):
         _fail("four DSR-only kills must stay frozen")
     if UNBRACKET_HORIZONS != (16, 60, 120):
@@ -1219,6 +1226,58 @@ def _kill_atr_geometry() -> None:
     first = prepared.session_dates[0]
     if any(series[index] != 0.0 for index, session in enumerate(prepared.session_dates) if session == first):
         _fail("causal ATR must be 0 on the first completed-prior-less session")
+    with TemporaryDirectory() as tmp:
+        path = Path(tmp)
+        registry_one = TrialRegistry(path / "one.jsonl")
+        registry_one.record(config_id="only", agent_id="p2-mut", metrics={"i": 0})
+        tripped, trip_report = passes_validation_gate(
+            _static_bundle(
+                path / "one.jsonl",
+                pbo=PBOSnapshot(
+                    pbo=0.10,
+                    n_slices=8,
+                    n_combinations=70,
+                    n_configs=33,
+                    n_below_median=7,
+                    formulation="cscv_logit_bailey_2014",
+                    logit_mean=0.4,
+                ),
+                dsr=DSRSnapshot(
+                    probability=1.0,
+                    observed_sr=0.4,
+                    expected_max_sr=0.05,
+                    sr_standard_error=0.04,
+                    n_trials=1,
+                    n_observations=300,
+                    skew=0.0,
+                    kurtosis=3.0,
+                    formulation="bailey_lopez_de_prado_2014",
+                ),
+                n_trials_registry=1,
+            ),
+            registry=registry_one,
+        )
+        if tripped or "trial_count_below_pbo_configs" not in trip_report.reject_reasons:
+            _fail("PBO n_configs > n_trials must remain a gate reject")
+        control_tape = _control_tape()
+        market = daily_market_returns(control_tape.bars, control_tape.session_dates)
+        seeds = (20261029, 20261030, 20261031, 20261032)
+        wired = run_controls(
+            prepared={"MES": control_tape},
+            registry=TrialRegistry(path / "wired.jsonl"),
+            audit_path=path / "wired.jsonl",
+            is_size=6,
+            oos_size=2,
+            market_returns=market,
+            n_days=22,
+            null_seeds=seeds,
+            block_seeds=(),
+            fail_closed=False,
+        )
+        if "trial_count_below_pbo_configs" in wired.positive.reject_reasons:
+            _fail("planted gate must register PBO peers as trials first")
+        if wired.positive.pbo_n_configs != 5 or wired.positive.n_trials != 5:
+            _fail("planted PBO/DSR N must be 1 plant + 4 nulls")
 
 
 def run() -> None:

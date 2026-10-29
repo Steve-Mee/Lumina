@@ -48,9 +48,13 @@ from lumina_research.cycles.positive_control import (
     CONTROL_STOP_TICKS,
     CONTROL_TARGET_TICKS,
     CONTROL_TIME_STOP_BARS,
+    PLANTED_POWER_MAGNITUDES,
+    PositiveControlFailed,
     execute_control,
+    require_planted_magnitude,
     run_controls,
     rth_session_direction,
+    scale_control_net,
     shuffle_signals,
 )
 from lumina_research.cycles.prepare import PreparedTape, prepare_tape
@@ -698,9 +702,7 @@ def test_holdout_pin_is_session_boundary_and_legacy_seal_recorded(tmp_path: Path
     assert isinstance(previous, list)
     assert previous[0]["seal_sha256"] == LEGACY_SEAL_SHA256
     assert previous[1]["seal_sha256"] == PENDING_COUNTS_SEAL_SHA256
-    snapshot = json.loads(
-        (Path("experiments/reports") / PENDING_COUNTS_SEAL_NAME).read_text(encoding="utf-8")
-    )
+    snapshot = json.loads((Path("experiments/reports") / PENDING_COUNTS_SEAL_NAME).read_text(encoding="utf-8"))
     assert snapshot["seal_sha256"] == PENDING_COUNTS_SEAL_SHA256
     assert snapshot["bar_counts_pending_recompute"] is True
     committed = json.loads(Path("experiments/reports/phase5_p2_holdout_seal.json").read_text(encoding="utf-8"))
@@ -895,6 +897,68 @@ def test_run_controls_detects_planted_edge_and_rejects_null(tmp_path: Path) -> N
     assert report.positive.detected is True
     assert report.null.detected is False
     assert report.positive.median_oos > report.null.median_oos
+    assert "trial_count_below_pbo_configs" not in report.positive.reject_reasons
+
+
+@pytest.mark.unit
+def test_run_controls_registers_pbo_peers_before_planted_gate(tmp_path: Path) -> None:
+    prepared = _control_tape()
+    market = daily_market_returns(prepared.bars, prepared.session_dates)
+    seeds = (20261029, 20261030, 20261031, 20261032)
+    report = run_controls(
+        prepared={"MES": prepared},
+        registry=TrialRegistry(tmp_path / "pbo-order.jsonl"),
+        audit_path=tmp_path / "pbo-order.jsonl",
+        is_size=6,
+        oos_size=2,
+        market_returns=market,
+        n_days=22,
+        null_seeds=seeds,
+        block_seeds=(),
+        fail_closed=False,
+    )
+    assert "trial_count_below_pbo_configs" not in report.positive.reject_reasons
+    assert report.positive.pbo_n_configs == 1 + len(seeds)
+    assert report.positive.n_trials == 1 + len(seeds)
+    assert report.positive.pbo_n_configs <= report.positive.n_trials
+
+
+@pytest.mark.unit
+def test_planted_magnitude_scales_median_oos_linearly(tmp_path: Path) -> None:
+    prepared = _control_tape()
+    market = daily_market_returns(prepared.bars, prepared.session_dates)
+    seeds = (20261029, 20261030, 20261031, 20261032)
+    full = run_controls(
+        prepared={"MES": prepared},
+        registry=TrialRegistry(tmp_path / "mag-1.jsonl"),
+        audit_path=tmp_path / "mag-1.jsonl",
+        is_size=6,
+        oos_size=2,
+        market_returns=market,
+        n_days=22,
+        null_seeds=seeds,
+        block_seeds=(),
+        fail_closed=False,
+        planted_magnitude=1.0,
+    )
+    half = run_controls(
+        prepared={"MES": prepared},
+        registry=TrialRegistry(tmp_path / "mag-05.jsonl"),
+        audit_path=tmp_path / "mag-05.jsonl",
+        is_size=6,
+        oos_size=2,
+        market_returns=market,
+        n_days=22,
+        null_seeds=seeds,
+        block_seeds=(),
+        fail_closed=False,
+        planted_magnitude=0.5,
+    )
+    assert half.positive.median_oos == pytest.approx(0.5 * full.positive.median_oos, rel=1e-12, abs=1e-18)
+    assert PLANTED_POWER_MAGNITUDES == (1.0, 0.5, 0.25)
+    assert scale_control_net((2.0, -4.0), 0.25) == (0.5, -1.0)
+    with pytest.raises(PositiveControlFailed, match="planted_magnitude"):
+        require_planted_magnitude(0.0)
 
 
 @pytest.mark.unit
@@ -952,9 +1016,7 @@ def test_pinned_first_cycle_preregister_is_not_rewritten(tmp_path: Path) -> None
 
 
 @pytest.mark.unit
-def test_reuse_holdout_seal_keeps_matching_identity(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_reuse_holdout_seal_keeps_matching_identity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     start = datetime(2023, 10, 28, tzinfo=UTC)
     end = datetime(2026, 10, 28, tzinfo=UTC)
     n = 400

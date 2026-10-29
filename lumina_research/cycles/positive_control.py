@@ -48,6 +48,10 @@ CONTROL_TIME_STOP_BARS = 2_000
 CONTROL_SESSION_FILTER = "rth"
 CONTROL_ATR_MULTIPLE = 1.5
 CONTROL_ATR_SESSIONS = ATR_N_SESSIONS
+CONTROL_AGENT_ID = "positive_control"
+PLANTED_CONFIG_ID = "control-planted-session"
+# 21:29: known-size plant scaled after execution (same trades, linear PnL).
+PLANTED_POWER_MAGNITUDES = (1.0, 0.5, 0.25)
 # Team 17:34: fade 1.0/1.2 and breakout 1.8/0.9 are pre-registered midpoints,
 # not final. The positive control must pass under exactly these params.
 FADE_MIDPOINT_ATR = (1.0, 1.2)
@@ -119,6 +123,10 @@ class ControlOutcome:
     n_days: int
     n_trials: int
     note: str
+    reject_reasons: tuple[str, ...] = ()
+    pbo: float = math.nan
+    pbo_n_configs: int = 0
+    magnitude: float = 1.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,6 +169,17 @@ class ControlReport:
     null: ControlOutcome
     accepted: bool
     null_audit: NullAudit | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ControlDailies:
+    """Unscaled planted and null session nets. Magnitude is applied at gate time."""
+
+    planted_net: tuple[float, ...]
+    drift_nets: tuple[tuple[float, ...], ...]
+    block_nets: tuple[tuple[float, ...], ...]
+    seeds: tuple[int, ...]
+    extra: tuple[int, ...]
 
 
 def rth_session_direction(
@@ -351,7 +370,14 @@ def _detected(evaluation: CandidateEvaluation, *, null_median: float | None) -> 
     return True
 
 
-def _outcome(name: str, evaluation: CandidateEvaluation, detected: bool, note: str) -> ControlOutcome:
+def _outcome(
+    name: str,
+    evaluation: CandidateEvaluation,
+    detected: bool,
+    note: str,
+    *,
+    magnitude: float = 1.0,
+) -> ControlOutcome:
     return ControlOutcome(
         name=name,
         detected=detected,
@@ -362,27 +388,41 @@ def _outcome(name: str, evaluation: CandidateEvaluation, detected: bool, note: s
         n_days=int(evaluation.results.n_days),
         n_trials=int(evaluation.report.dsr.n_trials),
         note=note,
+        reject_reasons=tuple(evaluation.report.reject_reasons),
+        pbo=float(evaluation.report.pbo.pbo),
+        pbo_n_configs=int(evaluation.report.pbo.n_configs),
+        magnitude=float(magnitude),
     )
 
 
-def run_controls(
+def require_planted_magnitude(value: float) -> float:
+    """Finite strictly-positive scale of the known-size plant. 1.0 is current size."""
+    magnitude = float(value)
+    if not math.isfinite(magnitude) or magnitude <= 0.0:
+        raise PositiveControlFailed("planted_magnitude must be finite and > 0")
+    return magnitude
+
+
+def scale_control_net(daily_net: Sequence[float], magnitude: float) -> tuple[float, ...]:
+    """Linear scale of already-costed session net (half size = half gross and costs)."""
+    scale = require_planted_magnitude(magnitude)
+    return tuple(scale * float(item) for item in daily_net)
+
+
+def build_control_dailies(
     *,
     prepared: Mapping[str, PreparedTape],
-    registry: TrialRegistry,
-    audit_path: Path,
     is_size: int,
     oos_size: int,
-    market_returns: Sequence[float],
-    n_days: int,
     null_seeds: Sequence[int] | None = None,
     block_seeds: Sequence[int] | None = None,
     embargo: int = NULL_EMBARGO,
-    fail_closed: bool = True,
     geometry_mode: str = "unclipped",
     target_atr: float | None = None,
     stop_atr: float | None = None,
     null_builder: str = NULL_BUILDER,
-) -> ControlReport:
+) -> ControlDailies:
+    """Execute planted + nulls once. Magnitude scaling happens at gate time."""
     tape = prepared.get("MES") or next(iter(prepared.values()))
     root = tape.instrument
     planted = rth_session_direction(tape.bars, tape.session_dates, tape.rth)
@@ -391,7 +431,6 @@ def run_controls(
     extra = tuple(block_seeds) if block_seeds is not None else default_block_seeds()
     if not seeds:
         raise PositiveControlFailed("null seeds must be pre-registered and non-empty")
-    n_before = int(registry.n_trials)
     atr_series = None
     if geometry_mode == "atr":
         atr_series = causal_session_atr(
@@ -412,7 +451,6 @@ def run_controls(
     daily_gross, daily_net = _costed_daily(tape, pos_exec, root=root)
     sessions = unique_sessions(tape.session_dates)
     planted_map = signal_map_by_session(planted, tape.session_dates)
-    pos_tape = _from_daily_net(daily_net)
     remap_ok = geometry_mode == "unclipped"
     drift_dailies: list[tuple[float, ...]] = []
     for seed in seeds:
@@ -449,34 +487,103 @@ def run_controls(
             )
             _gross, null_daily = _costed_daily(tape, null_exec, root=root)
             drift_dailies.append(null_daily)
-    try:
-        planted_eval = evaluate_candidate(
-            agent_id="positive_control",
-            config_id="control-planted-session",
-            gross_returns=pos_tape[0],
-            positions=pos_tape[1],
-            markets=pos_tape[2],
-            spec=root,
-            registry=registry,
-            peer_net_returns=tuple(drift_dailies),
-            audit_path=audit_path,
+    block_dailies: list[tuple[float, ...]] = []
+    for seed in extra:
+        block_signals = week_block_shuffle_signals(planted, tape.session_dates, seed=int(seed))
+        if remap_ok:
+            block_map = signal_map_by_session(block_signals, tape.session_dates)
+            block_dailies.append(
+                remap_session_net(
+                    daily_gross=daily_gross,
+                    daily_net=daily_net,
+                    sessions=sessions,
+                    planted_signs=planted_map,
+                    null_signs=block_map,
+                )
+            )
+        else:
+            block_exec = execute_control(
+                tape,
+                block_signals,
+                root=root,
+                geometry_mode=geometry_mode,
+                atr_points=atr_series,
+                target_atr=target_atr,
+                stop_atr=stop_atr,
+            )
+            _bg, block_daily = _costed_daily(tape, block_exec, root=root)
+            block_dailies.append(block_daily)
+    return ControlDailies(
+        planted_net=tuple(daily_net),
+        drift_nets=tuple(drift_dailies),
+        block_nets=tuple(block_dailies),
+        seeds=seeds,
+        extra=extra,
+    )
+
+
+def run_controls(
+    *,
+    prepared: Mapping[str, PreparedTape],
+    registry: TrialRegistry,
+    audit_path: Path,
+    is_size: int,
+    oos_size: int,
+    market_returns: Sequence[float],
+    n_days: int,
+    null_seeds: Sequence[int] | None = None,
+    block_seeds: Sequence[int] | None = None,
+    embargo: int = NULL_EMBARGO,
+    fail_closed: bool = True,
+    geometry_mode: str = "unclipped",
+    target_atr: float | None = None,
+    stop_atr: float | None = None,
+    null_builder: str = NULL_BUILDER,
+    planted_magnitude: float = 1.0,
+    control_dailies: ControlDailies | None = None,
+) -> ControlReport:
+    dailies = control_dailies
+    if dailies is None:
+        dailies = build_control_dailies(
+            prepared=prepared,
             is_size=is_size,
             oos_size=oos_size,
-            has_fit_step=False,
-            market_returns=market_returns,
-            n_days=n_days,
+            null_seeds=null_seeds,
+            block_seeds=block_seeds,
+            embargo=embargo,
+            geometry_mode=geometry_mode,
+            target_atr=target_atr,
+            stop_atr=stop_atr,
+            null_builder=null_builder,
         )
+    root = (prepared.get("MES") or next(iter(prepared.values()))).instrument
+    seeds = dailies.seeds
+    extra = dailies.extra
+    n_before = int(registry.n_trials)
+    magnitude = require_planted_magnitude(planted_magnitude)
+    daily_net = dailies.planted_net
+    drift_dailies = dailies.drift_nets
+    block_dailies = dailies.block_nets
+    planted_net = scale_control_net(daily_net, magnitude)
+    scaled_drift = tuple(scale_control_net(row, magnitude) for row in drift_dailies)
+    scaled_block = tuple(scale_control_net(row, magnitude) for row in block_dailies)
+    pos_tape = _from_daily_net(planted_net)
+    # Null configs enter the planted PBO matrix. Record them as trials BEFORE
+    # the planted gate so pbo.n_configs <= n_trials and DSR is deflated for N
+    # = 1 + n_nulls. Evaluating the plant first with 32 unregistered peers is
+    # what produced trial_count_below_pbo_configs on a DSR-1.0 edge.
+    try:
         drift_rows: list[tuple[int, CandidateEvaluation, bool, bool]] = []
-        for seed, daily in zip(seeds, drift_dailies, strict=True):
+        for seed, daily in zip(seeds, scaled_drift, strict=True):
             null_eval = evaluate_candidate(
-                agent_id="positive_control",
+                agent_id=CONTROL_AGENT_ID,
                 config_id=f"control-null-drift-{seed}",
                 gross_returns=daily,
                 positions=pos_tape[1],
                 markets=pos_tape[2],
                 spec=root,
                 registry=registry,
-                peer_net_returns=(pos_tape[0],),
+                peer_net_returns=(planted_net,),
                 audit_path=audit_path,
                 is_size=is_size,
                 oos_size=oos_size,
@@ -497,37 +604,16 @@ def run_controls(
                 )
             )
         block_rows: list[tuple[int, CandidateEvaluation, bool, bool]] = []
-        for seed in extra:
-            block_signals = week_block_shuffle_signals(planted, tape.session_dates, seed=int(seed))
-            if remap_ok:
-                block_map = signal_map_by_session(block_signals, tape.session_dates)
-                block_daily = remap_session_net(
-                    daily_gross=daily_gross,
-                    daily_net=daily_net,
-                    sessions=sessions,
-                    planted_signs=planted_map,
-                    null_signs=block_map,
-                )
-            else:
-                block_exec = execute_control(
-                    tape,
-                    block_signals,
-                    root=root,
-                    geometry_mode=geometry_mode,
-                    atr_points=atr_series,
-                    target_atr=target_atr,
-                    stop_atr=stop_atr,
-                )
-                _bg, block_daily = _costed_daily(tape, block_exec, root=root)
+        for seed, block_daily in zip(extra, scaled_block, strict=True):
             block_eval = evaluate_candidate(
-                agent_id="positive_control",
+                agent_id=CONTROL_AGENT_ID,
                 config_id=f"control-null-block-{seed}",
                 gross_returns=block_daily,
                 positions=pos_tape[1],
                 markets=pos_tape[2],
                 spec=root,
                 registry=registry,
-                peer_net_returns=(pos_tape[0],),
+                peer_net_returns=(planted_net,),
                 audit_path=audit_path,
                 is_size=is_size,
                 oos_size=oos_size,
@@ -547,6 +633,22 @@ def run_controls(
                     ),
                 )
             )
+        planted_eval = evaluate_candidate(
+            agent_id=CONTROL_AGENT_ID,
+            config_id=PLANTED_CONFIG_ID,
+            gross_returns=pos_tape[0],
+            positions=pos_tape[1],
+            markets=pos_tape[2],
+            spec=root,
+            registry=registry,
+            peer_net_returns=scaled_drift,
+            audit_path=audit_path,
+            is_size=is_size,
+            oos_size=oos_size,
+            has_fit_step=False,
+            market_returns=market_returns,
+            n_days=n_days,
+        )
     except PositiveControlFailed:
         raise
     except Exception as exc:
@@ -596,6 +698,7 @@ def run_controls(
             planted_eval,
             pos_detected,
             horizon_note(geometry_mode, target_atr=target_atr, stop_atr=stop_atr),
+            magnitude=magnitude,
         ),
         null=_outcome(
             "null_drift_aware_multiseed",
@@ -608,6 +711,7 @@ def run_controls(
                 f"fail-at {edge_class.borderline_count}; week-block extra only; "
                 f"median-of-medians {median_of_medians:.6g}."
             ),
+            magnitude=magnitude,
         ),
         accepted=pos_detected and edge_class.reliable and planted_beats,
         null_audit=audit,
