@@ -13,7 +13,7 @@ from lumina_core.risk.orchestration import RiskOrchestrator
 @pytest.mark.safety_gate
 def test_orchestrator_enforce_rules_follows_capabilities() -> None:
     mapping = {
-        "sim": False,
+        "sim": True,
         "sim_real_guard": True,
         "real": True,
         "paper": False,

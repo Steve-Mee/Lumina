@@ -1,0 +1,60 @@
+{
+  "excluded": [
+    {
+      "description": "continuity_meter.py:const-int#18",
+      "detail": "survived kill battery",
+      "justification": "Default fixture start hour 21 vs 00 is the same UTC weekday; bar sequence unchanged.",
+      "path": "lumina_core/research_bridge/continuity_meter.py"
+    },
+    {
+      "description": "continuity_meter.py:const-int#19",
+      "detail": "survived kill battery",
+      "justification": "Default fixture start minute 00 vs 01 is the same UTC weekday; bar sequence unchanged.",
+      "path": "lumina_core/research_bridge/continuity_meter.py"
+    },
+    {
+      "description": "continuity_meter.py:const-int#25",
+      "detail": "survived kill battery",
+      "justification": "Default fixture clock hour 21 vs 00 still leaves 241 weekdays before the pin.",
+      "path": "lumina_core/research_bridge/continuity_meter.py"
+    },
+    {
+      "description": "continuity_meter.py:const-int#26",
+      "detail": "survived kill battery",
+      "justification": "Default fixture clock minute 00 vs 01 still leaves 241 weekdays before the pin.",
+      "path": "lumina_core/research_bridge/continuity_meter.py"
+    },
+    {
+      "description": "alarm_executor.py:continue-to-pass#31",
+      "detail": "survived kill battery",
+      "justification": "Zero-qty rows never enter the flatten loop; open_strategy_qtys and live_qty==0 already exclude them.",
+      "path": "lumina_core/risk/alarm_executor.py"
+    },
+    {
+      "description": "alarm_executor.py:kw-bool#37",
+      "detail": "survived kill battery",
+      "justification": "escalate is deleted unused in _execute; True vs False is a no-op.",
+      "path": "lumina_core/risk/alarm_executor.py"
+    },
+    {
+      "description": "continuity_meter.py:binop#54",
+      "detail": "survived kill battery",
+      "justification": "(n+1)%2 and (n-1)%2 have the same parity, so open polarity is unchanged.",
+      "path": "lumina_core/research_bridge/continuity_meter.py"
+    },
+    {
+      "description": "alarm_executor.py:kw-bool#73",
+      "detail": "survived kill battery",
+      "justification": "escalate is deleted unused in _execute; True vs False is a no-op.",
+      "path": "lumina_core/risk/alarm_executor.py"
+    }
+  ],
+  "kill_rate": 1.0,
+  "n_excluded": 8,
+  "n_killed": 312,
+  "n_mutants": 320,
+  "n_non_equivalent": 312,
+  "n_survived": 0,
+  "raw_kill_rate": 0.975,
+  "survivors": []
+}

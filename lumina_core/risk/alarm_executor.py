@@ -24,6 +24,7 @@ from lumina_core.broker.broker_bridge.schemas import Order, OrderResult
 from lumina_core.engine.live_position_manager import LivePositionManager
 from lumina_core.logging_utils import get_logger
 from lumina_core.order_gatekeeper.ungated_place_block import gate_order
+from lumina_core.research_bridge.alerts import AlertSink, LoggingAlertSink
 from lumina_core.research_bridge.binding_policy import (
     D7_CRITICAL_SLA_SECONDS,
     D7_DEFAULT_SLA_SECONDS,
@@ -70,6 +71,8 @@ class AlarmExecutor:
     clock: Callable[[], datetime] = field(default_factory=lambda: (lambda: datetime.now(timezone.utc)))
     jobs: list[AlarmJob] = field(default_factory=list)
     reconciles: int = 0
+    prolonged_flattens: int = 0
+    alert_sink: AlertSink | None = None
 
     def install(self) -> None:
         self.bus.subscribe(RESEARCH_DEWEIGHT_TOPIC, self._on_deweight)
@@ -91,6 +94,45 @@ class AlarmExecutor:
             self.jsonl_path,
             {"event": "alarm_executor.reconcile", "actor": ALARM_EXECUTOR_ID, "count": self.reconciles},
         )
+
+    def flatten_on_prolonged_disconnect(self, *, instrument: str = "MES") -> None:
+        """NEEDS HUMAN REVIEW (ADR-0064 Proposed). Broker is SoT after reconcile.
+
+        Research team decision (relayed by Steve 2026-10-29): prolonged disconnect
+        → flatten via Risk Core on reconnect.
+        """
+        self.reconcile_on_reconnect()
+        sink = self.alert_sink if self.alert_sink is not None else LoggingAlertSink()
+        open_book = self.positions.open_strategy_qtys()
+        if not open_book:
+            live_qty = int(self.positions.get_live_qty())
+            if live_qty == 0:
+                return
+            open_book = {"broker_sot": live_qty}
+        root = str(instrument or "MES").strip().upper()
+        if root not in S3_INSTRUMENTS:
+            root = "MES"
+        for strategy_id, qty in open_book.items():
+            if int(qty) == 0:
+                continue
+            key = str(strategy_id)
+            if int(self.positions.strategy_qty(key)) == 0:
+                self.positions.set_strategy_qty(key, int(qty))
+            job = AlarmJob(
+                strategy_id=key,
+                stage="prolonged_disconnect",
+                instrument=root,
+                proposed_at=self.clock(),
+            )
+            self.jobs.append(job)
+            self._execute(job, now=job.proposed_at, escalate=True)
+            if job.executed is True:
+                self.prolonged_flattens += 1
+            sink.alert(
+                code="prolonged_disconnect_flatten",
+                message="prolonged disconnect: flatten via Risk Core; broker is SoT",
+                details={"strategy_id": str(strategy_id), "qty": int(qty), "instrument": root},
+            )
 
     def _on_deweight(self, event: DomainEvent) -> None:
         self._propose(event, stage="deweighted")
@@ -114,6 +156,12 @@ class AlarmExecutor:
         instrument = str(payload.get("instrument") or "MES").strip().upper()
         if not strategy_id:
             self._log("alarm_executor.proposal_refused", {"reason": "strategy_id_missing", "stage": stage})
+            sink = self.alert_sink if self.alert_sink is not None else LoggingAlertSink()
+            sink.alert(
+                code="alarm_executor.proposal_refused",
+                message="alarm proposal refused: strategy_id_missing",
+                details={"reason": "strategy_id_missing", "stage": stage},
+            )
             return
         job = AlarmJob(
             strategy_id=strategy_id,
@@ -197,6 +245,12 @@ class AlarmExecutor:
             self._log(
                 "alarm_executor.gated",
                 {"strategy_id": job.strategy_id, "reason": str(gate_reason)},
+            )
+            sink = self.alert_sink if self.alert_sink is not None else LoggingAlertSink()
+            sink.alert(
+                code="alarm_executor.gated",
+                message=f"alarm execute gated: {gate_reason}",
+                details={"strategy_id": job.strategy_id, "reason": str(gate_reason)},
             )
             return
         result = self.submitter.submit_order(order)

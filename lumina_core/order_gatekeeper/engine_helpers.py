@@ -8,7 +8,10 @@ from lumina_core.engine.errors import ErrorSeverity, LuminaError
 from lumina_core.logging_utils import get_logger
 
 _LOG = get_logger("lumina.trading.gate")
-MODES_REQUIRING_EQUITY_SNAPSHOT = frozenset({"real", "paper", "sim_real_guard"})
+# NEEDS HUMAN REVIEW (ADR-0064 Proposed).
+# Research team decision (relayed by Steve 2026-10-29): stale equity blocks
+# new orders in mode sim as well.
+MODES_REQUIRING_EQUITY_SNAPSHOT = frozenset({"real", "paper", "sim_real_guard", "sim"})
 
 
 def logger_for_engine(engine: Any):

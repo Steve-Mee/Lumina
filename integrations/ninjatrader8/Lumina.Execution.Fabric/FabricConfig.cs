@@ -33,7 +33,9 @@ namespace Lumina.Execution.Fabric
         /// </summary>
         public string GatewayMode { get; set; } = "nt";
         public int HeartbeatTimeoutMs { get; set; } = 5000;
-        public int FlattenGraceMs { get; set; } = 15000;
+        // Research team decision (relayed by Steve 2026-10-29): flatten-grace
+        // backup 30-60s (chosen 30000). ADR-0064 Proposed / needs human review.
+        public int FlattenGraceMs { get; set; } = 30000;
         public bool FlattenOnTimeout { get; set; } = true;
         public bool BindLocalhostOnly { get; set; } = true;
         public int MaxPositionSize { get; set; } = 10;

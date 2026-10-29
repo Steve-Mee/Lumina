@@ -8,7 +8,10 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from lumina_core.broker.broker_bridge.schemas import Order, OrderResult
+from lumina_core.research_bridge.continuity_meter import ContinuityMeterReport, measure_fixture_daily
 from lumina_core.research_bridge.sim_gate import SimGateContext, SurvivorRecord, bind_sim_gate
+
+_PASSING_METER: ContinuityMeterReport | None = None
 
 _HEX = "a" * 64
 _HEX_B = "b" * 64
@@ -52,13 +55,20 @@ def survivor(*, tag: str, family: str, instrument: str = "MES", tape_kind: str =
     )
 
 
+def passing_meter() -> ContinuityMeterReport:
+    global _PASSING_METER
+    if _PASSING_METER is None:
+        _PASSING_METER = measure_fixture_daily(instrument="MES")
+    return _PASSING_METER
+
+
 def passing_context(
     *,
     survivors: Sequence[SurvivorRecord] | None = None,
     instrument: str = "MES",
     trade_mode: str = "sim_real_guard",
     boot: str = "sim",
-    far: float | None = 0.02,
+    meter: ContinuityMeterReport | object | None = "default",  # "default" → fixture meter; None/float fail-closed
     yaml_now: str = "sim",
     stale: bool = False,
     reduce_only: bool = False,
@@ -72,6 +82,11 @@ def passing_context(
     approval_present: bool = True,
 ) -> SimGateContext:
     rows = tuple(survivors) if survivors is not None else (survivor(tag="a", family="trend"), survivor(tag="b", family="meanrev", instrument="MNQ"))
+    report: ContinuityMeterReport | None
+    if meter == "default":
+        report = passing_meter()
+    else:
+        report = meter  # type: ignore[assignment]
     return SimGateContext(
         research_execution_mode_boot=boot,
         trade_mode=trade_mode,
@@ -81,7 +96,7 @@ def passing_context(
         live_release_record=live_release,
         instrument=instrument,
         survivors=rows,
-        far_healthy=far,
+        continuity_meter=report,
         promotion_hmac_ok=hmac_ok,
         approval_required=approval_required,
         approval_present=approval_present,

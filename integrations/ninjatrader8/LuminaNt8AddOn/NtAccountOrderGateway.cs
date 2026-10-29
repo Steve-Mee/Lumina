@@ -354,6 +354,18 @@ namespace NinjaTrader.NinjaScript.AddOns
                 return new[] { Reject(command, "invalid_order_fields") };
             }
 
+            // Research team decision (relayed by Steve 2026-10-29): server-side
+            // protective stop required on risk-increasing sim_real_guard/real.
+            // NT MARKET CreateOrder may ignore StopPrice; Brain also sends a
+            // companion STOP. Native ATM/OCO is STOPPED (ADR-0064 options).
+            var placeMode = (command.ModeContext ?? "").Trim().ToLowerInvariant();
+            if ((placeMode == "sim_real_guard" || placeMode == "real")
+                && !command.ReduceOnly
+                && command.StopPrice <= 0)
+            {
+                return new[] { Reject(command, "unprotected_entry_refused") };
+            }
+
             // REAL stays closed in S1 (ADR-0061). Prefix helpers never allow.
             // Explicit whitelist is the only SIM admit; empty list denies.
             var acctName = acct.Name ?? "";

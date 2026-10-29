@@ -294,7 +294,7 @@ Recommended `fabric.json` (created by onboarding / `install_fabric_token.ps1`):
   "AccountName": "Sim101",
   "GatewayMode": "sim",
   "HeartbeatTimeoutMs": 5000,
-  "FlattenGraceMs": 15000,
+  "FlattenGraceMs": 30000,
   "FlattenOnTimeout": true,
   "BindLocalhostOnly": true,
   "MaxPositionSize": 2,

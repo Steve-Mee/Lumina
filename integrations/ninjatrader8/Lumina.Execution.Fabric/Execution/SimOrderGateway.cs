@@ -76,6 +76,16 @@ namespace Lumina.Execution.Fabric.Execution
                 return new[] { RejectEvent(command, ntId, "reduce_only_violation", now) };
             }
 
+            // Research team decision (relayed by Steve 2026-10-29): same Brain
+            // refuse for sim_real_guard/real unprotected entries (ADR-0064).
+            var placeMode = (command.ModeContext ?? "").Trim().ToLowerInvariant();
+            if ((placeMode == "sim_real_guard" || placeMode == "real")
+                && !command.ReduceOnly
+                && command.StopPrice <= 0)
+            {
+                return new[] { RejectEvent(command, ntId, "unprotected_entry_refused", now) };
+            }
+
             NoteSessionTouched(command.Instrument);
 
             var isMarket = command.OrderType == OrderType.Market ||

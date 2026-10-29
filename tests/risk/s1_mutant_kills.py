@@ -600,8 +600,8 @@ def _s0_and_policy_battery() -> None:
     )
     if blocked is not False or reason != UNGATED_PLACE_BLOCK_REASON:
         _fail(f"supervisor still closed {blocked} {reason}")
-    if resolve_mode_capabilities("sim").risk_enforced is not False:
-        _fail("sim stays learning-mode")
+    if resolve_mode_capabilities("sim").risk_enforced is not True:
+        _fail("sim caps must enforce (ADR-0064)")
     if resolve_mode_capabilities("sim_real_guard").risk_enforced is not True:
         _fail("sim_real_guard must enforce")
     if resolve_mode_capabilities("real").risk_enforced is not True:

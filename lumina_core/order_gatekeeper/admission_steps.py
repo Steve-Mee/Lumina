@@ -107,18 +107,31 @@ def build_admission_step_handlers(
             return True, str(snapshot_reason)
         if mode == "real" and is_risk_reducing_side(engine=engine, order_side=order_side):
             return True, "real_snapshot_bypassed_for_risk_reducing_exit"
-        return (
-            False,
-            (
-                "REAL mode requires fresh equity snapshot "
+        deny_reason = (
+            "REAL mode requires fresh equity snapshot "
+            f"({snapshot_reason}, source={snapshot_source or 'unknown'})"
+            if mode == "real"
+            else (
+                f"{mode.upper()} mode requires fresh equity snapshot "
                 f"({snapshot_reason}, source={snapshot_source or 'unknown'})"
-                if mode == "real"
-                else (
-                    f"{mode.upper()} mode requires fresh equity snapshot "
-                    f"({snapshot_reason}, source={snapshot_source or 'unknown'})"
-                )
-            ),
+            )
         )
+        # Research team decision (relayed by Steve 2026-10-29): stale equity
+        # blocks new orders also in mode sim; log + alert.
+        logging.error(
+            "equity_snapshot_stale_block mode=%s reason=%s source=%s",
+            mode,
+            snapshot_reason,
+            snapshot_source or "unknown",
+        )
+        sink = getattr(engine, "alert_sink", None)
+        if sink is not None and callable(getattr(sink, "alert", None)):
+            sink.alert(
+                code="equity_snapshot_stale",
+                message=deny_reason,
+                details={"mode": mode, "reason": snapshot_reason, "source": snapshot_source or "unknown"},
+            )
+        return False, deny_reason
 
     def _session_equity_sync_step(_ctx: AdmissionContext) -> tuple[bool, str]:
         session_ok, session_reason = session_guard_allows_trading(engine)

@@ -33,6 +33,12 @@ from lumina_core.order_gatekeeper.gate import enforce_pre_trade_gate
 from lumina_core.order_gatekeeper.ungated_place_block import gate_order
 from lumina_core.research_bridge.alerts import AlertSink, LoggingAlertSink
 from lumina_core.research_bridge.fill_index import FillIndex
+from lumina_core.research_bridge.protective_stop import (
+    UNPROTECTED_ENTRY,
+    companion_stop_order,
+    default_stop_price,
+    require_protective_stop,
+)
 from lumina_core.research_bridge.horizon import HorizonRefused, require_expected_horizon_bars
 from lumina_core.research_bridge.jsonl import append_shadow_record
 from lumina_core.research_bridge.market_health import MarketHealth
@@ -183,6 +189,15 @@ class SimRuntime:
         if gate_ok is not True:
             self._refuse("admission_blocked:" + str(gate_reason), {"reason": gate_reason})
             return None
+        reference = self._market.reference_price()
+        if reference is None:
+            self._refuse(UNPROTECTED_ENTRY, {"reference": "missing"})
+            return None
+        try:
+            stop_price = default_stop_price(side=str(live_intent.side), reference=float(reference))
+        except ValueError as exc:
+            self._refuse(str(exc), {"reference": float(reference)})
+            return None
         client_order_id = f"s3-{uuid.uuid4()}"
         correlation = f"{candidate.hypothesis_id}:{client_order_id}"
         order = Order(
@@ -190,6 +205,7 @@ class SimRuntime:
             side=str(live_intent.side),
             quantity=int(live_intent.quantity),
             order_type="MARKET",
+            stop_loss=stop_price,
             metadata={
                 "clientOrderId": client_order_id,
                 "correlation_id": correlation,
@@ -197,8 +213,14 @@ class SimRuntime:
                 "source_agent": RESEARCH_BRIDGE_SOURCE,
                 "strategy_id": candidate.hypothesis_id,
                 "expected_horizon": horizon,
+                "stop_price": stop_price,
+                "protected": True,
             },
         )
+        stop_ok, stop_reason = require_protective_stop(order)
+        if stop_ok is not True:
+            self._refuse(stop_reason, {"stop_price": stop_price})
+            return None
         bind_sim_gate(self._gate_ctx)
         allowed_place, place_reason = gate_order(
             "ninjatrader.broker.submit_order",
@@ -212,14 +234,16 @@ class SimRuntime:
         try:
             with arm_research_place(self._gate_ctx):
                 result = self._submitter.submit_order(order)
+                self._orders.append(order)
+                self._broker_submits += 1
+                self._results.append(result)
+                if result.accepted is True:
+                    if self._submit_companion_stop(order, client_order_id) is not True:
+                        return None
+                    self._fill_index.remember(client_order_id, candidate.hypothesis_id, horizon)
         except SimGateRefused as exc:
             self._refuse(str(exc), {"armed": False})
             return None
-        self._orders.append(order)
-        self._broker_submits += 1
-        self._results.append(result)
-        if result.accepted is True:
-            self._fill_index.remember(client_order_id, candidate.hypothesis_id, horizon)
         append_shadow_record(
             self._jsonl_path,
             {
@@ -239,6 +263,37 @@ class SimRuntime:
             self._refuse("candidate_payload_invalid", {})
             return
         self.on_candidate(candidate)
+
+    def _submit_companion_stop(self, order: Order, client_order_id: str) -> bool:
+        companion_id = f"{client_order_id}-stop"
+        try:
+            companion = companion_stop_order(order, client_order_id=companion_id)
+        except ValueError as exc:
+            self._refuse(str(exc), {"companion": "missing_stop"})
+            return False
+        allowed_stop, stop_gate = gate_order(
+            "ninjatrader.broker.submit_order",
+            companion,
+            engine=self._engine,
+            source_agent=RESEARCH_BRIDGE_SOURCE,
+        )
+        if allowed_stop is not True:
+            self._refuse("companion_stop_gated:" + str(stop_gate), {"reason": stop_gate})
+            return False
+        companion_result = self._submitter.submit_order(companion) if self._submitter is not None else None
+        if companion_result is None:
+            self._refuse("companion_stop_rejected", {"reason": "submitter_missing"})
+            return False
+        self._orders.append(companion)
+        self._broker_submits += 1
+        self._results.append(companion_result)
+        if companion_result.accepted is not True:
+            self._refuse(
+                "companion_stop_rejected",
+                {"reason": str(companion_result.message or "submit_rejected")},
+            )
+            return False
+        return True
 
     def _refuse(self, reason: str, extra: dict[str, object]) -> None:
         payload = {"event": "research_sim.refused", "reason": reason, **extra}

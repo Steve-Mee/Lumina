@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from lumina_core.agent_orchestration.event_bus import EventBus
-from lumina_core.research_bridge.alerts import AlertSink
+from lumina_core.research_bridge.alerts import AlertSink, TelegramAlertSink
 from lumina_core.research_bridge.jsonl import default_shadow_jsonl_path
 from lumina_core.research_bridge.market_health import MarketHealth, unhealthy_market
 from lumina_core.research_bridge.fill_index import FillIndex
@@ -26,14 +26,21 @@ def attach_shadow_runtime(
     alert_sink: AlertSink | None = None,
 ) -> ShadowRuntime:
     """Subscribe to sealed PromotionCandidates. Default market is unhealthy (no intents)."""
+    path = jsonl_path if jsonl_path is not None else default_shadow_jsonl_path()
+    # Research team decision (relayed by Steve 2026-10-29): default TelegramAlertSink (6c).
+    sink = (
+        alert_sink
+        if alert_sink is not None
+        else TelegramAlertSink(kind="ops", path=path.with_name("research_alerts_telegram.jsonl"))
+    )
     return ShadowRuntime(
         bus=bus,
         authority=authority if authority is not None else ProvenanceAuthority(),
-        jsonl_path=jsonl_path if jsonl_path is not None else default_shadow_jsonl_path(),
+        jsonl_path=path,
         market=market if market is not None else unhealthy_market(),
         tape_kind=tape_kind,
         observe_sink=observe_sink,
-        alert_sink=alert_sink,
+        alert_sink=sink,
     )
 
 
@@ -51,14 +58,20 @@ def attach_sim_runtime(
 ) -> SimRuntime:
     """S3 gated SIM runtime. Binds boot-time sim_gate evidence (not hot-reload yaml)."""
     bind_sim_gate(gate_ctx)
+    path = jsonl_path if jsonl_path is not None else default_shadow_jsonl_path()
+    sink = (
+        alert_sink
+        if alert_sink is not None
+        else TelegramAlertSink(kind="ops", path=path.with_name("research_alerts_telegram.jsonl"))
+    )
     return SimRuntime(
         bus=bus,
         authority=authority if authority is not None else ProvenanceAuthority(),
-        jsonl_path=jsonl_path if jsonl_path is not None else default_shadow_jsonl_path(),
+        jsonl_path=path,
         market=market if market is not None else unhealthy_market(),
         fill_index=fill_index if fill_index is not None else FillIndex(),
         gate_ctx=gate_ctx,
         engine=engine,
         submitter=submitter,
-        alert_sink=alert_sink,
+        alert_sink=sink,
     )

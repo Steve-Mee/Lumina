@@ -58,7 +58,7 @@ Or use unit tests with an in-process mock server (`tests/broker/test_fabric_clie
   "AuthTokenEnv": "LUMINA_FABRIC_TOKEN",
   "AccountName": "Sim101",
   "HeartbeatTimeoutMs": 5000,
-  "FlattenGraceMs": 15000,
+  "FlattenGraceMs": 30000,
   "FlattenOnTimeout": true,
   "BindLocalhostOnly": true,
   "MaxPositionSize": 10

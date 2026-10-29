@@ -55,8 +55,16 @@ The live Risk Core remains the future enforcement point for the SIM whitelist an
 | Condition | New orders | Position | Full close |
 |---|---|---|---|
 | Stale data or lost connection | refused | server-side stops / protect; broker is SoT; reconcile on reconnect | no |
-| Monitor alarm with open position | refused | de-weight / reduce | no |
-| Hard Risk Core limit | refused | flatten **recommended** only | research never sends flatten |
+| Monitor alarm with open position | refused | de-weight / reduce **50% of that strategy** | no |
+| Disable / critical / hard Risk Core limit | refused | flatten **that strategy** (Risk Core executes) | research never sends flatten |
+
+**Addendum — research team decision (relayed by Steve 2026-10-29):** original
+item 6b is **consistent with D9**. There is no conflict. Mapping:
+
+- suspend / de-weight → 50% of that strategy (`reduce_only`)
+- disable / critical / hard limit → flatten 100% of that strategy
+- research proposes; Risk Core `alarm_executor` executes; research never
+  places or flattens. See ADR-0063 and ADR-0064.
 
 Everything is logged and alerted (`ExecutionAlert`). `ShadowBook.place_order` / `submit_order` / `flatten` / `connect_fabric` raise `PortRefused`.
 
@@ -98,7 +106,7 @@ Floors stay frozen: FAR high-vol ≤ 10% hard, normal ≤ 5%, short-horizon dete
 2. Rewrite Brain/Fabric around `lumina_research` — rejected: keep the existing program; ports only.
 3. Reuse `lumina_core.risk.schemas.OrderIntent` as the research intent — rejected: that contract is Final Arbitration; research intents are additive and must not look like a live order.
 4. Let research agents expand the SIM whitelist or set LIVE_RELEASE in config — rejected: no bypass.
-5. Monitor alarm → flatten — rejected: full close only on a hard Risk Core limit.
+5. Monitor alarm → account-wide flatten — rejected: D9/6b flatten **that strategy** only on disable/critical/hard limit; suspend/de-weight is 50%. Research team decision (relayed by Steve 2026-10-29) confirms 6b ≡ D9.
 6. Fabricate synthetic tapes when real data is missing — rejected: RESEARCH_CHARTER / intellectual honesty.
 7. Reuse `archive/birth-v1/` for P2 hypotheses — rejected: skip-gate isolation.
 

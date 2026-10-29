@@ -189,7 +189,7 @@ def test_sim_mode_keeps_creative_order_path_executable_with_arbitration() -> Non
         context="creative_sim",
     )
     state = _base_real_state().model_copy(
-        update={"runtime_mode": "sim", "equity_snapshot_ok": False, "equity_snapshot_reason": "not_required_non_real"}
+        update={"runtime_mode": "sim", "equity_snapshot_ok": True, "equity_snapshot_reason": "ok"}
     )
 
     # wanneer

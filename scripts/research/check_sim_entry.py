@@ -1,6 +1,7 @@
-"""Exit 0 only when S3 sim_gate criteria pass on bound or JSON evidence.
+"""Exit 0 only when S3/S4 sim_gate criteria pass on bound or JSON evidence.
 
-Fails closed: missing file, synthetic survivors, supervisor armed, REAL HMAC.
+Fails closed: missing file, synthetic survivors, supervisor armed, REAL HMAC,
+caller-supplied FAR float (meter only). Research team decision (relayed by Steve 2026-10-29).
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 from lumina_core.order_gatekeeper.ungated_place_block import assert_validation_gate_or_block
+from lumina_core.research_bridge.continuity_meter import measure_fixture_daily
 from lumina_core.research_bridge.sim_gate import (
     SimGateContext,
     SurvivorRecord,
@@ -46,8 +48,11 @@ def context_from_mapping(payload: Mapping[str, object]) -> SimGateContext:
     record = dict(live_release) if isinstance(live_release, Mapping) else None
     whitelist_raw = payload.get("whitelist") or ()
     whitelist = tuple(str(item) for item in whitelist_raw) if isinstance(whitelist_raw, Sequence) else ()
-    far = payload.get("far_healthy")
-    far_value = float(far) if isinstance(far, (int, float)) and not isinstance(far, bool) else None
+    if "far_healthy" in payload:
+        raise ValueError("continuity_unmeasured")
+    meter = None
+    if payload.get("use_fixture_daily_tape") is True:
+        meter = measure_fixture_daily(instrument=str(payload.get("instrument") or "MES"))
     return SimGateContext(
         research_execution_mode_boot=str(payload.get("research_execution_mode_boot") or "off"),
         trade_mode=str(payload.get("trade_mode") or "sim"),
@@ -57,7 +62,7 @@ def context_from_mapping(payload: Mapping[str, object]) -> SimGateContext:
         live_release_record=record,
         instrument=str(payload.get("instrument") or "MES"),
         survivors=rows,
-        far_healthy=far_value,
+        continuity_meter=meter,
         promotion_hmac_ok=payload.get("promotion_hmac_ok") is True,
         approval_required=payload.get("approval_required") is not False,
         approval_present=payload.get("approval_present") is True,
@@ -78,7 +83,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not isinstance(payload, dict):
         print("research_sim_gated: evidence not object", file=sys.stderr)
         return 1
-    ctx = context_from_mapping(payload)
+    try:
+        ctx = context_from_mapping(payload)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     ok, reason = evaluate(ctx)
     blocked, freeze_reason = assert_validation_gate_or_block(
         "supervisor_tick_exec.run_tick_exec",

@@ -54,7 +54,7 @@ def _payload_from_context() -> dict[str, object]:
             }
             for row in ctx.survivors
         ],
-        "far_healthy": ctx.far_healthy,
+        "use_fixture_daily_tape": True,
         "promotion_hmac_ok": ctx.promotion_hmac_ok,
         "approval_required": ctx.approval_required,
         "approval_present": ctx.approval_present,
@@ -73,3 +73,8 @@ def test_check_sim_entry_ok_and_fail(tmp_path: Path) -> None:
     bad_path = _dump(bad, tmp_path / "bad.json")
     assert main(["--evidence", str(bad_path)]) == 1
     assert main([]) == 1
+    invented = _payload_from_context()
+    invented["far_healthy"] = 0.02
+    invented.pop("use_fixture_daily_tape", None)
+    invented_path = _dump(invented, tmp_path / "far.json")
+    assert main(["--evidence", str(invented_path)]) == 1

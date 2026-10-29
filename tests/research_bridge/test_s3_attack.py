@@ -100,10 +100,18 @@ def test_unknown_account_and_empty_whitelist() -> None:
 @pytest.mark.unit
 @pytest.mark.safety_gate
 def test_far_unmeasured_and_above_floor() -> None:
-    ok, reason = evaluate(passing_context(far=None))
+    from dataclasses import replace
+
+    from tests.research_bridge.s3_helpers import passing_meter
+
+    ok, reason = evaluate(passing_context(meter=None))
     assert ok is False
-    assert reason == "far_unmeasured"
-    ok, reason = evaluate(passing_context(far=0.06))
+    assert reason == "continuity_unmeasured"
+    ok, reason = evaluate(passing_context(meter=0.06))
+    assert ok is False
+    assert reason == "continuity_unmeasured"
+    bloated = replace(passing_meter(), far=0.20, passed=False, reason="far_above_floor")
+    ok, reason = evaluate(passing_context(meter=bloated))
     assert ok is False
     assert reason == "far_above_floor"
 

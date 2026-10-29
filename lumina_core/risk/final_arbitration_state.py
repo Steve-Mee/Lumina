@@ -14,7 +14,9 @@ from lumina_core.safety.trading_constitution import TRADING_CONSTITUTION
 logger = logging.getLogger(__name__)
 
 STRICT_ARBITRATION_MODES = frozenset({"real", "paper", "sim_real_guard"})
-_MODES_REQUIRING_EQUITY_SNAPSHOT = frozenset({"real", "paper", "sim_real_guard"})
+# NEEDS HUMAN REVIEW (ADR-0064 Proposed). Stale equity blocks mode sim too.
+# Research team decision (relayed by Steve 2026-10-29).
+_MODES_REQUIRING_EQUITY_SNAPSHOT = frozenset({"real", "paper", "sim_real_guard", "sim"})
 
 def is_strict_arbitration_mode(mode: str) -> bool:
     return str(mode or "").strip().lower() in STRICT_ARBITRATION_MODES
