@@ -779,6 +779,22 @@ def _kill_protective_attach() -> None:
         seeded.flatten_unconfirmed_protective_stop(instrument="MES", strategy_id="hyp-z", qty=0)
         if not seeded_sub.orders or seeded_sub.orders[-1].quantity != 2:
             _fail("qty 0 did not flatten seeded strategy qty")
+        bind_sim_gate(None)
+        blocked = RecordingSubmitter()
+        blocked_rt = _rt(blocked, ProtectiveAttachConfig(account="Sim101"), jsonl="ungated.jsonl")
+        bind_sim_gate(None)
+        blocked_order = Order(
+            symbol="MES",
+            side="BUY",
+            quantity=1,
+            order_type="MARKET",
+            metadata={"mode_context": "sim_real_guard", "source_agent": "research_bridge"},
+        )
+        blocked_res = blocked_rt._submit_entry(blocked_order)
+        if blocked_res is not None:
+            _fail("unbound sim_gate still submitted an entry")
+        if blocked.orders:
+            _fail("unbound sim_gate reached the submitter")
 
 
 def _kill_telegram() -> None:

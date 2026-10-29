@@ -59,26 +59,14 @@
       "detail": "survived kill battery",
       "justification": "SimRuntime refuses before _place_protected when submitter is None; mixin return None is dead.",
       "path": "lumina_core/research_bridge/sim_protected.py"
-    },
-    {
-      "description": "sim_protected.py:const-int#49",
-      "detail": "survived kill battery",
-      "justification": "_place_protected always passes timeout_ms into _submit_companion_stop; the 5000 default is unused.",
-      "path": "lumina_core/research_bridge/sim_protected.py"
-    },
-    {
-      "description": "sim_protected.py:return-bool#50",
-      "detail": "survived kill battery",
-      "justification": "require_protective_stop already refuses empty stop_price; companion ValueError return is dead.",
-      "path": "lumina_core/research_bridge/sim_protected.py"
     }
   ],
   "kill_rate": 1.0,
-  "n_excluded": 12,
-  "n_killed": 308,
+  "n_excluded": 10,
+  "n_killed": 310,
   "n_mutants": 320,
-  "n_non_equivalent": 308,
+  "n_non_equivalent": 310,
   "n_survived": 0,
-  "raw_kill_rate": 0.9625,
+  "raw_kill_rate": 0.96875,
   "survivors": []
 }

@@ -1,12 +1,12 @@
 # S4 SIM-entry hardening mutation testing
 
 - mutants: `320`
-- killed: `308`
-- excluded equivalent: `12`
-- non-equivalent: `308`
+- killed: `310`
+- excluded equivalent: `10`
+- non-equivalent: `310`
 - unjustified survivors: `0`
 - kill rate (non-equivalent): `1.0000`
-- raw kill rate: `0.9625`
+- raw kill rate: `0.9688`
 
 | excluded mutant | justification |
 |---|---|
@@ -20,8 +20,6 @@
 | `alarm_executor.py:continue-to-pass#31` | Zero-qty rows never enter the flatten loop; open_strategy_qtys and live_qty==0 already exclude them. |
 | `alarm_executor.py:kw-bool#37` | escalate is deleted unused in _execute; True vs False is a no-op. |
 | `sim_protected.py:return-none#46` | SimRuntime refuses before _place_protected when submitter is None; mixin return None is dead. |
-| `sim_protected.py:const-int#49` | _place_protected always passes timeout_ms into _submit_companion_stop; the 5000 default is unused. |
-| `sim_protected.py:return-bool#50` | require_protective_stop already refuses empty stop_price; companion ValueError return is dead. |
 
 | unjustified survivor | detail |
 |---|---|

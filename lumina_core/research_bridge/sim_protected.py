@@ -85,6 +85,15 @@ class SimProtectedMixin:
         if self._submitter is None:
             self._refuse("companion_stop_rejected", {"reason": "submitter_missing"})
             return None
+        allowed, gate_reason = gate_order(
+            "ninjatrader.broker.submit_order",
+            order,
+            engine=self._engine,
+            source_agent=RESEARCH_BRIDGE_SOURCE,
+        )
+        if allowed is not True:
+            self._refuse("ungated_place:" + str(gate_reason), {"reason": gate_reason})
+            return None
         result = self._submitter.submit_order(order)
         self._orders.append(order)
         self._broker_submits += 1
