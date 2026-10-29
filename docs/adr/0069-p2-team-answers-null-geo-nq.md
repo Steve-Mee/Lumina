@@ -154,8 +154,14 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
   DSR 1.0, PBO n=33, `n_edge` 0/32). Median OOS is the exact eighth and
   sixteenth of the 19:24 known size. Detection floor of this lookahead
   plant is **at or below 6.25%**. Still saturated; not a realistic-strategy
-  floor. Limited strategy-run not started. JSON:
+  floor. JSON:
   `experiments/reports/phase5_p2_midpoint_power_floor.json`.
+- Limited ES PIT (23:07 GO, same pre-holdout ES tape, holdout cut): six
+  `p2l-*` configs including `p2l-tod-es`. Midpoint controls both pass
+  (`passed_gate` true, null 7/8 `0/32`). All six templates **killed**
+  (DSR ≪ 0.95, negative median OOS, +OOS ≤ 3/8). PBO 0.343 (not the
+  kill). Kill rate 6/6. No promotion, no SIM, holdout unopened. JSON:
+  `experiments/reports/phase5_p2_limited_es_end.json`.
 - Null-only empirical (local ES pre-holdout, not committed; 818851 bars,
   `2023-10-01T22:01:00Z`–`2026-01-28T22:00:00Z`, 598 sessions):
 
@@ -221,6 +227,8 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
 - Pre-register (midpoint power): `experiments/reports/phase5_p2_midpoint_power_preregister_2026-10-29.md`
 - Pre-register (midpoint power floor): `experiments/reports/phase5_p2_midpoint_power_floor_preregister_2026-10-29.md`
 - Pre-register (limited ES): `experiments/reports/phase5_p2_limited_es_preregister_2026-10-29.md`
+- PIT (limited ES): `experiments/reports/phase5_p2_limited_es_end.json`,
+  `phase5_p2_limited_es_end_report_2026-10-29.md`
 - Code: `lumina_research/cycles/null_model.py`, `null_only.py`, `null_lock.py`,
   `nq_lock.py`, `geometry.py`, `diagnostics.py`, `atr_cycle.py`,
   `positive_control.py`, `midpoint_d13.py`, `limited_es.py`, `runner.py`

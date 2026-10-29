@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -91,6 +92,36 @@ def test_overall_verdict_never_promotes() -> None:
     assert overall_verdict(_report(tested=6, killed=5, survivors=1, stopped=False)) == ("survivors_exist_no_promotion")
     assert overall_verdict(_report(tested=0, killed=0, survivors=0, stopped=True)) == ("stopped_control_failed")
     assert overall_verdict(_report(tested=0, killed=0, survivors=0, stopped=False)) == "not_tested"
+
+
+@pytest.mark.unit
+def test_committed_limited_es_pit_is_all_kill_no_promotion() -> None:
+    payload = json.loads(Path("experiments/reports/phase5_p2_limited_es_end.json").read_text(encoding="utf-8"))
+    assert payload["overall_verdict"] == "all_kill_no_promotion"
+    assert payload["n_tested"] == 6
+    assert payload["n_killed"] == 6
+    assert payload["n_survivors"] == 0
+    assert payload["holdout_opened"] is False
+    assert payload["nq_closed"] is True
+    assert payload["promotion"] is False
+    assert payload["sim_real"] is False
+    assert payload["extra_variants"] is False
+    assert payload["planted_detected"] is True
+    assert payload["null_detected"] is False
+    assert payload["csv_sha256"].startswith("6100588d")
+    assert payload["n_bars_es"] == 818851
+    assert payload["es_last_ts"] == "2026-01-28T22:00:00Z"
+    assert payload["config_ids"] == list(LOCKED_IDS)
+    by_id = {row["config_id"]: row for row in payload["configs"]}
+    assert set(by_id) == set(LOCKED_IDS)
+    for config_id in LOCKED_IDS:
+        row = by_id[config_id]
+        assert row["instrument"] == "ES"
+        assert row["tested"] is True
+        assert row["passed_gate"] is False
+        assert row["n_oos_windows"] == 8
+        assert row["dsr"] is not None and float(row["dsr"]) < 0.95
+        assert "dsr_below_threshold" in row["reject_reasons"]
 
 
 @pytest.mark.unit
