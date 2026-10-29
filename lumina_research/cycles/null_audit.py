@@ -326,17 +326,24 @@ def _write_reports(cycle: NullAuditCycle, *, report_dir: Path, repo_root: Path) 
         "",
         "## Per root",
         "",
-        "| root | planted | null reliable | A2 hits | planted median OOS | null median-of-medians | days | IS/OOS | N | note |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| root | planted | null reliable | A2 hits | ≤10% diag | planted median OOS | null median-of-medians | days | IS/OOS | N | note |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for item in cycle.roots:
         lines.append(
-            "| {root} | {planted} | {reliable} | {hits}/{seeds} | {pmed:.6g} | {nmed:.6g} | {days} | {is_size}/{oos} | {n} | {note} |".format(
+            "| {root} | {planted} | {reliable} | {hits}/{seeds} | {ten} | {pmed:.6g} | {nmed:.6g} | {days} | {is_size}/{oos} | {n} | {note} |".format(
                 root=item.root,
                 planted=item.planted_detected,
                 reliable=item.reliable,
                 hits=item.n_a2,
                 seeds=item.n_seeds,
+                ten=(
+                    "yes"
+                    if item.report is not None
+                    and item.report.null_audit is not None
+                    and item.report.null_audit.a2_within_ten_pct
+                    else "no"
+                ),
                 pmed=item.median_oos_planted,
                 nmed=item.median_of_null_medians,
                 days=item.n_days,
