@@ -12,7 +12,13 @@ import pytest
 from lumina_research.cycles import seal as seal_mod
 from lumina_research.cycles.adjust import back_adjust
 from lumina_research.cycles.catalog import catalog
-from lumina_research.cycles.cost_bands import ES_NQ_ONE_WAY, MNQ_ONE_WAY_USD, band_for, report_band
+from lumina_research.cycles.cost_bands import (
+    ES_NQ_ONE_WAY,
+    MNQ_ONE_WAY_USD,
+    band_for,
+    commission_usd_per_side,
+    report_band,
+)
 from lumina_research.cycles.daily import daily_market_returns
 from lumina_research.cycles.data import LoadedTape, ResearchBar
 from lumina_research.cycles.diagnostics import from_trades, window_sharpe
@@ -240,6 +246,51 @@ def test_session_end_flatten_and_time_stop_close_at_bar_close() -> None:
     )
     assert any(item.reason == "session_end" for item in flat.trades)
     assert flat.trades[-1].exit_price == pytest.approx(bars[-1].close)
+
+
+@pytest.mark.unit
+def test_same_bar_round_trip_pays_two_commission_sides() -> None:
+    start = datetime(2026, 3, 2, 14, 31, tzinfo=UTC)
+    entry = 5000.0
+    stop = entry - 8 * 0.25
+    bars = (
+        _bar(start, open_=entry, high=entry + 0.25, low=entry - 0.25, close=entry),
+        _bar(start + timedelta(minutes=1), open_=entry, high=entry + 0.25, low=stop - 0.25, close=stop),
+        _bar(start + timedelta(minutes=2), open_=stop, high=stop + 0.25, low=stop - 0.25, close=stop),
+    )
+    labels = annotate(bars)
+    geo = require_geometry(root="MES", target_ticks=16, stop_ticks=8)
+    executed = run_execution(
+        bars=bars,
+        signals=(1.0, 0.0, 0.0),
+        geometry=geo,
+        breaks=(False, False, False),
+        rth=labels.rth,
+        session_dates=labels.session_dates,
+        session_filter="rth",
+        time_stop_bars=16,
+        session_end_flatten=False,
+    )
+    assert len(executed.trades) == 1
+    assert executed.trades[0].reason == "stop"
+    assert executed.positions[1] != 0.0
+    assert executed.positions[2] == 0.0
+    costed = apply_costs(
+        gross_returns=executed.gross,
+        positions=executed.positions,
+        equity=100_000.0,
+        spec="MES",
+        markets=executed.markets,
+    )
+    assert sum(costed.commission_usd) == pytest.approx(1.88)
+    mnq = apply_costs(
+        gross_returns=executed.gross,
+        positions=executed.positions,
+        equity=100_000.0,
+        spec="MNQ",
+        markets=executed.markets,
+    )
+    assert sum(mnq.commission_usd) == pytest.approx(1.88)
 
 
 @pytest.mark.unit
@@ -477,8 +528,17 @@ def test_mnq_cost_band_is_usd_not_ticks() -> None:
     assert band.modeled_one_way_usd > 0.0
     assert band.modeled_one_way_usd != pytest.approx(band.modeled_one_way_ticks)
     assert spec_for("MNQ").commission_usd_per_side == pytest.approx(0.94)
+    assert band.commission_usd_per_contract_per_side == pytest.approx(0.94)
+    assert band.commission_usd_round_trip == pytest.approx(1.88)
+    assert band.half_spread_usd_per_contract == pytest.approx(0.25)
+    assert band.tick_value_usd == pytest.approx(0.50)
     assert "USD" in band.note or "dollar" in band.note
     assert ES_NQ_ONE_WAY == (0.5, 1.5)
+    assert commission_usd_per_side("MES") == pytest.approx(0.94)
+    assert commission_usd_per_side("ES") == pytest.approx(2.87)
+    es = report_band("ES")
+    assert es.commission_usd_round_trip == pytest.approx(5.74)
+    assert es.half_spread_usd_per_contract == pytest.approx(6.25)
 
 
 @pytest.mark.unit

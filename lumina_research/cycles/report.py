@@ -104,6 +104,12 @@ def write_cycle_reports(report: CycleReport, directory: Path) -> tuple[Path, Pat
                 "band_max_usd": item.band_max_usd,
                 "in_band": item.in_band,
                 "note": item.note,
+                "tick_value_usd": item.tick_value_usd,
+                "commission_usd_per_contract_per_side": item.commission_usd_per_contract_per_side,
+                "commission_usd_round_trip": item.commission_usd_round_trip,
+                "half_spread_usd_per_contract": item.half_spread_usd_per_contract,
+                "modeled_eth_one_way_usd": item.modeled_eth_one_way_usd,
+                "modeled_eth_one_way_bp": item.modeled_eth_one_way_bp,
             }
             for item in report.cost_bands
         ],
@@ -244,16 +250,18 @@ def _markdown(report: CycleReport) -> str:
     )
     lines.extend(
         [
-            "## Modeled costs vs instrument-specific USD bands",
+            "## Modeled costs vs instrument-specific USD/contract bands",
             "",
-            "| root | modeled one-way USD | modeled ticks | band USD | bp | in_band | note |",
-            "|---|---|---|---|---|---|---|",
+            "| root | comm $/side | comm $ RT | half-spread $ | RTH $/contract | RTH bp | ETH $/contract | band $/contract | in_band | note |",
+            "|---|---|---|---|---|---|---|---|---|---|",
         ]
     )
     for band in report.cost_bands:
         lines.append(
-            f"| {band.root} | {band.modeled_one_way_usd:.3f} | {band.modeled_one_way_ticks:.3f} | "
-            f"{band.band_min_usd:.2f}-{band.band_max_usd:.2f} | {band.modeled_one_way_bp:.3f} | "
+            f"| {band.root} | {band.commission_usd_per_contract_per_side:.2f} | "
+            f"{band.commission_usd_round_trip:.2f} | {band.half_spread_usd_per_contract:.3f} | "
+            f"{band.modeled_one_way_usd:.3f} | {band.modeled_one_way_bp:.3f} | "
+            f"{band.modeled_eth_one_way_usd:.3f} | {band.band_min_usd:.2f}-{band.band_max_usd:.2f} | "
             f"{band.in_band} | {band.note} |"
         )
     lines.extend(

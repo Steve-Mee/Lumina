@@ -32,6 +32,7 @@ from lumina_research.cycles.diagnostics import from_trades
 from lumina_research.cycles.execution import (
     ClosedTrade,
     ExecutionRefused,
+    _Book,
     _session_end_flags,
     bar_volatility_price,
     causal_session_adv,
@@ -285,6 +286,12 @@ def _kill_remaining_survivors() -> None:
     mes_band = report_band("MES")
     if abs(mes_band.modeled_one_way_usd - mes_band.modeled_one_way_ticks * spec.tick_value_usd) > 1e-9:
         _fail("modeled USD must be ticks * tick_value")
+    if abs(mes_band.commission_usd_per_contract_per_side - 0.94) > 1e-9:
+        _fail("MES commission must be ADR-0055 $0.94/side")
+    if abs(report_band("ES").commission_usd_per_contract_per_side - 2.87) > 1e-9:
+        _fail("ES commission must be ADR-0055 $2.87/side")
+    if abs(report_band("MNQ").commission_usd_round_trip - 1.88) > 1e-9:
+        _fail("MNQ round-trip commission must be $1.88")
     expected_bp = 10_000.0 * mes_band.modeled_one_way_usd / REFERENCE_NOTIONAL_USD["MES"]
     if abs(mes_band.modeled_one_way_bp - expected_bp) > 1e-9:
         _fail("modeled bp must be 10000 * usd / notional")
@@ -1058,6 +1065,9 @@ def run() -> None:
     fill_src = inspect.getsource(CostModel.ticks_for_fill)
     if "eth_slippage_coefficient" not in fill_src or "max_volume_slip_scale" not in fill_src:
         _fail("ticks_for_fill must look up session coefficient and cap inverse volume")
+    step_src = inspect.getsource(_Book.step)
+    if "opened_flat" not in step_src or "reported" not in step_src:
+        _fail("same-bar round trips must remain visible to apply_costs")
     quiet = MarketSnapshot(volume=10_000.0, average_volume=10_000.0, volatility_price=0.25)
     wild = MarketSnapshot(volume=10_000.0, average_volume=10_000.0, volatility_price=5.0)
     model = CostModel()

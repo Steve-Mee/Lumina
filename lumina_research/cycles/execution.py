@@ -195,6 +195,7 @@ class _Book:
         equity: float,
     ) -> tuple[float, float, tuple[ClosedTrade, ...]]:
         closed: list[ClosedTrade] = []
+        opened_flat = self.pos == 0.0
         start_pos = self.pos
         mark_from = prev_close
         if self.pending != 0.0 and self.pos == 0.0:
@@ -225,7 +226,10 @@ class _Book:
                 )
             )
             self.clear_position()
-            return pnl, 0.0, tuple(closed)
+            # Same-bar round trip would otherwise report 0→0 and skip both
+            # commission sides. Mark this bar in-position; the next 0 pays exit.
+            reported = start_pos if opened_flat else 0.0
+            return pnl, reported, tuple(closed)
         pnl = start_pos * (bar.close - mark_from) * multiplier / equity if start_pos != 0.0 else 0.0
         if self.pos == 0.0 and allow_entry and signal != 0.0:
             self.pending = signal
