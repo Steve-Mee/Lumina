@@ -27,7 +27,7 @@ def test_mode_capabilities_preserve_existing_mode_contracts() -> None:
     assert paper.risk_enforced is False
 
     assert sim.requires_live_broker is True
-    # ADR-0064 Proposed / needs human review: sim caps enforce.
+    # ADR-0064 follow-up Accepted: caps-bypass not approved; sim caps enforce.
     assert sim.risk_enforced is True
     assert sim.is_learning_mode is True
 

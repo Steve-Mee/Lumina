@@ -14,7 +14,8 @@ from lumina_core.safety.trading_constitution import TRADING_CONSTITUTION
 logger = logging.getLogger(__name__)
 
 STRICT_ARBITRATION_MODES = frozenset({"real", "paper", "sim_real_guard"})
-# NEEDS HUMAN REVIEW (ADR-0064 Proposed). Stale equity blocks mode sim too.
+# ADR-0064 follow-up Accepted (research team 2026-10-29 22:08, sha 991138fd):
+# stale equity blocks mode sim too. Fail-closed.
 # Research team decision (relayed by Steve 2026-10-29).
 _MODES_REQUIRING_EQUITY_SNAPSHOT = frozenset({"real", "paper", "sim_real_guard", "sim"})
 

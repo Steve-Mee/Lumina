@@ -33,7 +33,7 @@ def test_order_to_place_command_maps_core_fields() -> None:
 
 def test_order_to_place_command_maps_atm_template() -> None:
     order = Order(symbol="MES", side="BUY", quantity=1, order_type="MARKET", stop_loss=4950.0)
-    order.metadata["atm_strategy_template"] = "LuminaProtectiveMES"
+    order.metadata["atm_strategy_template"] = "LuminaProtective"
     order.metadata["stop_price"] = 4950.0
     cmd = mapper.order_to_place_command(
         order,
@@ -41,7 +41,7 @@ def test_order_to_place_command_maps_atm_template() -> None:
         correlation_id="corr-atm",
         mode_context="sim_real_guard",
     )
-    assert cmd.atm_strategy_template == "LuminaProtectiveMES"
+    assert cmd.atm_strategy_template == "LuminaProtective"
     assert cmd.instrument == "MES"
 
 

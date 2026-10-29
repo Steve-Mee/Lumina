@@ -2,6 +2,8 @@
 
 Research team decision (relayed by Steve 2026-10-29): option A default,
 option C fallback, fail-closed flatten when neither confirms.
+Follow-up (research team 2026-10-29 22:08, sha 991138fd): ATM confirm has a
+hard timeout; fill-before-ATM flattens if ATM is not confirmed in that window.
 """
 
 from __future__ import annotations
@@ -18,10 +20,11 @@ from lumina_core.research_bridge.protective_attach import (
     COMPANION_UNCONFIRMED,
     PATH_ATM,
     PATH_COMPANION,
-    atm_confirmed,
+    atm_confirmed_on_time,
     companion_confirmed,
     emergency_flatten_order,
     from_engine as attach_config_from_engine,
+    live_fill_without_confirmed_atm,
 )
 from lumina_core.research_bridge.protective_stop import companion_stop_order
 from lumina_core.research_bridge.sim_gate import RESEARCH_BRIDGE_SOURCE
@@ -50,14 +53,17 @@ class SimProtectedMixin:
     ) -> OrderResult | None:
         path = str(getattr(plan, "path", PATH_COMPANION))
         timeout_ms = int(getattr(plan, "companion_confirm_timeout_ms", 5000))
+        atm_timeout_ms = int(getattr(plan, "atm_confirm_timeout_ms", timeout_ms))
         if path == PATH_ATM:
+            started = self._clock()
             result = self._submit_entry(order)
-            if result is not None and atm_confirmed(result):
+            now = self._clock()
+            if atm_confirmed_on_time(result, started=started, now=now, timeout_ms=atm_timeout_ms) is True:
                 raw = result.raw if isinstance(result.raw, dict) else {}
                 raw["protective_attach"] = ATTACH_ATM
                 result.raw = raw
                 return result
-            live = bool(result is not None and result.accepted is True)
+            live = bool(result is not None and result.accepted is True) or live_fill_without_confirmed_atm(result) is True
             fallback_cfg = self._protective if self._protective is not None else attach_config_from_engine(self._engine)
             allow_c = fallback_cfg.fallback_companion is True
             if live is True:
@@ -69,8 +75,8 @@ class SimProtectedMixin:
                     COMPANION_UNCONFIRMED if allow_c is True else ATM_UNCONFIRMED,
                 )
                 return None
-            # ATM rejected: do not submit a second MARKET. A silent NT fill
-            # plus a retry would double the position. Fail-closed.
+            # ATM rejected with no evidence of a fill: do not submit a second
+            # MARKET. A silent NT fill plus a retry would double. Fail-closed.
             self._refuse(ATM_UNAVAILABLE, {"reason": str(result.message if result else ATM_UNAVAILABLE)})
             return result
         result = self._submit_entry(order)

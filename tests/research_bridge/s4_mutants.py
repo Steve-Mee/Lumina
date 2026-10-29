@@ -368,8 +368,17 @@ _EQUIVALENT: dict[str, str] = {
     "alarm_executor.py:kw-bool#37": (
         "escalate is deleted unused in _execute; True vs False is a no-op."
     ),
+    "alarm_executor.py:kw-bool#48": (
+        "escalate is deleted unused in _execute; True vs False is a no-op."
+    ),
     "alarm_executor.py:kw-bool#73": (
         "escalate is deleted unused in _execute; True vs False is a no-op."
+    ),
+    "alarm_executor.py:return-none#35": (
+        "qty==0 returns before flatten; the unused return value is never read."
+    ),
+    "protective_attach.py:continue-to-pass#7": (
+        "Empty mapping keys are stripped to ''; named account/connection lookup never matches them."
     ),
     "sim_protected.py:raise-to-pass#0": (
         "Mixin _refuse is a type-stub; SimRuntime overrides it, so the raise is unreachable."

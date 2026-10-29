@@ -75,7 +75,7 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0061 | SIM account whitelist + HMAC LIVE_RELEASE (S1; live path stays closed) | Accepted | 2026-10-29 | [0061-sim-whitelist-and-live-release.md](./0061-sim-whitelist-and-live-release.md) |
 | 0062 | Fill SSOT: ADR-0055 stamp, monitor observe, per-root calibration (S2) | Accepted | 2026-10-29 | [0062-fill-ssot-and-cost-calibration.md](./0062-fill-ssot-and-cost-calibration.md) |
 | 0063 | S2.5 NT-PIT tape + S3 gated SIM orders (MES/MNQ) | Accepted | 2026-10-29 | [0063-sim-orders-gated.md](./0063-sim-orders-gated.md) |
-| 0064 | S4 SIM-entry hardening (continuity meter, D9≡6b, protective stops). **Proposed — needs human review** | Proposed | 2026-10-29 | [0064-s4-sim-entry-hardening.md](./0064-s4-sim-entry-hardening.md) |
+| 0064 | S4 SIM-entry hardening (continuity meter, D9≡6b, generic ATR ATM, stale equity, caps-bypass closed, 5s flatten-grace, 30s prolonged-disconnect). Risk Core apply of disconnect flatten **needs human review** | Accepted | 2026-10-29 | [0064-s4-sim-entry-hardening.md](./0064-s4-sim-entry-hardening.md) |
 
 ## Legacy notitie
 

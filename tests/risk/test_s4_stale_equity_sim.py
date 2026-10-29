@@ -1,4 +1,4 @@
-"""Stale equity blocks new orders in mode sim (ADR-0064 Proposed)."""
+"""Stale equity blocks new orders in mode sim (ADR-0064 follow-up Accepted)."""
 
 from __future__ import annotations
 

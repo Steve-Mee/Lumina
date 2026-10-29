@@ -60,7 +60,9 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
     trading_cfg = config.get("trading", {}) if isinstance(config.get("trading"), dict) else {}
 
     if is_sim:
-        logger.info("[MODE=SIM] RiskLimits: all hard caps bypassed – MAXIMAL LEARNING MODE")
+        # ADR-0064 follow-up: caps-bypass not approved. Numeric cap values are
+        # still loaded from policy (propose-only: this log does not change them).
+        logger.info("[MODE=SIM] RiskLimits: hard Brain caps stay (caps-bypass not approved)")
     else:
         logger.info("[MODE=%s] RiskLimits: capital preservation caps ENFORCED", global_mode.upper())
 

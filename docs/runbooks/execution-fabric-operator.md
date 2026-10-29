@@ -239,7 +239,7 @@ On **Sim101**, capital preservation is **not** the learning bottleneck: the orga
 ## Disconnect matrix (operator view)
 
 1. **NT start / Repair / Test connection** → watchdog stays **disarmed** until AuthHello **and** a live heartbeat. No cancel, no flatten, no `Name='Close'` orders. Audit: `watchdog_idle_unarmed`.
-2. **Heartbeat timeout after live heartbeats** → cancel non-protected (never NT `Close` / flatten orders) → SAFE_MODE → after `FlattenGraceMs` flatten **only instruments this process placed**. Leftover positions from earlier days are untouched. Never `Account.FlattenEverything()`.
+2. **Heartbeat timeout after live heartbeats** → cancel non-protected (never NT `Close` / flatten orders) → SAFE_MODE → after hard `FlattenGraceMs` **5s** flatten **only instruments this process placed**. Leftover positions from earlier days are untouched. Never `Account.FlattenEverything()`.
 3. **Stream disconnect** → cancel policy only if the watchdog is armed (a probe AuthHello that disconnects does nothing to the book).
 4. **Reconnect** → Auth + **StateSync** snapshot; Brain reconciles `state_hash`. Heartbeats re-arm.
 
@@ -294,7 +294,7 @@ Recommended `fabric.json` (created by onboarding / `install_fabric_token.ps1`):
   "AccountName": "Sim101",
   "GatewayMode": "sim",
   "HeartbeatTimeoutMs": 5000,
-  "FlattenGraceMs": 30000,
+  "FlattenGraceMs": 5000,
   "FlattenOnTimeout": true,
   "BindLocalhostOnly": true,
   "MaxPositionSize": 2,

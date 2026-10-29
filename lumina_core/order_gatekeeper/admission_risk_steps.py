@@ -19,7 +19,8 @@ from lumina_core.risk.schemas import OrderIntent, OrderIntentMetadata
 from lumina_core.engine.errors import ErrorSeverity, LuminaError
 import lumina_core.order_gatekeeper as _og
 
-# ADR-0064 Proposed: desk sim.risk_enforced=True is Brain caps only
+# ADR-0064 follow-up Accepted for Brain caps (bypass not approved):
+# desk sim.risk_enforced=True is Brain caps only
 # (daily_loss_cap, streak, open-risk). VaR/ES and MC stay advisory in
 # mode sim, matching RiskAllocatorMixin._var_es_enforcement_enabled /
 # _mc_enforcement_enabled (only sim_real_guard and real). Do not key

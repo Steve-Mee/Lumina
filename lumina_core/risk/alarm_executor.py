@@ -7,7 +7,7 @@ Deweight/suspend → 50% of that strategy (reduce_only). Disable/retired/critica
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,6 +35,7 @@ from lumina_core.research_bridge.binding_policy import (
 )
 from lumina_core.research_bridge.jsonl import append_shadow_record
 from lumina_core.research_bridge.sim_gate import S3_INSTRUMENTS
+from lumina_core.risk.prolonged_disconnect import should_flatten_unprotected
 
 logger = get_logger("lumina.risk.alarm_executor")
 
@@ -96,52 +97,89 @@ class AlarmExecutor:
         )
 
     def flatten_on_prolonged_disconnect(self, *, instrument: str = "MES") -> None:
-        """NEEDS HUMAN REVIEW (ADR-0064 Proposed). Broker is SoT after reconcile.
+        """Flatten open qty after a prolonged disconnect. Broker is SoT after reconcile.
 
-        Research team decision (relayed by Steve 2026-10-29): prolonged disconnect
-        → flatten via Risk Core on reconnect.
+        Research team decision (relayed by Steve 2026-10-29). Follow-up 23:09
+        sha cc904288 Accepted the policy. Callers that already know the
+        disconnect was prolonged use this action. Threshold gating lives on
+        maybe_flatten_after_disconnect (Risk Core proposal).
         """
         self.reconcile_on_reconnect()
-        sink = self.alert_sink if self.alert_sink is not None else LoggingAlertSink()
+        for strategy_id, qty in self._open_strategy_book().items():
+            self._flatten_one_prolonged(strategy_id=str(strategy_id), qty=int(qty), instrument=instrument)
+
+    def maybe_flatten_after_disconnect(
+        self,
+        *,
+        instrument: str = "MES",
+        disconnected_ms: int,
+        confirmed_server_stop_by_strategy: Mapping[str, bool] | None = None,
+    ) -> int:
+        """PROPOSAL — ADR-0064 item 8 Accepted (research team 23:09 sha cc904288).
+
+        Risk Core apply needs signed human review. Live stays closed.
+        Flatten only strategies with no confirmed server-side stop after the
+        pre-registered 30000 ms disconnect. Unknown stop status fail-closes.
+        """
+        stops: Mapping[str, bool] = (
+            confirmed_server_stop_by_strategy if isinstance(confirmed_server_stop_by_strategy, Mapping) else {}
+        )
+        self.reconcile_on_reconnect()
+        before = int(self.prolonged_flattens)
+        for strategy_id, qty in self._open_strategy_book().items():
+            key = str(strategy_id)
+            has_stop = stops.get(key)
+            if should_flatten_unprotected(
+                disconnected_ms=disconnected_ms,
+                has_confirmed_server_stop=has_stop if isinstance(has_stop, bool) else None,
+            ) is not True:
+                continue
+            self._flatten_one_prolonged(strategy_id=key, qty=int(qty), instrument=instrument)
+        return int(self.prolonged_flattens) - before
+
+    def _open_strategy_book(self) -> dict[str, int]:
         open_book = self.positions.open_strategy_qtys()
-        if not open_book:
-            live_qty = int(self.positions.get_live_qty())
-            if live_qty == 0:
-                return
-            open_book = {"broker_sot": live_qty}
+        if open_book:
+            return {str(key): int(qty) for key, qty in open_book.items()}
+        live_qty = int(self.positions.get_live_qty())
+        if live_qty == 0:
+            return {}
+        return {"broker_sot": live_qty}
+
+    def _flatten_one_prolonged(self, *, strategy_id: str, qty: int, instrument: str) -> None:
+        if int(qty) == 0:
+            return
+        sink = self.alert_sink if self.alert_sink is not None else LoggingAlertSink()
+        key = str(strategy_id)
+        if int(self.positions.strategy_qty(key)) == 0:
+            self.positions.set_strategy_qty(key, int(qty))
         root = str(instrument or "MES").strip().upper()
         if root not in S3_INSTRUMENTS:
             root = "MES"
-        for strategy_id, qty in open_book.items():
-            if int(qty) == 0:
-                continue
-            key = str(strategy_id)
-            if int(self.positions.strategy_qty(key)) == 0:
-                self.positions.set_strategy_qty(key, int(qty))
-            job = AlarmJob(
-                strategy_id=key,
-                stage="prolonged_disconnect",
-                instrument=root,
-                proposed_at=self.clock(),
-            )
-            self.jobs.append(job)
-            self._execute(job, now=job.proposed_at, escalate=True)
-            if job.executed is True:
-                self.prolonged_flattens += 1
-            sink.alert(
-                code="prolonged_disconnect_flatten",
-                message="prolonged disconnect: flatten via Risk Core; broker is SoT",
-                details={"strategy_id": str(strategy_id), "qty": int(qty), "instrument": root},
-            )
+        job = AlarmJob(
+            strategy_id=key,
+            stage="prolonged_disconnect",
+            instrument=root,
+            proposed_at=self.clock(),
+        )
+        self.jobs.append(job)
+        self._execute(job, now=job.proposed_at, escalate=True)
+        if job.executed is True:
+            self.prolonged_flattens += 1
+        sink.alert(
+            code="prolonged_disconnect_flatten",
+            message="prolonged disconnect: flatten via Risk Core; broker is SoT",
+            details={"strategy_id": key, "qty": int(qty), "instrument": root},
+        )
 
     def flatten_unconfirmed_protective_stop(
         self, *, instrument: str, strategy_id: str, qty: int
     ) -> None:
-        """NEEDS HUMAN REVIEW (ADR-0064 Proposed).
+        """Accepted (ADR-0064 item 9 / 22:08). Companion STOP unconfirmed → flatten.
 
         Research team decision (relayed by Steve 2026-10-29): companion STOP
         (option C) that is not confirmed within the hard timeout → Risk Core
-        flatten. Residual: MARKET may already be filled.
+        flatten. Residual: MARKET may already be filled (fill-before-ATM race).
         """
         sink = self.alert_sink if self.alert_sink is not None else LoggingAlertSink()
         key = str(strategy_id or "").strip() or "broker_sot"

@@ -15,17 +15,25 @@ from lumina_core.research_bridge.binding_policy import reduce_qty
 from lumina_core.research_bridge.fill_index import FillIndex
 from lumina_core.research_bridge.market_health import healthy_closed_bar
 from lumina_core.research_bridge.protective_attach import (
+    ATM_STOP_ATR_MULTIPLE,
+    ATM_STOP_ATR_PERIOD,
+    DEFAULT_ATM_CONFIRM_TIMEOUT_MS,
     DEFAULT_COMPANION_CONFIRM_TIMEOUT_MS,
+    FILL_BEFORE_ATM,
+    GENERIC_ATM_INSTRUMENTS,
+    GENERIC_ATM_TEMPLATE_NAME,
     PATH_ATM,
     PATH_COMPANION,
     PATH_REFUSED,
     PROTECTIVE_REFUSED,
     ProtectiveAttachConfig,
     atm_confirmed,
+    atm_confirmed_on_time,
     companion_confirmed,
     emergency_flatten_order,
     from_engine,
     from_mapping,
+    live_fill_without_confirmed_atm,
     plan_protective_attach,
     resolve_atm_template,
 )
@@ -124,11 +132,15 @@ def test_resolve_template_prefers_connection_then_account() -> None:
     plan = plan_protective_attach(cfg)
     assert plan.path == PATH_COMPANION
     cfg2 = from_mapping(
-        {"atm": {"templates_by_account": {"Sim101": "LuminaProtectiveMES"}}},
+        {"atm": {"templates_by_account": {"Sim101": "LuminaProtective"}}},
         account="Sim101",
     )
     assert plan_protective_attach(cfg2).path == PATH_ATM
-    assert plan_protective_attach(cfg2).atm_template == "LuminaProtectiveMES"
+    assert plan_protective_attach(cfg2).atm_template == GENERIC_ATM_TEMPLATE_NAME
+    assert GENERIC_ATM_TEMPLATE_NAME == "LuminaProtective"
+    assert GENERIC_ATM_INSTRUMENTS == ("ES", "NQ", "MES", "MNQ")
+    assert ATM_STOP_ATR_PERIOD == 14
+    assert ATM_STOP_ATR_MULTIPLE == 1.5
     refused = from_mapping({"atm": {"fallback_companion": False}}, account="Sim101")
     plan_r = plan_protective_attach(refused)
     assert plan_r.path == PATH_REFUSED
@@ -145,7 +157,7 @@ def test_resolve_template_prefers_connection_then_account() -> None:
 def test_atm_path_does_not_submit_companion(tmp_path: Path) -> None:
     submitter = RecordingSubmitter()
     protective = ProtectiveAttachConfig(
-        templates_by_account=(("Sim101", "LuminaProtectiveMES"),),
+        templates_by_account=(("Sim101", "LuminaProtective"),),
         account="Sim101",
     )
     runtime = _runtime(tmp_path, submitter, protective=protective)
@@ -154,7 +166,7 @@ def test_atm_path_does_not_submit_companion(tmp_path: Path) -> None:
     assert result.accepted is True
     assert atm_confirmed(result) is True
     assert len(submitter.orders) == 1
-    assert submitter.orders[0].metadata.get("atm_strategy_template") == "LuminaProtectiveMES"
+    assert submitter.orders[0].metadata.get("atm_strategy_template") == "LuminaProtective"
     assert len(runtime._fill_index) == 1
     bind_sim_gate(None)
 
@@ -164,7 +176,7 @@ def test_atm_path_does_not_submit_companion(tmp_path: Path) -> None:
 def test_atm_reject_does_not_retry_entry(tmp_path: Path) -> None:
     submitter = _RejectAtm()
     protective = ProtectiveAttachConfig(
-        templates_by_account=(("Sim101", "LuminaProtectiveMES"),),
+        templates_by_account=(("Sim101", "LuminaProtective"),),
         account="Sim101",
         fallback_companion=True,
     )
@@ -183,7 +195,7 @@ def test_atm_reject_does_not_retry_entry(tmp_path: Path) -> None:
 def test_atm_live_unconfirmed_attaches_companion(tmp_path: Path) -> None:
     submitter = _AcceptAtmUnconfirmed()
     protective = ProtectiveAttachConfig(
-        templates_by_account=(("Sim101", "LuminaProtectiveMES"),),
+        templates_by_account=(("Sim101", "LuminaProtective"),),
         account="Sim101",
         fallback_companion=True,
     )
@@ -202,7 +214,7 @@ def test_atm_live_unconfirmed_attaches_companion(tmp_path: Path) -> None:
 def test_atm_live_unconfirmed_without_fallback_flattens(tmp_path: Path) -> None:
     submitter = _AcceptAtmUnconfirmed()
     protective = ProtectiveAttachConfig(
-        templates_by_account=(("Sim101", "LuminaProtectiveMES"),),
+        templates_by_account=(("Sim101", "LuminaProtective"),),
         account="Sim101",
         fallback_companion=False,
     )
@@ -220,7 +232,7 @@ def test_atm_live_unconfirmed_without_fallback_flattens(tmp_path: Path) -> None:
 def test_atm_reject_without_fallback_refuses(tmp_path: Path) -> None:
     submitter = _RejectAtm()
     protective = ProtectiveAttachConfig(
-        templates_by_account=(("Sim101", "LuminaProtectiveMES"),),
+        templates_by_account=(("Sim101", "LuminaProtective"),),
         account="Sim101",
         fallback_companion=False,
     )
@@ -290,7 +302,7 @@ def test_empty_template_is_companion_fallback() -> None:
             config=SimpleNamespace(
                 ninjatrader={
                     "atm": {
-                        "templates_by_account": {"Sim101": "LuminaProtectiveMES"},
+                        "templates_by_account": {"Sim101": "LuminaProtective"},
                         "fallback_companion": True,
                     }
                 }
@@ -311,3 +323,162 @@ def test_no_template_no_fallback_refuses_before_submit(tmp_path: Path) -> None:
     assert submitter.orders == []
     assert len(runtime._fill_index) == 0
     bind_sim_gate(None)
+
+
+@pytest.mark.unit
+def test_one_generic_atr_template_for_four_markets() -> None:
+    cfg = from_mapping(
+        {"atm": {"default_template": GENERIC_ATM_TEMPLATE_NAME, "fallback_companion": True}},
+        account="Sim101",
+    )
+    plan = plan_protective_attach(cfg)
+    assert plan.path == PATH_ATM
+    assert plan.atm_template == GENERIC_ATM_TEMPLATE_NAME
+    assert plan.atm_confirm_timeout_ms == DEFAULT_ATM_CONFIRM_TIMEOUT_MS
+    assert "fill" in plan.residual_risk.lower() or "StartAtmStrategy" in plan.residual_risk
+    for instrument in GENERIC_ATM_INSTRUMENTS:
+        tagged = ProtectiveAttachConfig(
+            default_template=GENERIC_ATM_TEMPLATE_NAME,
+            account="Sim101",
+        )
+        assert plan_protective_attach(tagged).atm_template == GENERIC_ATM_TEMPLATE_NAME
+        assert instrument in GENERIC_ATM_INSTRUMENTS
+
+
+class _FillBeforeAtm(RecordingSubmitter):
+    def submit_order(self, order: Order) -> OrderResult:
+        meta = order.metadata if isinstance(order.metadata, dict) else {}
+        if str(meta.get("atm_strategy_template") or "").strip() and str(order.order_type).upper() != "STOP":
+            self.orders.append(order)
+            return OrderResult(
+                accepted=True,
+                order_id="fill-before-atm",
+                status="filled",
+                filled_qty=int(order.quantity),
+                message="ok",
+                raw={},
+            )
+        return super().submit_order(order)
+
+
+class _FillBeforeAtmHiddenReject(RecordingSubmitter):
+    def submit_order(self, order: Order) -> OrderResult:
+        meta = order.metadata if isinstance(order.metadata, dict) else {}
+        if str(meta.get("atm_strategy_template") or "").strip() and str(order.order_type).upper() != "STOP":
+            self.orders.append(order)
+            return OrderResult(
+                accepted=False,
+                order_id="nt-filled",
+                status="rejected",
+                filled_qty=int(order.quantity),
+                message=FILL_BEFORE_ATM,
+                raw={"rejection_reason": FILL_BEFORE_ATM},
+            )
+        return super().submit_order(order)
+
+
+class _SlowAtm(RecordingSubmitter):
+    def __init__(self, clock: _JumpClock) -> None:
+        super().__init__()
+        self.clock = clock
+
+    def submit_order(self, order: Order) -> OrderResult:
+        meta = order.metadata if isinstance(order.metadata, dict) else {}
+        if str(meta.get("atm_strategy_template") or "").strip() and str(order.order_type).upper() != "STOP":
+            self.clock.jump_ms(6000)
+        return super().submit_order(order)
+
+
+@pytest.mark.unit
+@pytest.mark.safety_gate
+def test_fill_before_atm_without_fallback_flattens(tmp_path: Path) -> None:
+    submitter = _FillBeforeAtm()
+    protective = ProtectiveAttachConfig(
+        templates_by_account=(("Sim101", GENERIC_ATM_TEMPLATE_NAME),),
+        account="Sim101",
+        fallback_companion=False,
+        atm_confirm_timeout_ms=5000,
+    )
+    runtime = _runtime(tmp_path, submitter, protective=protective)
+    result = runtime.on_candidate(sealed_candidate(runtime._authority, instrument="MES"))
+    assert result is None
+    assert len(runtime._fill_index) == 0
+    reasons = [str(o.metadata.get("reason") or "") for o in submitter.orders]
+    assert "unconfirmed_protective_stop" in reasons
+    bind_sim_gate(None)
+
+
+@pytest.mark.unit
+@pytest.mark.safety_gate
+def test_fill_before_atm_keeps_companion_fallback(tmp_path: Path) -> None:
+    submitter = _FillBeforeAtm()
+    protective = ProtectiveAttachConfig(
+        templates_by_account=(("Sim101", GENERIC_ATM_TEMPLATE_NAME),),
+        account="Sim101",
+        fallback_companion=True,
+        atm_confirm_timeout_ms=5000,
+    )
+    runtime = _runtime(tmp_path, submitter, protective=protective)
+    result = runtime.on_candidate(sealed_candidate(runtime._authority, instrument="MNQ"))
+    assert result is not None
+    assert result.accepted is True
+    assert any(str(o.order_type).upper() == "STOP" for o in submitter.orders)
+    bind_sim_gate(None)
+
+
+@pytest.mark.unit
+@pytest.mark.safety_gate
+def test_fill_before_atm_hidden_reject_flattens(tmp_path: Path) -> None:
+    submitter = _FillBeforeAtmHiddenReject()
+    protective = ProtectiveAttachConfig(
+        templates_by_account=(("Sim101", GENERIC_ATM_TEMPLATE_NAME),),
+        account="Sim101",
+        fallback_companion=False,
+    )
+    runtime = _runtime(tmp_path, submitter, protective=protective)
+    result = runtime.on_candidate(sealed_candidate(runtime._authority, instrument="MES"))
+    assert result is None
+    reasons = [str(o.metadata.get("reason") or "") for o in submitter.orders]
+    assert "unconfirmed_protective_stop" in reasons
+    bind_sim_gate(None)
+
+
+@pytest.mark.unit
+@pytest.mark.safety_gate
+def test_atm_confirm_timeout_flattens(tmp_path: Path) -> None:
+    clock = _JumpClock()
+    submitter = _SlowAtm(clock)
+    protective = ProtectiveAttachConfig(
+        templates_by_account=(("Sim101", GENERIC_ATM_TEMPLATE_NAME),),
+        account="Sim101",
+        fallback_companion=False,
+        atm_confirm_timeout_ms=5000,
+    )
+    runtime = _runtime(tmp_path, submitter, protective=protective, clock=clock)
+    result = runtime.on_candidate(sealed_candidate(runtime._authority, instrument="MNQ"))
+    assert result is None
+    reasons = [str(o.metadata.get("reason") or "") for o in submitter.orders]
+    assert "unconfirmed_protective_stop" in reasons
+    bind_sim_gate(None)
+
+
+@pytest.mark.unit
+def test_atm_confirmed_on_time_and_live_fill_helpers() -> None:
+    started = T0
+    tagged = OrderResult(accepted=True, order_id="a", status="accepted", raw={"protective_attach": "atm"})
+    assert atm_confirmed_on_time(tagged, started=started, now=started + timedelta(milliseconds=5000), timeout_ms=5000) is True
+    assert atm_confirmed_on_time(tagged, started=started, now=started + timedelta(milliseconds=5001), timeout_ms=5000) is False
+    empty = OrderResult(accepted=True, order_id="f", status="filled", filled_qty=1, raw={})
+    assert live_fill_without_confirmed_atm(empty) is True
+    hidden = OrderResult(
+        accepted=False,
+        order_id="h",
+        status="rejected",
+        filled_qty=1,
+        message=FILL_BEFORE_ATM,
+        raw={"rejection_reason": FILL_BEFORE_ATM},
+    )
+    assert live_fill_without_confirmed_atm(hidden) is True
+    assert live_fill_without_confirmed_atm(tagged) is False
+    zero = from_mapping({"atm": {"atm_confirm_timeout_ms": 0, "companion_confirm_timeout_ms": 5000}})
+    assert zero.atm_confirm_timeout_ms == 5000

@@ -205,15 +205,9 @@ namespace Lumina.Execution.Fabric.Grpc
                 _config.MaxOrdersPerMinute = request.MaxOrdersPerMinute;
             if (request.HeartbeatTimeoutMs > 0)
                 _config.HeartbeatTimeoutMs = request.HeartbeatTimeoutMs;
-            if (request.FlattenGraceMs > 0)
-            {
-                // Research team decision (relayed by Steve 2026-10-29): flatten-grace
-                // backup 30-60s. net48 has no Math.Clamp.
-                var grace = request.FlattenGraceMs;
-                if (grace < 30000) grace = 30000;
-                if (grace > 60000) grace = 60000;
-                _config.FlattenGraceMs = grace;
-            }
+            // ADR-0064 Accepted (research team 23:09 sha cc904288): hard 5s,
+            // no open-ended grace. Pin even when the Brain sends 0 or 30–60s.
+            _config.FlattenGraceMs = FabricConfig.PinFlattenGraceMs(request.FlattenGraceMs);
             _config.FlattenOnTimeout = request.FlattenOnTimeout;
             if (request.MaxPositionByInstrument != null && request.MaxPositionByInstrument.Count > 0)
             {
