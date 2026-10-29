@@ -13,6 +13,8 @@ from lumina_research.cycles.data import LoadedTape
 from lumina_research.cycles.holdout import (
     EVAL_PURPOSES,
     LOCKED_PURPOSES,
+    P2_HOLDOUT_START_LEGACY_NS,
+    P2_HOLDOUT_START_LEGACY_UTC,
     P2_HOLDOUT_START_NS,
     P2_HOLDOUT_START_UTC,
     HoldoutLocked,
@@ -21,6 +23,8 @@ from lumina_research.cycles.holdout import (
 from lumina_research.validation.audit import utc_now_iso
 
 SEAL_NAME = "phase5_p2_holdout_seal.json"
+LEGACY_SEAL_NAME = "phase5_p2_holdout_seal_legacy_2026-01-29T00Z.json"
+LEGACY_SEAL_SHA256 = "6e8fa88e3aad048271cb52a63f76cbf4ed8a9261b85b85f03f631b872cf2e51b"
 ZIP_SHA256: Mapping[str, str] = {
     "MES": "c5c094a199502fde9cc79f535441995ba7e326811e4e7e01bf1833a25c9c7b2e",
     "MNQ": "a1cefabd46c4109a93bb219df45d134f9e3e16ffd3abc8250242c88a3ee5d6e8",
@@ -48,7 +52,7 @@ def seal_holdout(
     report_dir: Path,
     require_known_files: bool = True,
 ) -> dict[str, object]:
-    """Lock 2026-01-29 onward. Call before any simulate() or gate calibration."""
+    """Lock the Globex session boundary onward. Call before any simulate() or gate."""
     report_dir.mkdir(parents=True, exist_ok=True)
     instruments: dict[str, object] = {}
     for tape in tapes:
@@ -83,16 +87,27 @@ def seal_holdout(
         }
         if train[-1].ts_ns >= pinned or holdout[0].ts_ns < pinned:
             raise HoldoutLocked(f"{root} holdout split leaked across {P2_HOLDOUT_START_UTC.isoformat()}")
+    _preserve_legacy_seal(report_dir)
     body: dict[str, object] = {
         "holdout_start_utc": P2_HOLDOUT_START_UTC.isoformat(),
         "holdout_start_ns": P2_HOLDOUT_START_NS,
+        "previous_seals": [
+            {
+                "holdout_start_utc": P2_HOLDOUT_START_LEGACY_UTC.isoformat(),
+                "holdout_start_ns": P2_HOLDOUT_START_LEGACY_NS,
+                "seal_sha256": LEGACY_SEAL_SHA256,
+                "file": LEGACY_SEAL_NAME,
+                "note": "P2 first cycle 2026-10-29; holdout never opened for ranking or calibration",
+            }
+        ],
         "holdout_months": 9,
         "locked_purposes": sorted(LOCKED_PURPOSES),
         "eval_purposes": sorted(EVAL_PURPOSES),
         "sealed_at": utc_now_iso(),
         "note": (
-            "Holdout is hash-sealed before template ranking, parameter tuning, "
-            "and Validation Gate calibration. One survivor evaluation at the end."
+            "Holdout resealed at the Globex session boundary 2026-01-28T23:00:00Z. "
+            "The previous 2026-01-29T00:00:00Z seal is recorded and the window stays unopened "
+            "for selection, tuning, and gate calibration."
         ),
         "instruments": instruments,
     }
@@ -114,8 +129,21 @@ def load_seal(report_dir: Path) -> dict[str, object]:
         raise HoldoutLocked("holdout seal is not an object")
     start: object = typed.get("holdout_start_ns")
     if start != P2_HOLDOUT_START_NS:
-        raise HoldoutLocked("holdout seal drifted from 2026-01-29")
+        raise HoldoutLocked("holdout seal drifted from 2026-01-28T23:00:00Z")
     return typed
+
+
+def _preserve_legacy_seal(report_dir: Path) -> None:
+    current = report_dir / SEAL_NAME
+    legacy = report_dir / LEGACY_SEAL_NAME
+    if legacy.is_file() or not current.is_file():
+        return
+    payload: object = json.loads(current.read_text(encoding="utf-8"))
+    typed = as_object_dict(payload)
+    if typed is None:
+        return
+    if typed.get("holdout_start_ns") == P2_HOLDOUT_START_LEGACY_NS:
+        legacy.write_text(current.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 def _iso(ts_ns: int) -> str:

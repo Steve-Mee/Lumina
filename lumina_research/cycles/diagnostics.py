@@ -1,0 +1,109 @@
+"""Per-config research diagnostics (researchers D14). Not a second gate."""
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+from typing import Sequence
+
+from lumina_research.cycles.execution import ClosedTrade
+from lumina_research.cycles.geometry import Geometry
+from lumina_research.validation.cost_model import CostedSeries
+from lumina_research.validation.metrics import annualized_sharpe
+from lumina_research.validation.types import RegimeSnapshot
+
+
+@dataclass(frozen=True, slots=True)
+class ConfigDiagnostics:
+    n_trades: int
+    hitrate: float
+    break_even_win_rate: float
+    hitrate_minus_be: float
+    gross_pnl: float
+    net_pnl: float
+    commission_usd: float
+    half_spread_usd: float
+    slippage_usd: float
+    impact_usd: float
+    is_sharpes: tuple[float, ...]
+    oos_sharpes: tuple[float, ...]
+    regime_vol_high: float
+    regime_vol_low: float
+    regime_trend_up: float
+    regime_trend_down: float
+    n_trials: int
+    n_days: int
+    pct_positive_oos: float
+    bootstrap_sharpes: tuple[float, ...] = ()
+
+
+def empty_diagnostics(*, be: float = math.nan, n_trials: int = 0, n_days: int = 0) -> ConfigDiagnostics:
+    return ConfigDiagnostics(
+        n_trades=0,
+        hitrate=math.nan,
+        break_even_win_rate=be,
+        hitrate_minus_be=math.nan,
+        gross_pnl=0.0,
+        net_pnl=0.0,
+        commission_usd=0.0,
+        half_spread_usd=0.0,
+        slippage_usd=0.0,
+        impact_usd=0.0,
+        is_sharpes=(),
+        oos_sharpes=(),
+        regime_vol_high=math.nan,
+        regime_vol_low=math.nan,
+        regime_trend_up=math.nan,
+        regime_trend_down=math.nan,
+        n_trials=n_trials,
+        n_days=n_days,
+        pct_positive_oos=math.nan,
+        bootstrap_sharpes=(),
+    )
+
+
+def from_trades(
+    *,
+    trades: Sequence[ClosedTrade],
+    geometry: Geometry,
+    costed: CostedSeries,
+    is_sharpes: Sequence[float],
+    oos_sharpes: Sequence[float],
+    regimes: RegimeSnapshot,
+    n_trials: int,
+    n_days: int,
+    pct_positive_oos: float,
+    bootstrap_sharpes: Sequence[float] = (),
+) -> ConfigDiagnostics:
+    n_trades = len(trades)
+    wins = sum(1 for item in trades if item.pnl_ticks > 0.0)
+    hitrate = math.nan if n_trades == 0 else wins / float(n_trades)
+    be = geometry.break_even_win_rate
+    gross = float(sum(costed.gross_returns))
+    net = float(sum(costed.net_returns))
+    return ConfigDiagnostics(
+        n_trades=n_trades,
+        hitrate=hitrate,
+        break_even_win_rate=be,
+        hitrate_minus_be=hitrate - be if math.isfinite(hitrate) else math.nan,
+        gross_pnl=gross,
+        net_pnl=net,
+        commission_usd=float(sum(costed.commission_usd)),
+        half_spread_usd=float(sum(costed.half_spread_usd)),
+        slippage_usd=float(sum(costed.slippage_usd)),
+        impact_usd=float(sum(costed.impact_usd)),
+        is_sharpes=tuple(float(item) for item in is_sharpes),
+        oos_sharpes=tuple(float(item) for item in oos_sharpes),
+        regime_vol_high=regimes.vol_high_sharpe,
+        regime_vol_low=regimes.vol_low_sharpe,
+        regime_trend_up=regimes.trend_up_sharpe,
+        regime_trend_down=regimes.trend_down_sharpe,
+        n_trials=int(n_trials),
+        n_days=int(n_days),
+        pct_positive_oos=float(pct_positive_oos),
+        bootstrap_sharpes=tuple(float(item) for item in bootstrap_sharpes),
+    )
+
+
+def window_sharpe(returns: Sequence[float]) -> float:
+    return float(annualized_sharpe(returns))

@@ -150,7 +150,7 @@ def test_p2_holdout_is_pinned_before_selection() -> None:
     assert holdout_start_ns(bars, pinned_start_ns=P2_HOLDOUT_START_NS) == P2_HOLDOUT_START_NS
     small = pin_tape(LoadedTape(instrument="MES", bar_size="1m", path=Path("x.csv"), bars=bars[:400]))
     assert small.holdout_start_ns is None
-    assert P2_HOLDOUT_START_UTC.isoformat().startswith("2026-01-29")
+    assert P2_HOLDOUT_START_UTC.isoformat().startswith("2026-01-28T23:00:00")
 
 
 @pytest.mark.unit
@@ -225,7 +225,7 @@ def test_walk_forward_sizes_are_six_to_eight() -> None:
 
 @pytest.mark.unit
 def test_daily_resample_and_session_labels() -> None:
-    start = datetime(2026, 3, 2, 14, 30, tzinfo=UTC)
+    start = datetime(2026, 3, 2, 14, 31, tzinfo=UTC)
     bars = _minutes(start, 5, px=5000.0)
     labels = annotate(bars)
     assert len(unique_sessions(labels.session_dates)) >= 1

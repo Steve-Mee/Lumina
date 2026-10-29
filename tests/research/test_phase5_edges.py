@@ -801,7 +801,7 @@ def test_catalog_runtime_and_geometry_edges(monkeypatch: pytest.MonkeyPatch) -> 
     with pytest.raises(RuntimeError, match="incomplete"):
         catalog_mod._require_rationale(short)
     with pytest.raises(GeometryRefused, match="stop"):
-        require_geometry(root="ES", target_ticks=8, stop_ticks=1)
+        require_geometry(root="ES", target_ticks=8, stop_ticks=0)
     original_vx = catalog_mod._volatility_expansion
     monkeypatch.setattr(catalog_mod, "_volatility_expansion", lambda: ())
     with pytest.raises(RuntimeError, match="must contain"):
@@ -909,7 +909,7 @@ def test_data_malformed_fallback_and_timestamps(tmp_path: Path) -> None:
             mode="fade",
         )
     with pytest.raises(StrategyRefused, match="align"):
-        strategies_mod._tape(_bars(n=241), (0.0,), "MES")
+        strategies_mod.mark_to_market_tape(_bars(n=241), (0.0,), "MES")
     bar = ResearchBar(ts_ns=1, open=10.0, high=10.5, low=9.5, close=10.0, volume=100.0)
     assert trade_through_fill(side=0.0, limit=9.6, bar=bar, average_volume=50.0) is False
     assert trade_through_fill(side=-1.0, limit=10.6, bar=bar, average_volume=50.0) is False

@@ -21,7 +21,7 @@ from lumina_research.cycles.catalog import (
     EconomicCatalogGenerator,
     catalog,
 )
-from lumina_research.cycles.cost_bands import ES_NQ_ONE_WAY, MES_MNQ_ONE_WAY, band_for, report_band
+from lumina_research.cycles.cost_bands import ES_ONE_WAY_USD, MES_ONE_WAY_USD, band_for, report_band
 from lumina_research.cycles.data import DataRefused, ResearchBar, discover_data, tape_for
 from lumina_research.cycles.first_cycle import FIRST_CYCLE_CONFIG_IDS, first_cycle_specs
 from lumina_research.cycles.fills import FillRefused, fill_probability, trade_through_fill
@@ -85,12 +85,14 @@ def test_freeform_economic_template_is_refused() -> None:
 def test_tick_floors_and_geometry_bands() -> None:
     assert floors_for("ES") == (8, 4)
     assert floors_for("MES") == (16, 8)
+    small = require_geometry(root="ES", target_ticks=7, stop_ticks=4)
+    assert small.target_ticks == 7 and small.stop_ticks == 4
     with pytest.raises(GeometryRefused):
-        require_geometry(root="ES", target_ticks=7, stop_ticks=4)
+        require_geometry(root="ES", target_ticks=0, stop_ticks=4)
     geo = require_geometry(root="MES", target_ticks=16, stop_ticks=8)
     assert 0.0 < geo.break_even_win_rate < 1.0
-    assert band_for("ES") == ES_NQ_ONE_WAY
-    assert band_for("MES") == MES_MNQ_ONE_WAY
+    assert band_for("ES") == ES_ONE_WAY_USD
+    assert band_for("MES") == MES_ONE_WAY_USD
     band = report_band("ES")
     assert band.modeled_one_way_ticks > 0.0
 
@@ -244,6 +246,11 @@ def test_first_cycle_is_twelve_mes_mnq_variants() -> None:
     assert {item.config_id for item in selected} == set(FIRST_CYCLE_CONFIG_IDS)
     assert {item.instrument for item in selected} <= {"MES", "MNQ"}
     assert {item.template_id for item in selected} == {item.template_id for item in catalog()}
+    vx = next(item for item in selected if item.config_id == "vx-mes-20")
+    assert vx.threshold == 0.75
+    assert vx.session_filter == "rth"
+    assert vx.session_end_flatten is True
+    assert vx.has_fit_step is False
 
 
 @pytest.mark.unit

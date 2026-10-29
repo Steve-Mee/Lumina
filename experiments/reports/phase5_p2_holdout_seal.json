@@ -1,11 +1,12 @@
 {
+  "bar_counts_pending_recompute": true,
   "eval_purposes": [
     "evaluation",
     "holdout_eval"
   ],
   "holdout_months": 9,
-  "holdout_start_ns": 1769644800000000000,
-  "holdout_start_utc": "2026-01-29T00:00:00+00:00",
+  "holdout_start_ns": 1769641200000000000,
+  "holdout_start_utc": "2026-01-28T23:00:00+00:00",
   "instruments": {
     "MES": {
       "bar_size": "1m",
@@ -44,7 +45,16 @@
     "template_selection",
     "tuning"
   ],
-  "note": "Holdout is hash-sealed before template ranking, parameter tuning, and Validation Gate calibration. One survivor evaluation at the end.",
-  "seal_sha256": "6e8fa88e3aad048271cb52a63f76cbf4ed8a9261b85b85f03f631b872cf2e51b",
-  "sealed_at": "2026-10-29T08:34:07.662559+00:00"
+  "note": "Holdout resealed at the Globex session boundary 2026-01-28T23:00:00Z. Instrument n_train/n_holdout remain those of the 2026-01-29T00:00:00Z seal because the NT8 CSVs are not mounted in this environment; they will be recomputed on the next real-tape reseal. The holdout stays unopened for selection, tuning, and gate calibration.",
+  "previous_seals": [
+    {
+      "file": "phase5_p2_holdout_seal_legacy_2026-01-29T00Z.json",
+      "holdout_start_ns": 1769644800000000000,
+      "holdout_start_utc": "2026-01-29T00:00:00+00:00",
+      "note": "P2 first cycle 2026-10-29; holdout never opened for ranking or calibration",
+      "seal_sha256": "6e8fa88e3aad048271cb52a63f76cbf4ed8a9261b85b85f03f631b872cf2e51b"
+    }
+  ],
+  "seal_sha256": "51d55d770aa21fb8f10062c7aab53acebe4866e526eb3419501098bd67172a99",
+  "sealed_at": "2026-10-29T10:10:00+00:00"
 }

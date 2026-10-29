@@ -4,7 +4,10 @@ Last HOLDOUT_MONTHS of calendar time is never used for template selection, first
 ranking, parameter tuning, or Validation Gate calibration. Unknown purposes refuse.
 A tape that cannot form a non-empty train AND holdout split also refuses.
 Timestamps must be strictly increasing so a shuffled or future-dummy last row cannot
-move the lock window. Real P2 NT8 tapes (>= P2_PIN_MIN_BARS) pin 2026-01-29T00:00:00Z.
+move the lock window. Real P2 NT8 tapes (>= P2_PIN_MIN_BARS) pin the Globex session boundary
+2026-01-28T23:00:00Z (18:00 ET). The previous pin 2026-01-29T00:00:00Z is
+kept as LEGACY and recorded on every new seal. The holdout is not opened
+for selection, tuning, or gate calibration.
 """
 
 from __future__ import annotations
@@ -18,8 +21,10 @@ HOLDOUT_MONTHS_MIN = 6
 HOLDOUT_MONTHS_MAX = 12
 NS_PER_DAY = 24 * 3600 * 1_000_000_000
 DAYS_PER_MONTH = 30.4375
-P2_HOLDOUT_START_UTC = datetime(2026, 1, 29, tzinfo=timezone.utc)
+P2_HOLDOUT_START_UTC = datetime(2026, 1, 28, 23, 0, tzinfo=timezone.utc)
 P2_HOLDOUT_START_NS = int(P2_HOLDOUT_START_UTC.timestamp() * 1_000_000_000)
+P2_HOLDOUT_START_LEGACY_UTC = datetime(2026, 1, 29, tzinfo=timezone.utc)
+P2_HOLDOUT_START_LEGACY_NS = int(P2_HOLDOUT_START_LEGACY_UTC.timestamp() * 1_000_000_000)
 P2_PIN_MIN_BARS = 10_000
 LOCKED_PURPOSES: frozenset[str] = frozenset(
     {"selection", "template_selection", "tuning", "calibration", "gate", "first_cycle"}

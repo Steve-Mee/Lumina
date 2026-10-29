@@ -14,11 +14,12 @@ This file is the **root SSOT**. The DNA copy at `project-dna/lumina/RESEARCH_CHA
 No strategy, signal, parameter set or evolutionary mutant may be promoted without ALL of the following:
 
 - Walk-forward analysis: minimum 5–8 non-overlapping OOS windows (rolling preferred).
-- Combinatorial Purged Cross-Validation (CPCV) with purge + embargo. Report the *distribution* of OOS results, not one lucky path.
+- Combinatorial Purged Cross-Validation (CPCV) with purge + embargo. Report the *distribution* of OOS results, not one lucky path. CPCV applies only when a real fit/search step exists. Static pre-registered rules use the walk-forward OOS distribution plus a block-bootstrap (ADR-0061).
 - Deflated Sharpe Ratio (DSR) after correcting for the number of trials performed.
 - Probability of Backtest Overfitting (PBO) < 0.25 preferred, hard reject above 0.50.
-- Realistic costs from day 1: commissions + half-spread + dynamic slippage + simple market impact.
-- Regime robustness check (at least volatility and trend regimes).
+- Realistic costs from day 1: commissions + half-spread + dynamic slippage + simple market impact. Slippage uses a bar true-range vol term; never a fixed `volatility_price=2.0`.
+- Regime robustness check on **market** regimes (instrument vol and trend, or the existing quiet-mask), not on strategy-PnL buckets.
+- Static rules (no in-window fit): WFE is not required. Instead require median OOS after costs > 0, share of positive OOS windows >= 0.60, and no structural decay (Spearman ρ of OOS window means vs time >= -0.50). DSR and PBO floors stay. See ADR-0061.
 
 Only the survivors of this gate enter the live portfolio. Everything else is research waste and must be killed.
 

@@ -356,6 +356,8 @@ class ValidationResults:
     n_trials_registry: int
     purge_applied: bool = True
     embargo_applied: bool = True
+    has_fit_step: bool = True
+    n_days: int = 0
 
 
 def freeze_params(params: Mapping[str, float]) -> Mapping[str, float]:

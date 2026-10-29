@@ -18,6 +18,7 @@ from lumina_research.validation.thresholds import (
     enforce_floors,
     load_thresholds,
 )
+from lumina_research.validation.static_rules import STATIC_POSITIVE_SHARE_MIN
 from lumina_research.validation.trial_registry import TrialRegistry
 from lumina_research.validation.types import (
     CostProvenance,
@@ -87,8 +88,11 @@ def _judge(
     if not math.isfinite(results.pbo.pbo):
         reasons.append("missing_pbo")
         doubt = True
-    if not math.isfinite(results.wfe.wfe):
+    if results.has_fit_step and not math.isfinite(results.wfe.wfe):
         reasons.append("missing_or_undefined_wfe")
+        doubt = True
+    if not results.has_fit_step and results.wfe.mode != "static_rules":
+        reasons.append("static_rules_mode_required")
         doubt = True
     if results.cost_provenance is None or not results.cost_provenance.is_valid():
         reasons.append("missing_costs")
@@ -145,8 +149,18 @@ def _judge(
     if math.isfinite(results.median_oos_after_costs) and results.median_oos_after_costs < 0.0:
         reasons.append("negative_median_oos_after_costs")
 
-    if math.isfinite(results.wfe.wfe) and results.wfe.wfe < wfe_min:
+    if results.has_fit_step and math.isfinite(results.wfe.wfe) and results.wfe.wfe < wfe_min:
         reasons.append("wfe_below_threshold")
+    if not results.has_fit_step:
+        if math.isfinite(results.median_oos_after_costs) and results.median_oos_after_costs <= 0.0:
+            reasons.append("static_median_oos_not_positive")
+        if (
+            math.isfinite(results.oos_distribution.pct_positive)
+            and results.oos_distribution.pct_positive < STATIC_POSITIVE_SHARE_MIN
+        ):
+            reasons.append("static_positive_share_below_60")
+        if not math.isfinite(results.wfe.parameter_stability) or results.wfe.parameter_stability < 0.5:
+            reasons.append("static_structural_decay")
 
     if doubt:
         reasons.append("doubt")

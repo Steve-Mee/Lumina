@@ -13,8 +13,9 @@ DATA_SPEC: Mapping[str, str] = {
     "period": "recent 2-3 years through the export date",
     "holdout": (
         f"last {HOLDOUT_MONTHS} calendar months (allowed {HOLDOUT_MONTHS_MIN}-{HOLDOUT_MONTHS_MAX}); "
-        "P2 NT8 tapes pin 2026-01-29T00:00:00Z before selection, ranking, tuning, or gate calibration; "
-        "evaluation-only accessor for the locked window"
+        "P2 NT8 tapes pin 2026-01-28T23:00:00Z (Globex session boundary; legacy "
+        "2026-01-29T00:00:00Z recorded) before selection, ranking, tuning, or gate calibration; "
+        "evaluation-only accessor for the locked window; holdout stays sealed and unopened"
     ),
     "locations": (
         "$LUMINA_RESEARCH_DATA_DIR/{MES,MNQ}/1m/*.csv ; "

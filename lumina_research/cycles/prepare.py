@@ -1,4 +1,9 @@
-"""Drop known gaps (never fill), mark roll and hole breaks, label high-vol sessions."""
+"""Drop known gaps (never fill), mark roll and RTH-hole breaks, label quiet sessions.
+
+Intra-session holes >90s flatten only during RTH. Overnight/Globex missing 1m bars
+are not a forced exit once session-end flatten and the RTH filter are in force.
+Known GAPS.md windows remain excluded. Roll-session first bars still break.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +12,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Sequence
 
+from lumina_research.cycles.adjust import back_adjust
 from lumina_research.cycles.data import ResearchBar
 from lumina_research.cycles.gaps import in_known_gap, interval_crosses_gap
 from lumina_research.cycles.rolls import is_roll_session
@@ -22,6 +28,7 @@ from lumina_research.monitoring.acceptance import (
 class PreparedTape:
     instrument: str
     bars: tuple[ResearchBar, ...]
+    signal_bars: tuple[ResearchBar, ...]
     session_dates: tuple[date, ...]
     rth: tuple[bool, ...]
     breaks: tuple[bool, ...]
@@ -36,9 +43,11 @@ def prepare_tape(instrument: str, bars: Sequence[ResearchBar]) -> PreparedTape:
     labels = annotate(kept)
     breaks = _breaks(instrument, kept, labels)
     quiet = _quiet_mask(kept, labels.session_dates)
+    adjusted = back_adjust(kept, labels.session_dates)
     return PreparedTape(
         instrument=instrument,
         bars=kept,
+        signal_bars=adjusted,
         session_dates=labels.session_dates,
         rth=labels.rth,
         breaks=breaks,
@@ -61,7 +70,8 @@ def _breaks(instrument: str, bars: Sequence[ResearchBar], labels: SessionLabels)
         crossed = False
         if index > 0 and previous_session is not None:
             delta = int(bar.ts_ns) - previous_ts
-            if session == previous_session and delta > INTRASESSION_HOLE_NS:
+            rth_hole = bool(labels.rth[index] and labels.rth[index - 1])
+            if session == previous_session and delta > INTRASESSION_HOLE_NS and rth_hole:
                 hole = True
             crossed = interval_crosses_gap(instrument, previous_ts, int(bar.ts_ns))
         out.append(bool(roll or hole or crossed))

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import cast
 
 from lumina_core.agent_orchestration.event_bus import DomainEvent, EventBus
 from lumina_core.agent_orchestration.schemas_research import (
@@ -37,6 +38,7 @@ from lumina_research.validation.types import GateReport
 _Evaluate = Callable[..., CandidateEvaluation]
 Tape = tuple[tuple[float, ...], tuple[float, ...], tuple[MarketSnapshot, ...]]
 Materializer = Callable[[HypothesisProposed], Tape]
+GateContext = Callable[[HypothesisProposed], dict[str, object]]
 
 
 class ValidationAgent(Frozen):
@@ -53,6 +55,7 @@ class ValidationAgent(Frozen):
     _equity: float
     _evaluations: list[CandidateEvaluation]
     _materialize: Materializer | None
+    _context: GateContext | None
 
     def __init_subclass__(cls) -> None:
         raise TypeError("ValidationAgent cannot be subclassed")
@@ -68,6 +71,7 @@ class ValidationAgent(Frozen):
         audit_path: Path | None = None,
         equity: float = 100_000.0,
         materializer: Materializer | None = None,
+        gate_context: GateContext | None = None,
     ) -> None:
         self._bus = bus
         self._registry = registry
@@ -80,6 +84,7 @@ class ValidationAgent(Frozen):
         self._evaluate = evaluate_candidate
         self._equity = float(equity)
         self._materialize = materializer
+        self._context = gate_context
         self._freeze()
         bus.register_topic_guard(RESEARCH_VALIDATION_TOPIC, self._guard_validation)
         if blackboard is not None:
@@ -116,10 +121,14 @@ class ValidationAgent(Frozen):
         hypothesis: HypothesisProposed,
         peers: Sequence[Sequence[float]],
     ) -> ValidationResult:
+        extra = self._context(hypothesis) if self._context is not None else {}
+        fit_raw = extra.get("has_fit_step", True)
         try:
             if int(hypothesis.expected_horizon_bars) < 1:
                 raise ValueError("expected_horizon_missing")
             gross, positions, markets = self._tape(hypothesis)
+            market_returns = _float_series(extra.get("market_returns"))
+            n_days_raw = extra.get("n_days", 0)
             evaluation = self._evaluate(
                 agent_id=VALIDATION_AGENT_ID,
                 config_id=hypothesis.config_id,
@@ -133,12 +142,16 @@ class ValidationAgent(Frozen):
                 equity=self._equity,
                 is_size=int(hypothesis.is_size),
                 oos_size=int(hypothesis.oos_size),
+                has_fit_step=bool(fit_raw),
+                market_returns=market_returns,
+                n_days=int(n_days_raw) if isinstance(n_days_raw, int) else 0,
             )
         except Exception:
             evaluation = missing_evaluation(
                 agent_id=VALIDATION_AGENT_ID,
                 audit_path=self._audit_path,
                 registry=self._registry,
+                has_fit_step=bool(fit_raw),
             )
         self._evaluations.append(evaluation)
         trial_id = _latest_trial_id(self._registry, hypothesis.config_id)
@@ -261,3 +274,15 @@ def _latest_trial_id(registry: TrialRegistry, config_id: str) -> int:
         if record.config_id == config_id:
             return record.trial_id
     raise RuntimeError(f"trial missing for config_id={config_id}")
+
+
+def _float_series(value: object) -> tuple[float, ...] | None:
+    if not isinstance(value, (tuple, list)):
+        return None
+    candidates = cast(Sequence[object], value)
+    out: list[float] = []
+    for item in candidates:
+        if isinstance(item, bool) or not isinstance(item, (int, float)):
+            return None
+        out.append(float(item))
+    return tuple(out)

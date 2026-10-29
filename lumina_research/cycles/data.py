@@ -71,7 +71,8 @@ def discover_data(*, repo_root: Path, data_dir: Path | None = None) -> DataStatu
         "bar_size": "NT8 1-minute bars first; 5m or 1d accepted only as a documented fallback",
         "period": "recent 2-3 years; train split must still have >= 241 bars after the holdout lock",
         "holdout": (
-            "last 9 calendar months (allowed 6-12); P2 NT8 tapes pin 2026-01-29T00:00:00Z; "
+            "last 9 calendar months (allowed 6-12); P2 NT8 tapes pin 2026-01-28T23:00:00Z "
+            "(legacy 2026-01-29T00:00:00Z recorded, holdout unopened); "
             "access_bars(purpose=selection|tuning|calibration|gate) fails closed on holdout timestamps"
         ),
         "format": "UTF-8 CSV header timestamp,open,high,low,close,volume (UTC ISO-8601 with offset)",
