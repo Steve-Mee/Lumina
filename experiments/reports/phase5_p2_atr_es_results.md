@@ -1,9 +1,10 @@
 # Phase 5 P2 results (kill / survive)
 
 > **Control-note correction (not a rerun).** D13 used **1:1 1.5×ATR14**, not
-> 20000/20000. The BE column `1.634` is the 1/1-tick placeholder from
-> `require_geometry(target_ticks=1, stop_ticks=1)`, not an ATR break-even.
-> JSON is the untouched PIT dump. See `phase5_p2_atr_es_control_note.md`.
+> 20000/20000. The PIT JSON still has BE `1.634` (1/1-tick placeholder).
+> This table uses per-family gross ATR BE: fade 0.545, breakout 0.333,
+> gap n/a (ADR-0069). JSON dump untouched. See
+> `phase5_p2_atr_es_control_note.md`.
 >
 
 - generated_at: `2026-10-29T15:56:28.034609+00:00`
@@ -17,16 +18,16 @@
 
 | config | template | inst | verdict | death / reason | PBO | DSR | WFE | OOS windows | median OOS | n_trades | hitrate | BE | gross | net | N | +OOS | n_days |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| p2a-mr-es | mean_reversion | ES | kill | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 | 0.200 | 0.000 | n/a | 8 | -0.00191032 | 734 | 0.484 | 1.634 | -0.352101 | -0.739593 | 77 | 0.125 | 598 |
-| p2a-vwap-es | vwap_distance | ES | kill | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60,static_structural_decay | 0.200 | 0.000 | n/a | 8 | -0.00159753 | 729 | 0.486 | 1.634 | -0.602953 | -0.9777 | 78 | 0.125 | 598 |
-| p2a-tod-es | time_of_day_inventory | ES | kill | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60,static_structural_decay | 0.200 | 0.002 | n/a | 8 | -0.000575695 | 589 | 0.494 | 1.634 | 0.0997857 | -0.206213 | 79 | 0.375 | 598 |
-| p2a-or-fade-es | opening_range_fade | ES | kill | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 | 0.200 | 0.000 | n/a | 8 | -0.00159161 | 695 | 0.463 | 1.634 | -0.85704 | -1.1569 | 80 | 0.000 | 598 |
-| p2a-or-bo-es | opening_range_breakout | ES | kill | dsr_below_threshold | 0.200 | 0.057 | n/a | 8 | 0.000534888 | 679 | 0.517 | 1.634 | 0.668168 | 0.384255 | 81 | 0.625 | 598 |
-| p2a-rm-es | regime_momentum | ES | kill | dsr_below_threshold | 0.200 | 0.097 | n/a | 8 | 0.00090075 | 510 | 0.524 | 1.634 | 0.631637 | 0.405492 | 82 | 0.625 | 598 |
-| p2a-rc-es | range_compression | ES | kill | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 | 0.200 | 0.000 | n/a | 8 | -0.000841178 | 682 | 0.509 | 1.634 | -0.108541 | -0.432397 | 83 | 0.125 | 598 |
-| p2a-vx-es | volatility_expansion | ES | kill | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 | 0.200 | 0.000 | n/a | 8 | -0.00135464 | 732 | 0.489 | 1.634 | -0.486223 | -0.86474 | 84 | 0.250 | 598 |
-| p2a-pb-es | trend_pullback | ES | kill | dsr_below_threshold | 0.200 | 0.049 | n/a | 8 | 0.000664623 | 462 | 0.519 | 1.634 | 0.449224 | 0.253856 | 85 | 0.625 | 598 |
-| p2a-gap-es | overnight_gap | ES | kill | dsr_below_threshold | 0.200 | 0.019 | n/a | 8 | 0.0011805 | 511 | 0.521 | 1.634 | 0.446 | 0.204871 | 86 | 0.625 | 598 |
+| p2a-mr-es | mean_reversion | ES | kill | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 | 0.200 | 0.000 | n/a | 8 | -0.00191032 | 734 | 0.484 | 0.545 | -0.352101 | -0.739593 | 77 | 0.125 | 598 |
+| p2a-vwap-es | vwap_distance | ES | kill | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60,static_structural_decay | 0.200 | 0.000 | n/a | 8 | -0.00159753 | 729 | 0.486 | 0.545 | -0.602953 | -0.9777 | 78 | 0.125 | 598 |
+| p2a-tod-es | time_of_day_inventory | ES | kill | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60,static_structural_decay | 0.200 | 0.002 | n/a | 8 | -0.000575695 | 589 | 0.494 | 0.545 | 0.0997857 | -0.206213 | 79 | 0.375 | 598 |
+| p2a-or-fade-es | opening_range_fade | ES | kill | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 | 0.200 | 0.000 | n/a | 8 | -0.00159161 | 695 | 0.463 | 0.545 | -0.85704 | -1.1569 | 80 | 0.000 | 598 |
+| p2a-or-bo-es | opening_range_breakout | ES | kill | dsr_below_threshold | 0.200 | 0.057 | n/a | 8 | 0.000534888 | 679 | 0.517 | 0.333 | 0.668168 | 0.384255 | 81 | 0.625 | 598 |
+| p2a-rm-es | regime_momentum | ES | kill | dsr_below_threshold | 0.200 | 0.097 | n/a | 8 | 0.00090075 | 510 | 0.524 | 0.333 | 0.631637 | 0.405492 | 82 | 0.625 | 598 |
+| p2a-rc-es | range_compression | ES | kill | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 | 0.200 | 0.000 | n/a | 8 | -0.000841178 | 682 | 0.509 | 0.333 | -0.108541 | -0.432397 | 83 | 0.125 | 598 |
+| p2a-vx-es | volatility_expansion | ES | kill | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 | 0.200 | 0.000 | n/a | 8 | -0.00135464 | 732 | 0.489 | 0.333 | -0.486223 | -0.86474 | 84 | 0.250 | 598 |
+| p2a-pb-es | trend_pullback | ES | kill | dsr_below_threshold | 0.200 | 0.049 | n/a | 8 | 0.000664623 | 462 | 0.519 | 0.333 | 0.449224 | 0.253856 | 85 | 0.625 | 598 |
+| p2a-gap-es | overnight_gap | ES | kill | dsr_below_threshold | 0.200 | 0.019 | n/a | 8 | 0.0011805 | 511 | 0.521 | n/a | 0.446 | 0.204871 | 86 | 0.625 | 598 |
 
 ## Per-config diagnostics (D14)
 
@@ -44,6 +45,9 @@
 | p2a-gap-es | 2968 | 6462 | 1.435e+04 | 329.7 | -0.785,-6.070,-0.924,-2.346,-2.320,-1.182,1.583,2.358 | -6.095,1.338,-1.989,-2.057,0.739,2.537,1.607,1.375 | 0.947 | -1.220 | -0.211 | 0.917 | 48 |
 
 ## Exit / MFE / unbracketed / 1R (not extra trials)
+
+This PIT stored only N=60. Horizons **16 and 120** are now coded
+(`UNBRACKET_HORIZONS`) and are **not** filled in from this dump (no CSVs).
 
 | config | ATR tgt | ATR stop | no-bracket | time_stop_bars | stop | target | time_stop | session_end | mean MFE ticks | mean MAE ticks | hitrate N=60 | hitrate 1R/1R | gross ticks | net ticks | gross pts | net pts |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|

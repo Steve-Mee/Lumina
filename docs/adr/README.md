@@ -80,6 +80,7 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0066 | P2 four-instrument cycle after cost fix (MES/MNQ rerun + ES/NQ translation) | Proposed | 2026-10-29 | [0066-p2-four-instrument-cycle.md](./0066-p2-four-instrument-cycle.md) |
 | 0067 | P2 drift-aware multi-seed null (D13); 32 seeds, per-window detrend+balance | Proposed | 2026-10-29 | [0067-p2-drift-aware-multiseed-null.md](./0067-p2-drift-aware-multiseed-null.md) |
 | 0068 | P2 per-family ATR/points geometry; 16/8 archived as lab | Proposed | 2026-10-29 | [0068-p2-atr-geometry.md](./0068-p2-atr-geometry.md) |
+| 0069 | P2 team answers: calibrated 7/8 null gate, midpoints, NQ lock, per-family BE | Proposed | 2026-10-29 | [0069-p2-team-answers-null-geo-nq.md](./0069-p2-team-answers-null-geo-nq.md) |
 
 ## Legacy notitie
 

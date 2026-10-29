@@ -153,28 +153,24 @@ high-turnover templates. No SIM.
 
 ## Open questions for the team (via Steve)
 
-These were implementable midpoints, not silent inventions. Confirm or name
-another lock; do **not** seed-reroll on the existing distribution.
+**Answered 2026-10-29 17:34** (not Steve's opinion). Applied in ADR-0069.
+See `phase5_p2_team_antwoorden_end_report_2026-10-29.md`.
 
-1. **Q-NULL-1.** Fail-closed = majority-not-A2 (`≤16/32`) because `≤3/32` is
-   tighter than chance on 6–8 OOS windows. MES ATR null is 4/32 (misses 10%,
-   still majority). Confirm the bar.
-2. **Q-NULL-2.** Builder is detrend **and** balance per window. Confirm vs
-   exactly one of the two.
-3. **Q-NULL-3.** Extra check is ISO-week block-shuffle (8 seeds, report-only),
-   not calendar-month. Confirm.
-4. **Q-GEO-1.** Fade 1.0/1.2 and breakout 1.8/0.9 are range midpoints.
-   Confirm vs other values in the advisory bands.
-5. **Q-GEO-2.** Session flatten vs calendar-day flatten for gap / opening-range.
-6. **Q-GEO-3.** Unbracketed diagnostic N=60 (1h) vs another fixed N.
-7. **Q-GEO-4.** Four ATR configs are gross/net positive with +OOS 0.625 and
-   still fail DSR. Next lock: stop here, or a new **pre-registered** smaller
-   grid (longer horizon / lower turnover) without touching these 10?
-8. **Q-REPORT-1.** Results BE `1.634` is a 1/1-tick artefact. Recompute BE
-   from ATR points on the next cycle, or drop the column?
-9. **Q-NQ-1.** NQ null is now reliable on the unclipped control. Action 5
-   forbade NQ templates. Confirm: NQ stays closed until the team asks for a
-   new pre-register, or NQ may enter a later ATR grid?
+1. **Q-NULL-1.** Fail-closed is **not** majority 16/32. Exact A2 counts stay
+   as a diagnostic. Cycle stop uses calibrated 7/8 `n_edge` (same `≤3` /
+   `4` borderline / `≥5` bar) so a true null fails ≤5–10%. MES ATR 4/32 A2
+   is borderline/monitor.
+2. **Q-NULL-2.** Keep detrend **and** balance.
+3. **Q-NULL-3.** ISO calendar-week, 8 seeds, extra only, not a gate.
+4. **Q-GEO-1.** Fade 1.0/1.2 and breakout 1.8/0.9 are pre-registered midpoints,
+   not final. Positive control must pass under exactly those params.
+5. **Q-GEO-2.** RTH session flatten or pre-registered time stop. Never
+   calendar midnight.
+6. **Q-GEO-3.** Unbracket hitrate at 16, 60, and 120 bars.
+7. **Q-GEO-4.** Four +OOS DSR-kills stay killed. Lower-turnover = new
+   pre-register, not run.
+8. **Q-REPORT-1.** Per-family ATR BE (0.545 / 0.333 / n/a). Drop 1.634.
+9. **Q-NQ-1.** NQ stays closed until a new pre-register is explicitly approved.
 
 No other unclear point blocked execution. July exclusion is motivated as
 instrument-specific (action 3 allowed that). Holdout stays closed.

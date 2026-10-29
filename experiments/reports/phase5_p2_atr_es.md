@@ -39,7 +39,11 @@
 
 | root | target ticks | stop ticks | tick $ | RT cost ticks | net target $ | net stop $ | BE win rate |
 |---|---|---|---|---|---|---|---|
-| ES | 1 | 1 | 12.50 | 2.267 | -15.84 | 40.84 | 1.634 |
+| ES | 1 | 1 | 12.50 | 2.267 | -15.84 | 40.84 | n/a |
+
+The 1/1-tick placeholder BE `1.634` cannot be a win rate (>1). Column is
+`n/a` here. Per-family ATR BE is fade 0.545 / breakout 0.333 / gap n/a in
+`phase5_p2_atr_es_results.md`. JSON dump untouched.
 
 ## Hypotheses
 

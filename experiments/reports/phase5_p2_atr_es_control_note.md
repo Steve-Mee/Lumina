@@ -14,7 +14,8 @@ Action-5 D13 used `control_geometry_mode="atr"` in `atr_es_cycle`:
 
 ES: planted median OOS `+0.01205`, +OOS `1.00`, null **1/32** A2, median-of-medians `−0.000705`.
 MES: planted median OOS `+0.00122`, +OOS `1.00`, null **4/32** A2, median-of-medians `−7.77e-5`.
-Both majority-reliable (`≤16/32`); planted beats null; fail-closed **passed**.
+ADR-0069 re-score (no rerun): ES **1/32 reliable**; MES **4/32 borderline**
+(monitor). Majority `≤16/32` is no longer the gate. Planted beats null.
 
 ## What the generated JSON still says
 
@@ -30,7 +31,7 @@ Markdown reports carry a preamble pointing here. Code after this PIT emits
 
 ## BE column `1.634`
 
-The results table BE is `1 / (1 - RT_cost_ticks)` with placeholder
-`target_ticks=1, stop_ticks=1` (ATR path still calls `require_geometry` for
-the tick-floor band). It is **not** the break-even of 1.5×ATR. Open question
-Q-REPORT-1.
+The PIT JSON still stores `1.634` from `require_geometry(target_ticks=1,
+stop_ticks=1)`. That is not an ATR break-even. Markdown results now use
+per-family gross BE: fade `1.2/2.2 = 0.545`, breakout `0.9/2.7 = 0.333`,
+gap `n/a` (ADR-0069). JSON dump is untouched PIT history.

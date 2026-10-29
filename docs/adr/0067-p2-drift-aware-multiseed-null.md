@@ -30,13 +30,14 @@ First principles:
    **before** the four-market audit.
 2. 32 seeds `20261029 + i`. Per non-overlapping WF partition: detrend session
    OC, shuffle residual signs, balance `|n_pos − n_neg| ≤ 1`.
-3. Fail-closed reliability: at most half of the 32 seeds hit A2 (majority
-   are not an edge). `floor(0.10 * 32) = 3` is reported as a diagnostic only:
-   with 6–8 OOS windows a fair null has P(A2) well above 10%. Planted must
-   beat the median of the 32 null median-OOS values.
-4. Optional extra: 8 ISO-week block-shuffles, report-only.
-5. Same builder on MES, MNQ, ES, NQ. NQ templates stay closed until that
-   root's null is reliable. Geometry stays 20000/20000.
+3. Fail-closed reliability: **ADR-0069 supersedes the majority 16/32 bar.**
+   Exact `n_a2/32` is always reported (A2 diagnostic). The cycle stop uses
+   calibrated 7/8 false-edge counts (`n_edge`), classified with the same
+   `≤3` / `4` borderline / `≥5` bar. Planted must beat the median of the
+   32 null median-OOS values.
+4. Extra only: 8 ISO calendar-week block-shuffles, report-only, never the gate.
+5. Same builder on MES, MNQ, ES, NQ. NQ **templates** stay closed until a new
+   pre-register is explicitly approved (ADR-0069). Geometry stays 20000/20000.
 6. Every seed is a trial. D13 counts.
 
 ## Consequences
@@ -50,7 +51,7 @@ First principles:
 ### Negative
 
 - 32 + 8 extra D13 trials inflate N (intended).
-- Majority-not-A2 vs the 10% diagnostic is an engineering lock (Q-NULL-1).
+- Majority-not-A2 was an engineering lock (Q-NULL-1); ADR-0069 replaces it.
 
 ## Alternatives considered
 

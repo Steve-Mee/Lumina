@@ -34,7 +34,8 @@ positive control in that geometry.
 
 1. Keep 16/8 with more lookbacks — rejected: low-value, advisory stop.
 2. Asymmetric control matching breakout 1.8/0.9 — rejected: 2R null artefact.
-3. Calendar-day flatten — not locked; session flatten is C10.
+3. Calendar-day / calendar-midnight flatten — rejected in ADR-0069: RTH
+   session end or a pre-registered time stop.
 
 ## Links
 
