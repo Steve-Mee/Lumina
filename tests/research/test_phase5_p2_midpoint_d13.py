@@ -157,3 +157,27 @@ def test_committed_midpoint_d13_json_is_clean() -> None:
     assert by_name["breakout"]["planted_detected"] is True
     assert by_name["fade"]["exact_edge"] == "0/32"
     assert by_name["breakout"]["exact_edge"] == "0/32"
+
+
+@pytest.mark.unit
+def test_committed_midpoint_power_json_is_clean_and_gate_passes() -> None:
+    payload = json.loads(Path("experiments/reports/phase5_p2_midpoint_power.json").read_text(encoding="utf-8"))
+    assert payload["full_magnitude_clean"] is True
+    assert payload["templates_run"] is False
+    assert payload["research_run"] is False
+    assert payload["holdout_opened"] is False
+    assert payload["nq_closed"] is True
+    assert payload["magnitudes"] == [1.0, 0.5, 0.25]
+    by_mag = {row["planted_magnitude"]: row for row in payload["bands"]}
+    for magnitude in (1.0, 0.5, 0.25):
+        band = by_mag[magnitude]
+        assert band["overall_verdict"] == POWER_CLEAN
+        names = {row["name"]: row for row in band["geometries"]}
+        for name in ("fade", "breakout"):
+            row = names[name]
+            assert row["planted_detected"] is True
+            assert row["planted_passed_gate"] is True
+            assert row["planted_reject_reasons"] == []
+            assert row["planted_pbo_n_configs"] == 33
+            assert row["exact_edge"] == "0/32"
+            assert row["n_trials"] == 33

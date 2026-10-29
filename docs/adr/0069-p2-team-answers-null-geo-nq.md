@@ -2,7 +2,7 @@
 
 **Status:** Proposed
 **Date:** 2026-10-29
-**Deciders:** Onderzoeksteam answers 2026-10-29 17:34, 18:17, and 19:24 (forwarded by Steve; not Steve's opinion) + LUMINA Engineering
+**Deciders:** Onderzoeksteam answers 2026-10-29 17:34, 18:17, 19:24, and 21:29 (forwarded by Steve; not Steve's opinion) + LUMINA Engineering
 
 Addendum to ADR-0067 / 0068. Does not rewrite CostModel 1.2.0, DSR 0.95, PBO 0.50,
 A2 planted detection, holdout pin `2026-01-28T23:00:00Z`, or Risk Core.
@@ -17,6 +17,10 @@ content sha256 `8d6dc539bef53d4e4bfe6ec6cdaefdd5f06d2508c11407f9648bb293dfd547c2
 Binding input (19:24, null-only follow-up):
 `docs/research/ONDERZOEKERS-ANTWOORDEN-NULLVAL-20261029T1924.md`
 content sha256 `74e5941cc57fccaa5d08ea32bcf86bbc07b310db6efdabda431071bb4b9e777c`.
+
+Binding input (21:29, passed_gate + power):
+`docs/research/ONDERZOEKERS-ANTWOORDEN-MIDPOINT-20261029T2129.md`
+content sha256 `af183d1d6a9f329942d84bf80854791d69b20cd4264a88ae3da1d9677116e757`.
 
 ## Context
 
@@ -83,6 +87,13 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
     allowed run is midpoint D13 only. If the null stays `≤3/32` and the
     planted edge is not detected: power problem, stop. A limited
     strategy-run needs a new team OK after a clean detect + silent null.
+12. **Passed-gate wiring (21:29).** `planted_passed_gate=false` on the 19:24
+    DSR-1.0 / 100% +OOS plant was `trial_count_below_pbo_configs`: the plant
+    was gated with 32 null PBO peers while `TrialRegistry` still held one
+    trial. The 32 nulls **are** trials. Fix: evaluate nulls first so planted
+    DSR/PBO see N=33. Do **not** remove the gate check. Then rerun the plant
+    at 50% and 25% of known size (linear scale of costed session net; same
+    midpoints and seeds). Limited strategy-run stays unrun until a new OK.
 
 ## Consequences
 
@@ -104,9 +115,15 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
 - Midpoint D13 PIT (19:24, ES only, holdout cut): fade 1.0/1.2 and breakout
   1.8/0.9 both **detect** the planted edge (median OOS 0.0116 / 0.0115, +OOS
   8/8, DSR 1.0, beats null). Strict null `n_edge` **0/32** on both. Verdict
-  `clean` (not a power miss). Full packaged gate `passed_gate` is false on
-  the plant; detection used the pre-registered drempel. No strategy-run.
-  JSON: `experiments/reports/phase5_p2_midpoint_d13.json`.
+  `clean` (not a power miss). The 19:24 packaged gate `passed_gate` was
+  false on the plant because of control wiring (`trial_count_below_pbo_configs`),
+  not a weak edge. JSON: `experiments/reports/phase5_p2_midpoint_d13.json`.
+- Midpoint power PIT (21:29, same ES tape, holdout cut): after the wiring
+  fix, fade and breakout `passed_gate` is **true** at 100%, 50%, and 25%
+  magnitude (PBO n_configs=33, n_trials=33, reject_reasons empty). Detection
+  and `n_edge` 0/32 hold on all six rows. Median OOS scales linearly
+  (0.0116 / 0.00580 / 0.00290 fade). Verdict `clean` at every band. No
+  strategy-run. JSON: `experiments/reports/phase5_p2_midpoint_power.json`.
 - Null-only empirical (local ES pre-holdout, not committed; 818851 bars,
   `2023-10-01T22:01:00Z`–`2026-01-28T22:00:00Z`, 598 sessions):
 
@@ -138,14 +155,23 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
 9. Separate raw-A2 repair after v2 7/8 is 0/32 — rejected (19:24).
 10. Loosen the 7/8 gate because FPR is 0/32 — rejected (19:24); power caveat
     instead. Limited strategy-run now — rejected until a new OK.
+11. Drop `trial_count_below_pbo_configs` because the plant is a known edge —
+    rejected (21:29). The check is correct; the control must register PBO
+    peers as trials first.
+12. Run the limited ES fade/breakout grid in this change — rejected (21:29);
+    pre-register only.
 
 ## Links
 
 - Answers freeze (17:34): `docs/research/ONDERZOEKERS-ANTWOORDEN-9VRAGEN-20261029T1734.md`
 - Answers freeze (18:17): `docs/research/ONDERZOEKERS-ANTWOORDEN-NULLGATE-20261029T1817.md`
 - Answers freeze (19:24): `docs/research/ONDERZOEKERS-ANTWOORDEN-NULLVAL-20261029T1924.md`
+- Answers freeze (21:29): `docs/research/ONDERZOEKERS-ANTWOORDEN-MIDPOINT-20261029T2129.md`
 - Pre-register (null v2): `experiments/reports/phase5_p2_null_v2_preregister_addendum_2026-10-29.md`
 - Pre-register (midpoint D13): `experiments/reports/phase5_p2_midpoint_d13_preregister_2026-10-29.md`
+- Pre-register (midpoint power): `experiments/reports/phase5_p2_midpoint_power_preregister_2026-10-29.md`
+- Pre-register (limited ES, not run): `experiments/reports/phase5_p2_limited_es_preregister_2026-10-29.md`
 - Code: `lumina_research/cycles/null_model.py`, `null_only.py`, `null_lock.py`,
-  `nq_lock.py`, `geometry.py`, `diagnostics.py`, `atr_cycle.py`
+  `nq_lock.py`, `geometry.py`, `diagnostics.py`, `atr_cycle.py`,
+  `positive_control.py`, `midpoint_d13.py`
 - Related: ADR-0067, ADR-0068
