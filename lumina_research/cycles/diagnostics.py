@@ -35,6 +35,19 @@ class ConfigDiagnostics:
     n_days: int
     pct_positive_oos: float
     bootstrap_sharpes: tuple[float, ...] = ()
+    exit_stop: int = 0
+    exit_target: int = 0
+    exit_time_stop: int = 0
+    exit_session_end: int = 0
+    mean_mfe_ticks: float = float("nan")
+    mean_mae_ticks: float = float("nan")
+    hitrate_unbracket_n: float = float("nan")
+    hitrate_1r1r: float = float("nan")
+    gross_ticks: float = 0.0
+    net_ticks: float = 0.0
+    gross_points: float = 0.0
+    net_points: float = 0.0
+    unbracket_n_bars: int = 60
 
 
 def empty_diagnostics(*, be: float = math.nan, n_trials: int = 0, n_days: int = 0) -> ConfigDiagnostics:
@@ -59,6 +72,19 @@ def empty_diagnostics(*, be: float = math.nan, n_trials: int = 0, n_days: int = 
         n_days=n_days,
         pct_positive_oos=math.nan,
         bootstrap_sharpes=(),
+        exit_stop=0,
+        exit_target=0,
+        exit_time_stop=0,
+        exit_session_end=0,
+        mean_mfe_ticks=math.nan,
+        mean_mae_ticks=math.nan,
+        hitrate_unbracket_n=math.nan,
+        hitrate_1r1r=math.nan,
+        gross_ticks=0.0,
+        net_ticks=0.0,
+        gross_points=0.0,
+        net_points=0.0,
+        unbracket_n_bars=60,
     )
 
 
@@ -74,6 +100,9 @@ def from_trades(
     n_days: int,
     pct_positive_oos: float,
     bootstrap_sharpes: Sequence[float] = (),
+    unbracket_trades: Sequence[ClosedTrade] = (),
+    one_r_trades: Sequence[ClosedTrade] = (),
+    unbracket_n_bars: int = 60,
 ) -> ConfigDiagnostics:
     n_trades = len(trades)
     wins = sum(1 for item in trades if item.pnl_ticks > 0.0)
@@ -81,6 +110,21 @@ def from_trades(
     be = geometry.break_even_win_rate
     gross = float(sum(costed.gross_returns))
     net = float(sum(costed.net_returns))
+    reasons = [item.reason for item in trades]
+    mfe = tuple(item.mfe_ticks for item in trades)
+    mae = tuple(item.mae_ticks for item in trades)
+    gross_ticks = float(sum(item.pnl_ticks for item in trades))
+    tick = geometry.tick_size
+    cost_ticks = (
+        0.0
+        if tick <= 0.0
+        else float(sum(costed.costs_usd)) / (geometry.tick_value_usd if geometry.tick_value_usd else 1.0)
+    )
+    net_ticks = gross_ticks - cost_ticks
+    unb_n = len(unbracket_trades)
+    unb_hits = sum(1 for item in unbracket_trades if item.pnl_ticks > 0.0)
+    r_n = len(one_r_trades)
+    r_hits = sum(1 for item in one_r_trades if item.pnl_ticks > 0.0)
     return ConfigDiagnostics(
         n_trades=n_trades,
         hitrate=hitrate,
@@ -102,6 +146,19 @@ def from_trades(
         n_days=int(n_days),
         pct_positive_oos=float(pct_positive_oos),
         bootstrap_sharpes=tuple(float(item) for item in bootstrap_sharpes),
+        exit_stop=sum(1 for item in reasons if item == "stop"),
+        exit_target=sum(1 for item in reasons if item == "target"),
+        exit_time_stop=sum(1 for item in reasons if item == "time_stop"),
+        exit_session_end=sum(1 for item in reasons if item == "session_end"),
+        mean_mfe_ticks=sum(mfe) / float(len(mfe)) if mfe else math.nan,
+        mean_mae_ticks=sum(mae) / float(len(mae)) if mae else math.nan,
+        hitrate_unbracket_n=math.nan if unb_n == 0 else unb_hits / float(unb_n),
+        hitrate_1r1r=math.nan if r_n == 0 else r_hits / float(r_n),
+        gross_ticks=gross_ticks,
+        net_ticks=net_ticks,
+        gross_points=gross_ticks * tick,
+        net_points=net_ticks * tick,
+        unbracket_n_bars=int(unbracket_n_bars),
     )
 
 

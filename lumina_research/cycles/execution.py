@@ -29,6 +29,8 @@ class ClosedTrade:
     exit_price: float
     pnl_ticks: float
     reason: str
+    mfe_ticks: float = 0.0
+    mae_ticks: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +39,7 @@ class ExecutionResult:
     positions: tuple[float, ...]
     markets: tuple[MarketSnapshot, ...]
     trades: tuple[ClosedTrade, ...]
+    signals: tuple[float, ...] = ()
 
 
 class ExecutionRefused(ValueError):
@@ -90,16 +93,32 @@ def run_execution(
     time_stop_bars: int = 16,
     session_end_flatten: bool = True,
     equity: float = EQUITY,
+    atr_points: Sequence[float] | None = None,
+    target_atr: float | None = None,
+    stop_atr: float | None = None,
+    disable_brackets: bool = False,
 ) -> ExecutionResult:
     n = len(bars)
     if n < 1 or n != len(signals) or n != len(breaks) or n != len(rth) or n != len(session_dates):
         raise ExecutionRefused("execution series must align")
     if time_stop_bars < 1:
         raise ExecutionRefused("time_stop_bars must be >= 1")
+    if atr_points is not None and len(atr_points) != n:
+        raise ExecutionRefused("atr_points must align")
+    if (target_atr is None) != (stop_atr is None):
+        raise ExecutionRefused("target_atr and stop_atr must be set together")
+    if target_atr is not None and (float(target_atr) <= 0.0 or float(stop_atr or 0.0) <= 0.0):
+        raise ExecutionRefused("ATR multiples must be positive")
     allow = _allow_entry(rth, session_filter)
     session_end = _session_end_flags(session_dates, allow, session_end_flatten)
     spec = spec_for(geometry.root)
-    book = _Book(geometry=geometry, time_stop_bars=time_stop_bars)
+    book = _Book(
+        geometry=geometry,
+        time_stop_bars=time_stop_bars,
+        disable_brackets=disable_brackets,
+        target_atr=None if target_atr is None else float(target_atr),
+        stop_atr=None if stop_atr is None else float(stop_atr),
+    )
     gross: list[float] = []
     positions: list[float] = []
     markets: list[MarketSnapshot] = []
@@ -122,6 +141,7 @@ def run_execution(
             positions.append(0.0)
             prev_close = bar.close
             continue
+        atr = 0.0 if atr_points is None else float(atr_points[index])
         pnl, pos, closed = book.step(
             bar=bar,
             prev_close=prev_close,
@@ -131,6 +151,7 @@ def run_execution(
             session_end=session_end[index],
             multiplier=spec.multiplier,
             equity=equity,
+            atr_points=atr,
         )
         gross.append(pnl)
         positions.append(pos)
@@ -141,6 +162,7 @@ def run_execution(
         positions=tuple(positions),
         markets=tuple(markets),
         trades=tuple(trades),
+        signals=tuple(float(item) for item in signals),
     )
 
 
@@ -173,14 +195,21 @@ def _session_end_flags(
 class _Book:
     geometry: Geometry
     time_stop_bars: int
+    disable_brackets: bool = False
+    target_atr: float | None = None
+    stop_atr: float | None = None
     pos: float = 0.0
     entry: float = 0.0
     pending: float = 0.0
     limit: float = 0.0
     held: int = 0
+    extreme_high: float = 0.0
+    extreme_low: float = 0.0
+    entry_atr: float = 0.0
 
     def clear_position(self) -> None:
         self.pos, self.entry, self.pending, self.held = 0.0, 0.0, 0.0, 0
+        self.extreme_high, self.extreme_low, self.entry_atr = 0.0, 0.0, 0.0
 
     def step(
         self,
@@ -193,15 +222,20 @@ class _Book:
         session_end: bool,
         multiplier: float,
         equity: float,
+        atr_points: float = 0.0,
     ) -> tuple[float, float, tuple[ClosedTrade, ...]]:
         closed: list[ClosedTrade] = []
         opened_flat = self.pos == 0.0
         start_pos = self.pos
         mark_from = prev_close
         if self.pending != 0.0 and self.pos == 0.0:
-            if trade_through_fill(side=self.pending, limit=self.limit, bar=bar, average_volume=adv):
+            atr_ok = self.target_atr is None or float(atr_points) > 0.0
+            if atr_ok and trade_through_fill(side=self.pending, limit=self.limit, bar=bar, average_volume=adv):
                 self.pos, self.entry = self.pending, self.limit
                 self.held = 0
+                self.entry_atr = float(atr_points)
+                self.extreme_high = max(bar.high, self.entry)
+                self.extreme_low = min(bar.low, self.entry)
                 start_pos = self.pos
                 mark_from = self.entry
             self.pending = 0.0
@@ -209,20 +243,34 @@ class _Book:
         reason = ""
         if self.pos != 0.0:
             self.held += 1
-            exit_price, reason = _bracket_exit(self.pos, self.entry, bar, self.geometry)
+            self.extreme_high = max(self.extreme_high, bar.high)
+            self.extreme_low = min(self.extreme_low, bar.low)
+            if not self.disable_brackets:
+                exit_price, reason = _bracket_exit(
+                    self.pos,
+                    self.entry,
+                    bar,
+                    self.geometry,
+                    target_points=self._target_points(),
+                    stop_points=self._stop_points(),
+                )
             if exit_price is None and self.held >= self.time_stop_bars:
                 exit_price, reason = bar.close, "time_stop"
             if exit_price is None and session_end:
                 exit_price, reason = bar.close, "session_end"
         if exit_price is not None and start_pos != 0.0:
             pnl = start_pos * (exit_price - mark_from) * multiplier / equity
+            tick = self.geometry.tick_size
+            mfe, mae = _mfe_mae(start_pos, self.entry, self.extreme_high, self.extreme_low, tick)
             closed.append(
                 ClosedTrade(
                     side=start_pos,
                     entry_price=self.entry,
                     exit_price=exit_price,
-                    pnl_ticks=(exit_price - self.entry) / self.geometry.tick_size * start_pos,
+                    pnl_ticks=(exit_price - self.entry) / tick * start_pos,
                     reason=reason,
+                    mfe_ticks=mfe,
+                    mae_ticks=mae,
                 )
             )
             self.clear_position()
@@ -232,9 +280,32 @@ class _Book:
             return pnl, reported, tuple(closed)
         pnl = start_pos * (bar.close - mark_from) * multiplier / equity if start_pos != 0.0 else 0.0
         if self.pos == 0.0 and allow_entry and signal != 0.0:
-            self.pending = signal
-            self.limit = bar.close
+            if self.target_atr is None or float(atr_points) > 0.0:
+                self.pending = signal
+                self.limit = bar.close
         return pnl, self.pos, tuple(closed)
+
+    def _target_points(self) -> float:
+        if self.target_atr is not None:
+            return float(self.target_atr) * self.entry_atr
+        return float(self.geometry.target_ticks) * float(self.geometry.tick_size)
+
+    def _stop_points(self) -> float:
+        if self.stop_atr is not None:
+            return float(self.stop_atr) * self.entry_atr
+        return float(self.geometry.stop_ticks) * float(self.geometry.tick_size)
+
+
+def _mfe_mae(side: float, entry: float, high: float, low: float, tick_size: float) -> tuple[float, float]:
+    if tick_size <= 0.0:
+        return 0.0, 0.0
+    if side > 0.0:
+        mfe = (high - entry) / tick_size
+        mae = (entry - low) / tick_size
+    else:
+        mfe = (entry - low) / tick_size
+        mae = (high - entry) / tick_size
+    return max(mfe, 0.0), max(mae, 0.0)
 
 
 def _bracket_exit(
@@ -242,9 +313,14 @@ def _bracket_exit(
     entry: float,
     bar: ResearchBar,
     geometry: Geometry,
+    *,
+    target_points: float | None = None,
+    stop_points: float | None = None,
 ) -> tuple[float | None, str]:
-    target = geometry.target_ticks * geometry.tick_size
-    stop = geometry.stop_ticks * geometry.tick_size
+    target = geometry.target_ticks * geometry.tick_size if target_points is None else float(target_points)
+    stop = geometry.stop_ticks * geometry.tick_size if stop_points is None else float(stop_points)
+    if target <= 0.0 or stop <= 0.0:
+        return None, ""
     if pos > 0.0:
         stop_px = entry - stop
         target_px = entry + target

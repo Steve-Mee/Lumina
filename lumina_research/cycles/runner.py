@@ -96,6 +96,9 @@ def run_research_cycles(
     write_sidecars: bool = True,
     seal_filename: str = SEAL_NAME,
     require_known_files: bool = True,
+    control_geometry_mode: str = "unclipped",
+    required_control_roots: frozenset[str] | None = None,
+    control_block_seeds: tuple[int, ...] | None = None,
 ) -> ResearchCycleResult:
     """Pre-register template variants, then gate them on real data. No live/SIM orders."""
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -193,17 +196,21 @@ def run_research_cycles(
                 audit_path=audit,
                 is_size=specs[0].is_size,
                 oos_size=specs[0].oos_size,
+                geometry_mode=control_geometry_mode,
+                block_seeds=control_block_seeds,
             )
             notes = [f"{root}: planted detected, null rejected" for root in sorted(accepted)]
             notes.extend(f"{root}: FAILED {reason}" for root, reason in sorted(failed.items()))
             control_note = "; ".join(notes)
-            if failed:
+            required = required_control_roots or frozenset()
+            required_failed = {root: failed[root] for root in required if root in failed}
+            if failed and not required_failed:
                 dropped_specs = tuple(item for item in specs if item.instrument in failed)
                 skipped = skipped + dropped_specs
                 skip_reason = "not_tested_control_failed"
                 prepared = {key: value for key, value in prepared.items() if key in accepted}
                 specs = tuple(item for item in specs if item.instrument in prepared)
-            if not accepted:
+            if (not accepted) or required_failed:
                 report = CycleReport(
                     n_hypotheses=len(specs) + len(skipped),
                     n_tested=0,
@@ -255,6 +262,8 @@ def run_research_cycles(
                     oos_size=specs[0].oos_size,
                     market_returns=market_series(mes),
                     n_days=n_days,
+                    geometry_mode=control_geometry_mode,
+                    block_seeds=control_block_seeds,
                 )
             except PositiveControlFailed as exc:
                 report = CycleReport(
@@ -549,6 +558,10 @@ def _skipped_row(spec: HypothesisSpec, *, reason: str) -> CycleRow:
         median_oos=None,
         geometry=geometry,
         death_reason=reason,
+        target_atr=spec.target_atr,
+        stop_atr=spec.stop_atr,
+        disable_brackets=spec.disable_brackets,
+        time_stop_bars=spec.time_stop_bars,
     )
 
 
@@ -843,4 +856,20 @@ def _row(
         n_days=None if diag is None else diag.n_days,
         pct_positive_oos=None if diag is None else diag.pct_positive_oos,
         bootstrap_sharpes=() if diag is None else diag.bootstrap_sharpes,
+        exit_stop=None if diag is None else diag.exit_stop,
+        exit_target=None if diag is None else diag.exit_target,
+        exit_time_stop=None if diag is None else diag.exit_time_stop,
+        exit_session_end=None if diag is None else diag.exit_session_end,
+        mean_mfe_ticks=None if diag is None else diag.mean_mfe_ticks,
+        mean_mae_ticks=None if diag is None else diag.mean_mae_ticks,
+        hitrate_unbracket_n=None if diag is None else diag.hitrate_unbracket_n,
+        hitrate_1r1r=None if diag is None else diag.hitrate_1r1r,
+        gross_ticks=None if diag is None else diag.gross_ticks,
+        net_ticks=None if diag is None else diag.net_ticks,
+        gross_points=None if diag is None else diag.gross_points,
+        net_points=None if diag is None else diag.net_points,
+        target_atr=spec.target_atr,
+        stop_atr=spec.stop_atr,
+        disable_brackets=spec.disable_brackets,
+        time_stop_bars=spec.time_stop_bars,
     )

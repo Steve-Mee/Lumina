@@ -14,6 +14,7 @@ from datetime import date
 from pathlib import Path
 from typing import Mapping, Sequence
 
+from lumina_research.cycles.atr import ATR_N_SESSIONS, causal_session_atr
 from lumina_research.cycles.daily import daily_net_tape, unique_sessions
 from lumina_research.cycles.data import ResearchBar
 from lumina_research.cycles.execution import ExecutionResult, run_execution
@@ -44,6 +45,8 @@ CONTROL_TARGET_TICKS = 20_000
 CONTROL_STOP_TICKS = 20_000
 CONTROL_TIME_STOP_BARS = 2_000
 CONTROL_SESSION_FILTER = "rth"
+CONTROL_ATR_MULTIPLE = 1.5
+CONTROL_ATR_SESSIONS = ATR_N_SESSIONS
 PLANTED_HORIZON_NOTE = (
     "Planted edge: at the first RTH bar of each session, the control knows the "
     "sign of that session's last-RTH-close minus first-RTH-open (unadjusted). "
@@ -167,7 +170,38 @@ def build_null_signals(
     )
 
 
-def execute_control(prepared: PreparedTape, signals: Sequence[float], *, root: str) -> ExecutionResult:
+def execute_control(
+    prepared: PreparedTape,
+    signals: Sequence[float],
+    *,
+    root: str,
+    geometry_mode: str = "unclipped",
+    atr_points: Sequence[float] | None = None,
+) -> ExecutionResult:
+    if geometry_mode == "atr":
+        geometry = require_geometry(root=root, target_ticks=1, stop_ticks=1)
+        series = atr_points
+        if series is None:
+            series = causal_session_atr(
+                prepared.bars,
+                prepared.session_dates,
+                prepared.rth,
+                n_sessions=CONTROL_ATR_SESSIONS,
+            )
+        return run_execution(
+            bars=prepared.bars,
+            signals=signals,
+            geometry=geometry,
+            breaks=prepared.breaks,
+            rth=prepared.rth,
+            session_dates=prepared.session_dates,
+            session_filter=CONTROL_SESSION_FILTER,
+            time_stop_bars=CONTROL_TIME_STOP_BARS,
+            session_end_flatten=True,
+            atr_points=series,
+            target_atr=CONTROL_ATR_MULTIPLE,
+            stop_atr=CONTROL_ATR_MULTIPLE,
+        )
     geometry = require_geometry(
         root=root,
         target_ticks=CONTROL_TARGET_TICKS,
@@ -184,12 +218,6 @@ def execute_control(prepared: PreparedTape, signals: Sequence[float], *, root: s
         time_stop_bars=CONTROL_TIME_STOP_BARS,
         session_end_flatten=True,
     )
-
-
-def _gate_tape(prepared: PreparedTape, executed: ExecutionResult, *, root: str) -> Tape:
-    """Session-day net returns. The planted edge is a session-direction hypothesis."""
-    _gross, daily_net = _costed_daily(prepared, executed, root=root)
-    return _from_daily_net(daily_net)
 
 
 def _costed_daily(
@@ -214,9 +242,7 @@ def _from_daily_net(daily_net: Sequence[float]) -> Tape:
     if n < 1:
         raise PositiveControlFailed("empty daily control tape")
     positions = tuple(0.0 for _ in range(n))
-    markets = tuple(
-        MarketSnapshot(volume=1.0, average_volume=1.0, volatility_price=0.0) for _ in range(n)
-    )
+    markets = tuple(MarketSnapshot(volume=1.0, average_volume=1.0, volatility_price=0.0) for _ in range(n))
     return tuple(float(item) for item in daily_net), positions, markets
 
 
@@ -282,6 +308,7 @@ def run_controls(
     block_seeds: Sequence[int] | None = None,
     embargo: int = NULL_EMBARGO,
     fail_closed: bool = True,
+    geometry_mode: str = "unclipped",
 ) -> ControlReport:
     tape = prepared.get("MES") or next(iter(prepared.values()))
     root = tape.instrument
@@ -292,11 +319,20 @@ def run_controls(
     if not seeds:
         raise PositiveControlFailed("null seeds must be pre-registered and non-empty")
     n_before = int(registry.n_trials)
-    pos_exec = execute_control(tape, planted, root=root)
+    atr_series = None
+    if geometry_mode == "atr":
+        atr_series = causal_session_atr(
+            tape.bars,
+            tape.session_dates,
+            tape.rth,
+            n_sessions=CONTROL_ATR_SESSIONS,
+        )
+    pos_exec = execute_control(tape, planted, root=root, geometry_mode=geometry_mode, atr_points=atr_series)
     daily_gross, daily_net = _costed_daily(tape, pos_exec, root=root)
     sessions = unique_sessions(tape.session_dates)
     planted_map = signal_map_by_session(planted, tape.session_dates)
     pos_tape = _from_daily_net(daily_net)
+    remap_ok = geometry_mode == "unclipped"
     drift_dailies: list[tuple[float, ...]] = []
     for seed in seeds:
         null_signals = build_null_signals(
@@ -308,16 +344,27 @@ def run_controls(
             oos_size=oos_size,
             embargo=embargo,
         )
-        null_map = signal_map_by_session(null_signals, tape.session_dates)
-        drift_dailies.append(
-            remap_session_net(
-                daily_gross=daily_gross,
-                daily_net=daily_net,
-                sessions=sessions,
-                planted_signs=planted_map,
-                null_signs=null_map,
+        if remap_ok:
+            null_map = signal_map_by_session(null_signals, tape.session_dates)
+            drift_dailies.append(
+                remap_session_net(
+                    daily_gross=daily_gross,
+                    daily_net=daily_net,
+                    sessions=sessions,
+                    planted_signs=planted_map,
+                    null_signs=null_map,
+                )
             )
-        )
+        else:
+            null_exec = execute_control(
+                tape,
+                null_signals,
+                root=root,
+                geometry_mode=geometry_mode,
+                atr_points=atr_series,
+            )
+            _gross, null_daily = _costed_daily(tape, null_exec, root=root)
+            drift_dailies.append(null_daily)
     try:
         planted_eval = evaluate_candidate(
             agent_id="positive_control",
@@ -357,14 +404,24 @@ def run_controls(
         block_rows: list[tuple[int, CandidateEvaluation, bool]] = []
         for seed in extra:
             block_signals = week_block_shuffle_signals(planted, tape.session_dates, seed=int(seed))
-            block_map = signal_map_by_session(block_signals, tape.session_dates)
-            block_daily = remap_session_net(
-                daily_gross=daily_gross,
-                daily_net=daily_net,
-                sessions=sessions,
-                planted_signs=planted_map,
-                null_signs=block_map,
-            )
+            if remap_ok:
+                block_map = signal_map_by_session(block_signals, tape.session_dates)
+                block_daily = remap_session_net(
+                    daily_gross=daily_gross,
+                    daily_net=daily_net,
+                    sessions=sessions,
+                    planted_signs=planted_map,
+                    null_signs=block_map,
+                )
+            else:
+                block_exec = execute_control(
+                    tape,
+                    block_signals,
+                    root=root,
+                    geometry_mode=geometry_mode,
+                    atr_points=atr_series,
+                )
+                _bg, block_daily = _costed_daily(tape, block_exec, root=root)
             block_eval = evaluate_candidate(
                 agent_id="positive_control",
                 config_id=f"control-null-block-{seed}",
@@ -447,6 +504,8 @@ def run_controls_per_instrument(
     is_size: int,
     oos_size: int,
     n_days_by_root: Mapping[str, int] | None = None,
+    geometry_mode: str = "unclipped",
+    block_seeds: Sequence[int] | None = None,
 ) -> tuple[dict[str, ControlReport], dict[str, str]]:
     """D13 on each tape. A failed root does not stop a passing sibling."""
     accepted: dict[str, ControlReport] = {}
@@ -465,6 +524,8 @@ def run_controls_per_instrument(
                 oos_size=oos_size,
                 market_returns=market_series(tape),
                 n_days=days,
+                geometry_mode=geometry_mode,
+                block_seeds=block_seeds,
             )
         except PositiveControlFailed as exc:
             failed[root] = str(exc)

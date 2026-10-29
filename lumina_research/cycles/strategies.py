@@ -42,6 +42,10 @@ def simulate(
     session_filter: str = DEFAULT_SESSION_FILTER,
     time_stop_bars: int = DEFAULT_TIME_STOP_BARS,
     session_end_flatten: bool = True,
+    atr_points: Sequence[float] | None = None,
+    target_atr: float | None = None,
+    stop_atr: float | None = None,
+    disable_brackets: bool = False,
 ) -> Tape:
     result = simulate_full(
         family=family,
@@ -58,6 +62,10 @@ def simulate(
         session_filter=session_filter,
         time_stop_bars=time_stop_bars,
         session_end_flatten=session_end_flatten,
+        atr_points=atr_points,
+        target_atr=target_atr,
+        stop_atr=stop_atr,
+        disable_brackets=disable_brackets,
     )
     return result.gross, result.positions, result.markets
 
@@ -78,6 +86,10 @@ def simulate_full(
     session_filter: str = DEFAULT_SESSION_FILTER,
     time_stop_bars: int = DEFAULT_TIME_STOP_BARS,
     session_end_flatten: bool = True,
+    atr_points: Sequence[float] | None = None,
+    target_atr: float | None = None,
+    stop_atr: float | None = None,
+    disable_brackets: bool = False,
 ) -> ExecutionResult:
     if len(bars) < 241:
         raise StrategyRefused("need >= 241 bars for the Validation Gate")
@@ -122,6 +134,10 @@ def simulate_full(
         session_filter=session_filter,
         time_stop_bars=time_stop_bars,
         session_end_flatten=session_end_flatten,
+        atr_points=atr_points,
+        target_atr=target_atr,
+        stop_atr=stop_atr,
+        disable_brackets=disable_brackets,
     )
 
 

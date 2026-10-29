@@ -54,6 +54,22 @@ class CycleRow:
     n_days: int | None = None
     pct_positive_oos: float | None = None
     bootstrap_sharpes: tuple[float, ...] = ()
+    exit_stop: int | None = None
+    exit_target: int | None = None
+    exit_time_stop: int | None = None
+    exit_session_end: int | None = None
+    mean_mfe_ticks: float | None = None
+    mean_mae_ticks: float | None = None
+    hitrate_unbracket_n: float | None = None
+    hitrate_1r1r: float | None = None
+    gross_ticks: float | None = None
+    net_ticks: float | None = None
+    gross_points: float | None = None
+    net_points: float | None = None
+    target_atr: float | None = None
+    stop_atr: float | None = None
+    disable_brackets: bool = False
+    time_stop_bars: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,6 +258,22 @@ def _row_body(item: CycleRow) -> dict[str, object]:
         "n_days": item.n_days,
         "pct_positive_oos": item.pct_positive_oos,
         "bootstrap_sharpes": list(item.bootstrap_sharpes),
+        "exit_stop": item.exit_stop,
+        "exit_target": item.exit_target,
+        "exit_time_stop": item.exit_time_stop,
+        "exit_session_end": item.exit_session_end,
+        "mean_mfe_ticks": item.mean_mfe_ticks,
+        "mean_mae_ticks": item.mean_mae_ticks,
+        "hitrate_unbracket_n": item.hitrate_unbracket_n,
+        "hitrate_1r1r": item.hitrate_1r1r,
+        "gross_ticks": item.gross_ticks,
+        "net_ticks": item.net_ticks,
+        "gross_points": item.gross_points,
+        "net_points": item.net_points,
+        "target_atr": item.target_atr,
+        "stop_atr": item.stop_atr,
+        "disable_brackets": item.disable_brackets,
+        "time_stop_bars": item.time_stop_bars,
     }
 
 
@@ -466,6 +498,37 @@ def _results_table(report: CycleReport) -> str:
         lines.append(
             f"| {row.config_id} | {comm} | {spread} | {slip} | {impact} | {is_s} | {oos_s} | "
             f"{vol_h} | {vol_l} | {up} | {down} | {boot} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Exit / MFE / unbracketed / 1R (not extra trials)",
+            "",
+            "| config | ATR tgt | ATR stop | no-bracket | time_stop_bars | stop | target | time_stop | session_end | mean MFE ticks | mean MAE ticks | hitrate N=60 | hitrate 1R/1R | gross ticks | net ticks | gross pts | net pts |",
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+        ]
+    )
+    for row in report.rows:
+        lines.append(
+            "| {cfg} | {at} | {as_} | {nb} | {tb} | {st} | {tg} | {ts} | {se} | {mfe} | {mae} | {unb} | {one} | {gt} | {nt} | {gp} | {np} |".format(
+                at="n/a" if row.target_atr is None else f"{row.target_atr:.2f}",
+                as_="n/a" if row.stop_atr is None else f"{row.stop_atr:.2f}",
+                nb=str(row.disable_brackets),
+                tb="n/a" if row.time_stop_bars is None else str(row.time_stop_bars),
+                cfg=row.config_id,
+                st="n/a" if row.exit_stop is None else str(row.exit_stop),
+                tg="n/a" if row.exit_target is None else str(row.exit_target),
+                ts="n/a" if row.exit_time_stop is None else str(row.exit_time_stop),
+                se="n/a" if row.exit_session_end is None else str(row.exit_session_end),
+                mfe="n/a" if row.mean_mfe_ticks is None else f"{row.mean_mfe_ticks:.3f}",
+                mae="n/a" if row.mean_mae_ticks is None else f"{row.mean_mae_ticks:.3f}",
+                unb="n/a" if row.hitrate_unbracket_n is None else f"{row.hitrate_unbracket_n:.3f}",
+                one="n/a" if row.hitrate_1r1r is None else f"{row.hitrate_1r1r:.3f}",
+                gt="n/a" if row.gross_ticks is None else f"{row.gross_ticks:.3f}",
+                nt="n/a" if row.net_ticks is None else f"{row.net_ticks:.3f}",
+                gp="n/a" if row.gross_points is None else f"{row.gross_points:.4g}",
+                np="n/a" if row.net_points is None else f"{row.net_points:.4g}",
+            )
         )
     kept = [indep for indep in report.independence if indep.kept]
     lines.extend(["", "## Independent survivors", ""])

@@ -142,8 +142,8 @@ def run_null_audit(
             )
             rows.append(_from_report(name, report, n_days, is_size, oos_size, int(registry.n_trials) - n_before))
         except PositiveControlFailed as exc:
-            report = exc.report
-            if report is None:
+            failed = exc.report
+            if failed is None:
                 rows.append(
                     RootAudit(
                         root=name,
@@ -168,7 +168,7 @@ def run_null_audit(
                 rows.append(
                     _from_report(
                         name,
-                        report,
+                        failed,
                         n_days,
                         is_size,
                         oos_size,
@@ -214,11 +214,7 @@ def _from_report(
     reliable = bool(audit.reliable) if audit is not None else False
     share = float(audit.a2_share) if audit is not None else 0.0
     median_null = float(audit.median_of_medians) if audit is not None else float("nan")
-    text = note or (
-        "accepted"
-        if report.accepted
-        else "planted miss or null unreliable"
-    )
+    text = note or ("accepted" if report.accepted else "planted miss or null unreliable")
     return RootAudit(
         root=root,
         accepted=bool(report.accepted),

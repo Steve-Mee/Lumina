@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
+from lumina_research.cycles.atr_cycle import run_atr_es_cycle
 from lumina_research.cycles.four_instrument import run_four_instrument_cycle
 from lumina_research.cycles.null_audit import run_null_audit
 from lumina_research.cycles.runner import run_research_cycles
@@ -36,9 +37,9 @@ def build_parser() -> argparse.ArgumentParser:
     research.add_argument("--data-dir", type=Path, default=None)
     research.add_argument(
         "--cycle",
-        choices=("first", "four-instrument", "null-audit"),
+        choices=("first", "four-instrument", "null-audit", "atr-es"),
         default="first",
-        help="first: locked MES/MNQ 12. four-instrument: cost-fix rerun + ES/NQ. null-audit: D13 multi-seed.",
+        help="first: MES/MNQ 12. four-instrument: cost-fix+ES/NQ. null-audit: D13 multi-seed. atr-es: ES ATR grid.",
     )
     research.add_argument(
         "--reuse-mes-mnq",
@@ -85,6 +86,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sys.stderr.write("null-audit fail-closed: MES/MNQ/ES planted miss or null unreliable\n")
                 return 2
             return 0
+        if str(args.cycle) == "atr-es":
+            atr = run_atr_es_cycle(
+                work_dir=args.work_dir,
+                report_dir=args.report_dir,
+                data_dir=args.data_dir,
+            )
+            if atr.report.stop_reason == "positive_control_failed":
+                sys.stderr.write(f"ATR ES control failed: {atr.report.control_note}\n")
+                return 2
+            if atr.data.usable:
+                return 0
+            sys.stderr.write("P2 stopped: no usable real market data\n")
+            return 3
         if str(args.cycle) == "four-instrument":
             four = run_four_instrument_cycle(
                 work_dir=args.work_dir,
