@@ -74,7 +74,13 @@ from lumina_research.monitoring.acceptance import (
     HIGH_VOL_TRAILING_PCT,
     HIGH_VOL_TRAILING_WINDOW,
 )
-from lumina_research.cycles.seal import LEGACY_SEAL_SHA256, file_sha256, load_seal, seal_holdout
+from lumina_research.cycles.seal import (
+    LEGACY_SEAL_SHA256,
+    PENDING_COUNTS_SEAL_SHA256,
+    file_sha256,
+    load_seal,
+    seal_holdout,
+)
 from lumina_research.cycles.sessions import (
     INTRASESSION_HOLE_NS,
     RTH_LAST_CLOSE_MIN,
@@ -888,6 +894,9 @@ def _kill_deeper() -> None:
         previous = loaded["previous_seals"]
         if not isinstance(previous, list) or previous[0]["seal_sha256"] != LEGACY_SEAL_SHA256:
             _fail("legacy seal must be recorded on the new seal")
+        previous_shas = [item.get("seal_sha256") for item in previous if isinstance(item, dict)]
+        if PENDING_COUNTS_SEAL_SHA256 not in previous_shas:
+            _fail("pending-counts 23:00Z seal must stay in previous_seals")
         drifted = path / "drift"
         drifted.mkdir()
         (drifted / "phase5_p2_holdout_seal.json").write_text('{"holdout_start_ns": 1}', encoding="utf-8")
@@ -1004,6 +1013,8 @@ def run() -> None:
         _fail("holdout ns missing")
     if LEGACY_SEAL_SHA256 != "6e8fa88e3aad048271cb52a63f76cbf4ed8a9261b85b85f03f631b872cf2e51b":
         _fail("legacy seal sha drifted")
+    if PENDING_COUNTS_SEAL_SHA256 != "51d55d770aa21fb8f10062c7aab53acebe4866e526eb3419501098bd67172a99":
+        _fail("pending-counts seal sha drifted")
     if FRIDAY_ROLL not in NT8_ROLL_SET or FRIDAY_ROLL != date(2026, 6, 12):
         _fail("Friday 2026-06-12 roll missing")
     require_friday_roll()

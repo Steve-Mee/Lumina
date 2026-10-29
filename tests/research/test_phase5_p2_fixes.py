@@ -34,7 +34,14 @@ from lumina_research.cycles.positive_control import run_controls, rth_session_di
 from lumina_research.cycles.prepare import PreparedTape, prepare_tape
 from lumina_research.cycles.roll_verify import FRIDAY_ROLL, require_friday_roll, verify_nt8_rolls
 from lumina_research.cycles.rolls import NT8_ROLL_SET
-from lumina_research.cycles.seal import LEGACY_SEAL_SHA256, SEAL_NAME, load_seal, seal_holdout
+from lumina_research.cycles.seal import (
+    LEGACY_SEAL_SHA256,
+    PENDING_COUNTS_SEAL_NAME,
+    PENDING_COUNTS_SEAL_SHA256,
+    SEAL_NAME,
+    load_seal,
+    seal_holdout,
+)
 from lumina_research.cycles.sessions import (
     INTRASESSION_HOLE_NS,
     RTH_LAST_CLOSE_MIN,
@@ -542,14 +549,69 @@ def test_holdout_pin_is_session_boundary_and_legacy_seal_recorded(tmp_path: Path
     previous = loaded["previous_seals"]
     assert isinstance(previous, list)
     assert previous[0]["seal_sha256"] == LEGACY_SEAL_SHA256
+    assert previous[1]["seal_sha256"] == PENDING_COUNTS_SEAL_SHA256
+    snapshot = json.loads(
+        (Path("experiments/reports") / PENDING_COUNTS_SEAL_NAME).read_text(encoding="utf-8")
+    )
+    assert snapshot["seal_sha256"] == PENDING_COUNTS_SEAL_SHA256
+    assert snapshot["bar_counts_pending_recompute"] is True
     committed = json.loads(Path("experiments/reports/phase5_p2_holdout_seal.json").read_text(encoding="utf-8"))
     assert committed["holdout_start_ns"] == P2_HOLDOUT_START_NS
     assert committed["previous_seals"][0]["seal_sha256"] == LEGACY_SEAL_SHA256
-    assert committed["bar_counts_pending_recompute"] is True
+    if committed.get("bar_counts_pending_recompute") is True:
+        assert committed["seal_sha256"] == PENDING_COUNTS_SEAL_SHA256
+    else:
+        shas = {item["seal_sha256"] for item in committed["previous_seals"]}
+        assert LEGACY_SEAL_SHA256 in shas
+        assert PENDING_COUNTS_SEAL_SHA256 in shas
+        mes = committed["instruments"]["MES"]
+        mnq = committed["instruments"]["MNQ"]
+        assert int(mes["n_train"]) > 0 and int(mes["n_holdout"]) > 0
+        assert int(mnq["n_train"]) > 0 and int(mnq["n_holdout"]) > 0
+        assert "bar_counts_pending_recompute" not in committed
     train = access_bars(tape, purpose="gate", pinned_start_ns=P2_HOLDOUT_START_NS)
     locked = access_bars(tape, purpose="evaluation", pinned_start_ns=P2_HOLDOUT_START_NS)
     assert train[-1].ts_ns < P2_HOLDOUT_START_NS <= locked[0].ts_ns
     assert (tmp_path / "rep" / SEAL_NAME).is_file()
+
+
+@pytest.mark.unit
+def test_pending_counts_seal_is_copied_before_reseal(tmp_path: Path) -> None:
+    report = tmp_path / "rep"
+    report.mkdir()
+    snapshot = json.loads((Path("experiments/reports") / PENDING_COUNTS_SEAL_NAME).read_text(encoding="utf-8"))
+    (report / SEAL_NAME).write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8")
+    path = tmp_path / "MES" / "1m" / "mes.csv"
+    path.parent.mkdir(parents=True)
+    path.write_text("timestamp,open,high,low,close,volume\n", encoding="utf-8")
+    start = datetime(2023, 10, 28, tzinfo=UTC)
+    end = datetime(2026, 10, 28, tzinfo=UTC)
+    n = 400
+    step = (end - start).total_seconds() / float(n - 1)
+    bars = tuple(
+        _bar(
+            datetime.fromtimestamp(start.timestamp() + float(index) * step, tz=UTC),
+            open_=5000.0,
+            high=5000.5,
+            low=4999.5,
+            close=5000.0,
+        )
+        for index in range(n)
+    )
+    tape = LoadedTape(
+        instrument="MES",
+        bar_size="1m",
+        path=path,
+        bars=bars,
+        holdout_start_ns=P2_HOLDOUT_START_NS,
+    )
+    sealed = seal_holdout((tape,), report_dir=report, require_known_files=False)
+    preserved = json.loads((report / PENDING_COUNTS_SEAL_NAME).read_text(encoding="utf-8"))
+    assert preserved["seal_sha256"] == PENDING_COUNTS_SEAL_SHA256
+    assert sealed["seal_sha256"] != PENDING_COUNTS_SEAL_SHA256
+    shas = {item["seal_sha256"] for item in sealed["previous_seals"]}
+    assert LEGACY_SEAL_SHA256 in shas
+    assert PENDING_COUNTS_SEAL_SHA256 in shas
 
 
 @pytest.mark.unit
