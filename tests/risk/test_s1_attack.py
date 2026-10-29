@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hmac
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -35,6 +36,7 @@ from lumina_core.risk.live_release import (
     SECRET_ENV,
     canonical_live_release_payload,
     compute_live_release_mac,
+    log_live_reject,
     reset_live_release_nonces_for_tests,
     verify_live_release,
 )
@@ -162,15 +164,11 @@ def test_cancel_frame_cannot_become_submit_or_size_increase() -> None:
     sync = (ROOT / "lumina_core/broker/ninjatrader/bridge_command_sync.py").read_text(encoding="utf-8")
     assert "action_for_command_frame(frame_type)" in sync
     assert 'if frame_type == "submit_order"\n                else NtBridgeAction.CANCEL' not in sync
-    cs = (ROOT / "integrations/ninjatrader8/LuminaNt8AddOn/NtAccountOrderGateway.cs").read_text(
-        encoding="utf-8"
-    )
+    cs = (ROOT / "integrations/ninjatrader8/LuminaNt8AddOn/NtAccountOrderGateway.cs").read_text(encoding="utf-8")
     modify_idx = cs.index("public IReadOnlyList<OrderEvent> ModifyOrder")
     modify_body = cs[modify_idx : modify_idx + 2500]
     assert "SimAccountWhitelist.DenyReason" in modify_body
-    assert modify_body.index("SimAccountWhitelist.DenyReason") < modify_body.index(
-        "target.QuantityChanged"
-    )
+    assert modify_body.index("SimAccountWhitelist.DenyReason") < modify_body.index("target.QuantityChanged")
     cancel_idx = cs.index("public IReadOnlyList<OrderEvent> CancelOrder")
     cancel_body = cs[cancel_idx:modify_idx]
     assert "SimAccountWhitelist.DenyReason" not in cancel_body
@@ -202,13 +200,62 @@ def test_constitution_violation_equivalent_payload_validates() -> None:
     assert live_parsed.principle_name == LIVE_ACCOUNT_PATH_CLOSED_S1
 
 
+class _EventDataHandler(logging.Handler):
+    """Capture structured extras even when parent ``lumina`` does not propagate."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.events: list[dict[str, object]] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        payload = getattr(record, "event_data", None)
+        if isinstance(payload, dict):
+            self.events.append(payload)
+
+
 @pytest.mark.unit
-def test_reject_log_keeps_agent_id(caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level("ERROR", logger="lumina.risk.sim_account_guard")
-    log_sim_reject(reason=SIM_WHITELIST_EMPTY, account="Sim101", mode="sim", agent_id="agent-x")
-    assert any(
-        getattr(record, "event_data", {}).get("agent_id") == "agent-x" for record in caplog.records
-    )
+@pytest.mark.safety_gate
+def test_reject_log_keeps_agent_id() -> None:
+    handler = _EventDataHandler()
+    sim_log = logging.getLogger("lumina.risk.sim_account_guard")
+    live_log = logging.getLogger("lumina.risk.live_release")
+    parent = logging.getLogger("lumina")
+    previous_propagate = parent.propagate
+    sim_log.addHandler(handler)
+    live_log.addHandler(handler)
+    sim_log.setLevel(logging.ERROR)
+    live_log.setLevel(logging.ERROR)
+    try:
+        # Coverage Report runs integration tests that call build_logger("lumina").
+        parent.propagate = False
+        log_sim_reject(reason=SIM_WHITELIST_EMPTY, account="Sim101", mode="sim", agent_id="agent-x")
+        sim_payload = next((item for item in handler.events if item.get("agent_id") == "agent-x"), None)
+        assert sim_payload is not None
+        assert sim_payload["event"] == "s1.sim_whitelist.reject"
+        assert sim_payload["reason"] == SIM_WHITELIST_EMPTY
+        assert sim_payload["principle_name"] == SIM_WHITELIST_EMPTY
+        assert sim_payload["account"] == "Sim101"
+        assert sim_payload["mode"] == "sim"
+        assert sim_payload["timestamp"]
+        parsed = ConstitutionViolation.model_validate(sim_payload)
+        assert parsed.principle_name == SIM_WHITELIST_EMPTY
+        handler.events.clear()
+        log_live_reject(
+            reason=LIVE_ACCOUNT_PATH_CLOSED_S1,
+            agent_id="agent-y",
+            approved_by="steve.operator",
+        )
+        live_payload = next((item for item in handler.events if item.get("agent_id") == "agent-y"), None)
+        assert live_payload is not None
+        assert live_payload["event"] == "s1.live_release.reject"
+        assert live_payload["reason"] == LIVE_ACCOUNT_PATH_CLOSED_S1
+        assert live_payload["approved_by"] == "steve.operator"
+        live_parsed = ConstitutionViolation.model_validate(live_payload)
+        assert live_parsed.principle_name == LIVE_ACCOUNT_PATH_CLOSED_S1
+    finally:
+        sim_log.removeHandler(handler)
+        live_log.removeHandler(handler)
+        parent.propagate = previous_propagate
 
 
 @pytest.mark.unit
