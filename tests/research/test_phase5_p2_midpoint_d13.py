@@ -1,0 +1,115 @@
+"""19:24 midpoint D13: power rule, CLI control cycle, locked midpoints."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from lumina_research.cycles.midpoint_d13 import (
+    POWER_CLEAN,
+    POWER_NULL_LEAK,
+    POWER_PROBLEM,
+    GeometryScore,
+    overall_verdict,
+    power_verdict,
+)
+from lumina_research.cycles.positive_control import FADE_MIDPOINT_ATR, horizon_note, required_midpoint_controls
+from lumina_research.proof.cli import build_parser, main as proof_main
+
+
+def _score(*, name: str, detected: bool, n_edge: int, verdict: str) -> GeometryScore:
+    return GeometryScore(
+        name=name,
+        target_atr=1.0,
+        stop_atr=1.2,
+        planted_detected=detected,
+        planted_median_oos=1.0 if detected else -1.0,
+        planted_pct_positive=0.75 if detected else 0.25,
+        planted_dsr=0.99 if detected else 0.1,
+        planted_passed_gate=detected,
+        effect_clears_threshold=detected,
+        planted_beats_null=detected,
+        n_a2=n_edge,
+        n_edge=n_edge,
+        n_seeds=32,
+        exact_a2=f"{n_edge}/32",
+        exact_edge=f"{n_edge}/32",
+        null_median_of_medians=0.0,
+        null_reliable=n_edge <= 3,
+        power_verdict=verdict,
+        n_trials=33,
+        n_days=40,
+        accepted=detected and n_edge <= 3,
+    )
+
+
+@pytest.mark.unit
+def test_power_verdict_silent_null_and_missed_plant_is_power_problem() -> None:
+    assert power_verdict(planted_detected=True, n_edge=0, n_seeds=32) == POWER_CLEAN
+    assert power_verdict(planted_detected=False, n_edge=0, n_seeds=32) == POWER_PROBLEM
+    assert power_verdict(planted_detected=False, n_edge=3, n_seeds=32) == POWER_PROBLEM
+    assert power_verdict(planted_detected=True, n_edge=4, n_seeds=32) == POWER_NULL_LEAK
+    assert power_verdict(planted_detected=False, n_edge=4, n_seeds=32) == POWER_NULL_LEAK
+
+
+@pytest.mark.unit
+def test_overall_verdict_prefers_leak_then_power() -> None:
+    clean = _score(name="fade", detected=True, n_edge=0, verdict=POWER_CLEAN)
+    miss = _score(name="breakout", detected=False, n_edge=0, verdict=POWER_PROBLEM)
+    leak = _score(name="breakout", detected=True, n_edge=4, verdict=POWER_NULL_LEAK)
+    assert overall_verdict((clean, clean)) == POWER_CLEAN
+    assert overall_verdict((clean, miss)) == POWER_PROBLEM
+    assert overall_verdict((miss, leak)) == POWER_NULL_LEAK
+
+
+@pytest.mark.unit
+def test_midpoint_horizon_note_states_exact_multiples() -> None:
+    fade_t, fade_s = FADE_MIDPOINT_ATR
+    note = horizon_note("atr", target_atr=fade_t, stop_atr=fade_s)
+    assert "1×ATR14 target / 1.2×ATR14 stop" in note
+    assert "1.5×ATR14" not in note
+    assert "1.5" in horizon_note("atr")
+
+
+@pytest.mark.unit
+def test_cli_midpoint_d13_is_a_control_cycle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = build_parser()
+    args = parser.parse_args(["research", "--cycle", "midpoint-d13", "--es-csv", "local.csv"])
+    assert args.cycle == "midpoint-d13"
+    assert args.es_csv == Path("local.csv")
+
+    class _Power:
+        overall_verdict = POWER_PROBLEM
+
+    monkeypatch.setattr("lumina_research.proof.cli.run_midpoint_d13", lambda **_kwargs: _Power())
+    assert proof_main(["research", "--cycle", "midpoint-d13", "--work-dir", str(tmp_path)]) == 2
+
+    class _Clean:
+        overall_verdict = POWER_CLEAN
+
+    monkeypatch.setattr("lumina_research.proof.cli.run_midpoint_d13", lambda **_kwargs: _Clean())
+    assert proof_main(["research", "--cycle", "midpoint-d13", "--work-dir", str(tmp_path)]) == 0
+
+
+@pytest.mark.unit
+def test_cli_midpoint_d13_requires_es_csv(tmp_path: Path) -> None:
+    assert (
+        proof_main(
+            [
+                "research",
+                "--cycle",
+                "midpoint-d13",
+                "--work-dir",
+                str(tmp_path),
+                "--report-dir",
+                str(tmp_path),
+            ]
+        )
+        == 2
+    )
+
+
+@pytest.mark.unit
+def test_required_midpoints_stay_locked() -> None:
+    assert required_midpoint_controls() == (("fade", 1.0, 1.2), ("breakout", 1.8, 0.9))

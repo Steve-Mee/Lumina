@@ -73,10 +73,28 @@ PLANTED_HORIZON_NOTE_ATR = (
 )
 
 
-def horizon_note(geometry_mode: str) -> str:
+def horizon_note(
+    geometry_mode: str,
+    *,
+    target_atr: float | None = None,
+    stop_atr: float | None = None,
+) -> str:
     """Human note for D13. Execution path is `execute_control`; this is report text."""
     if geometry_mode == "atr":
-        return PLANTED_HORIZON_NOTE_ATR
+        tgt = CONTROL_ATR_MULTIPLE if target_atr is None else float(target_atr)
+        stp = CONTROL_ATR_MULTIPLE if stop_atr is None else float(stop_atr)
+        if tgt == CONTROL_ATR_MULTIPLE and stp == CONTROL_ATR_MULTIPLE:
+            return PLANTED_HORIZON_NOTE_ATR
+        return (
+            "Planted edge: at the first RTH bar of each session, the control knows the "
+            "sign of that session's last-RTH-close minus first-RTH-open (unadjusted). "
+            "It holds that direction until RTH close (session flatten, C10). Brackets "
+            f"are {tgt:g}×ATR14 target / {stp:g}×ATR14 stop in index points (midpoint "
+            "D13; not 16/8 and not the unclipped limit-move ceiling) so a shuffled 50% "
+            "null is not a 2R artefact. time_stop_bars=2000 cannot fire inside one RTH "
+            "session. Four-leg costs unchanged. Known size is the session RTH "
+            "open-to-close move clipped at those ATR multiples minus costs."
+        )
     if geometry_mode == "unclipped":
         return PLANTED_HORIZON_NOTE
     raise ValueError(f"unknown control geometry_mode {geometry_mode!r}")
@@ -577,7 +595,7 @@ def run_controls(
             "planted_session_direction",
             planted_eval,
             pos_detected,
-            horizon_note(geometry_mode),
+            horizon_note(geometry_mode, target_atr=target_atr, stop_atr=stop_atr),
         ),
         null=_outcome(
             "null_drift_aware_multiseed",

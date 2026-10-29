@@ -1,5 +1,8 @@
 # P2 ATR geometry — addendum after team answers (2026-10-29 17:34)
 
+**19:24:** PIT midpoint D13 is a separate locked run, see
+`phase5_p2_midpoint_d13_preregister_2026-10-29.md`. Still no templates.
+
 Does **not** rewrite
 `phase5_p2_atr_geometry_preregister_2026-10-29.md` (git `aa4d9d1e`).
 Binding answers sha256 `d792a116…`.

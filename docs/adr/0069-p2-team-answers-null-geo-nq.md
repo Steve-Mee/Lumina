@@ -2,7 +2,7 @@
 
 **Status:** Proposed
 **Date:** 2026-10-29
-**Deciders:** Onderzoeksteam answers 2026-10-29 17:34 and 18:17 (forwarded by Steve; not Steve's opinion) + LUMINA Engineering
+**Deciders:** Onderzoeksteam answers 2026-10-29 17:34, 18:17, and 19:24 (forwarded by Steve; not Steve's opinion) + LUMINA Engineering
 
 Addendum to ADR-0067 / 0068. Does not rewrite CostModel 1.2.0, DSR 0.95, PBO 0.50,
 A2 planted detection, holdout pin `2026-01-28T23:00:00Z`, or Risk Core.
@@ -13,6 +13,10 @@ content sha256 `d792a116b8afb26ca2237122ea08edf31147416bd1bc309e2073ea811556c28c
 Binding input (18:17, supersedes the 4/32-monitor clause):
 `docs/research/ONDERZOEKERS-ANTWOORDEN-NULLGATE-20261029T1817.md`
 content sha256 `8d6dc539bef53d4e4bfe6ec6cdaefdd5f06d2508c11407f9648bb293dfd547c2`.
+
+Binding input (19:24, null-only follow-up):
+`docs/research/ONDERZOEKERS-ANTWOORDEN-NULLVAL-20261029T1924.md`
+content sha256 `74e5941cc57fccaa5d08ea32bcf86bbc07b310db6efdabda431071bb4b9e777c`.
 
 ## Context
 
@@ -46,11 +50,12 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
    report-only extra 8 seeds (Q-NULL-3), not the production shuffle.
 3. **Week-block (Q-NULL-3).** ISO calendar-week shuffle, 8 seeds
    `20261129+i`. Extra reported check only. Never the gate. Month is too coarse.
-4. **Midpoints (Q-GEO).** Fade `1.0/1.2` and breakout `1.8/0.9` are
+4. **Midpoints (Q-GEO + 19:24).** Fade `1.0/1.2` and breakout `1.8/0.9` are
    pre-registered midpoints, not final. The positive control must pass under
-   exactly those params. Existing ATR D13 record is 1:1 `1.5×ATR14`. Midpoint
-   D13 is coded (`execute_control(..., target_atr=, stop_atr=)`); synthetic
-   tape must detect the plant. PIT midpoint D13 is not executed here (no CSVs).
+   exactly those params. Existing ATR D13 record is 1:1 `1.5×ATR14`. PIT
+   midpoint D13 is the allowed next run (ES tape, holdout cut, no templates).
+   Pre-register `phase5_p2_midpoint_d13_preregister_2026-10-29.md` before that
+   run: known size, detection drempel, 32 seeds.
 5. **Flatten (Q-GEO).** Gap/opening flatten at last allowed bar of the relevant
    session (RTH when the filter is RTH) or a pre-registered time stop. Never
    UTC calendar midnight.
@@ -72,6 +77,12 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
     `strict_gate_pass=true` and v2 `n_edge ≤ 3/32` on **both** ES and
     synthetic. Null-only validation (ES + synthetic) is the allowed repair
     run. Holdout timestamps `>= 2026-01-28T23:00:00Z` are asserted absent.
+11. **Null-only follow-up (19:24).** No separate raw-A2 repair; strict
+    `n_edge` 0/32 is enough; A2 stays diagnostic. 0/32 below the 5% floor is
+    accepted with a power caveat; do **not** loosen the 7/8 gate. Next
+    allowed run is midpoint D13 only. If the null stays `≤3/32` and the
+    planted edge is not detected: power problem, stop. A limited
+    strategy-run needs a new team OK after a clean detect + silent null.
 
 ## Consequences
 
@@ -90,7 +101,7 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
   the diagnostic A2 count (18:17). Cycle stop still uses `n_edge`. ATR
   `n_edge` cannot be re-scored (PIT JSON has no per-seed +OOS). Template
   10/10 kill is unchanged (already DSR-dead).
-- Midpoint positive-control PIT is still owed when CSVs are mounted.
+- Midpoint positive-control PIT is the 19:24 control run (not a strategy-run).
 - Null-only empirical (local ES pre-holdout, not committed; 818851 bars,
   `2023-10-01T22:01:00Z`–`2026-01-28T22:00:00Z`, 598 sessions):
 
@@ -119,12 +130,17 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
    mixer — rejected: that preserves intra-week drift and would raise FPR.
    Week-block stays report-only extra.
 8. Run templates / strategy-run while FPR is unrepaired — rejected (18:17).
+9. Separate raw-A2 repair after v2 7/8 is 0/32 — rejected (19:24).
+10. Loosen the 7/8 gate because FPR is 0/32 — rejected (19:24); power caveat
+    instead. Limited strategy-run now — rejected until a new OK.
 
 ## Links
 
 - Answers freeze (17:34): `docs/research/ONDERZOEKERS-ANTWOORDEN-9VRAGEN-20261029T1734.md`
 - Answers freeze (18:17): `docs/research/ONDERZOEKERS-ANTWOORDEN-NULLGATE-20261029T1817.md`
-- Pre-register: `experiments/reports/phase5_p2_null_v2_preregister_addendum_2026-10-29.md`
+- Answers freeze (19:24): `docs/research/ONDERZOEKERS-ANTWOORDEN-NULLVAL-20261029T1924.md`
+- Pre-register (null v2): `experiments/reports/phase5_p2_null_v2_preregister_addendum_2026-10-29.md`
+- Pre-register (midpoint D13): `experiments/reports/phase5_p2_midpoint_d13_preregister_2026-10-29.md`
 - Code: `lumina_research/cycles/null_model.py`, `null_only.py`, `null_lock.py`,
   `nq_lock.py`, `geometry.py`, `diagnostics.py`, `atr_cycle.py`
 - Related: ADR-0067, ADR-0068
