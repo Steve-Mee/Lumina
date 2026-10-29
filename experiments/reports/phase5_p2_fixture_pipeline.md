@@ -4,7 +4,7 @@ Real MES/MNQ CSVs were not mounted (`LUMINA_RESEARCH_DATA_DIR` unset). This tabl
 
 # Phase 5 P2 results (kill / survive)
 
-- generated_at: `2026-10-29T10:14:32.107173+00:00`
+- generated_at: `2026-10-29T10:58:02.751062+00:00`
 - tested: `12` killed: `12` survivors: `0`
 - kill_rate: `1.0000`
 - holdout_seal: `n/a`

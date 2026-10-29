@@ -66,26 +66,26 @@
       "period": "recent 2-3 years; train split must still have >= 241 bars after the holdout lock"
     },
     "searched": [
-      "/tmp/pytest-of-ubuntu/pytest-660/test_twelve_template_fixture_p0/data/research",
-      "/tmp/pytest-of-ubuntu/pytest-660/test_twelve_template_fixture_p0/reports/playground_bar_archive"
+      "/tmp/pytest-of-ubuntu/pytest-134/test_twelve_template_fixture_p0/data/research",
+      "/tmp/pytest-of-ubuntu/pytest-134/test_twelve_template_fixture_p0/reports/playground_bar_archive"
     ],
     "tapes": [
       {
         "bar_size": "1m",
         "instrument": "MES",
         "n_bars": 480,
-        "path": "/tmp/pytest-of-ubuntu/pytest-660/test_twelve_template_fixture_p0/data/research/MES/1m/mes.csv"
+        "path": "/tmp/pytest-of-ubuntu/pytest-134/test_twelve_template_fixture_p0/data/research/MES/1m/mes.csv"
       },
       {
         "bar_size": "1m",
         "instrument": "MNQ",
         "n_bars": 480,
-        "path": "/tmp/pytest-of-ubuntu/pytest-660/test_twelve_template_fixture_p0/data/research/MNQ/1m/mnq.csv"
+        "path": "/tmp/pytest-of-ubuntu/pytest-134/test_twelve_template_fixture_p0/data/research/MNQ/1m/mnq.csv"
       }
     ],
     "usable": true
   },
-  "generated_at": "2026-10-29T10:14:32.106423+00:00",
+  "generated_at": "2026-10-29T10:58:02.750168+00:00",
   "geometry": [
     {
       "break_even_win_rate": 0.4713333333333334,

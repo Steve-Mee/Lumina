@@ -4,7 +4,7 @@
 
 # Phase 5 P2 results (kill / survive)
 
-- generated_at: `2026-10-29T10:14:31.918670+00:00`
+- generated_at: `2026-10-29T10:58:02.770924+00:00`
 - tested: `0` killed: `0` survivors: `0`
 - kill_rate: `n/a`
 - holdout_seal: `n/a`
