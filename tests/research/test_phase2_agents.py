@@ -46,6 +46,7 @@ class _BlankGenerator(HypothesisGenerator):
             proposed_price=5000.0,
             proposed_notional=5000.0,
             rationale=good,
+            expected_horizon_bars=8,
         )
         object.__setattr__(draft, "rationale", None)
         return (draft,)

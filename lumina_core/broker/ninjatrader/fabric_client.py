@@ -217,35 +217,6 @@ class FabricGrpcClient(FabricClientOpsMixin, FabricClientStreamMixin):
         msg = mapper.flatten_to_brain_message(instrument=instrument, correlation_id=corr, emergency=emergency)
         return self._send_and_wait(msg, wait_key=corr, timeout_seconds=timeout_seconds)
 
-    def modify_order_sync(
-        self,
-        *,
-        client_order_id: str = "",
-        nt_order_id: str = "",
-        quantity: int = 0,
-        price: float = 0.0,
-        stop_price: float = 0.0,
-        correlation_id: str | None = None,
-        timeout_seconds: float | None = None,
-    ) -> dict[str, Any]:
-        if not self.is_connected:
-            return {"type": "error", "code": "DISCONNECTED", "message": "Fabric not connected"}
-        corr = correlation_id or str(uuid.uuid4())
-        msg = mapper.modify_to_brain_message(
-            client_order_id=client_order_id,
-            nt_order_id=nt_order_id,
-            quantity=quantity,
-            price=price,
-            stop_price=stop_price,
-            correlation_id=corr,
-        )
-        return self._send_and_wait(
-            msg,
-            wait_key=corr,
-            alt_keys=(client_order_id,) if client_order_id else (),
-            timeout_seconds=timeout_seconds,
-        )
-
     def _auth_metadata(self) -> tuple[tuple[str, str], ...]:
         """Unary RPC auth metadata (must match Fabric TryAuthorizeUnary)."""
         token = self.config.resolve_token()

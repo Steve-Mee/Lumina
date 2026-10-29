@@ -22,6 +22,18 @@ class FillEvent:
     decision_context_id: str | None = None
     prev_hash: str | None = None
     prev_event_topic: str | None = None  # for full typed spine (Slice 19/ live wiring)
+    slippage_ticks: float = 0.0
+    slippage_usd: float = 0.0
+    commission_ticks: float = 0.0
+    source: str = "broker"
+
+    @property
+    def fill_price(self) -> float:
+        return self.price
+
+    @property
+    def qty(self) -> int:
+        return self.quantity
 
 
 @dataclass(slots=True)

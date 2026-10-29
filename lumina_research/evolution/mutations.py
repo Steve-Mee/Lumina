@@ -54,6 +54,7 @@ def mutation_to_draft(mutation: MutationProposed, *, action: RegimeAction) -> Hy
         oos_size=genome.oos_size,
         parent_config_id=mutation.parent_config_id,
         overfit_in_sample=bool(genome.overfit_in_sample),
+        expected_horizon_bars=int(genome.expected_horizon_bars),
     )
 
 

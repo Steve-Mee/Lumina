@@ -14,6 +14,7 @@ from lumina_core.broker.broker_bridge.schemas import AccountInfo, Fill, Order, O
 from lumina_core.broker.ninjatrader.bridge_service import NinjaTraderBridgeService, get_ninjatrader_bridge_service
 from lumina_core.broker.ninjatrader.guards import assert_nt_bridge_capability
 from lumina_core.broker.ninjatrader.promotion_gate import NtBridgeAction, normalize_trade_mode
+from lumina_core.order_gatekeeper.ungated_place_block import blocked_order_result, gate_order
 
 
 def _utc_now_iso() -> str:
@@ -90,6 +91,19 @@ class NinjaTraderBroker(BrokerBridge):
         if lineage:
             self._pending_lineage[client_order_id] = lineage
 
+        allowed_s0, block_reason = gate_order(
+            "ninjatrader.broker.submit_order",
+            order,
+            engine=self.engine,
+            broker=self,
+        )
+        if not allowed_s0:
+            res = blocked_order_result(block_reason)
+            if lineage:
+                for key, value in lineage.items():
+                    setattr(res, key, value)
+            return res
+
         allowed, reason = run_final_arbitration(self.engine, order)
         if not allowed:
             res = OrderResult(
@@ -140,6 +154,14 @@ class NinjaTraderBroker(BrokerBridge):
             "take_profit": float(order.take_profit or 0.0),
             "mode_context": self._resolve_trade_mode(),
         }
+        if isinstance(meta, dict):
+            if bool(meta.get("reduce_only", False)):
+                frame["reduce_only"] = True
+            reason = str(meta.get("reason", "") or "").strip()
+            if reason:
+                frame["reason"] = reason
+            if bool(meta.get("emergency", False)):
+                frame["emergency"] = True
 
         response = bridge.send_command_sync(frame, timeout_seconds=self.command_timeout_seconds)
         response_type = str(response.get("type", ""))

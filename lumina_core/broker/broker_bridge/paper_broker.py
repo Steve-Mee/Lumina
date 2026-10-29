@@ -19,6 +19,7 @@ from lumina_core.broker.broker_bridge.schemas import (
     Position,
     paper_position_from_fills,
 )
+from lumina_core.order_gatekeeper.ungated_place_block import blocked_order_result, gate_order
 from lumina_core.risk.cost_model import TradeExecutionCostModel
 
 @dataclass(slots=True)
@@ -83,6 +84,14 @@ class PaperBroker(BrokerBridge):
     def submit_order(self, order: Order) -> OrderResult:
         if not self._connected:
             self.connect()
+        allowed_s0, block_reason = gate_order(
+            "paper_broker.submit_order",
+            order,
+            engine=self.engine,
+            broker=self,
+        )
+        if not allowed_s0:
+            return blocked_order_result(block_reason)
         allowed, reason = run_final_arbitration(self.engine, order)
         if not allowed:
             return OrderResult(

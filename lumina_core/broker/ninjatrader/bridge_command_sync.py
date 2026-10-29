@@ -121,14 +121,16 @@ class BridgeCommandSyncMixin:
             order = Order(
                 symbol=str(frame.get("symbol", "")),
                 side=str(frame.get("side", "BUY")),
-                quantity=int(frame.get("quantity", 1) or 1),
+                quantity=int(frame.get("quantity") or 0),
                 order_type=str(frame.get("order_type", "MARKET") or "MARKET"),
                 stop_loss=float(frame.get("stop_loss") or 0.0),
                 take_profit=float(frame.get("take_profit") or 0.0),
                 metadata={
                     "price": frame.get("price"),
                     "stop_price": frame.get("stop_price"),
-                    "reduce_only": frame.get("reduce_only"),
+                    "reduce_only": bool(frame.get("reduce_only", False)),
+                    "reason": str(frame.get("reason", "") or ""),
+                    "emergency": bool(frame.get("emergency", False)),
                     "protected": frame.get("protected"),
                 },
             )

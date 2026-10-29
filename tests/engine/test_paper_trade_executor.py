@@ -91,7 +91,19 @@ class TestPaperTradeExecutor:
         # when
         res = executor.submit_paper_order(order)
 
-        # then
+        # then — S0 freeze: risk-increasing paper opens do not reach the broker
+        mock_broker.submit_order.assert_not_called()
+        assert getattr(res, "accepted", True) is False
+        assert getattr(res, "message", "") == "UNGATED_PLACE_BLOCKED_S0"
+
+    def test_submit_paper_order_allows_reduce_only_flatten(self):
+        mock_broker = MagicMock()
+        mock_broker.submit_order.return_value = type("Res", (), {"accepted": True})()
+        engine = SimpleNamespace(live_position_qty=1)
+        executor = PaperTradeExecutor(broker=mock_broker, engine=engine)
+        order = executor.build_paper_order(signal="SELL", qty=1, dream_snapshot=_make_dream())
+        order.metadata["reduce_only"] = True
+        res = executor.submit_paper_order(order, live_position_qty=1)
         mock_broker.submit_order.assert_called_once_with(order)
         assert getattr(res, "accepted", False) is True
 
@@ -148,5 +160,6 @@ def test_executor_integration_with_supervisor_mocks(monkeypatch):
     # then
     assert "decision_context_id" in order.metadata and order.metadata["decision_context_id"] == "proposal-ctx-xyz"
     assert "confluence_score" in order.metadata
-    mock_broker.submit_order.assert_called_once()
-    assert getattr(res, "accepted", False) is True
+    mock_broker.submit_order.assert_not_called()
+    assert getattr(res, "accepted", True) is False
+    assert getattr(res, "message", "") == "UNGATED_PLACE_BLOCKED_S0"

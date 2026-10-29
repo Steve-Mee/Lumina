@@ -9,7 +9,7 @@ from typing import Any, cast
 
 import pytest
 
-from lumina_core.broker.broker_bridge import Order, PaperBroker
+from lumina_core.broker.broker_bridge import Fill, Order, PaperBroker
 from lumina_core.engine import EngineConfig, TradeReconciler
 from lumina_core.engine.golden_ledger import (
     realized_close_from_broker_fill,
@@ -118,15 +118,24 @@ def test_paper_broker_round_turn_position_netting(monkeypatch: pytest.MonkeyPatc
 
     broker = PaperBroker(engine=_paper_engine_stub())
     sym = "MES JUN26"
-    assert broker.submit_order(
-        Order(symbol=sym, side="BUY", quantity=1)  # Authoritative gate only (post 1.3.4 zero-trace)
-    ).accepted
+    broker._fills.append(
+        Fill(
+            fill_id="seed-entry",
+            order_id="seed-entry",
+            symbol=sym,
+            side="BUY",
+            quantity=1,
+            price=5000.0,
+            timestamp="2026-01-01T00:00:00Z",
+        )
+    )
+    broker._sync_positions_from_fills()
     pos1 = broker.get_positions()
     assert len(pos1) == 1
     assert pos1[0].quantity > 0
     fills_after_buy = broker.get_fills()
     assert broker.submit_order(
-        Order(symbol=sym, side="SELL", quantity=1)  # Authoritative gate only (post 1.3.4 zero-trace)
+        Order(symbol=sym, side="SELL", quantity=1, metadata={"reduce_only": True})
     ).accepted
     assert broker.get_positions() == []
     exit_fill = broker.last_fill_for_symbol(sym)

@@ -400,7 +400,7 @@ def test_supervisor_loop_runs_swarm_only_on_five_minute_boundary(monkeypatch):
     assert swarm.run_calls == 1
 
 
-def test_supervisor_loop_paper_submit_routes_via_broker(monkeypatch):
+def test_supervisor_loop_paper_open_is_frozen(monkeypatch):
     broker_calls: list[object] = []
 
     class BrokerSpy:
@@ -516,8 +516,8 @@ def test_supervisor_loop_paper_submit_routes_via_broker(monkeypatch):
     with pytest.raises(StopIteration):
         runtime_workers.supervisor_loop(cast(Any, app))
 
-    assert len(broker_calls) == 1
-    assert app.sim_position_qty == 2
+    assert len(broker_calls) == 0
+    assert app.sim_position_qty == 0
 
 
 def test_supervisor_loop_skips_swarm_outside_five_minute_boundary(monkeypatch):

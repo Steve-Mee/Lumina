@@ -76,6 +76,7 @@ def _draft(*, kind: str = "noise", instrument: str = "MES", rationale: object = 
         proposed_price=5000.0,
         proposed_notional=5000.0,
         rationale=_rationale(),
+        expected_horizon_bars=8,
     )
     object.__setattr__(payload, "kind", kind)
     object.__setattr__(payload, "instrument", instrument)
@@ -511,6 +512,7 @@ def test_materialize_noise_and_planted_lengths() -> None:
         proposed_quantity=1.0,
         proposed_price=5000.0,
         proposed_notional=5000.0,
+        expected_horizon_bars=8,
         rationale=_rationale(),
     )
     gross, positions, markets = materialize(hyp)
@@ -550,11 +552,13 @@ def test_emit_candidate_type_and_malformed_hypothesis(tmp_path: Path) -> None:
                     "trial_id": 1,
                     "agent_id": "promotion_agent",
                     "instrument": "MES",
+                    "direction": "BUY",
                     "decision_kind": "approved",
                     "scaled": False,
                     "quantity": 1.0,
                     "notional": 1.0,
                     "risk_reason": "approved",
+                    "expected_horizon_bars": 8,
                     "validation_report_sha256": "a" * 64,
                     "validation_mac": "b" * 64,
                     "issue_mac": "c" * 64,

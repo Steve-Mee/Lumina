@@ -12,6 +12,7 @@ from unittest.mock import patch
 import pytest
 
 from lumina_core.broker.broker_bridge.admission import run_final_arbitration
+from lumina_core.broker.broker_bridge.schemas import Position
 from lumina_core.risk.capital_aperture_lineage import (
     aperture_lineage_integrity_snapshot,
     ensure_order_lineage,
@@ -202,11 +203,14 @@ def test_fabric_blocks_strict_without_lineage() -> None:
         def safe_mode(self) -> int:
             return self._safe_mode
 
+        def get_account_state(self) -> tuple[object, list[Position], str]:
+            return None, [Position(symbol="MNQ", quantity=1, avg_price=1.0, side="LONG")], "ok"
+
         def _send_and_wait(self, *_a: Any, **_k: Any) -> dict[str, Any]:
             return {"type": "ok"}
 
     fake = _Fake()
-    order = _Order()
+    order = _Order(side="SELL", metadata={"reduce_only": True})
     out = fake.place_order_sync(order, client_order_id="c1")
     assert out.get("code") == "APERTURE_LINEAGE_MISSING"
     assert out.get("type") == "error"
@@ -295,11 +299,14 @@ def test_fabric_blocks_place_in_safe_mode() -> None:
         def safe_mode(self) -> int:
             return self._safe_mode
 
+        def get_account_state(self) -> tuple[object, list[Position], str]:
+            return None, [Position(symbol="MNQ", quantity=1, avg_price=1.0, side="LONG")], "ok"
+
         def _send_and_wait(self, *_a: Any, **_k: Any) -> dict[str, Any]:
             return {"type": "ok"}
 
     fake = _Fake()
-    order = _Order(metadata={"decision_context_id": "ctx-1"})
+    order = _Order(side="SELL", metadata={"decision_context_id": "ctx-1", "reduce_only": True})
     out = fake.place_order_sync(order, client_order_id="c1")
     assert out.get("code") == "SAFE_MODE"
     assert out.get("type") == "error"

@@ -72,8 +72,31 @@ def _service(mode: str = "real") -> tuple[ReasoningService, _BrokerSpy]:
     return service, broker
 
 
+def _reduce_only_sell() -> Order:
+    return Order(
+        symbol="MES JUN26",
+        side="SELL",
+        quantity=1,
+        order_type="MARKET",
+        stop_loss=4990.0,
+        take_profit=5010.0,
+        metadata={"reduce_only": True, "live_position_qty": 1},
+    )
+
+
+def test_reasoning_submit_order_buy_is_frozen() -> None:
+    service, broker = _service(mode="real")
+    result = service.submit_order(
+        Order(symbol="MES JUN26", side="BUY", quantity=1, order_type="MARKET", stop_loss=4990.0, take_profit=5010.0)
+    )
+    assert result.accepted is False
+    assert result.message == "UNGATED_PLACE_BLOCKED_S0"
+    assert broker.calls == 0
+
+
 def test_reasoning_submit_order_blocks_when_policy_gate_rejects(monkeypatch) -> None:
     service, broker = _service(mode="real")
+    service.engine.live_position_qty = 1
 
     monkeypatch.setattr(
         "lumina_core.engine.reasoning_service.enforce_pre_trade_gate",
@@ -81,15 +104,14 @@ def test_reasoning_submit_order_blocks_when_policy_gate_rejects(monkeypatch) -> 
     )
 
     with pytest.raises(RuntimeError, match="policy gate blocked"):
-        service.submit_order(
-            Order(symbol="MES JUN26", side="BUY", quantity=1, order_type="MARKET", stop_loss=4990.0, take_profit=5010.0)
-        )
+        service.submit_order(_reduce_only_sell())
 
     assert broker.calls == 0
 
 
 def test_reasoning_submit_order_passes_when_gate_allows(monkeypatch) -> None:
     service, broker = _service(mode="real")
+    service.engine.live_position_qty = 1
 
     monkeypatch.setattr(
         "lumina_core.engine.reasoning_service.enforce_pre_trade_gate",
@@ -100,9 +122,7 @@ def test_reasoning_submit_order_passes_when_gate_allows(monkeypatch) -> None:
         lambda *_a, **_k: (True, "ok"),
     )
 
-    result = service.submit_order(
-        Order(symbol="MES JUN26", side="BUY", quantity=1, order_type="MARKET", stop_loss=4990.0, take_profit=5010.0)
-    )
+    result = service.submit_order(_reduce_only_sell())
 
     assert result.accepted is True
     assert broker.calls == 1

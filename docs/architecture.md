@@ -68,6 +68,8 @@ LUMINA gebruikt **bounded contexts** als domeingrenzen onder `lumina_core/` (zie
 | **Trading Engine** | Kern trading: engine, marktdata, operaties, valuation | [`lumina_core/trading_engine/`](../lumina_core/trading_engine/), [`lumina_core/engine/`](../lumina_core/engine/) | `engine/` is composition root + compat-laag; nieuwe domeinlogica gaat naar bounded contexts |
 | **Risk Management** | Risk gates, allocatie, Kelly-achtige begrenzing | [`lumina_core/risk/`](../lumina_core/risk/) | Via mixins/engine geïntegreerd; canoniek onder `risk/` |
 | **Agent Orchestration** | Event bus, engine↔blackboard bindingen | [`lumina_core/agent_orchestration/`](../lumina_core/agent_orchestration/) | Pub/sub en bindings centraliseren |
+| **Research** | Propose-only Validation Gate, hypotheses, monitoring | [`lumina_research/`](../lumina_research/) | Isolation: no live Risk Core, no NT broker. Research may only propose. |
+| **ResearchBridge (S0 SHADOW)** | `PromotionCandidate` → logged `SignalIntent` + ADR-0055 hypothetical fills | [`lumina_core/research_bridge/`](../lumina_core/research_bridge/) | Zero `PlaceOrderCommand`. Ungated places are code-frozen (D1/D8, ADR-0060). |
 
 ```mermaid
 flowchart LR
@@ -433,6 +435,12 @@ Om schema-drift te beperken gebruiken Event Bus en Blackboard Pydantic contracte
 - `meta.agent.thought` -> `MetaAgentThought`
 - `meta.community.knowledge` -> `CommunityKnowledgeSnippet`
 - `inference.llm.decision_context` -> `LLMDecisionContext`
+- `research.hypothesis.proposed` -> `HypothesisProposed`
+- `research.validation.result` -> `ValidationResult`
+- `research.promotion.candidate` -> `PromotionCandidate`
+- `research.execution.signal_intent` -> `SignalIntent` (S0: log only; `expected_horizon` required)
+- `research.execution.order_intent` -> `ResearchExecutionOrderIntent` (S0: `admitted=False`)
+- `research.execution.fill` -> `ResearchExecutionFill` (S0: hypothetical ADR-0055)
 
 **Blackboard topics:**
 - `agent.rl.proposal`, `agent.news.proposal`, `agent.emotional_twin.proposal`, `agent.swarm.proposal`, `agent.tape.proposal`, `agent.swarm.snapshot` -> `AgentProposalPayload`

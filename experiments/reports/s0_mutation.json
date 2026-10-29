@@ -1,0 +1,186 @@
+{
+  "excluded": [],
+  "kill_rate": 0.909375,
+  "n_excluded": 0,
+  "n_killed": 291,
+  "n_mutants": 320,
+  "n_non_equivalent": 320,
+  "n_survived": 29,
+  "raw_kill_rate": 0.909375,
+  "survivors": [
+    {
+      "description": "jsonl.py:kw-bool#6",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/research_bridge/jsonl.py"
+    },
+    {
+      "description": "ungated_place_block.py:boolop#7",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/order_gatekeeper/ungated_place_block.py"
+    },
+    {
+      "description": "jsonl.py:except-pass#10",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/research_bridge/jsonl.py"
+    },
+    {
+      "description": "shadow_runtime.py:boolop#31",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/research_bridge/shadow_runtime.py"
+    },
+    {
+      "description": "ungated_place_block.py:const-int#35",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/order_gatekeeper/ungated_place_block.py"
+    },
+    {
+      "description": "shadow_runtime.py:return-none#35",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/research_bridge/shadow_runtime.py"
+    },
+    {
+      "description": "shadow_runtime.py:except-pass#36",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/research_bridge/shadow_runtime.py"
+    },
+    {
+      "description": "shadow_runtime.py:if-not#37",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/research_bridge/shadow_runtime.py"
+    },
+    {
+      "description": "shadow_runtime.py:const-int#39",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/research_bridge/shadow_runtime.py"
+    },
+    {
+      "description": "costs.py:const-float#42",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/research_bridge/costs.py"
+    },
+    {
+      "description": "shadow_runtime.py:const-int#42",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/research_bridge/shadow_runtime.py"
+    },
+    {
+      "description": "shadow_runtime.py:ifexp-swap#44",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/research_bridge/shadow_runtime.py"
+    },
+    {
+      "description": "costs.py:binop#44",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/research_bridge/costs.py"
+    },
+    {
+      "description": "costs.py:binop#47",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/research_bridge/costs.py"
+    },
+    {
+      "description": "costs.py:const-float#48",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/research_bridge/costs.py"
+    },
+    {
+      "description": "costs.py:boolop#51",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/research_bridge/costs.py"
+    },
+    {
+      "description": "shadow_runtime.py:except-pass#51",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/research_bridge/shadow_runtime.py"
+    },
+    {
+      "description": "costs.py:binop#52",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/research_bridge/costs.py"
+    },
+    {
+      "description": "ungated_place_block.py:const-int#54",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/order_gatekeeper/ungated_place_block.py"
+    },
+    {
+      "description": "shadow_runtime.py:compare#61",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/research_bridge/shadow_runtime.py"
+    },
+    {
+      "description": "shadow_runtime.py:compare-not#62",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/research_bridge/shadow_runtime.py"
+    },
+    {
+      "description": "ungated_place_block.py:compare#64",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/order_gatekeeper/ungated_place_block.py"
+    },
+    {
+      "description": "shadow_runtime.py:if-not#63",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/research_bridge/shadow_runtime.py"
+    },
+    {
+      "description": "ungated_place_block.py:compare-not#65",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/order_gatekeeper/ungated_place_block.py"
+    },
+    {
+      "description": "ungated_place_block.py:if-not#66",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/order_gatekeeper/ungated_place_block.py"
+    },
+    {
+      "description": "ungated_place_block.py:return-none#96",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/order_gatekeeper/ungated_place_block.py"
+    },
+    {
+      "description": "ungated_place_block.py:const-int#109",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/order_gatekeeper/ungated_place_block.py"
+    },
+    {
+      "description": "ungated_place_block.py:except-pass#108",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/order_gatekeeper/ungated_place_block.py"
+    },
+    {
+      "description": "ungated_place_block.py:boolop#121",
+      "detail": "survived kill battery",
+      "justification": "",
+      "path": "lumina_core/order_gatekeeper/ungated_place_block.py"
+    }
+  ]
+}

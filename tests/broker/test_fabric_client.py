@@ -13,7 +13,7 @@ pytest.importorskip("grpc")
 
 import grpc
 
-from lumina_core.broker.broker_bridge.schemas import Order
+from lumina_core.broker.broker_bridge.schemas import Order, Position
 from lumina_core.broker.ninjatrader.bridge_service import (
     NinjaTraderBridgeService,
     reset_ninjatrader_bridge_service,
@@ -269,7 +269,13 @@ def test_fabric_client_connect_auth_and_place_order(mock_fabric_server: tuple[st
     assert client.session_id == "sess-mock-1"
     assert client.account_name == "Sim101"
 
-    order = Order(symbol="MNQ", side="BUY", quantity=1, order_type="MARKET")
+    order = Order(
+        symbol="MNQ",
+        side="SELL",
+        quantity=1,
+        order_type="MARKET",
+        metadata={"reduce_only": True},
+    )
     resp = client.place_order_sync(order, client_order_id="cid-place-1", correlation_id="corr-place-1")
     assert resp["type"] == "ack"
     assert resp["order_id"].startswith("nt-")
@@ -385,7 +391,10 @@ def test_bridge_and_broker_submit_via_fabric(mock_fabric_server: tuple[str, _Moc
     )
 
     assert broker.connect() is True
-    result = broker.submit_order(Order(symbol="MNQ", side="BUY", quantity=1, order_type="MARKET"))
+    bridge._positions.append(Position(symbol="MNQ", quantity=1, avg_price=21000.0, side="BUY"))
+    result = broker.submit_order(
+        Order(symbol="MNQ", side="SELL", quantity=1, order_type="MARKET", metadata={"reduce_only": True})
+    )
     assert result.accepted is True
     assert result.order_id.startswith("nt-")
     assert servicer.place_calls == 1

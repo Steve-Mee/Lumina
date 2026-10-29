@@ -68,7 +68,7 @@ def _make_mock_broker(accepted=True, last_fill_price=99.5, last_fill_comm=0.1):
 
 @pytest.mark.unit
 def test_paper_simulator_try_open_attaches_state_and_calls_executor():
-    """Given simulator with mock app/broker/executor/dream (with ctx), when try_open (pos==0), then executor.build called with full ctx from dream, _paper_sync/store called (via mocks), submit_ok True."""
+    """S0: try_open BUY is frozen. Executor is not called."""
     app = _make_mock_app(sim_pos=0)
     broker = _make_mock_broker()
     executor = MagicMock(spec=PaperTradeExecutor)
@@ -79,15 +79,11 @@ def test_paper_simulator_try_open_attaches_state_and_calls_executor():
     sim = PaperSimulator(app=app, broker=broker, executor=executor, valuation_engine=ValuationEngine())
     res = sim.try_open(signal="BUY", qty=10, dream_snapshot=dream, inst="TEST", regime="TREND")
 
-    assert res["submit_ok"] is True
-    executor.build_paper_order.assert_called_once()
-    call_kwargs = executor.build_paper_order.call_args[1]
-    assert call_kwargs["decision_context_id"] == "ctx-123"
-    assert call_kwargs["dream_snapshot"] == dream
-    # sync/store were called on app (paper state updated)
-    assert app.sim_position_qty == 0  # sync mocked positions to 0 in this test broker; in real would set
-    # (in this mock get_positions returns 0 qty, so sync sets 0; real test would inject pos with qty)
-    assert "MANUAL" not in str(res)  # just smoke
+    assert res["submit_ok"] is False
+    assert res["reason"] == "UNGATED_PLACE_BLOCKED_S0"
+    executor.build_paper_order.assert_not_called()
+    executor.submit_paper_order.assert_not_called()
+    assert app.sim_position_qty == 0
 
 
 @pytest.mark.unit
@@ -134,7 +130,8 @@ def test_paper_simulator_best_effort_fallback_no_broker_no_ctx():
     app = _make_mock_app(sim_pos=0)
     sim = PaperSimulator(app=app, broker=None, executor=None)  # no broker
     res = sim.try_open(signal="BUY", qty=5, dream_snapshot=None)
-    assert res["submit_ok"] is True  # best-effort path in executor fallback
+    assert res["submit_ok"] is False
+    assert res["reason"] == "UNGATED_PLACE_BLOCKED_S0"
     handled = sim.check_close(price=100.0, dream_snapshot=None)
     assert handled is False  # no pos or no hit setup
 
@@ -151,7 +148,8 @@ def test_paper_simulator_integration_with_supervisor_mocks():
     sim = PaperSimulator(app=app, container=container, valuation_engine=val)
     # open
     res = sim.try_open(signal="BUY", qty=2, dream_snapshot=dream, regime="TREND")
-    assert res["submit_ok"] is True
+    assert res["submit_ok"] is False
+    assert res["reason"] == "UNGATED_PLACE_BLOCKED_S0"
     # (in full with real broker fill it would set pos; here mock sets 0 but path exercised)
     # close hit (force by setting pos manually for test)
     app.sim_position_qty = 2

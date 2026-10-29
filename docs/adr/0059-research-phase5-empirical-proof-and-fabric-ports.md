@@ -110,3 +110,4 @@ Floors stay frozen: FAR high-vol ≤ 10% hard, normal ≤ 5%, short-horizon dete
 - Phase 3 bounds: `docs/adr/0057-research-self-evolution-within-bounds.md`
 - Ports: `lumina_research/ports/`, `lumina_core/agent_orchestration/schemas_research_ports.py`
 - Proof CLI: `python -m lumina_research.proof verify|research|weekly`
+- Related: `docs/adr/0060-research-bridge-shadow-first.md` (S0 ungated-place freeze; numbered 0060 because this Fase 5 record already used 0059 on `main`)

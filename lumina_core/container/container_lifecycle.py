@@ -16,6 +16,7 @@ from lumina_core.logging_utils import build_logger, flush_logger_handlers, get_l
 from lumina_core.monitoring.adaptive_intelligence_tracker import AdaptiveIntelligenceTracker
 from lumina_core.ports import EngineServicePorts
 from lumina_core.reasoning.local_inference_engine import LocalInferenceEngine
+from lumina_core.research_bridge.install import attach_shadow_runtime
 from lumina_core.risk.equity_snapshot import EquitySnapshotProvider
 from lumina_core.risk.regime_detector import RegimeDetector
 from lumina_core.runtime_context import RuntimeContext
@@ -65,6 +66,8 @@ class ApplicationContainerLifecycleMixin:
         self.event_bus = EventBus()
         self.engine.event_bus = self.event_bus
         self.engine.bind_event_bus(self.event_bus)
+        # S0: subscribe SHADOW bridge. Default market is unhealthy (no new intents).
+        self.research_bridge = attach_shadow_runtime(self.event_bus)
         self.adaptive_intelligence_tracker = AdaptiveIntelligenceTracker(Path.cwd())
         self.adaptive_intelligence_tracker.bind(self.event_bus)
         self.valuation_engine = self.engine.valuation_engine

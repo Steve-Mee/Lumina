@@ -49,6 +49,7 @@ def default_parent(*, instrument: Instrument = "MES") -> ParameterGenome:
         oos_size=30,
         planted=True,
         kind="planted_edge",
+        expected_horizon_bars=8,
     )
 
 

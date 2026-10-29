@@ -12,7 +12,7 @@ from lumina_core.engine.errors import ErrorSeverity, LuminaError, format_error_c
 from lumina_core.engine.live_position_manager import LivePositionManager
 from lumina_core.logging_utils import get_logger, log_event, log_runtime_trace, runtime_trace_enabled
 from lumina_core.maturity.milestone_hooks import try_record_milestone
-from lumina_core.order_gatekeeper import enforce_pre_trade_gate
+from lumina_core.order_gatekeeper import enforce_pre_trade_gate, gate_order
 from lumina_core.risk.policy_engine import PolicyEngine
 
 logger = get_logger("lumina.engine.operations")
@@ -59,6 +59,16 @@ class OperationsOrdersMixin:
         """
         app = self._app()
         trade_mode = self.engine.config.trade_mode
+
+        allowed, block_reason = gate_order(
+            "operations_service_orders.place_order",
+            engine=self.engine,
+            app=app,
+            source_agent="operations_service",
+        )
+        if not allowed:
+            app.logger.warning("place_order blocked by S0 ungated-place freeze: %s", block_reason)
+            return False
 
         # Paper mode: no broker submission — tracked internally by supervisor_loop.
         if trade_mode == "paper":

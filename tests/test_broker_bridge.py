@@ -10,9 +10,11 @@ from typing import Any, cast
 
 from lumina_core.broker.broker_bridge import (
     CrossTradeBroker,
+    Fill,
     Order,
     OrderResult,
     PaperBroker,
+    Position,
     broker_factory,
 )
 from lumina_core.engine.bar_integrity import BarBookStatus
@@ -21,6 +23,22 @@ from lumina_core.engine.operations_service import OperationsService
 from lumina_core.risk.final_arbitration import FinalArbitration
 from lumina_core.risk.risk_policy import RiskPolicy
 from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+
+
+def _seed_paper_position(broker: PaperBroker, *, symbol: str, qty: int, price: float) -> None:
+    side = "BUY" if qty > 0 else "SELL"
+    broker._fills.append(
+        Fill(
+            fill_id="seed-fill",
+            order_id="seed-order",
+            symbol=symbol,
+            side=side,
+            quantity=abs(int(qty)),
+            price=float(price),
+            timestamp="2026-01-01T00:00:00Z",
+        )
+    )
+    broker._sync_positions_from_fills()
 
 
 def _complete_market_data() -> MarketDataManager:
@@ -223,6 +241,7 @@ def test_paper_broker_submit_order_and_fill_tracking(monkeypatch: pytest.MonkeyP
         ),
     )
     broker = PaperBroker(engine=engine)
+    _seed_paper_position(broker, symbol="MES JUN26", qty=-2, price=5000.5)
     result = broker.submit_order(
         Order(
             symbol="MES JUN26",
@@ -230,17 +249,18 @@ def test_paper_broker_submit_order_and_fill_tracking(monkeypatch: pytest.MonkeyP
             quantity=2,
             stop_loss=4995.0,
             take_profit=5010.0,
-            # Authoritative gate only (post 1.3.4 zero-trace hygiene).
+            metadata={"reduce_only": True},
         )
     )
 
     assert result.accepted is True
     assert result.status == "filled"
     assert result.filled_qty == 2
-    assert len(broker.get_positions()) == 1
+    assert broker.get_positions() == []
     fills = broker.get_fills()
-    assert len(fills) == 1
-    assert fills[0].symbol == "MES JUN26"
+    assert len(fills) == 2
+    assert fills[-1].symbol == "MES JUN26"
+    assert fills[-1].side == "BUY"
     cancel_result = broker.cancel_all_orders()
     assert cancel_result["status"] == "ok"
     assert cancel_result["cancelled_count"] == 0
@@ -288,7 +308,7 @@ def test_cross_trade_broker_and_operations_service_submit_via_bridge(monkeypatch
             quantity=1,
             stop_loss=5010.0,
             take_profit=4990.0,
-            # Authoritative gate only (post 1.3.4 zero-trace hygiene).
+            metadata={"reduce_only": True},
         )
     )
     assert direct.accepted is True
@@ -357,16 +377,24 @@ def test_cross_trade_broker_and_operations_service_submit_via_bridge(monkeypatch
     service = OperationsService(cast(Any, engine), container)
     ok = service.place_order("BUY", 3)
 
-    assert ok is True
-    assert len(broker_spy.calls) == 1
-    submitted = broker_spy.calls[0]
-    assert submitted.symbol == "MES JUN26"
-    assert submitted.quantity == 3
+    assert ok is False
+    assert len(broker_spy.calls) == 0
 
 
 def test_paper_broker_rejects_when_engine_missing() -> None:
     broker = PaperBroker(engine=None)
     result = broker.submit_order(Order(symbol="MES JUN26", side="BUY", quantity=1))
+    assert result.accepted is False
+    assert result.status == "rejected"
+    assert result.message == "UNGATED_PLACE_BLOCKED_S0"
+
+
+def test_paper_broker_reduce_still_requires_admission_engine() -> None:
+    broker = PaperBroker(engine=None)
+    broker._positions["MES JUN26"] = Position(symbol="MES JUN26", quantity=1, avg_price=5000.0, side="BUY")
+    result = broker.submit_order(
+        Order(symbol="MES JUN26", side="SELL", quantity=1, metadata={"reduce_only": True})
+    )
     assert result.accepted is False
     assert result.status == "rejected"
     assert "admission_engine_required" in result.message
@@ -456,16 +484,19 @@ def test_downstream_lineage_first_link_on_order_after_authoritative_gate(monkeyp
         config=SimpleNamespace(trade_mode="paper", instrument="MES"),
         event_bus=fake_bus,
         app=SimpleNamespace(logger=SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None)),
+        live_position_qty=1,
     )
 
     # Simulate an Order that has already passed the pre-trade gates
     order = Order(
         symbol="MES",
-        side="BUY",
+        side="SELL",
         quantity=1,
         metadata={
             "proposed_risk": 50.0,
             "regime": "NEUTRAL",
+            "reduce_only": True,
+            "live_position_qty": 1,
             # Note: no decision_context_id yet — the Slice 15 logic should recover + link it
         },
     )
@@ -528,15 +559,18 @@ def test_downstream_lineage_propagates_into_fill_and_order_result(monkeypatch) -
         live_data_lock=threading.RLock(),
         live_quotes=[{"last": 100.0}],
         ohlc_1min=SimpleNamespace(__len__=lambda s: 0),
+        live_position_qty=1,
     )
 
     order = Order(
         symbol="MES",
-        side="BUY",
+        side="SELL",
         quantity=1,
         metadata={
             "proposed_risk": 50.0,
             "regime": "NEUTRAL",
+            "reduce_only": True,
+            "live_position_qty": 1,
             # Slice 15 linkage will be populated by policy_engine
         },
     )
@@ -608,15 +642,18 @@ def test_fill_dataclass_now_has_first_class_lineage_fields(monkeypatch) -> None:
         live_data_lock=threading.RLock(),
         live_quotes=[{"last": 100.0}],
         ohlc_1min=SimpleNamespace(__len__=lambda s: 0),
+        live_position_qty=1,
     )
 
     order = Order(
         symbol="MES",
-        side="BUY",
+        side="SELL",
         quantity=1,
         metadata={
             "proposed_risk": 50.0,
             "regime": "NEUTRAL",
+            "reduce_only": True,
+            "live_position_qty": 1,
             "decision_context_id": "fill-fields-ctx-999",
             "prev_hash": "firstclasshash999",
             "prev_event_topic": "risk.final_arbitration.result",
@@ -684,15 +721,18 @@ def test_typed_execution_fill_event_published_with_lineage(monkeypatch) -> None:
         live_data_lock=threading.RLock(),
         live_quotes=[{"last": 100.0}],
         ohlc_1min=SimpleNamespace(__len__=lambda s: 0),
+        live_position_qty=1,
     )
 
     order = Order(
         symbol="MES",
-        side="BUY",
+        side="SELL",
         quantity=1,
         metadata={
             "proposed_risk": 50.0,
             "regime": "NEUTRAL",
+            "reduce_only": True,
+            "live_position_qty": 1,
             "decision_context_id": "fill-event-ctx-888",
             "prev_hash": "abc123prevhash",
             "prev_event_topic": "risk.final_arbitration.result",
@@ -702,6 +742,7 @@ def test_typed_execution_fill_event_published_with_lineage(monkeypatch) -> None:
     from lumina_core.engine.policy_engine import PolicyEngine
 
     broker = PaperBroker(engine=engine)
+    broker._positions["MES"] = Position(symbol="MES", quantity=1, avg_price=100.0, side="BUY")
     policy = PolicyEngine(engine=engine, broker=broker)
 
     def _gate_ok(*_a: object, **_k: object) -> tuple[bool, str]:

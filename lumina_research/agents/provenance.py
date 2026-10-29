@@ -169,11 +169,13 @@ def _canonical_issue(fields: Mapping[str, object]) -> bytes:
         "trial_id": fields["trial_id"],
         "agent_id": fields["agent_id"],
         "instrument": fields["instrument"],
+        "direction": fields["direction"],
         "decision_kind": fields["decision_kind"],
         "scaled": fields["scaled"],
         "quantity": fields["quantity"],
         "notional": fields["notional"],
         "risk_reason": fields["risk_reason"],
+        "expected_horizon_bars": fields["expected_horizon_bars"],
         "validation_report_sha256": fields["validation_report_sha256"],
         "validation_mac": fields["validation_mac"],
     }

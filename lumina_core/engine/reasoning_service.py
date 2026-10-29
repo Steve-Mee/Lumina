@@ -17,7 +17,7 @@ from lumina_core.reasoning.local_inference_engine import LocalInferenceEngine
 from .lumina_engine import LuminaEngine
 from lumina_core.risk.policy_engine import PolicyEngine
 from lumina_core.risk.regime_detector import RegimeDetector, RegimeSnapshot
-from lumina_core.order_gatekeeper import enforce_pre_trade_gate
+from lumina_core.order_gatekeeper import blocked_order_result, enforce_pre_trade_gate, gate_order
 from lumina_core.sla_config import reasoning_latency_sla_ms
 from lumina_core.logging_utils import correlation_id, get_logger, log_decision_flow
 from .reasoning_decision_log import ReasoningDecisionLogError, ReasoningDecisionLogMixin
@@ -64,6 +64,15 @@ class ReasoningService(ReasoningPathsMixin, ReasoningDecisionLogMixin):
     def submit_order(self, order: Order) -> OrderResult:
         if self.container is None or getattr(self.container, "broker", None) is None:
             raise BrokerBridgeError("BrokerBridge is not configured on ReasoningService")
+
+        allowed_s0, block_reason = gate_order(
+            "reasoning_service.submit_order",
+            order,
+            engine=self.engine,
+            broker=getattr(self.container, "broker", None),
+        )
+        if not allowed_s0:
+            return blocked_order_result(block_reason)
 
         mode = str(getattr(self.engine.config, "trade_mode", "paper")).strip().lower()
         dream = self.engine.get_current_dream_snapshot()

@@ -5,6 +5,7 @@ import traceback
 from typing import Any
 
 from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
+from lumina_core.order_gatekeeper.ungated_place_block import assert_validation_gate_or_block
 from lumina_core.engine.live_position_manager import LivePositionManager
 from lumina_core.engine.paper_simulator import PaperSimulator
 from lumina_core.engine.price_dupe_resolver import PriceDupeResolver
@@ -61,7 +62,21 @@ def run_tick_exec(sm: Any, ctx: SupervisorTickCtx) -> None:
                     conf=round(float(dream_snapshot.get("confluence_score", 0) or 0), 4),
                 )
 
-            if trade_mode == "paper":
+            exec_ok, exec_reason = assert_validation_gate_or_block(
+                "supervisor_tick_exec.run_tick_exec",
+                order_side=str(signal).upper(),
+                live_position_qty=int(getattr(app, "sim_position_qty", 0) or 0),
+            )
+            if not exec_ok:
+                sm._logger.warning(
+                    "UNGATED_PLACE_BLOCKED_S0 supervisor_tick_exec skipped %s qty=%s reason=%s",
+                    signal,
+                    qty,
+                    exec_reason,
+                )
+                skip_exec = True
+
+            if not skip_exec and trade_mode == "paper":
                 if getattr(app, "sim_position_qty", 0) == 0:
                     container = getattr(app, "container", None)
                     broker = getattr(container, "broker", None) if container is not None else None
@@ -79,7 +94,7 @@ def run_tick_exec(sm: Any, ctx: SupervisorTickCtx) -> None:
                         inst=inst,
                         regime=str(regime),
                     )
-            else:
+            elif not skip_exec:
                 if hasattr(app, "place_order") and app.place_order(signal, qty):
                     log_structured(
                         LuminaError(

@@ -93,6 +93,9 @@ class HypothesisAgent(Frozen):
 
     def _accept(self, draft: HypothesisDraft) -> HypothesisProposed:
         rationale = _require_rationale(draft.rationale)
+        horizon = draft.expected_horizon_bars
+        if not isinstance(horizon, int) or isinstance(horizon, bool) or horizon < 1:
+            raise HypothesisRefused("expected_horizon is required and must be an int >= 1")
         trial_id = self._registry.record(
             config_id=draft.config_id,
             agent_id=HYPOTHESIS_AGENT_ID,
@@ -120,6 +123,7 @@ class HypothesisAgent(Frozen):
             oos_size=int(draft.oos_size),
             parent_config_id=str(draft.parent_config_id),
             overfit_in_sample=bool(draft.overfit_in_sample),
+            expected_horizon_bars=int(horizon),
             rationale=rationale,
         )
         dumped = dump_json(payload)
@@ -141,7 +145,12 @@ class HypothesisAgent(Frozen):
             event="hypothesis",
             hypothesis_id=hypothesis_id,
             rationale=dump_json(rationale),
-            metrics={"trial_id": trial_id, "kind": draft.kind, "config_id": draft.config_id},
+            metrics={
+                "trial_id": trial_id,
+                "kind": draft.kind,
+                "config_id": draft.config_id,
+                "expected_horizon_bars": int(horizon),
+            },
             reject_reason=None,
             failed_checks=(),
         )

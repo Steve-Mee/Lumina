@@ -238,6 +238,14 @@ class _ChaosFabricServicer(fabric_pb2_grpc.ExecutionFabricServicer):
                 account_name=self.account,
                 currency="USD",
             ),
+            positions=[
+                fabric_pb2.PositionUpdate(
+                    instrument="MNQ",
+                    quantity=2,
+                    avg_price=20950.0,
+                    side="LONG",
+                )
+            ],
             safe_mode=(
                 fabric_pb2.SAFE_MODE_STATE_SAFE if self.safe_mode else fabric_pb2.SAFE_MODE_STATE_NORMAL
             ),
@@ -286,7 +294,13 @@ def test_idempotent_duplicate_client_order_id(chaos_server: tuple[str, _ChaosFab
     client = _client(target)
     assert client.connect() is True
     cid = "idem-" + uuid.uuid4().hex[:8]
-    order = Order(symbol="MNQ", side="BUY", quantity=1, order_type="MARKET")
+    order = Order(
+        symbol="MNQ",
+        side="SELL",
+        quantity=1,
+        order_type="MARKET",
+        metadata={"reduce_only": True},
+    )
     r1 = client.place_order_sync(order, client_order_id=cid, correlation_id="c1")
     r2 = client.place_order_sync(order, client_order_id=cid, correlation_id="c2")
     assert r1["type"] == "ack"
@@ -303,7 +317,13 @@ def test_safe_mode_rejects_new_orders(chaos_server: tuple[str, _ChaosFabricServi
     assert client.connect() is True
     servicer.safe_mode = True
     r = client.place_order_sync(
-        Order(symbol="MNQ", side="BUY", quantity=1, order_type="MARKET"),
+        Order(
+            symbol="MNQ",
+            side="SELL",
+            quantity=1,
+            order_type="MARKET",
+            metadata={"reduce_only": True},
+        ),
         client_order_id="safe-block-1",
         correlation_id="sc1",
     )
@@ -317,13 +337,14 @@ def test_modify_limit_order(chaos_server: tuple[str, _ChaosFabricServicer]) -> N
     client = _client(target)
     assert client.connect() is True
     cid = "lim-" + uuid.uuid4().hex[:8]
-    order = Order(symbol="MNQ", side="BUY", quantity=2, order_type="LIMIT")
+    order = Order(symbol="MNQ", side="SELL", quantity=2, order_type="LIMIT")
     order.metadata["price"] = 20950.0
+    order.metadata["reduce_only"] = True
     r = client.place_order_sync(order, client_order_id=cid, correlation_id="m1")
     assert r["type"] == "ack"
     mod = client.modify_order_sync(client_order_id=cid, quantity=3, price=20960.0, correlation_id="m2")
-    assert mod["type"] == "ack"
-    assert mod.get("state") == fabric_pb2.ORDER_STATE_WORKING
+    assert mod["type"] == "error"
+    assert mod.get("code") == "UNGATED_PLACE_BLOCKED_S0"
     client.disconnect()
 
 

@@ -81,6 +81,7 @@ def test_events_are_frozen_versioned_and_forbid_extras() -> None:
         proposed_quantity=1.0,
         proposed_price=5000.0,
         proposed_notional=5000.0,
+        expected_horizon_bars=8,
         rationale=_rationale(),
     )
     assert hyp.schema_version == HYPOTHESIS_SCHEMA_VERSION
@@ -158,11 +159,13 @@ def test_events_are_frozen_versioned_and_forbid_extras() -> None:
         trial_id=2,
         agent_id="promotion_agent",
         instrument="MES",
+        direction="BUY",
         decision_kind="scaled",
         scaled=True,
         quantity=2.0,
         notional=10_000.0,
         risk_reason="max_position_pct",
+        expected_horizon_bars=8,
         validation_report_sha256="a" * 64,
         validation_mac="b" * 64,
         issue_mac="c" * 64,

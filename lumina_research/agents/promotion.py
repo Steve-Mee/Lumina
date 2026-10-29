@@ -132,10 +132,15 @@ class PromotionAgent(Frozen):
         if hyp is None:
             self._log_kill(payload, "hypothesis_unknown", ("hypothesis_unknown",))
             return None
-        decision = self._risk_decide(hyp)
-        if decision is None:
+        horizon = hyp.get("expected_horizon_bars")
+        if not isinstance(horizon, int) or isinstance(horizon, bool) or horizon < 1:
+            self._log_kill(payload, "expected_horizon_missing", ("expected_horizon_missing",))
+            return None
+        decided = self._risk_decide(hyp)
+        if decided is None:
             self._log_kill(payload, "hypothesis_malformed", ("hypothesis_malformed",))
             return None
+        decision, proposal_side = decided
         if decision.kind is DecisionKind.REJECTED:
             self._log_kill(payload, f"risk:{decision.reason}", (f"risk:{decision.reason}",))
             return None
@@ -152,11 +157,13 @@ class PromotionAgent(Frozen):
             "trial_id": trial_id,
             "agent_id": PROMOTION_AGENT_ID,
             "instrument": str(hyp["instrument"]),
+            "direction": "BUY" if proposal_side == "buy" else "SELL",
             "decision_kind": "scaled" if scaled else "approved",
             "scaled": scaled,
             "quantity": float(decision.quantity),
             "notional": float(decision.notional),
             "risk_reason": decision.reason,
+            "expected_horizon_bars": int(horizon),
             "validation_report_sha256": str(payload["report_sha256"]),
             "validation_mac": str(payload["provenance_mac"]),
         }
@@ -205,7 +212,7 @@ class PromotionAgent(Frozen):
     def _lookup(self, hypothesis_id: str) -> dict[str, object] | None:
         return as_object_dict(self._hypotheses.get(hypothesis_id))
 
-    def _risk_decide(self, hyp: Mapping[str, object]) -> Decision | None:
+    def _risk_decide(self, hyp: Mapping[str, object]) -> tuple[Decision, str] | None:
         instrument = hyp.get("instrument")
         quantity = hyp.get("proposed_quantity")
         price = hyp.get("proposed_price")
@@ -229,7 +236,7 @@ class PromotionAgent(Frozen):
             cluster_id=cluster_for(instrument),
             submitted_at_utc=now,
         )
-        return self._core.propose_order(proposal)
+        return self._core.propose_order(proposal), proposal.side
 
     def _log_kill(self, payload: Mapping[str, object], reason: str, checks: tuple[str, ...]) -> None:
         hypothesis_id = str(payload.get("hypothesis_id", "unknown"))

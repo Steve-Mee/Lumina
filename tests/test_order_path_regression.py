@@ -222,12 +222,12 @@ def test_paper_mode_skips_risk_controller():
 # ─── SIM tests ───────────────────────────────────────────────────────────────
 
 
-def test_sim_mode_submits_to_broker():
-    """SIM stuurt naar broker (sim money, live orders)."""
+def test_sim_mode_place_is_frozen():
+    """S0 D1/D8: SIM confluence/operator place is frozen. Flatten remains elsewhere."""
     svc, container = _make_service("sim")
     result = svc.place_order("BUY", 1)
-    assert result is True
-    container.broker.submit_order.assert_called_once()
+    assert result is False
+    container.broker.submit_order.assert_not_called()
 
 
 def test_sim_mode_respects_session_guard():
@@ -255,19 +255,19 @@ def test_sim_mode_financial_risk_waived_via_enforce_rules_false():
     svc, container = _make_service("sim", risk_ok=True)
     # Simuleer dat check_can_trade True teruggeeft (zoals enforce_rules=False doet)
     result = svc.place_order("BUY", 1)
-    assert result is True
-    container.broker.submit_order.assert_called_once()
+    assert result is False
+    container.broker.submit_order.assert_not_called()
 
 
 # ─── REAL tests ──────────────────────────────────────────────────────────────
 
 
-def test_real_mode_submits_when_all_gates_pass():
-    """REAL mode: SessionGuard OK + RiskController OK → broker submit."""
+def test_real_mode_place_is_frozen():
+    """S0 D1/D8: REAL operator place is frozen until an ADR + human-signed release."""
     svc, container = _make_service("real")
     result = svc.place_order("BUY", 1)
-    assert result is True
-    container.broker.submit_order.assert_called_once()
+    assert result is False
+    container.broker.submit_order.assert_not_called()
 
 
 def test_real_mode_blocked_by_risk_controller():
@@ -410,10 +410,9 @@ def test_place_order_invokes_risk_core_gate_before_broker(monkeypatch) -> None:
 
     monkeypatch.setattr(orders_mod, "enforce_pre_trade_gate", tracking_gate)
     container.broker.submit_order.side_effect = tracking_submit
-    assert svc.place_order("BUY", 1) is True
-    assert sequence[0] == "risk_core"
-    assert "broker" in sequence
-    assert sequence.index("risk_core") < sequence.index("broker")
+    assert svc.place_order("BUY", 1) is False
+    assert "broker" not in sequence
+    assert "risk_core" not in sequence
 
 
 def test_place_order_has_no_playground_crawl_path() -> None:
