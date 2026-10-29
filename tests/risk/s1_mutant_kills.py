@@ -316,17 +316,55 @@ def _live_battery() -> None:
 
     cases = (
         (None, LIVE_RELEASE_RECORD_MISSING),
-        (signed_live_release(enabled=False, nonce="n-disabled-16xxxx"), LIVE_RELEASE_DISABLED),
-        (signed_live_release(mac="", nonce="n-hmac-req-16xxxx"), LIVE_RELEASE_HMAC_REQUIRED),
-        (signed_live_release(mac="b" * 32, nonce="n-mac-inv-16xxxxx"), LIVE_RELEASE_MAC_INVALID),
-        (signed_live_release(mac="b" * 64, nonce="n-mac-mis-16xxxxx"), LIVE_RELEASE_MAC_MISMATCH),
-        (signed_live_release(approved_by="research_bridge", nonce="n-agent-16xxxxxxx"), LIVE_RELEASE_AGENT_APPROVER_FORBIDDEN),
-        (signed_live_release(adr_path="not-an-adr", nonce="n-adr-16xxxxxxxxxx"), LIVE_RELEASE_ADR_REQUIRED),
-        (signed_live_release(adr_sha256="nope", nonce="n-adr-hash-16xxxxx"), LIVE_RELEASE_ADR_HASH_INVALID),
-        (signed_live_release(purpose="other", nonce="n-purpose-16xxxxxxx"), LIVE_RELEASE_PURPOSE_INVALID),
-        (signed_live_release(schema_version="v0", nonce="n-schema-16xxxxxxxx"), LIVE_RELEASE_PURPOSE_INVALID),
-        (signed_live_release(nonce="short"), LIVE_RELEASE_NONCE_INVALID),
-        (signed_live_release(approved_at_utc="2026-10-29T00:00:00", nonce="n-naive-16xxxxxxxx"), LIVE_RELEASE_TIMESTAMP_NOT_UTC),
+        (
+            signed_live_release(enabled=False, nonce="n-disabled-16xxxx", now=FROZEN_NOW),
+            LIVE_RELEASE_DISABLED,
+        ),
+        (
+            signed_live_release(mac="", nonce="n-hmac-req-16xxxx", now=FROZEN_NOW),
+            LIVE_RELEASE_HMAC_REQUIRED,
+        ),
+        (
+            signed_live_release(mac="b" * 32, nonce="n-mac-inv-16xxxxx", now=FROZEN_NOW),
+            LIVE_RELEASE_MAC_INVALID,
+        ),
+        (
+            signed_live_release(mac="b" * 64, nonce="n-mac-mis-16xxxxx", now=FROZEN_NOW),
+            LIVE_RELEASE_MAC_MISMATCH,
+        ),
+        (
+            signed_live_release(
+                approved_by="research_bridge",
+                nonce="n-agent-16xxxxxxx",
+                now=FROZEN_NOW,
+            ),
+            LIVE_RELEASE_AGENT_APPROVER_FORBIDDEN,
+        ),
+        (
+            signed_live_release(adr_path="not-an-adr", nonce="n-adr-16xxxxxxxxxx", now=FROZEN_NOW),
+            LIVE_RELEASE_ADR_REQUIRED,
+        ),
+        (
+            signed_live_release(adr_sha256="nope", nonce="n-adr-hash-16xxxxx", now=FROZEN_NOW),
+            LIVE_RELEASE_ADR_HASH_INVALID,
+        ),
+        (
+            signed_live_release(purpose="other", nonce="n-purpose-16xxxxxxx", now=FROZEN_NOW),
+            LIVE_RELEASE_PURPOSE_INVALID,
+        ),
+        (
+            signed_live_release(schema_version="v0", nonce="n-schema-16xxxxxxxx", now=FROZEN_NOW),
+            LIVE_RELEASE_PURPOSE_INVALID,
+        ),
+        (signed_live_release(nonce="short", now=FROZEN_NOW), LIVE_RELEASE_NONCE_INVALID),
+        (
+            signed_live_release(
+                approved_at_utc="2026-10-29T00:00:00",
+                nonce="n-naive-16xxxxxxxx",
+                now=FROZEN_NOW,
+            ),
+            LIVE_RELEASE_TIMESTAMP_NOT_UTC,
+        ),
     )
     for record, want in cases:
         reset_live_release_nonces_for_tests()
@@ -429,9 +467,7 @@ def _admission_battery() -> None:
                 ADMISSION_STEP_SIM_ACCOUNT_WHITELIST: lambda _ctx: (True, "ok"),
                 ADMISSION_STEP_LIVE_RELEASE: lambda _ctx: (True, "ok"),
             },
-            experimental_bypass_step_ids=frozenset(
-                {ADMISSION_STEP_SIM_ACCOUNT_WHITELIST, ADMISSION_STEP_LIVE_RELEASE}
-            ),
+            experimental_bypass_step_ids=frozenset({ADMISSION_STEP_SIM_ACCOUNT_WHITELIST, ADMISSION_STEP_LIVE_RELEASE}),
         )
         allowed, reason, _trace = AdmissionChain(
             steps=(ADMISSION_STEP_SIM_ACCOUNT_WHITELIST, ADMISSION_STEP_LIVE_RELEASE)
@@ -612,7 +648,14 @@ def _s0_and_policy_battery() -> None:
         pass
     else:
         _fail("unknown mode must raise")
-    for key in ("live_release", "sim_account_whitelist", "account_name", "mode", "trade_mode", "research_execution_mode"):
+    for key in (
+        "live_release",
+        "sim_account_whitelist",
+        "account_name",
+        "mode",
+        "trade_mode",
+        "research_execution_mode",
+    ):
         if key not in FORBIDDEN_PARAMETER_KEYS:
             _fail(f"forbidden key missing {key}")
         if "forbidden_parameter_key" not in validate_parameter_tweak(key, 1.0, 2.0):
@@ -636,7 +679,11 @@ def _s0_and_policy_battery() -> None:
         "research_execution_mode": "sim",
     }
     changed = _immutable_field_changes(cfg, live)
-    if "live_release" not in changed or "sim_account_whitelist" not in changed or "research_execution_mode" not in changed:
+    if (
+        "live_release" not in changed
+        or "sim_account_whitelist" not in changed
+        or "research_execution_mode" not in changed
+    ):
         _fail(f"immutable changes {changed}")
     same = {
         "live_release": {"enabled": False, "mac": ""},
@@ -667,9 +714,9 @@ def _s0_and_policy_battery() -> None:
         _fail("nested broker account")
     if whitelist_from_engine(None) != ():
         _fail("missing engine whitelist")
-    if whitelist_from_engine(SimpleNamespace(config=SimpleNamespace(ninjatrader_sim_account_whitelist=("Sim101",)))) != (
-        "Sim101",
-    ):
+    if whitelist_from_engine(
+        SimpleNamespace(config=SimpleNamespace(ninjatrader_sim_account_whitelist=("Sim101",)))
+    ) != ("Sim101",):
         _fail("engine whitelist tuple")
     if whitelist_from_engine(SimpleNamespace(config=SimpleNamespace(ninjatrader_sim_account_whitelist="Sim101"))) != ():
         _fail("string whitelist from engine")
@@ -767,11 +814,7 @@ def _gap_battery() -> None:
         lock = _fresh(("Sim101",))
         handler.events.clear()
         lock.effective(("Sim101", "Sim202"))
-        extras = [
-            item.get("extra")
-            for item in handler.events
-            if item.get("event") == "s1.sim_whitelist.widen_refused"
-        ]
+        extras = [item.get("extra") for item in handler.events if item.get("event") == "s1.sim_whitelist.widen_refused"]
         if extras != [["Sim202"]]:
             _fail(f"widen_refused extra {extras}")
         handler.events.clear()
@@ -807,14 +850,10 @@ def _gap_battery() -> None:
     os.environ[SECRET_ENV] = TEST_SECRET
     reset_live_release_nonces_for_tests()
     naive_now_rec = signed_live_release(now=FROZEN_NOW, nonce="n-kill-naive-now-16xx")
-    naive_now_ok, naive_now_reason = verify_live_release(
-        naive_now_rec, now=datetime(2026, 10, 29, 12, 0)
-    )
+    naive_now_ok, naive_now_reason = verify_live_release(naive_now_rec, now=datetime(2026, 10, 29, 12, 0))
     if naive_now_ok is not False or naive_now_reason != LIVE_RELEASE_TIMESTAMP_NOT_UTC:
         _fail(f"naive now {naive_now_ok} {naive_now_reason}")
-    str_now_ok, str_now_reason = verify_live_release(
-        naive_now_rec, now="2026-10-29T12:00:00+00:00"
-    )
+    str_now_ok, str_now_reason = verify_live_release(naive_now_rec, now="2026-10-29T12:00:00+00:00")
     if str_now_ok is not False or str_now_reason != LIVE_RELEASE_TIMESTAMP_NOT_UTC:
         _fail(f"string now {str_now_ok} {str_now_reason}")
     str_enabled = signed_live_release(enabled="true", nonce="n-kill-str-true-16xxx")
@@ -859,9 +898,7 @@ def _gap_battery() -> None:
         _fail(f"canonical purpose {got_widen!r}")
     if not got_widen.startswith(b'{"adr_path":'):
         _fail(f"canonical must be sort_keys ordered {got_widen!r}")
-    unsorted_widen = (
-        b'{"enabled":true,"nonce":"n-kill-widen-can-16xxx","purpose":"sim_whitelist_widen"'
-    )
+    unsorted_widen = b'{"enabled":true,"nonce":"n-kill-widen-can-16xxx","purpose":"sim_whitelist_widen"'
     if got_widen.startswith(unsorted_widen):
         _fail("canonical followed insertion order; sort_keys is not binding")
     empty_schema = dict(widen_body)

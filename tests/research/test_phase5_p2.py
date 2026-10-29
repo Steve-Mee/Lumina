@@ -41,7 +41,13 @@ from lumina_research.cycles.prepare import prepare_tape
 from lumina_research.cycles.report import CycleReport, CycleRow, write_cycle_reports
 from lumina_research.cycles.rolls import NT8_ROLL_SET, is_roll_session
 from lumina_research.cycles import runner as runner_mod
-from lumina_research.cycles.runner import _holdout_rows, _independence, _is_real_p2, _usable_for_gate, run_research_cycles
+from lumina_research.cycles.runner import (
+    _holdout_rows,
+    _independence,
+    _is_real_p2,
+    _usable_for_gate,
+    run_research_cycles,
+)
 from lumina_research.cycles.seal import CSV_SHA256, ZIP_SHA256, load_seal, seal_holdout
 from lumina_research.cycles.sessions import annotate, utc_from_ns
 from lumina_research.cycles.strategies import simulate
@@ -369,7 +375,9 @@ def test_daily_resample_materialize_and_report_sections(tmp_path: Path, monkeypa
         holdout_seal_sha256="abc",
         wf_note="walk-forward",
         independence=(
-            IndependenceRow(config_id=spec.config_id, family=spec.family, kept=True, reason="independent", max_abs_corr=0.1),
+            IndependenceRow(
+                config_id=spec.config_id, family=spec.family, kept=True, reason="independent", max_abs_corr=0.1
+            ),
         ),
         holdout_eval=(
             HoldoutEvalRow(
@@ -399,7 +407,9 @@ def test_daily_resample_materialize_and_report_sections(tmp_path: Path, monkeypa
     rows = _holdout_rows((spec,), (fake,), {"MES": prepared}, independence=indep)  # type: ignore[arg-type]
     assert rows[0].config_id == spec.config_id
     dropped = (
-        IndependenceRow(config_id=spec.config_id, family=spec.family, kept=False, reason="duplicate_family", max_abs_corr=None),
+        IndependenceRow(
+            config_id=spec.config_id, family=spec.family, kept=False, reason="duplicate_family", max_abs_corr=None
+        ),
     )
     assert _holdout_rows((spec,), (fake,), {"MES": prepared}, independence=dropped) == ()  # type: ignore[arg-type]
 
@@ -458,8 +468,14 @@ def test_real_p2_branch_seals_before_gate(tmp_path: Path, monkeypatch: pytest.Mo
         order.append("real")
         return True
 
-    def _seal(tapes: object, *, report_dir: Path, require_known_files: bool = True) -> dict[str, object]:
-        del tapes, require_known_files
+    def _seal(
+        tapes: object,
+        *,
+        report_dir: Path,
+        require_known_files: bool = True,
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        del tapes, require_known_files, _kwargs
         order.append("seal")
         mes = LoadedTape(
             instrument="MES",

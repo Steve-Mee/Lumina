@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
+from lumina_research.cycles.four_instrument import run_four_instrument_cycle
 from lumina_research.cycles.runner import run_research_cycles
 from lumina_research.monitoring.cli import run_scan as run_guardian_scan
 from lumina_research.proof.independent import HOLDOUT_INSTRUMENTS, HOLDOUT_SEEDS, assert_holdout_seeds
@@ -32,6 +33,17 @@ def build_parser() -> argparse.ArgumentParser:
     research.add_argument("--report-dir", type=Path, default=DEFAULT_REPORTS)
     research.add_argument("--evolution-log-dir", type=Path, default=DEFAULT_EVOLUTION_LOG)
     research.add_argument("--data-dir", type=Path, default=None)
+    research.add_argument(
+        "--cycle",
+        choices=("first", "four-instrument"),
+        default="first",
+        help="first: locked MES/MNQ 12. four-instrument: cost-fix rerun + ES/NQ.",
+    )
+    research.add_argument(
+        "--reuse-mes-mnq",
+        action="store_true",
+        help="four-instrument: keep existing cost-fix MES/MNQ reports; run ES/NQ only.",
+    )
     weekly = sub.add_parser("weekly", help="Guardian weekly scan plus weekly metrics report")
     weekly.add_argument("--state-dir", type=Path, required=True)
     weekly.add_argument("--report-dir", type=Path, required=True)
@@ -62,6 +74,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stderr.write("empirical verification floors failed; detector may be tuned, floors may not\n")
         return 2
     if command == "research":
+        if str(args.cycle) == "four-instrument":
+            four = run_four_instrument_cycle(
+                work_dir=args.work_dir,
+                report_dir=args.report_dir,
+                data_dir=args.data_dir,
+                reuse_mes_mnq=bool(args.reuse_mes_mnq),
+            )
+            if four.es_nq.report.stop_reason == "positive_control_failed":
+                sys.stderr.write(f"ES/NQ control failed: {four.es_nq.report.control_note}\n")
+                return 2
+            if four.mes_mnq.data.usable:
+                if four.mes_mnq.kill_rate_flag.startswith("flag_"):
+                    sys.stderr.write(f"P2 kill-rate diagnostic: {four.mes_mnq.kill_rate_flag}\n")
+                if four.es_nq.report.stopped:
+                    sys.stderr.write(f"ES/NQ fail-closed: {four.es_nq.report.stop_reason}\n")
+                return 0
+            sys.stderr.write("P2 stopped: no usable real market data\n")
+            return 3
         cycle = run_research_cycles(
             work_dir=args.work_dir,
             report_dir=args.report_dir,

@@ -343,7 +343,11 @@ def test_runner_stop_reason_is_positive_control_failed(tmp_path: Path, monkeypat
         "seal_holdout",
         lambda *_args, **_kwargs: {"seal_sha256": "abc", "holdout_start_ns": P2_HOLDOUT_START_NS},
     )
-    monkeypatch.setattr(runner_mod, "load_seal", lambda _path: {"holdout_start_ns": P2_HOLDOUT_START_NS})
+    monkeypatch.setattr(
+        runner_mod,
+        "load_seal",
+        lambda _path, **_kwargs: {"holdout_start_ns": P2_HOLDOUT_START_NS},
+    )
     monkeypatch.setattr(
         runner_mod,
         "prepare_for_purpose",

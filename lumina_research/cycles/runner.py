@@ -13,7 +13,14 @@ from lumina_research.agents.provenance import ProvenanceAuthority
 from lumina_research.agents.validation_agent import ValidationAgent
 from lumina_research.cycles.catalog import EconomicCatalogGenerator, HypothesisSpec
 from lumina_research.cycles.cost_bands import report_band
-from lumina_research.cycles.data import MIN_BARS, DataStatus, discover_data, tape_for
+from lumina_research.cycles.data import (
+    MIN_BARS,
+    DataRefused,
+    DataStatus,
+    LoadedTape,
+    discover_data,
+    tape_for,
+)
 from lumina_research.cycles.data_spec import write_data_spec
 from lumina_research.cycles.diagnostics import ConfigDiagnostics, empty_diagnostics
 from lumina_research.cycles.first_cycle import first_cycle_specs, write_first_cycle_preregister
@@ -36,12 +43,18 @@ from lumina_research.cycles.p2_cycle import (
     window_note,
     with_walk_forward_sizes,
 )
-from lumina_research.cycles.positive_control import ControlReport, PositiveControlFailed, run_controls
+from lumina_research.cycles.positive_control import (
+    ControlReport,
+    PositiveControlFailed,
+    run_controls,
+    run_controls_per_instrument,
+)
 from lumina_research.cycles.prepare import PreparedTape
 from lumina_research.cycles.report import CycleReport, CycleRow, death_reason, write_cycle_reports
 from lumina_research.cycles.seal import (
     CSV_SHA256,
     LEGACY_SEAL_SHA256,
+    SEAL_NAME,
     file_sha256,
     load_seal,
     reuse_holdout_seal,
@@ -76,96 +89,219 @@ def run_research_cycles(
     repo_root: Path | None = None,
     seed: int = 20261028,
     specs: tuple[HypothesisSpec, ...] | None = None,
+    cycles_stem: str = "phase5_research_cycles",
+    results_name: str = "phase5_p2_results.md",
+    allowed_instruments: frozenset[str] | None = None,
+    control_per_instrument: bool = False,
+    write_sidecars: bool = True,
+    seal_filename: str = SEAL_NAME,
+    require_known_files: bool = True,
 ) -> ResearchCycleResult:
     """Pre-register template variants, then gate them on real data. No live/SIM orders."""
     work_dir.mkdir(parents=True, exist_ok=True)
     audit = work_dir / "audit.jsonl"
     log_path = work_dir / "experiments.jsonl"
-    write_data_spec(report_dir)
-    write_first_cycle_preregister(report_dir)
+    if write_sidecars:
+        write_data_spec(report_dir)
+        write_first_cycle_preregister(report_dir)
     specs = specs if specs is not None else first_cycle_specs()
+    requested = specs
     root = repo_root if repo_root is not None else _REPO
     status = discover_data(repo_root=root, data_dir=data_dir)
     seal_sha = ""
     prepared: dict[str, PreparedTape] = {}
     holdout_prepared: dict[str, PreparedTape] = {}
     real_p2 = False
-    if _is_real_p2(status):
+    skipped: tuple[HypothesisSpec, ...] = ()
+    skip_reason = "not_tested_no_real_data"
+    control_note = ""
+    if allowed_instruments is None and _is_real_p2(status):
         real_p2 = True
         p2_tapes = tuple(pin_tape(item) for item in status.tapes if item.instrument in {"MES", "MNQ"})
-        sealed = reuse_holdout_seal(p2_tapes, report_dir=report_dir)
+        sealed = reuse_holdout_seal(p2_tapes, report_dir=report_dir, filename=seal_filename)
         if sealed is None:
-            sealed = seal_holdout(p2_tapes, report_dir=report_dir, require_known_files=True)
-        checked = load_seal(report_dir)
+            sealed = seal_holdout(
+                p2_tapes,
+                report_dir=report_dir,
+                require_known_files=True,
+                filename=seal_filename,
+            )
+        checked = load_seal(report_dir, filename=seal_filename)
         if checked.get("holdout_start_ns") != P2_HOLDOUT_START_NS:
             raise HoldoutLocked("holdout seal drifted from 2026-01-28T23:00:00Z after write")
         seal_sha = str(sealed.get("seal_sha256", ""))
         prepared = {item.instrument: prepare_for_purpose(item, purpose="gate") for item in p2_tapes}
         dropped = {key: value.dropped for key, value in prepared.items()}
-        write_data_manifest(p2_tapes, repo_root=root, dropped=dropped)
+        if write_sidecars:
+            write_data_manifest(p2_tapes, repo_root=root, dropped=dropped)
         holdout_prepared = {}
         specs = with_walk_forward_sizes(specs, prepared)
+    elif allowed_instruments is not None:
+        selected = _select_real_tapes(
+            status,
+            allowed=allowed_instruments,
+            require_known_files=require_known_files,
+        )
+        if selected:
+            real_p2 = True
+            p2_tapes = tuple(pin_tape(item) for item in selected)
+            sealed = reuse_holdout_seal(p2_tapes, report_dir=report_dir, filename=seal_filename)
+            if sealed is None:
+                sealed = seal_holdout(
+                    p2_tapes,
+                    report_dir=report_dir,
+                    require_known_files=require_known_files,
+                    filename=seal_filename,
+                )
+            checked = load_seal(report_dir, filename=seal_filename)
+            if checked.get("holdout_start_ns") != P2_HOLDOUT_START_NS:
+                raise HoldoutLocked("holdout seal drifted from 2026-01-28T23:00:00Z after write")
+            seal_sha = str(sealed.get("seal_sha256", ""))
+            prepared = {item.instrument: prepare_for_purpose(item, purpose="gate") for item in p2_tapes}
+            holdout_prepared = {}
+            specs, skipped, skip_reason = _active_specs(specs, prepared)
+            specs = with_walk_forward_sizes(specs, prepared)
+        elif status.usable and _usable_for_gate(status):
+            prepared = _prepare_map(
+                specs,
+                status,
+                purpose="gate",
+                allow_fallback=False,
+            )
+            if prepared:
+                specs, skipped, skip_reason = _active_specs(specs, prepared)
+                specs = with_walk_forward_sizes(specs, prepared)
+                holdout_prepared = {}
+            else:
+                control_note = _missing_tape_note(allowed_instruments, status)
+        else:
+            control_note = _missing_tape_note(allowed_instruments, status)
     elif status.usable and _usable_for_gate(status):
         prepared = _prepare_map(specs, status, purpose="gate")
         specs = with_walk_forward_sizes(specs, prepared)
         holdout_prepared = {}
+    n_days = session_day_count(prepared) if prepared else 0
+    control: ControlReport | None = None
+    geometries = _geometries(tuple(specs) + skipped)
     bus = EventBus()
     registry = TrialRegistry(audit)
-    generator = EconomicCatalogGenerator(specs)
+    if specs and prepared and real_p2 and min(len(item.bars) for item in prepared.values()) >= DAILY_RESAMPLE_MIN_BARS:
+        if control_per_instrument:
+            accepted, failed = run_controls_per_instrument(
+                prepared=prepared,
+                registry=registry,
+                audit_path=audit,
+                is_size=specs[0].is_size,
+                oos_size=specs[0].oos_size,
+            )
+            notes = [f"{root}: planted detected, null rejected" for root in sorted(accepted)]
+            notes.extend(f"{root}: FAILED {reason}" for root, reason in sorted(failed.items()))
+            control_note = "; ".join(notes)
+            if failed:
+                dropped_specs = tuple(item for item in specs if item.instrument in failed)
+                skipped = skipped + dropped_specs
+                skip_reason = "not_tested_control_failed"
+                prepared = {key: value for key, value in prepared.items() if key in accepted}
+                specs = tuple(item for item in specs if item.instrument in prepared)
+            if not accepted:
+                report = CycleReport(
+                    n_hypotheses=len(specs) + len(skipped),
+                    n_tested=0,
+                    n_killed=0,
+                    n_survivors=0,
+                    kill_rate=None,
+                    kill_rate_flag="not_tested",
+                    cost_bands=tuple(report_band(root) for root in ("ES", "NQ", "MES", "MNQ")),
+                    data=status,
+                    rows=(),
+                    geometry_by_root=geometries,
+                    stopped=True,
+                    stop_reason="positive_control_failed",
+                    holdout_seal_sha256=seal_sha,
+                    wf_note=window_note(specs, n_days),
+                    n_days=n_days,
+                    previous_holdout_seal_sha256=LEGACY_SEAL_SHA256,
+                    control_note=control_note or "positive control was not detected",
+                    planted_detected=False,
+                    null_detected=None,
+                )
+                json_path, md_path = _write_reports(
+                    report,
+                    report_dir,
+                    cycles_stem=cycles_stem,
+                    results_name=results_name,
+                    write_sidecars=write_sidecars,
+                )
+                return ResearchCycleResult(
+                    report=report,
+                    json_path=json_path,
+                    md_path=md_path,
+                    data=status,
+                    kill_rate=None,
+                    kill_rate_flag="not_tested",
+                )
+            control = next(iter(accepted.values()))
+            if prepared:
+                specs = with_walk_forward_sizes(specs, prepared)
+                n_days = session_day_count(prepared)
+        else:
+            mes = prepared.get("MES") or next(iter(prepared.values()))
+            try:
+                control = run_controls(
+                    prepared=prepared,
+                    registry=registry,
+                    audit_path=audit,
+                    is_size=specs[0].is_size,
+                    oos_size=specs[0].oos_size,
+                    market_returns=market_series(mes),
+                    n_days=n_days,
+                )
+            except PositiveControlFailed as exc:
+                report = CycleReport(
+                    n_hypotheses=len(specs),
+                    n_tested=0,
+                    n_killed=0,
+                    n_survivors=0,
+                    kill_rate=None,
+                    kill_rate_flag="not_tested",
+                    cost_bands=tuple(report_band(root) for root in ("ES", "NQ", "MES", "MNQ")),
+                    data=status,
+                    rows=(),
+                    geometry_by_root=geometries,
+                    stopped=True,
+                    stop_reason="positive_control_failed",
+                    holdout_seal_sha256=seal_sha,
+                    wf_note=window_note(specs, n_days),
+                    n_days=n_days,
+                    previous_holdout_seal_sha256=LEGACY_SEAL_SHA256,
+                    control_note=str(exc),
+                    planted_detected=False,
+                    null_detected=None,
+                )
+                json_path, md_path = _write_reports(
+                    report,
+                    report_dir,
+                    cycles_stem=cycles_stem,
+                    results_name=results_name,
+                    write_sidecars=write_sidecars,
+                )
+                return ResearchCycleResult(
+                    report=report,
+                    json_path=json_path,
+                    md_path=md_path,
+                    data=status,
+                    kill_rate=None,
+                    kill_rate_flag="not_tested",
+                )
+    emit = specs if specs else requested
+    generator = EconomicCatalogGenerator(emit)
     hypothesis = HypothesisAgent(
         bus=bus,
         registry=registry,
         generators=(generator,),
         experiment_log_path=log_path,
     )
-    geometries = _geometries(specs)
     validation: ValidationAgent | None = None
-    n_days = session_day_count(prepared) if prepared else 0
-    control: ControlReport | None = None
-    if prepared and real_p2 and min(len(item.bars) for item in prepared.values()) >= DAILY_RESAMPLE_MIN_BARS:
-        mes = prepared.get("MES") or next(iter(prepared.values()))
-        try:
-            control = run_controls(
-                prepared=prepared,
-                registry=registry,
-                audit_path=audit,
-                is_size=specs[0].is_size,
-                oos_size=specs[0].oos_size,
-                market_returns=market_series(mes),
-                n_days=n_days,
-            )
-        except PositiveControlFailed as exc:
-            report = CycleReport(
-                n_hypotheses=len(specs),
-                n_tested=0,
-                n_killed=0,
-                n_survivors=0,
-                kill_rate=None,
-                kill_rate_flag="not_tested",
-                cost_bands=tuple(report_band(root) for root in ("ES", "NQ", "MES", "MNQ")),
-                data=status,
-                rows=(),
-                geometry_by_root=geometries,
-                stopped=True,
-                stop_reason="positive_control_failed",
-                holdout_seal_sha256=seal_sha,
-                wf_note=window_note(specs, n_days),
-                n_days=n_days,
-                previous_holdout_seal_sha256=LEGACY_SEAL_SHA256,
-                control_note=str(exc),
-                planted_detected=False,
-                null_detected=None,
-            )
-            json_path, md_path = write_cycle_reports(report, report_dir)
-            write_sim_plan(report_dir)
-            return ResearchCycleResult(
-                report=report,
-                json_path=json_path,
-                md_path=md_path,
-                data=status,
-                kill_rate=None,
-                kill_rate_flag="not_tested",
-            )
     if prepared:
         validation = ValidationAgent(
             bus=bus,
@@ -176,11 +312,22 @@ def run_research_cycles(
             materializer=_materializer(specs, prepared),
             gate_context=_gate_context(specs, prepared, n_days=n_days),
         )
-    proposed = hypothesis.generate(seed=seed, counts=(len(specs),))
-    if not status.usable or validation is None or not prepared:
-        report = _untested_report(proposed, specs, geometries, status)
-        json_path, md_path = write_cycle_reports(report, report_dir)
-        write_sim_plan(report_dir)
+    proposed = hypothesis.generate(seed=seed, counts=(len(emit),))
+    if not specs or not status.usable or validation is None or not prepared:
+        report = _untested_report(
+            proposed,
+            emit,
+            _geometries(emit),
+            status,
+            control_note=control_note,
+        )
+        json_path, md_path = _write_reports(
+            report,
+            report_dir,
+            cycles_stem=cycles_stem,
+            results_name=results_name,
+            write_sidecars=write_sidecars,
+        )
         log_proof_event(
             path=log_path,
             event="research_cycles",
@@ -222,8 +369,19 @@ def run_research_cycles(
         previous_holdout_seal_sha256=LEGACY_SEAL_SHA256 if real_p2 else "",
         control=control,
     )
-    json_path, md_path = write_cycle_reports(report, report_dir)
-    write_sim_plan(report_dir)
+    if control_note:
+        merged = control_note if not report.control_note else f"{report.control_note} | {control_note}"
+        report = replace(report, control_note=merged)
+    if skipped:
+        extra = tuple(_skipped_row(item, reason=skip_reason) for item in skipped)
+        report = replace(report, rows=report.rows + extra, n_hypotheses=len(report.rows) + len(extra))
+    json_path, md_path = _write_reports(
+        report,
+        report_dir,
+        cycles_stem=cycles_stem,
+        results_name=results_name,
+        write_sidecars=write_sidecars,
+    )
     log_proof_event(
         path=log_path,
         event="research_cycles",
@@ -285,13 +443,14 @@ def _prepare_map(
     status: DataStatus,
     *,
     purpose: str,
+    allow_fallback: bool = True,
 ) -> dict[str, PreparedTape]:
     prepared: dict[str, PreparedTape] = {}
     for spec in specs:
         if spec.instrument in prepared:
             continue
         try:
-            tape = tape_for(status, spec.instrument)
+            tape = tape_for(status, spec.instrument) if allow_fallback else _exact_tape(status, spec.instrument)
         except Exception:
             continue
         try:
@@ -299,6 +458,98 @@ def _prepare_map(
         except (HoldoutLocked, ValueError):
             continue
     return prepared
+
+
+def _exact_tape(status: DataStatus, instrument: str) -> LoadedTape:
+    for item in status.tapes:
+        if item.instrument == instrument and len(item.bars) >= MIN_BARS:
+            return item
+    raise DataRefused(f"no usable real tape for {instrument!r}")
+
+
+def _select_real_tapes(
+    status: DataStatus,
+    *,
+    allowed: frozenset[str],
+    require_known_files: bool,
+) -> tuple[LoadedTape, ...]:
+    by_root = {item.instrument: item for item in status.tapes}
+    rows: list[LoadedTape] = []
+    for root in allowed:
+        tape = by_root.get(root)
+        if tape is None or len(tape.bars) < P2_PIN_MIN_BARS or not tape.path.is_file():
+            continue
+        expected = CSV_SHA256.get(root)
+        if require_known_files and expected is not None:
+            if file_sha256(tape.path) != expected:
+                continue
+        rows.append(tape)
+    return tuple(rows)
+
+
+def _active_specs(
+    specs: tuple[HypothesisSpec, ...],
+    prepared: dict[str, PreparedTape],
+) -> tuple[tuple[HypothesisSpec, ...], tuple[HypothesisSpec, ...], str]:
+    active = tuple(item for item in specs if item.instrument in prepared)
+    skipped = tuple(item for item in specs if item.instrument not in prepared)
+    return active, skipped, "not_tested_no_real_data"
+
+
+def _missing_tape_note(allowed: frozenset[str], status: DataStatus) -> str:
+    wanted = ",".join(sorted(allowed))
+    missing = ",".join(status.missing) or "(none)"
+    searched = ";".join(status.searched) or "(none)"
+    return (
+        f"fail-closed for {wanted}: missing={missing} searched={searched}. "
+        "Need PIT NT8 1m continuous unadjusted CSV under "
+        "$LUMINA_RESEARCH_DATA_DIR/{root}/1m/*.csv"
+    )
+
+
+def _write_reports(
+    report: CycleReport,
+    report_dir: Path,
+    *,
+    cycles_stem: str,
+    results_name: str,
+    write_sidecars: bool,
+) -> tuple[Path, Path]:
+    json_path, md_path = write_cycle_reports(
+        report,
+        report_dir,
+        cycles_stem=cycles_stem,
+        results_name=results_name,
+    )
+    if write_sidecars:
+        write_sim_plan(report_dir)
+    return json_path, md_path
+
+
+def _skipped_row(spec: HypothesisSpec, *, reason: str) -> CycleRow:
+    geometry = require_geometry(
+        root=spec.instrument,
+        target_ticks=spec.target_ticks,
+        stop_ticks=spec.stop_ticks,
+    )
+    return CycleRow(
+        hypothesis_id=f"skipped-{spec.config_id}",
+        config_id=spec.config_id,
+        template_id=spec.template_id,
+        family=spec.family,
+        instrument=spec.instrument,
+        pre_registered=True,
+        tested=False,
+        passed=False,
+        reject_reasons=(),
+        pbo=None,
+        dsr=None,
+        wfe=None,
+        n_oos_windows=None,
+        median_oos=None,
+        geometry=geometry,
+        death_reason=reason,
+    )
 
 
 def _geometries(specs: tuple[HypothesisSpec, ...]) -> tuple[Geometry, ...]:
@@ -355,6 +606,8 @@ def _untested_report(
     specs: tuple[HypothesisSpec, ...],
     geometries: tuple[Geometry, ...],
     status: DataStatus,
+    *,
+    control_note: str = "",
 ) -> CycleReport:
     by_id = {item.config_id: item for item in specs}
     rows = tuple(_row(item, by_id[item.config_id], tested=False, result=None, stopped=True) for item in proposed)
@@ -371,6 +624,7 @@ def _untested_report(
         geometry_by_root=geometries,
         stopped=True,
         stop_reason="no_usable_real_market_data",
+        control_note=control_note,
     )
 
 

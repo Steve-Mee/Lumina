@@ -14,10 +14,11 @@ from datetime import date
 from pathlib import Path
 from typing import Mapping, Sequence
 
-from lumina_research.cycles.daily import daily_net_tape
+from lumina_research.cycles.daily import daily_net_tape, unique_sessions
 from lumina_research.cycles.data import ResearchBar
 from lumina_research.cycles.execution import ExecutionResult, run_execution
 from lumina_research.cycles.geometry import require_geometry
+from lumina_research.cycles.p2_cycle import market_series
 from lumina_research.cycles.prepare import PreparedTape
 from lumina_research.validation.cost_model import MarketSnapshot, apply_costs
 from lumina_research.validation.pipeline import CandidateEvaluation, evaluate_candidate
@@ -227,3 +228,35 @@ def run_controls(
     if not report.accepted:
         raise PositiveControlFailed("positive control was not detected or the null control looked like an edge")
     return report
+
+
+def run_controls_per_instrument(
+    *,
+    prepared: Mapping[str, PreparedTape],
+    registry: TrialRegistry,
+    audit_path: Path,
+    is_size: int,
+    oos_size: int,
+    n_days_by_root: Mapping[str, int] | None = None,
+) -> tuple[dict[str, ControlReport], dict[str, str]]:
+    """D13 on each tape. A failed root does not stop a passing sibling."""
+    accepted: dict[str, ControlReport] = {}
+    failed: dict[str, str] = {}
+    for root in sorted(prepared):
+        tape = prepared[root]
+        days = len(unique_sessions(tape.session_dates))
+        if n_days_by_root is not None and root in n_days_by_root:
+            days = int(n_days_by_root[root])
+        try:
+            accepted[root] = run_controls(
+                prepared={root: tape},
+                registry=registry,
+                audit_path=audit_path,
+                is_size=is_size,
+                oos_size=oos_size,
+                market_returns=market_series(tape),
+                n_days=days,
+            )
+        except PositiveControlFailed as exc:
+            failed[root] = str(exc)
+    return accepted, failed

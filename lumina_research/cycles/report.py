@@ -81,8 +81,25 @@ class CycleReport:
     null_detected: bool | None = None
 
 
-def write_cycle_reports(report: CycleReport, directory: Path) -> tuple[Path, Path]:
+_REPO = Path(__file__).resolve().parents[2]
+_BASELINE_RESULTS = "phase5_p2_results.md"
+_BASELINE_CYCLES = "phase5_research_cycles"
+
+
+def write_cycle_reports(
+    report: CycleReport,
+    directory: Path,
+    *,
+    cycles_stem: str = _BASELINE_CYCLES,
+    results_name: str = _BASELINE_RESULTS,
+) -> tuple[Path, Path]:
     directory.mkdir(parents=True, exist_ok=True)
+    reports_root = (_REPO / "experiments" / "reports").resolve()
+    if directory.resolve() == reports_root:
+        if results_name == _BASELINE_RESULTS and (directory / _BASELINE_RESULTS).is_file():
+            raise RuntimeError("refusing to overwrite phase5_p2_results.md; pass a cost-fix/ES-NQ results_name")
+        if cycles_stem == _BASELINE_CYCLES and (directory / f"{_BASELINE_CYCLES}.json").is_file():
+            raise RuntimeError("refusing to overwrite phase5_research_cycles.json; pass a cost-fix/ES-NQ cycles_stem")
     body = {
         "generated_at": utc_now_iso(),
         "agent_id": "hypothesis_agent",
@@ -104,6 +121,12 @@ def write_cycle_reports(report: CycleReport, directory: Path) -> tuple[Path, Pat
                 "band_max_usd": item.band_max_usd,
                 "in_band": item.in_band,
                 "note": item.note,
+                "tick_value_usd": item.tick_value_usd,
+                "commission_usd_per_contract_per_side": item.commission_usd_per_contract_per_side,
+                "commission_usd_round_trip": item.commission_usd_round_trip,
+                "half_spread_usd_per_contract": item.half_spread_usd_per_contract,
+                "modeled_eth_one_way_usd": item.modeled_eth_one_way_usd,
+                "modeled_eth_one_way_bp": item.modeled_eth_one_way_bp,
             }
             for item in report.cost_bands
         ],
@@ -158,11 +181,11 @@ def write_cycle_reports(report: CycleReport, directory: Path) -> tuple[Path, Pat
         "planted_detected": report.planted_detected,
         "null_detected": report.null_detected,
     }
-    json_path = directory / "phase5_research_cycles.json"
+    json_path = directory / f"{cycles_stem}.json"
     json_path.write_text(json.dumps(body, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
-    md_path = directory / "phase5_research_cycles.md"
+    md_path = directory / f"{cycles_stem}.md"
     md_path.write_text(_markdown(report), encoding="utf-8")
-    (directory / "phase5_p2_results.md").write_text(_results_table(report), encoding="utf-8")
+    (directory / results_name).write_text(_results_table(report), encoding="utf-8")
     return json_path, md_path
 
 
@@ -244,16 +267,18 @@ def _markdown(report: CycleReport) -> str:
     )
     lines.extend(
         [
-            "## Modeled costs vs instrument-specific USD bands",
+            "## Modeled costs vs instrument-specific USD/contract bands",
             "",
-            "| root | modeled one-way USD | modeled ticks | band USD | bp | in_band | note |",
-            "|---|---|---|---|---|---|---|",
+            "| root | comm $/side | comm $ RT | half-spread $ | RTH $/contract | RTH bp | ETH $/contract | band $/contract | in_band | note |",
+            "|---|---|---|---|---|---|---|---|---|---|",
         ]
     )
     for band in report.cost_bands:
         lines.append(
-            f"| {band.root} | {band.modeled_one_way_usd:.3f} | {band.modeled_one_way_ticks:.3f} | "
-            f"{band.band_min_usd:.2f}-{band.band_max_usd:.2f} | {band.modeled_one_way_bp:.3f} | "
+            f"| {band.root} | {band.commission_usd_per_contract_per_side:.2f} | "
+            f"{band.commission_usd_round_trip:.2f} | {band.half_spread_usd_per_contract:.3f} | "
+            f"{band.modeled_one_way_usd:.3f} | {band.modeled_one_way_bp:.3f} | "
+            f"{band.modeled_eth_one_way_usd:.3f} | {band.band_min_usd:.2f}-{band.band_max_usd:.2f} | "
             f"{band.in_band} | {band.note} |"
         )
     lines.extend(
@@ -307,7 +332,7 @@ def _markdown(report: CycleReport) -> str:
                 f"- n_days: `{report.n_days}`",
                 "- pin: `2026-01-28T23:00:00+00:00` Globex session boundary (legacy `2026-01-29T00:00:00Z` recorded)",
                 "- holdout sealed and unopened for ranking, tuning, and gate calibration",
-                "- 1m four-leg costs (ADR-0055/1.1 vol-term) then Globex session-day resample",
+                "- 1m four-leg costs (ADR-0055/1.2 RTH-ETH session slippage) then Globex session-day resample",
                 "- floors unchanged: DSR>=0.95, PBO hard 0.50 / warn 0.25, min 6 OOS; static rules use A2 not WFE",
                 "- geometry is pre-registered per template; shadow only; zero orders; S0 freeze untouched",
                 f"- positive_control_detected: `{report.planted_detected}` null_detected: `{report.null_detected}`",

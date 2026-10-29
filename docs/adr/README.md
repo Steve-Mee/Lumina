@@ -75,6 +75,9 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0061 | SIM account whitelist + HMAC LIVE_RELEASE (S1; live path stays closed) | Accepted | 2026-10-29 | [0061-sim-whitelist-and-live-release.md](./0061-sim-whitelist-and-live-release.md) |
 | 0062 | Static-rule WFE replacement (A2) and CPCV skip (A3); DSR/PBO floors unchanged | Proposed | 2026-10-29 | [0062-static-rule-wfe-replacement.md](./0062-static-rule-wfe-replacement.md) |
 | 0063 | P2 positive-control session hold (D13 respec); 1:1 20000-tick brackets, RTH flatten | Proposed | 2026-10-29 | [0063-p2-positive-control-session-hold.md](./0063-p2-positive-control-session-hold.md) |
+| 0064 | P2 RTH/ETH session slippage (CostModel 1.2.0); session-local ADV, no holdout fit | Proposed | 2026-10-29 | [0064-p2-session-slippage.md](./0064-p2-session-slippage.md) |
+| 0065 | P2 instrument cost bands in $/contract and bp; same-bar commission | Proposed | 2026-10-29 | [0065-p2-instrument-cost-bands.md](./0065-p2-instrument-cost-bands.md) |
+| 0066 | P2 four-instrument cycle after cost fix (MES/MNQ rerun + ES/NQ translation) | Proposed | 2026-10-29 | [0066-p2-four-instrument-cycle.md](./0066-p2-four-instrument-cycle.md) |
 
 ## Legacy notitie
 

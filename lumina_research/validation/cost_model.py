@@ -13,10 +13,14 @@ from lumina_research.validation.contracts import ContractSpec, spec_for
 from lumina_research.validation.types import CostProvenance
 
 COST_MODEL_ID = "lumina_research.validation.cost_model"
-COST_MODEL_VERSION = "1.1.0"
+COST_MODEL_VERSION = "1.2.0"
 COST_COMPONENTS: tuple[str, ...] = ("commission", "half_spread", "slippage", "market_impact")
 DEFAULT_SLIPPAGE_COEFFICIENT = 0.10
+DEFAULT_ETH_SLIPPAGE_COEFFICIENT = 0.10
 DEFAULT_IMPACT_COEFFICIENT = 0.10
+# Inverse-volume scale cap. Thin ETH bars must not explode vs a mixed RTH ADV.
+MAX_VOLUME_SLIP_SCALE = 4.0
+SESSIONS: tuple[str, ...] = ("rth", "eth")
 
 
 class CostModelError(ValueError):
@@ -25,11 +29,16 @@ class CostModelError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class MarketSnapshot:
-    """Volume and volatility for one bar / fill. Synthetic in tests; no downloads."""
+    """Volume and volatility for one bar / fill. Synthetic in tests; no downloads.
+
+    ``session`` is ``rth`` or ``eth``. Average volume must be the same-session
+    causal ADV so overnight bars are not scaled against the cash open.
+    """
 
     volume: float
     average_volume: float
     volatility_price: float
+    session: str = "rth"
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,11 +67,17 @@ class CostedSeries:
 @dataclass(frozen=True, slots=True)
 class CostModel:
     slippage_coefficient: float = DEFAULT_SLIPPAGE_COEFFICIENT
+    eth_slippage_coefficient: float = DEFAULT_ETH_SLIPPAGE_COEFFICIENT
     impact_coefficient: float = DEFAULT_IMPACT_COEFFICIENT
+    max_volume_slip_scale: float = MAX_VOLUME_SLIP_SCALE
 
     def __post_init__(self) -> None:
-        if self.slippage_coefficient < 0.0 or self.impact_coefficient < 0.0:
-            raise CostModelError("slippage and impact coefficients must be >= 0")
+        if self.slippage_coefficient < 0.0 or self.eth_slippage_coefficient < 0.0:
+            raise CostModelError("slippage coefficients must be >= 0")
+        if self.impact_coefficient < 0.0:
+            raise CostModelError("impact coefficient must be >= 0")
+        if not math.isfinite(self.max_volume_slip_scale) or self.max_volume_slip_scale < 1.0:
+            raise CostModelError("max_volume_slip_scale must be a finite number >= 1")
 
     def ticks_for_fill(
         self,
@@ -79,11 +94,15 @@ class CostModel:
             raise CostModelError("volume must be a finite number >= 0")
         if not math.isfinite(market.volatility_price) or market.volatility_price < 0.0:
             raise CostModelError("volatility must be a finite number >= 0")
+        session = market.session.strip().lower()
+        if session not in SESSIONS:
+            raise CostModelError("session must be 'rth' or 'eth'")
+        coefficient = self.slippage_coefficient if session == "rth" else self.eth_slippage_coefficient
         volatility_ticks = market.volatility_price / spec.tick_size
         volume_ratio = market.volume / market.average_volume if market.average_volume > 0.0 else 0.0
-        slip_scale = 1.0 / max(volume_ratio, 1e-6)
+        slip_scale = min(1.0 / max(volume_ratio, 1e-6), self.max_volume_slip_scale)
         # Vol term is market.volatility_price (bar true-range on the tape). Never a fixed 2.0.
-        slippage = self.slippage_coefficient * volatility_ticks * slip_scale
+        slippage = coefficient * volatility_ticks * slip_scale
         participation = abs(quantity) / max(market.average_volume, 1e-12)
         impact = self.impact_coefficient * volatility_ticks * math.sqrt(participation)
         total = spec.commission_ticks + spec.half_spread_ticks + slippage + impact
