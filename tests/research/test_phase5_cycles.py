@@ -14,7 +14,13 @@ from lumina_core.agent_orchestration.schemas_research import EconomicRationale, 
 from lumina_research.agents.economic_templates import REGISTERED_TEMPLATE_IDS, TemplateRefused, require_economic_template
 from lumina_research.agents.hypothesis import HypothesisRefused
 from lumina_research.agents.synthetic import MaterializeRefused, materialize
-from lumina_research.cycles.catalog import N_HYPOTHESES, N_TEMPLATES, EconomicCatalogGenerator, catalog
+from lumina_research.cycles.catalog import (
+    CATALOG_EXPECTED_HORIZON_BARS,
+    N_HYPOTHESES,
+    N_TEMPLATES,
+    EconomicCatalogGenerator,
+    catalog,
+)
 from lumina_research.cycles.cost_bands import ES_NQ_ONE_WAY, MES_MNQ_ONE_WAY, band_for, report_band
 from lumina_research.cycles.data import DataRefused, ResearchBar, discover_data, tape_for
 from lumina_research.cycles.first_cycle import FIRST_CYCLE_CONFIG_IDS, first_cycle_specs
@@ -60,6 +66,10 @@ def test_catalog_is_twelve_templates_twenty_four_variants() -> None:
         assert spec.rationale.holding_period.strip()
         assert spec.rationale.survives_costs.strip()
         assert spec.rationale.falsification_criterion.strip()
+    drafts = EconomicCatalogGenerator(specs).drafts(rng=random.Random(1), count=N_HYPOTHESES, start_index=0)
+    assert CATALOG_EXPECTED_HORIZON_BARS >= 1
+    assert CATALOG_EXPECTED_HORIZON_BARS not in {20, 30}
+    assert all(item.expected_horizon_bars == CATALOG_EXPECTED_HORIZON_BARS for item in drafts)
 
 
 @pytest.mark.unit
@@ -273,6 +283,7 @@ def test_synthetic_materialize_refuses_economic() -> None:
         proposed_quantity=1.0,
         proposed_price=5000.0,
         proposed_notional=5000.0,
+        expected_horizon_bars=8,
         rationale=_rationale(),
     )
     with pytest.raises(MaterializeRefused, match="real-data"):

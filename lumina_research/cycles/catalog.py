@@ -12,6 +12,8 @@ from lumina_research.cycles.geometry import require_geometry
 
 N_TEMPLATES = 12
 N_HYPOTHESES = 24
+# Explicit D6 horizon for every catalog variant. Not oos_size (30) and not a silent 20.
+CATALOG_EXPECTED_HORIZON_BARS = 16
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +90,7 @@ class EconomicCatalogGenerator(HypothesisGenerator):
                     rationale=spec.rationale,
                     is_size=60,
                     oos_size=30,
+                    expected_horizon_bars=CATALOG_EXPECTED_HORIZON_BARS,
                 )
             )
         return tuple(items)
