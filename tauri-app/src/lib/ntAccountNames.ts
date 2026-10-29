@@ -6,8 +6,10 @@ export const DEMO_HELP =
   "Een brokerage-demo begint met DEMO, bijvoorbeeld DEMO5042070. " +
   "Een lokale simulatie begint met Sim, bijvoorbeeld Sim101. Playback en Backtest horen hier ook. " +
   "Dit is de rekening waarop Lumina in SIM orders plaatst. " +
+  "Lumina laat SIM-orders alleen toe als die exacte naam op sim_account_whitelist staat. " +
+  "Een prefix Sim of DEMO is geen toelating. " +
   "Lumina schrijft die naam in %APPDATA%\\LUMINA\\fabric.json als AccountName " +
-  "en in config.yaml als broker.ninjatrader.account_name. " +
+  "en in config.yaml als broker.ninjatrader.account_name plus sim_account_whitelist. " +
   "NinjaTrader leest AccountName bij het opstarten. Na een wijziging sluit je NinjaTrader " +
   "en start je hem opnieuw. Er hoeft niets gecompileerd te worden.";
 

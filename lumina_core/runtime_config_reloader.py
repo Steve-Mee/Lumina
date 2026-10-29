@@ -61,6 +61,31 @@ def _normalize_symbols(values: Any) -> list[str]:
     return sorted(str(item).strip().upper() for item in values if str(item).strip())
 
 
+def _live_release_fingerprint(raw: Any) -> tuple[str, ...]:
+    payload = raw if isinstance(raw, dict) else {}
+    enabled = "1" if payload.get("enabled") is True else "0"
+    return (
+        enabled,
+        str(payload.get("adr_path") or "").strip(),
+        str(payload.get("adr_sha256") or "").strip().lower(),
+        str(payload.get("approved_by") or "").strip(),
+        str(payload.get("approved_at_utc") or "").strip(),
+        str(payload.get("expires_at_utc") or "").strip(),
+        str(payload.get("nonce") or "").strip(),
+        str(payload.get("mac") or "").strip().lower(),
+        str(payload.get("purpose") or "").strip(),
+        str(payload.get("schema_version") or "").strip(),
+    )
+
+
+def _fold_names(values: Any) -> list[str]:
+    if isinstance(values, (str, bytes)):
+        return []
+    if not isinstance(values, (list, tuple, set, frozenset)):
+        return []
+    return sorted(str(item).strip().casefold() for item in values if str(item).strip())
+
+
 def _immutable_field_changes(cfg: dict[str, Any], live: Any) -> list[str]:
     """Return immutable fields that differ between incoming YAML and live runtime."""
     changed: list[str] = []
@@ -71,6 +96,40 @@ def _immutable_field_changes(cfg: dict[str, Any], live: Any) -> list[str]:
         live_mode = _normalize_mode(getattr(live, "trade_mode", ""))
         if incoming_mode and incoming_mode in _VALID_MODES and incoming_mode != live_mode:
             changed.append("trade_mode")
+
+    if "research_execution_mode" in cfg:
+        incoming_research = str(cfg.get("research_execution_mode") or "").strip().lower()
+        live_research = str(getattr(live, "research_execution_mode", "") or "").strip().lower()
+        if incoming_research != live_research:
+            changed.append("research_execution_mode")
+            logger.info("config_reload_refused:protected_key research_execution_mode")
+
+    if "live_release" in cfg:
+        incoming_lr = cfg.get("live_release") if isinstance(cfg.get("live_release"), dict) else {}
+        live_payload = getattr(live, "live_release_payload", None)
+        if not isinstance(live_payload, dict):
+            live_payload = {
+                "enabled": bool(getattr(live, "live_release_enabled", False) is True),
+                "mac": str(getattr(live, "live_release_mac", "") or ""),
+            }
+        if _live_release_fingerprint(incoming_lr) != _live_release_fingerprint(live_payload):
+            changed.append("live_release")
+            logger.info("config_reload_refused:protected_key live_release")
+
+    if isinstance(broker_section, dict):
+        nt = broker_section.get("ninjatrader") if isinstance(broker_section.get("ninjatrader"), dict) else {}
+        if isinstance(nt, dict) and "sim_account_whitelist" in nt:
+            incoming_wl = _fold_names(nt.get("sim_account_whitelist"))
+            live_wl = _fold_names(getattr(live, "ninjatrader_sim_account_whitelist", ()))
+            if incoming_wl != live_wl:
+                changed.append("sim_account_whitelist")
+                logger.info("config_reload_refused:protected_key sim_account_whitelist")
+        if isinstance(nt, dict) and "account_name" in nt:
+            incoming_acct = str(nt.get("account_name") or "").strip().casefold()
+            live_acct = str(getattr(live, "ninjatrader_account_name", "") or "").strip().casefold()
+            if incoming_acct and incoming_acct != live_acct:
+                changed.append("account_name")
+                logger.info("config_reload_refused:protected_key account_name")
 
     if "broker_backend" in cfg or (isinstance(broker_section, dict) and "backend" in broker_section):
         incoming_broker = _normalize_broker(cfg.get("broker_backend") or broker_section.get("backend"))

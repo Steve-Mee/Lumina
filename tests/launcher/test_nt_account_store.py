@@ -62,6 +62,10 @@ def test_write_keeps_token_mode_and_does_not_bind_real(tmp_path: Path) -> None:
     assert written["RealAccountName"] == "APEX12345"
     assert written["GatewayMode"] == "nt"
     assert b"account_name: DEMO5042070" in raw
+    assert b"sim_account_whitelist:" in raw
+    assert b"- DEMO5042070" in raw
+    assert written["SimAccountWhitelist"] == ["DEMO5042070"]
+    assert written.get("LiveReleaseEnabled") is False
     assert b"mode: sim" in raw
     assert b"\r\n" in raw
     assert b"APEX12345" not in raw

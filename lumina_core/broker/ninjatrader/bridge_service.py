@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Callable
 
 from lumina_core.broker.broker_bridge.schemas import AccountInfo, Fill, Position
@@ -44,6 +45,8 @@ class NinjaTraderBridgeService(BridgeInboundMixin, BridgeCommandSyncMixin):
         self.trade_mode = normalize_trade_mode(trade_mode)
         self.ninjatrader_enabled = bool(ninjatrader_enabled)
         self.command_timeout_seconds = float(command_timeout_seconds)
+        self.sim_account_whitelist: tuple[str, ...] = ()
+        self.live_release: Mapping[str, object] | None = None
         self._lock = threading.RLock()
         self._send_fn: SendFn | None = None
         self._fabric: FabricGrpcClient | None = None
@@ -68,6 +71,19 @@ class NinjaTraderBridgeService(BridgeInboundMixin, BridgeCommandSyncMixin):
     def set_configured_account(self, account: str) -> None:
         with self._lock:
             self.configured_account = str(account or "").strip()
+
+    def set_s1_guards(
+        self,
+        *,
+        sim_account_whitelist: Sequence[str] | None = None,
+        live_release: Mapping[str, object] | None = None,
+    ) -> None:
+        with self._lock:
+            if sim_account_whitelist is None:
+                self.sim_account_whitelist = ()
+            else:
+                self.sim_account_whitelist = tuple(str(item) for item in sim_account_whitelist)
+            self.live_release = dict(live_release) if isinstance(live_release, Mapping) else None
 
     def register_send(self, send_fn: SendFn | None) -> None:
         with self._lock:
@@ -225,6 +241,8 @@ class NinjaTraderBridgeService(BridgeInboundMixin, BridgeCommandSyncMixin):
                 connection=connection,
                 configured_account=self.configured_account,
                 ninjatrader_enabled=self.ninjatrader_enabled,
+                sim_account_whitelist=self.sim_account_whitelist,
+                live_release=self.live_release,
             )
             if not allowed:
                 return False, reason

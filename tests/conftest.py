@@ -15,6 +15,7 @@ behaviour is delivered via fixtures and hooks.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from pathlib import Path
@@ -156,6 +157,34 @@ _RUNTIME_MODE_ENV_KEYS: tuple[str, ...] = (
     "LUMINA_ENFORCE_ENV_RUNTIME_MODE",
     "BROKER_BACKEND",
 )
+
+
+@pytest.fixture(autouse=True)
+def _s1_process_locks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fresh SIM whitelist lock and LIVE_RELEASE nonces per test."""
+    from lumina_core.risk import live_release as live_release_mod
+    from lumina_core.risk import sim_account_guard as sim_guard_mod
+    from lumina_core.risk.sim_account_guard import SimWhitelistLock
+
+    lock = SimWhitelistLock()
+    monkeypatch.setattr(sim_guard_mod, "LOCK", lock)
+    monkeypatch.setattr("lumina_core.risk.orchestration.LOCK", lock)
+    live_release_mod.reset_live_release_nonces_for_tests()
+    monkeypatch.delenv("LUMINA_LIVE_RELEASE_SECRET", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _restore_lumina_log_propagate() -> Generator[None, None, None]:
+    """Keep hierarchical S1 loggers visible to later tests in a serial run.
+
+    ``build_logger("lumina")`` sets ``propagate=False``. The Coverage Report
+    job runs integration tests first in one process; pytest ``caplog`` then
+    misses ``lumina.risk.*`` rejects because they stop at the parent logger.
+    """
+    logger = logging.getLogger("lumina")
+    previous = logger.propagate
+    yield
+    logger.propagate = previous
 
 
 @pytest.fixture(autouse=True)

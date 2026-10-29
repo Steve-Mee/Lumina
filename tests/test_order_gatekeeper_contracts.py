@@ -181,7 +181,18 @@ def _make_engine(
         "market_data": _complete_market_data(),
     }
     defaults.update(overrides)
-    return SimpleNamespace(**defaults)
+    engine = SimpleNamespace(**defaults)
+    cfg = getattr(engine, "config", None)
+    if cfg is not None:
+        if not hasattr(cfg, "ninjatrader_sim_account_whitelist"):
+            setattr(cfg, "ninjatrader_sim_account_whitelist", ("Sim101",))
+        if not hasattr(cfg, "ninjatrader_account_name"):
+            setattr(cfg, "ninjatrader_account_name", "Sim101")
+        if not hasattr(cfg, "live_release_payload"):
+            setattr(cfg, "live_release_payload", {"enabled": False, "mac": ""})
+    if not hasattr(engine, "nt_connected_account"):
+        engine.nt_connected_account = "Sim101"
+    return engine
 
 
 def test_is_stale_contract_symbol_detects_expired_month() -> None:
@@ -252,7 +263,7 @@ def test_enforce_pre_trade_gate_blocks_stale_contract_in_sim_mode(monkeypatch) -
 
 
 def test_enforce_pre_trade_gate_allows_override_for_stale_contract(monkeypatch) -> None:
-    engine = _make_engine(trade_mode="real", risk_controller=_RiskController())
+    engine = _make_engine(trade_mode="sim", risk_controller=_RiskController())
 
     monkeypatch.setattr("lumina_core.order_gatekeeper.is_stale_contract_symbol", lambda *_a, **_k: True)
     monkeypatch.setenv("LUMINA_ALLOW_STALE_CONTRACTS", "true")
@@ -338,7 +349,7 @@ def test_enforce_pre_trade_gate_sim_real_guard_blocks_on_risk(monkeypatch) -> No
 
 def test_enforce_pre_trade_gate_real_blocks_on_var_es(monkeypatch) -> None:
     engine = _make_engine(
-        trade_mode="real",
+        trade_mode="sim_real_guard",
         risk_controller=_RiskController(var_es_ok=False, var_es_reason="VAR_ES breached: VaR95 1400 > 1200"),
         observability_service=SimpleNamespace(record_mode_guard_block=lambda **_kwargs: None),
     )
@@ -379,7 +390,7 @@ def test_enforce_pre_trade_gate_sim_var_es_is_advisory(monkeypatch) -> None:
 
 def test_enforce_pre_trade_gate_real_blocks_on_mc_drawdown(monkeypatch) -> None:
     engine = _make_engine(
-        trade_mode="real",
+        trade_mode="sim_real_guard",
         risk_controller=_RiskController(mc_ok=False, mc_reason="MC projected max drawdown 13.5% > threshold 12.0%"),
         observability_service=SimpleNamespace(record_mode_guard_block=lambda **_kwargs: None),
     )
@@ -396,6 +407,24 @@ def test_enforce_pre_trade_gate_real_blocks_on_mc_drawdown(monkeypatch) -> None:
 
     assert allowed is False
     assert "drawdown" in reason.lower()
+
+
+def test_enforce_pre_trade_gate_real_always_closed_at_live_release(monkeypatch) -> None:
+    engine = _make_engine(
+        trade_mode="real",
+        risk_controller=_RiskController(),
+        observability_service=SimpleNamespace(record_mode_guard_block=lambda **_kwargs: None),
+    )
+    monkeypatch.setattr("lumina_core.order_gatekeeper.is_stale_contract_symbol", lambda *_a, **_k: False)
+    allowed, reason = enforce_pre_trade_gate(
+        engine,
+        symbol="MES JUN26",
+        regime="NEUTRAL",
+        proposed_risk=50.0,
+        order_side="BUY",
+    )
+    assert allowed is False
+    assert "live_release" in reason.lower() or "live_account_path_closed" in reason.lower()
 
 
 def test_enforce_pre_trade_gate_real_fail_closed_when_audit_write_fails(monkeypatch) -> None:
@@ -417,7 +446,7 @@ def test_enforce_pre_trade_gate_real_fail_closed_when_audit_write_fails(monkeypa
     )
 
     assert allowed is False
-    assert "audit fail-closed" in reason.lower()
+    assert "live_release" in reason.lower() or "live_account_path_closed" in reason.lower()
 
 
 def test_enforce_pre_trade_gate_real_blocks_when_final_arbitration_missing(monkeypatch) -> None:
@@ -431,7 +460,7 @@ def test_enforce_pre_trade_gate_real_blocks_when_final_arbitration_missing(monke
         used_margin_usd=5_000.0,
     )
     engine = _make_engine(
-        trade_mode="real",
+        trade_mode="sim_real_guard",
         risk_controller=_RiskController(),
         final_arbitration=None,
         account_equity=50_000.0,
@@ -498,7 +527,7 @@ def test_enforce_pre_trade_gate_emits_risk_verdict_on_rejection(monkeypatch) -> 
     from lumina_core.agent_orchestration.schemas import RiskVerdict
 
     engine = _make_engine(
-        trade_mode="real",
+        trade_mode="sim_real_guard",
         risk_controller=_RiskController(can_trade=False, reason="daily_loss_cap"),
         observability_service=SimpleNamespace(record_mode_guard_block=lambda **_kwargs: None),
     )

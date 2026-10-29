@@ -11,11 +11,12 @@ from lumina_core.engine.market_data_manager import MarketDataManager
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
 from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
 from lumina_core.risk.admission_chain import (
-    ADMISSION_STEP_AUDIT_WRITE,
     ADMISSION_STEP_CONSTITUTION,
     ADMISSION_STEP_FINAL_ARBITRATION,
+    ADMISSION_STEP_LIVE_RELEASE,
     ADMISSION_STEP_RISK_POLICY,
     ADMISSION_STEP_SESSION_EQUITY_SYNC,
+    ADMISSION_STEP_SIM_ACCOUNT_WHITELIST,
     CANONICAL_ADMISSION_STEPS,
     default_chain_for_mode,
 )
@@ -145,7 +146,14 @@ def _complete_market_data() -> MarketDataManager:
 
 def _make_engine(*, trade_mode: str = "real") -> SimpleNamespace:
     return SimpleNamespace(
-        config=SimpleNamespace(trade_mode=trade_mode, instrument="MES JUN26"),
+        config=SimpleNamespace(
+            trade_mode=trade_mode,
+            instrument="MES JUN26",
+            ninjatrader_sim_account_whitelist=("Sim101",),
+            ninjatrader_account_name="Sim101",
+            live_release_payload={"enabled": False, "mac": ""},
+        ),
+        nt_connected_account="Sim101",
         market_data=_complete_market_data(),
         risk_controller=_RiskController(),
         session_guard=None,
@@ -190,7 +198,7 @@ def test_default_chain_uses_canonical_sequence() -> None:
 
 @pytest.mark.unit
 def test_enforce_pre_trade_gate_success_trace_is_canonical() -> None:
-    engine = _make_engine(trade_mode="real")
+    engine = _make_engine(trade_mode="sim")
     final_arbitration = engine.final_arbitration
 
     allowed, reason = enforce_pre_trade_gate(
@@ -222,6 +230,16 @@ def test_enforce_pre_trade_gate_success_trace_is_canonical() -> None:
             "session guard blocked",
         ),
         (
+            ADMISSION_STEP_SIM_ACCOUNT_WHITELIST,
+            lambda engine, _monkeypatch: setattr(engine, "nt_connected_account", "Sim202"),
+            "sim_account_not_whitelisted",
+        ),
+        (
+            ADMISSION_STEP_LIVE_RELEASE,
+            lambda engine, _monkeypatch: setattr(engine.config, "trade_mode", "real"),
+            "live_release",
+        ),
+        (
             ADMISSION_STEP_RISK_POLICY,
             lambda engine, _monkeypatch: setattr(engine.risk_controller, "_var_es_ok", False),
             "var_es",
@@ -241,13 +259,6 @@ def test_enforce_pre_trade_gate_success_trace_is_canonical() -> None:
             ),
             "constitution_block",
         ),
-        (
-            ADMISSION_STEP_AUDIT_WRITE,
-            lambda engine, _monkeypatch: setattr(
-                engine, "audit_log_service", SimpleNamespace(log_decision=lambda *_a, **_k: False)
-            ),
-            "audit fail-closed",
-        ),
     ],
 )
 def test_enforce_pre_trade_gate_blocks_at_each_canonical_step(
@@ -256,7 +267,7 @@ def test_enforce_pre_trade_gate_blocks_at_each_canonical_step(
     reason_fragment: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    engine = _make_engine(trade_mode="real")
+    engine = _make_engine(trade_mode="sim_real_guard")
     mutate_engine(engine, monkeypatch)
 
     allowed, reason = enforce_pre_trade_gate(

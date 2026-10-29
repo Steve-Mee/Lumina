@@ -63,6 +63,17 @@ def test_connected_full_safe_blocks_place_allows_cancel() -> None:
     assert ok_c is True
     assert r_c == "ok"
 
+    ok_m, r_m = assert_nt_bridge_capability(
+        action=NtBridgeAction.MODIFY_ORDER,
+        trade_mode="sim",
+        connection=conn,
+        configured_account="Sim101",
+        ninjatrader_enabled=True,
+        sim_account_whitelist=("Sim101",),
+    )
+    assert ok_m is False
+    assert "safe_mode" in r_m
+
 
 @pytest.mark.unit
 def test_place_order_sync_blocks_on_local_safe_mode() -> None:

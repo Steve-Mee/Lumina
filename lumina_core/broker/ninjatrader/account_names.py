@@ -7,6 +7,7 @@ beside it and is never the bind name. REAL orders stay closed.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{1,63}$")
 _EXPLICIT_PAPER_MODES = frozenset({"sim", "paper", "sim_real_guard"})
@@ -16,9 +17,10 @@ DEMO_HELP = (
     "Kopieer de papieren rekening letter voor letter, inclusief de cijfers. "
     "Een brokerage-demo begint met DEMO, bijvoorbeeld DEMO5042070. "
     "Een lokale simulatie begint met Sim, bijvoorbeeld Sim101. Playback en Backtest horen hier ook. "
-    "Dit is de rekening waarop Lumina in SIM orders plaatst. "
+    "Lumina laat SIM-orders alleen toe als die exacte naam op sim_account_whitelist staat. "
+    "Een prefix Sim of DEMO is geen toelating. "
     "Lumina schrijft die naam in %APPDATA%\\LUMINA\\fabric.json als AccountName "
-    "en in config.yaml als broker.ninjatrader.account_name. "
+    "en in config.yaml als broker.ninjatrader.account_name plus sim_account_whitelist. "
     "NinjaTrader leest AccountName bij het opstarten. Na een wijziging sluit je NinjaTrader "
     "en start je hem opnieuw. Er hoeft niets gecompileerd te worden."
 )
@@ -36,6 +38,35 @@ REAL_HELP = (
 
 def _label(name: str) -> str:
     return str(name or "").strip()
+
+
+def canonicalize_account_name(name: str) -> str:
+    """Trim only. Casefold matching happens at membership time."""
+    return _label(name)
+
+
+def account_on_sim_whitelist(name: str, whitelist: Iterable[str] | None) -> bool:
+    """Exact casefold membership. Empty or missing whitelist denies every name.
+
+    ``is_local_sim_name`` / ``paper_orders_allowed`` are never consulted.
+    """
+    label = canonicalize_account_name(name)
+    if not label:
+        return False
+    if whitelist is None or isinstance(whitelist, (str, bytes)):
+        return False
+    want = label.casefold()
+    found = False
+    for raw in whitelist:
+        item = canonicalize_account_name(str(raw) if raw is not None else "")
+        if not item:
+            continue
+        found = True
+        if item.casefold() == want:
+            return True
+    if not found:
+        return False
+    return False
 
 
 def is_broker_demo_name(name: str) -> bool:

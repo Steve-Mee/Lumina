@@ -69,7 +69,7 @@ def test_e2e_real_mode_blocks_on_mc_drawdown_and_logs_decision(tmp_path: Path) -
     audit_path = tmp_path / "trade_decision_audit.jsonl"
     risk_limits = RiskLimits(
         enforce_session_guard=False,
-        runtime_mode="real",
+        runtime_mode="sim_real_guard",
         mc_drawdown_paths=1200,
         mc_drawdown_horizon_days=60,
         mc_drawdown_min_samples=20,
@@ -84,7 +84,14 @@ def test_e2e_real_mode_blocks_on_mc_drawdown_and_logs_decision(tmp_path: Path) -
         risk_controller.record_trade_result("MES", "HIGH_VOLATILITY", pnl=pnl, risk_taken=100.0)
 
     engine = SimpleNamespace(
-        config=SimpleNamespace(trade_mode="real", instrument="MES JUN26"),
+        config=SimpleNamespace(
+            trade_mode="sim_real_guard",
+            instrument="MES JUN26",
+            ninjatrader_sim_account_whitelist=("Sim101",),
+            ninjatrader_account_name="Sim101",
+            live_release_payload={"enabled": False, "mac": ""},
+        ),
+        nt_connected_account="Sim101",
         risk_controller=risk_controller,
         session_guard=None,
         current_regime_snapshot={
@@ -186,7 +193,7 @@ def test_e2e_pretrade_uses_default_mc_paths_and_horizon_from_config(tmp_path: Pa
     audit_path = tmp_path / "trade_decision_audit.jsonl"
     limits = risk_limits_from_config(
         {
-            "mode": "real",
+            "mode": "sim_real_guard",
             "risk_controller": {
                 "enforce_session_guard": False,
                 "mc_drawdown_threshold_pct": 95.0,
@@ -199,7 +206,14 @@ def test_e2e_pretrade_uses_default_mc_paths_and_horizon_from_config(tmp_path: Pa
         risk_controller.record_trade_result("MES", "TRENDING", pnl=pnl, risk_taken=100.0)
 
     engine = SimpleNamespace(
-        config=SimpleNamespace(trade_mode="real", instrument="MES JUN26"),
+        config=SimpleNamespace(
+            trade_mode="sim_real_guard",
+            instrument="MES JUN26",
+            ninjatrader_sim_account_whitelist=("Sim101",),
+            ninjatrader_account_name="Sim101",
+            live_release_payload={"enabled": False, "mac": ""},
+        ),
+        nt_connected_account="Sim101",
         risk_controller=risk_controller,
         session_guard=None,
         current_regime_snapshot={
