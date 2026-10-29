@@ -40,7 +40,12 @@ def test_config_yaml_not_sim_and_flatten_grace() -> None:
     assert "Not B" in adr or "not b" in adr.lower()
     assert "not d" in adr.lower()
     assert "atm_strategy_template" in adr
-    assert "LuminaProtectiveMES" in Path("docs/runbooks/nt8-atm-template.md").read_text(encoding="utf-8")
+    runbook = Path("docs/runbooks/nt8-atm-template.md").read_text(encoding="utf-8")
+    assert "LuminaProtective" in runbook
+    assert "1.5 × ATR" in runbook or "1.5 x ATR" in runbook or "ATR × 1.5" in runbook or "multiplier **1.5**" in runbook
+    assert "ES" in runbook and "NQ" in runbook and "MES" in runbook and "MNQ" in runbook
+    assert "atm_confirm_timeout_ms: 5000" in text
+    assert "fill-before-ATM" in runbook or "fill-before-ATM race" in runbook
 
 
 @pytest.mark.unit
@@ -48,6 +53,9 @@ def test_config_yaml_not_sim_and_flatten_grace() -> None:
 def test_sim_requires_equity_snapshot_and_caps() -> None:
     assert "sim" in MODES_REQUIRING_EQUITY_SNAPSHOT
     assert resolve_mode_capabilities("sim").risk_enforced is True
+    adr = Path("docs/adr/0064-s4-sim-entry-hardening.md").read_text(encoding="utf-8")
+    assert "Accepted" in adr
+    assert "NOT approved" in adr
 
 
 @pytest.mark.unit

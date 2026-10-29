@@ -69,7 +69,7 @@ LUMINA gebruikt **bounded contexts** als domeingrenzen onder `lumina_core/` (zie
 | **Risk Management** | Risk gates, allocatie, Kelly-achtige begrenzing | [`lumina_core/risk/`](../lumina_core/risk/) | Via mixins/engine geïntegreerd; canoniek onder `risk/` |
 | **Agent Orchestration** | Event bus, engine↔blackboard bindingen | [`lumina_core/agent_orchestration/`](../lumina_core/agent_orchestration/) | Pub/sub en bindings centraliseren |
 | **Research** | Propose-only Validation Gate, hypotheses, monitoring | [`lumina_research/`](../lumina_research/) | Isolation: no live Risk Core, no NT broker. Research may only propose. |
-| **ResearchBridge (S0–S4)** | SHADOW intents + ADR-0055 fills; S3 `OrderIntent` after `sim_gate` on NT-PIT survivors; S4 continuity meter is the only FAR/TTD/power source; ATM template (A) then companion STOP (C) | [`lumina_core/research_bridge/`](../lumina_core/research_bridge/) | Ungated places stay frozen (D1/D8). Live path stays closed_s1. S4 meter + D9≡6b; research team decision (relayed by Steve 2026-10-29). ADR-0064 Risk Core edits are **Proposed / needs human review**. |
+| **ResearchBridge (S0–S4)** | SHADOW intents + ADR-0055 fills; S3 `OrderIntent` after `sim_gate` on NT-PIT survivors; S4 continuity meter is the only FAR/TTD/power source; one generic ATR ATM `LuminaProtective` (A) then companion STOP (C) | [`lumina_core/research_bridge/`](../lumina_core/research_bridge/) | Ungated places stay frozen (D1/D8). Live path stays closed_s1. S4 meter + D9≡6b; research team decision (relayed by Steve 2026-10-29). Follow-up 22:08: stale equity Accepted; caps-bypass not approved. Remaining ADR-0064 items **need human review**. |
 
 ```mermaid
 flowchart LR

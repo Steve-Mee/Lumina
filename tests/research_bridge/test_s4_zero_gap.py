@@ -97,4 +97,7 @@ def test_s4_source_label_is_research_team_relayed_by_steve() -> None:
     assert missing == []
     adr = (ROOT / "docs/adr/0064-s4-sim-entry-hardening.md").read_text(encoding="utf-8")
     assert "needs human review" in adr.lower()
-    assert "Status:** Proposed" in adr or "Status: Proposed" in adr
+    assert "Partially Accepted" in adr
+    assert "caps-bypass is NOT approved" in adr or "Caps-bypass is NOT approved" in adr
+    assert "LuminaProtective" in adr
+    assert "fill-before-ATM" in adr

@@ -1,13 +1,20 @@
 # ADR-0064: S4 SIM-entry hardening (continuity meter, D9, protective stops)
 
-**Status:** Proposed  
+**Status:** Partially Accepted  
 **Date:** 2026-10-29  
-**Deciders:** LUMINA Engineering — **needs human review**  
-**Source:** research team decision (relayed by Steve 2026-10-29)
+**Deciders:** LUMINA Engineering — remaining items **need human review**  
+**Source:** research team decision (relayed by Steve 2026-10-29); follow-up
+research team 2026-10-29 22:08 sha256 `991138fd…` (**not** Steve)
 
-> **NEEDS HUMAN REVIEW.** Risk Core edits in this PR (Brain caps-bypass,
-> stale equity in `sim`, prolonged-disconnect flatten, flatten-grace clamp)
-> are Proposed, not Accepted. Do not merge as live law. Live stays closed.
+> **Follow-up 22:08 Accepted:** stale equity in `sim` (fail-closed);
+> Brain caps-bypass **not approved** (hard caps stay; no silent cap-value
+> change). **Follow-up ATM:** one generic ATR template `LuminaProtective` for
+> ES/NQ/MES/MNQ; ATM+C kept; hard timeout + Risk Core flatten if ATM is not
+> confirmed in the short window (fill-before-ATM race).
+>
+> **Still Proposed / needs human review:** flatten-grace clamp, prolonged-disconnect
+> flatten, operator ATM probe on PC_Home. Do not treat this ADR as live law.
+> Live stays closed. Risk Core cap *values* remain propose-only.
 
 ## Context
 
@@ -48,36 +55,47 @@ leftovers (caps-bypass, Telegram 6c) are the S4 scope. First principles:
 4. **TelegramAlertSink (6c)** journals via ADR-0043. No credentials →
    `drop_reason=no_credentials`. No second poller. No network in tests.
 
-### PROPOSE — Risk Core / Fabric (**needs human review**)
+### ACCEPTED (research team 22:08, sha 991138fd)
 
 5. **Stale equity blocks new orders in mode `sim`** as well as
    `sim_real_guard` / paper / real. Log + alert. Reduce-only still allowed.
-6. **Close Brain caps-bypass** `risk_gates.py` `if self.limits.sim_mode or not
-   self.enforce_rules`. Remaining advisory path is `enforce_rules=False` only.
-   `mode_capabilities.sim.risk_enforced=True` so desk `sim` actually enforces
-   Brain caps (daily_loss_cap, streak, open-risk). This supersedes ADR-0061
-   “sim stays learning-mode” **for caps only**. VaR/ES and MC stay advisory
-   in desk `sim` (allocator `_var_es_enforcement_enabled` /
-   `_mc_enforcement_enabled` already return False for mode `sim`; the
-   admission gate must match and must not key those two checks off
-   `capabilities.risk_enforced`). Hard VaR/ES/MC remains `sim_real_guard`
-   / `real` only.
+   Fail-closed. **Accepted.**
+6. **Caps-bypass is NOT approved.** Close Brain caps-bypass
+   `risk_gates.py` `if self.limits.sim_mode or not self.enforce_rules`.
+   Remaining advisory path is `enforce_rules=False` only (explicit, logged,
+   temporary; tests/paper). `mode_capabilities.sim.risk_enforced=True` so
+   desk `sim` actually enforces Brain caps (daily_loss_cap, streak, open-risk).
+   This supersedes ADR-0061 “sim stays learning-mode” **for caps only**.
+   VaR/ES and MC stay advisory in desk `sim`. Hard VaR/ES/MC remains
+   `sim_real_guard` / `real` only. **Cap values are unchanged and remain
+   propose-only** — this ADR does not silently retune daily_loss_cap or
+   streak numbers. **Accepted: bypass disabled; hard caps stay.**
+
+### PROPOSE — Risk Core / Fabric (**needs human review**)
 7. **Flatten-grace backup 30–60s** (chosen 30000 ms, clamp `[30000, 60000]`).
 8. **Prolonged disconnect:** on reconnect, AlarmExecutor reconciles with broker
    as SoT then flattens open strategy qty via D9 stage `prolonged_disconnect`.
 9. **Protective stops — A default, C fallback.**
-   Research team decision (relayed by Steve 2026-10-29, 16:36):
-   - **Primary A:** NT ATM template (stop+target+OCO on the NT server at
-     entry). Fabric proto field `atm_strategy_template`. Per-account /
-     per-connection name is operator config, set once.
+   Research team decision (relayed by Steve 2026-10-29, 16:36) plus follow-up
+   22:08 (sha 991138fd):
+   - **Primary A:** **one** generic ATR-based NT ATM template named
+     `LuminaProtective` for ES/NQ/MES/MNQ (stops in ATR multiples: period 14,
+     stop 1.5×ATR, optional target 2.0×ATR). Fabric proto field
+     `atm_strategy_template`. Operator sets this **once** on Sim101. The
+     16:36 name `LuminaProtectiveMES` is retired. Per-connection empty string
+     still disables A for that connection (C fallback).
    - **Fallback C:** companion protected STOP when ATM is missing or
      unconfirmed for that broker/connection. Residual: MARKET may fill
      before STOP is working. Hard timeout (default 5000 ms) then Risk Core
-     flatten (`unconfirmed_protective_stop`).
+     flatten (`unconfirmed_protective_stop`). **Kept.**
+   - **ATM confirm window:** `atm_confirm_timeout_ms` (default 5000). If ATM
+     is not confirmed in that short window after a fill (**fill-before-ATM
+     race**), Brain may attach C; if C is off or also unconfirmed, Risk Core
+     flattens. Gateway must not hide a fill behind a clean ATM reject
+     (`atm_unconfirmed_after_fill`).
    - **Fail-closed:** no new entry if neither ATM nor a confirmed C-stop.
      ATM reject does **not** retry a second MARKET (a silent NT fill plus
-     a retry would double). Live ATM fill without `protective_attach=atm`
-     may attach C; if C is off or unconfirmed, Risk Core flattens.
+     a retry would double).
    - **Not B** (raw `CreateOrder` OCO id) and **not D** (stop-market as
      primary).
    - Brain still refuses risk-increasing `sim_real_guard`/`real` places
@@ -93,17 +111,21 @@ What this repo proves in SIM/CI:
 - Proto round-trip of `atm_strategy_template` / `protective_attach`
 - Path selection: template present → A; empty/unreliable → C; neither → refuse
 - SimOrderGateway attaches a simulated ATM child stop, or rejects
-  `atm_unavailable` without a fill
+  `atm_unavailable` without a fill, or (CI) fills without ATM children
 - Companion confirm timeout → flatten
+- ATM confirm timeout / fill-before-ATM → companion or Risk Core flatten
 - NtAccountOrderGateway calls `AtmStrategy.StartAtmStrategy` by reflection
   when NinjaTrader.Core is present; standalone CI build reports
-  `atm_api_unavailable`. If StartAtmStrategy fails after Submit, the AddOn
-  cancels the entry and returns reject. If the MARKET already filled,
-  cancel may fail; Brain does not retry a second entry. Operator flattens
-  that residual on PC_Home. CI cannot prove that NT race.
+  `atm_api_unavailable`. If StartAtmStrategy fails after Submit and the
+  MARKET already filled, the AddOn returns the fill with
+  `atm_unconfirmed_after_fill` (does not hide it behind a clean reject).
+  Brain does not retry a second MARKET; it flattens if ATM is still
+  unconfirmed when the short window closes. CI cannot prove the live NT
+  template file on PC_Home.
 
 What Steve/operator must do on PC_Home (not automatable here):
-1. Create the ATM template in NT8 with the exact configured name.
+1. Create **one** ATM template named exactly `LuminaProtective` (ATR 14,
+   stop 1.5×ATR) for ES/NQ/MES/MNQ. Probe Sim101 with MES **and** NQ.
 2. Write that name into `%APPDATA%\LUMINA\fabric.json` and
    `config.yaml` `broker.ninjatrader.atm.templates_by_account`.
 3. Restart NT8 so the AddOn reloads Fabric config.
@@ -135,10 +157,20 @@ What Steve/operator must do on PC_Home (not automatable here):
 5. Option B (raw OCO id on `CreateOrder`) — rejected by research team 16:36.
 6. Option D (stop-market as primary entry) — rejected by research team 16:36.
 
+## Follow-up 2026-10-29 22:08 (sha 991138fd)
+
+Frozen answers: [`docs/research/ONDERZOEKERS-ANTWOORDEN-POWER-S4-20261029T2208.md`](../research/ONDERZOEKERS-ANTWOORDEN-POWER-S4-20261029T2208.md).
+
+**Risk Core proposal (not silently applied):** do not retune `daily_loss_cap`,
+streak, or open-risk numbers in this follow-up. The only Risk Core *behavior*
+changes already on `main` from S4 (stale equity in `sim`; close `sim_mode`
+caps short-circuit) are now Accepted. Any future cap-value change needs its
+own ADR + signed human review.
+
 ## Links
 
-- Decisions: research team (relayed by Steve 2026-10-29)
+- Decisions: research team (relayed by Steve 2026-10-29); follow-up research team 2026-10-29 22:08 sha 991138fd (not Steve)
 - Prior: `docs/adr/0059-research-phase5-empirical-proof-and-fabric-ports.md`, `docs/adr/0063-sim-orders-gated.md`, `docs/adr/0043-telegram-io-ssot.md`
 - Code: `lumina_core/research_bridge/continuity_meter.py`, `sim_gate.py`, `protective_stop.py`, `protective_attach.py`, `alerts.py`
-- Risk Core (Proposed): `lumina_core/risk/risk_gates.py`, `lumina_core/engine/mode_capabilities.py`, `lumina_core/order_gatekeeper/engine_helpers.py`, `lumina_core/risk/alarm_executor.py`
+- Risk Core: `lumina_core/risk/risk_gates.py`, `lumina_core/engine/mode_capabilities.py`, `lumina_core/order_gatekeeper/engine_helpers.py`, `lumina_core/risk/alarm_executor.py`
 - Operator ATM: [`docs/runbooks/nt8-atm-template.md`](../runbooks/nt8-atm-template.md)
