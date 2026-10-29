@@ -1,18 +1,21 @@
-# P2 limited ES strategy-run — pre-registration only (2026-10-29 21:29)
+# P2 limited ES strategy-run — pre-registration only (2026-10-29 22:08)
 
 **Not executed.** This file is the proposed lock for a later limited
 strategy-run. It does not increment `TrialRegistry`. It does not open
-holdout. It does not propose promotion or SIM.
+holdout. It does not propose promotion or SIM. Do not start this run from
+the 22:08 power-floor task.
 
 Binding input (Steve forwarded; **not** Steve's opinion):
-`docs/research/ONDERZOEKERS-ANTWOORDEN-MIDPOINT-20261029T2129.md`
-content sha256 `af183d1d6a9f329942d84bf80854791d69b20cd4264a88ae3da1d9677116e757`.
+`docs/research/ONDERZOEKERS-ANTWOORDEN-POWER-S4-20261029T2208.md`
+content sha256 `991138fdd4b741041e3288387dd8aaf89a09652329ada7eec7eaa0f037bfae9d`
+(prefix `991138fd`). Prior 21:29 lock remains on file as
+`docs/research/ONDERZOEKERS-ANTWOORDEN-MIDPOINT-20261029T2129.md`.
 
-Team 21:29: limited run only after passed_gate is explained and 50%/25%
-power is reported; ES only; only pre-registered families fade/mean-reversion
-and breakout/momentum; max 6–8 configs; NQ closed; no promotion; no SIM.
-A new OK is still required to **start** this run, even though those control
-steps passed.
+Team 22:08: power-only at 12.5% (optional 6.25%) first; then a limited ES
+run of the pre-registered 6 (or 5) configs. Prefer drop/deprioritize
+`p2l-tod-es` if high turnover / ETH exposure. No extra variants. NQ closed,
+no promotion, no SIM, holdout sealed, max trials = pre-registered count.
+**This file still does not start that run.**
 
 Does **not** rewrite CostModel 1.2.0, DSR 0.95, PBO 0.50, the 7/8 null gate,
 holdout pin `2026-01-28T23:00:00Z`, or Risk Core.
@@ -25,7 +28,7 @@ holdout pin `2026-01-28T23:00:00Z`, or Risk Core.
 | families | fade / mean-reversion and breakout / momentum only |
 | geometry | fade `1.0×ATR14 / 1.2×ATR14`; breakout `1.8×ATR14 / 0.9×ATR14` |
 | holding | RTH session flatten, `time_stop_bars=2000` |
-| n configs | 6 (inside the 6–8 cap) |
+| n configs | 6 (inside the 6–8 cap; TOD kept, see below) |
 | ids | new `p2l-*` (fresh trial; do not reuse killed `p2a-*` ids) |
 | floors | DSR ≥ 0.95, PBO 0.50, A2 drempel unchanged |
 | null | v2 `linear_magnitude`, 32 seeds `20261029+i`, fail at `n_edge ≥ 4/32` |
@@ -53,6 +56,37 @@ Gap and pullback are out of the two allowed family buckets. High-turnover
 Six configs, three per bucket. Lookbacks/thresholds copy the existing ATR
 catalog templates for those families; ids are new so this is a fresh trial
 if later approved, not a silent rerun of `p2a-*`.
+
+## TOD decision: keep `p2l-tod-es`
+
+Checked from **existing** ATR ES PIT (`phase5_p2_atr_es_results.md` /
+JSON), same fade `1.0/1.2` geometry and `session_filter=rth` that this
+grid would reuse. No new strategy-run was used for this check.
+
+| sibling (ATR ES) | n_trades / 598 sessions | trades/session | slippage $ |
+|---|---|---|---|
+| `p2a-mr-es` | 734 | 1.23 | 2.47e+04 |
+| `p2a-vwap-es` | 729 | 1.22 | 2.35e+04 |
+| `p2a-vx-es` | 732 | 1.22 | 2.38e+04 |
+| `p2a-or-fade-es` | 695 | 1.16 | 1.67e+04 |
+| `p2a-rc-es` | 682 | 1.14 | 1.94e+04 |
+| `p2a-tod-es` | **589** | **0.98** | 1.93e+04 |
+
+`p2a-tod-es` is the **lowest** trade count of the six families that map to
+`p2l-*`. Not high turnover relative to this grid.
+
+ETH: `_time_of_day` signals only on RTH bars in the first `lookback` minutes
+after the RTH open (`lookback=30`). `session_filter=rth`. ATR exit mix is
+473 session-end + 75 target + 41 stop (all RTH flatten). Residual ETH
+slippage in CostModel 1.2.0 applies to ETH-session bars; this template does
+not enter there. `overnight_gap` is the ETH-adjacent family and is already
+excluded.
+
+The 16/8 clipped `p2c-tod-es-15` row (2755 trades) is a different geometry
+and is **not** this lock.
+
+**Decision: keep `p2l-tod-es`. n configs stays 6. No extra variants. No
+drop.** If a later start-OK disagrees, rewrite this lock before any run.
 
 ## Explicitly not in this file
 
