@@ -19,6 +19,18 @@ from lumina_core.risk.schemas import OrderIntent, OrderIntentMetadata
 from lumina_core.engine.errors import ErrorSeverity, LuminaError
 import lumina_core.order_gatekeeper as _og
 
+# ADR-0064 Proposed: desk sim.risk_enforced=True is Brain caps only
+# (daily_loss_cap, streak, open-risk). VaR/ES and MC stay advisory in
+# mode sim, matching RiskAllocatorMixin._var_es_enforcement_enabled /
+# _mc_enforcement_enabled (only sim_real_guard and real). Do not key
+# these two gates off capabilities.risk_enforced — that was the S4 CI
+# blast radius on test_enforce_pre_trade_gate_sim_var_es_is_advisory.
+_HARD_VAR_ES_MC_MODES = frozenset({"sim_real_guard", "real"})
+
+
+def _var_es_mc_is_hard(mode: str) -> bool:
+    return str(mode or "").strip().lower() in _HARD_VAR_ES_MC_MODES
+
 
 def _build_admission_intent(
     *,
@@ -192,20 +204,21 @@ def make_risk_policy_step(ctx: Any) -> Callable[[AdmissionContext], tuple[bool, 
             _ctx.metadata["var_payload"] = var_payload
             _ctx.metadata["mc_payload"] = mc_payload
 
-            if capabilities.risk_enforced and not bool(var_ok):
+            hard_var_es_mc = _var_es_mc_is_hard(mode)
+            if hard_var_es_mc and not bool(var_ok):
                 _ctx.metadata["deny_reason_code"] = "risk_var_es"
                 _emit_risk_allocation_decision(_ctx, False, var_reason, var_payload, mc_payload)
                 return False, str(var_reason)
-            if capabilities.risk_enforced and not bool(mc_ok):
+            if hard_var_es_mc and not bool(mc_ok):
                 _ctx.metadata["deny_reason_code"] = "risk_mc_drawdown"
                 _emit_risk_allocation_decision(_ctx, False, mc_reason, var_payload, mc_payload)
                 return False, str(mc_reason)
-            if not capabilities.risk_enforced and not bool(var_ok):
+            if not hard_var_es_mc and not bool(var_ok):
                 safe_log_warning(
                     engine,
                     f"RISK_VAR_ES_ADVISORY,mode={mode},symbol={symbol},reason={var_reason}",
                 )
-            if not capabilities.risk_enforced and not bool(mc_ok):
+            if not hard_var_es_mc and not bool(mc_ok):
                 safe_log_warning(
                     engine,
                     f"RISK_MC_DRAWDOWN_ADVISORY,mode={mode},symbol={symbol},reason={mc_reason}",

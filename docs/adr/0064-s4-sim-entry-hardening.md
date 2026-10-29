@@ -52,8 +52,14 @@ leftovers (caps-bypass, Telegram 6c) are the S4 scope. First principles:
    `sim_real_guard` / paper / real. Log + alert. Reduce-only still allowed.
 6. **Close Brain caps-bypass** `risk_gates.py` `if self.limits.sim_mode or not
    self.enforce_rules`. Remaining advisory path is `enforce_rules=False` only.
-   `mode_capabilities.sim.risk_enforced=True` so desk `sim` actually enforces.
-   This supersedes ADR-0061 “sim stays learning-mode” **for caps only**.
+   `mode_capabilities.sim.risk_enforced=True` so desk `sim` actually enforces
+   Brain caps (daily_loss_cap, streak, open-risk). This supersedes ADR-0061
+   “sim stays learning-mode” **for caps only**. VaR/ES and MC stay advisory
+   in desk `sim` (allocator `_var_es_enforcement_enabled` /
+   `_mc_enforcement_enabled` already return False for mode `sim`; the
+   admission gate must match and must not key those two checks off
+   `capabilities.risk_enforced`). Hard VaR/ES/MC remains `sim_real_guard`
+   / `real` only.
 7. **Flatten-grace backup 30–60s** (chosen 30000 ms, clamp `[30000, 60000]`).
 8. **Prolonged disconnect:** on reconnect, AlarmExecutor reconciles with broker
    as SoT then flattens open strategy qty via D9 stage `prolonged_disconnect`.
