@@ -56,6 +56,25 @@ PLANTED_HORIZON_NOTE = (
     "fire inside one RTH session. Four-leg costs unchanged. Known size is the "
     "session RTH open-to-close move minus costs."
 )
+PLANTED_HORIZON_NOTE_ATR = (
+    "Planted edge: at the first RTH bar of each session, the control knows the "
+    "sign of that session's last-RTH-close minus first-RTH-open (unadjusted). "
+    "It holds that direction until RTH close (session flatten, C10). Brackets "
+    "are 1:1 1.5×ATR14 in index points (ADR-0068; not 16/8 and not the unclipped "
+    "limit-move ceiling) so a shuffled 50% null is not a 2R artefact. "
+    "time_stop_bars=2000 cannot "
+    "fire inside one RTH session. Four-leg costs unchanged. Known size is the "
+    "session RTH open-to-close move clipped at 1.5×ATR minus costs."
+)
+
+
+def horizon_note(geometry_mode: str) -> str:
+    """Human note for D13. Execution path is `execute_control`; this is report text."""
+    if geometry_mode == "atr":
+        return PLANTED_HORIZON_NOTE_ATR
+    if geometry_mode == "unclipped":
+        return PLANTED_HORIZON_NOTE
+    raise ValueError(f"unknown control geometry_mode {geometry_mode!r}")
 
 
 class PositiveControlFailed(RuntimeError):
@@ -474,7 +493,12 @@ def run_controls(
     )
     representative = drift_rows[0][1]
     report = ControlReport(
-        positive=_outcome("planted_session_direction", planted_eval, pos_detected, PLANTED_HORIZON_NOTE),
+        positive=_outcome(
+            "planted_session_direction",
+            planted_eval,
+            pos_detected,
+            horizon_note(geometry_mode),
+        ),
         null=_outcome(
             "null_drift_aware_multiseed",
             representative,

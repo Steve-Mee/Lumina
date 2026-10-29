@@ -79,6 +79,7 @@ from lumina_research.cycles.positive_control import (
     CONTROL_TIME_STOP_BARS,
     _detected,
     execute_control,
+    horizon_note,
     rth_session_direction,
     shuffle_signals,
 )
@@ -1047,6 +1048,13 @@ def _kill_atr_geometry() -> None:
     gap = next(item for item in specs if item.config_id == "p2a-gap-es")
     if gap.disable_brackets is not True or gap.target_atr is not None:
         _fail("gap family must have no 1m bracket")
+    atr_note = horizon_note("atr")
+    if "1.5" not in atr_note or "ATR" not in atr_note:
+        _fail("ATR D13 note must state 1.5×ATR")
+    if "20000/20000" in atr_note:
+        _fail("ATR D13 note must not quote unclipped 20000/20000")
+    if "20000/20000" not in horizon_note("unclipped"):
+        _fail("unclipped D13 note must keep 20000/20000")
     july = int(datetime(2025, 7, 14, 18, 0, tzinfo=UTC).timestamp() * 1_000_000_000)
     if in_known_gap("ES", july) is not True or in_known_gap("NQ", july) is not False:
         _fail("July TRAIN hole is ES-specific, not NQ")

@@ -15,6 +15,7 @@ from lumina_research.cycles.execution import ClosedTrade, ExecutionRefused, run_
 from lumina_research.cycles.gaps import in_known_gap
 from lumina_research.cycles.geometry import require_geometry
 from lumina_research.cycles.holdout import HoldoutLocked
+from lumina_research.cycles.positive_control import horizon_note
 from lumina_research.cycles.prepare import prepare_tape
 from lumina_research.cycles.seal import ES_NQ_SEAL_NAME, ES_NQ_SEAL_SHA256, seal_holdout
 from lumina_research.cycles.sessions import annotate
@@ -273,3 +274,14 @@ def test_atr_seal_does_not_overwrite_live_es_nq_seal(tmp_path: Path) -> None:
     assert (tmp_path / ATR_SEAL_NAME).is_file()
     still = Path(tmp_path / ES_NQ_SEAL_NAME).read_text(encoding="utf-8")
     assert ES_NQ_SEAL_SHA256 in still
+
+
+@pytest.mark.unit
+def test_atr_control_horizon_note_is_not_unclipped_20000() -> None:
+    atr = horizon_note("atr")
+    unclipped = horizon_note("unclipped")
+    assert "1.5" in atr and "ATR" in atr
+    assert "20000/20000" not in atr
+    assert "20000/20000" in unclipped
+    with pytest.raises(ValueError, match="unknown control geometry_mode"):
+        horizon_note("ticks")
