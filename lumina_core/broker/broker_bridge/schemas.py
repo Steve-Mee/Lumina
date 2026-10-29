@@ -68,6 +68,9 @@ class Fill:
     prev_event_topic: str | None = None
 
     raw: dict[str, Any] = field(default_factory=dict)
+    slippage_ticks: float | None = None
+    slippage_usd: float | None = None
+    commission_ticks: float = 0.0
 
 
 def paper_position_from_fills(fills: list[Fill], symbol: str) -> Position | None:

@@ -89,6 +89,8 @@ class ExecutionFill(BaseModel):
     price: float
     timestamp: str
     commission: float = 0.0
+    slippage: float = 0.0
+    commission_ticks: float = 0.0
 
     # Optional raw passthrough for broker-specific details
     raw: dict[str, Any] = Field(default_factory=dict)

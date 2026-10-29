@@ -13,6 +13,7 @@ BANNED_PREFIXES = (
     "lumina_core.risk",
     "lumina_core.evolution.promotion_gate",
     "lumina_core.evolution.promotion_evidence",
+    "lumina_core.broker",
     "archive.birth_v1",
     "archive.birth-v1",
 )

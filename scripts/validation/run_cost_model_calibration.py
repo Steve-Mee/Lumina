@@ -7,6 +7,7 @@ from pathlib import Path
 from lumina_core.monitoring.reality_gap_tracker import RealityGapThresholds, run_daily_reality_gap
 from lumina_core.risk.cost_model import TradeExecutionCostModel
 from lumina_core.risk.cost_model_calibrator import apply_calibration_from_state, run_daily_calibration
+from lumina_research.validation.cost_calibrate import assert_does_not_undercut_card, research_commission_usd
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -23,6 +24,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fill-rate-threshold", type=float, default=0.1)
     parser.add_argument("--sigma-multiplier", type=float, default=1.0)
     parser.add_argument("--sigma-floor", type=float, default=0.0)
+    parser.add_argument("--roots", nargs="*", default=["MES", "MNQ", "ES", "NQ"])
     return parser
 
 
@@ -37,6 +39,9 @@ def main() -> int:
         sigma_multiplier=float(args.sigma_multiplier),
         sigma_floor=float(args.sigma_floor),
     )
+    for root in args.roots:
+        assert_does_not_undercut_card(str(root), research_commission_usd(str(root), 1), 1)
+
     model = TradeExecutionCostModel.from_config({}, instrument=str(args.instrument))
     applied_bias_ticks, applied_sigma = apply_calibration_from_state(
         model,

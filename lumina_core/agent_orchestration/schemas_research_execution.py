@@ -2,7 +2,8 @@
 
 Existing ``TradeIntent`` / live ``OrderIntent`` stay unchanged. Research
 SHADOW uses these additive topics, not Final Arbitration. Issuer-guarded:
-only ``research_bridge`` may publish them.
+only ``research_bridge`` may publish signal/order intents; S2 also
+allows ``fill_translator`` on ``research.execution.fill``.
 """
 
 from __future__ import annotations

@@ -157,6 +157,15 @@ class FillNormalizationMixin:
         ph = _first("prev_hash", "prevHash", default=None)
         pet = _first("prev_event_topic", "prevEventTopic", default=None)
 
+        slippage_ticks = float(_first("slippage_ticks", default=0.0) or 0.0)
+        slippage_usd = float(_first("slippage_usd", default=0.0) or 0.0)
+        commission_ticks = float(_first("commission_ticks", default=0.0) or 0.0)
+        source = str(_first("source", default="broker") or "broker")
+        strategy_id = str(_first("strategy_id", default="") or "")
+        try:
+            expected_horizon = int(_first("expected_horizon", default=0) or 0)
+        except (TypeError, ValueError):
+            expected_horizon = 0
         fe = FillEvent(
             fill_id=fill_id,
             symbol=symbol,
@@ -166,6 +175,12 @@ class FillNormalizationMixin:
             commission=commission,
             event_ts=event_ts,
             raw_payload=raw,
+            slippage_ticks=slippage_ticks,
+            slippage_usd=slippage_usd,
+            commission_ticks=commission_ticks,
+            source=source,
+            strategy_id=strategy_id,
+            expected_horizon=expected_horizon,
         )
         # Promote lineage (now reliably present from broker overlay for live) to first-class attrs on FillEvent
         if dcid is not None:

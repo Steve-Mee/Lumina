@@ -18,6 +18,7 @@ from lumina_core.agent_orchestration.schemas_research_execution import (
     ResearchExecutionFill,
     SignalIntent,
 )
+from lumina_core.research_bridge.fill_translator import FillTranslator
 from tests.research_bridge.helpers import make_runtime, sealed_candidate
 
 
@@ -74,6 +75,28 @@ def test_research_bridge_publishes_after_guard_is_registered(tmp_path: Path) -> 
     typed = ResearchExecutionFill.model_validate(fills[0].payload)
     assert typed.fill_price == typed.price
     assert typed.qty == typed.quantity
+
+
+@pytest.mark.unit
+def test_fill_translator_can_publish_fill_after_guard() -> None:
+    bus = EventBus()
+    FillTranslator(bus=bus)
+    payload = ResearchExecutionFill(
+        fill_id="broker-1",
+        symbol="MES",
+        side="BUY",
+        quantity=1,
+        price=5000.25,
+        commission=0.94,
+        event_ts=datetime(2026, 10, 29, 12, 0, tzinfo=timezone.utc),
+        source="broker",
+        strategy_id="hyp-s2",
+        expected_horizon=8,
+    ).model_dump(mode="json")
+    event = bus.publish(topic=RESEARCH_EXECUTION_FILL_TOPIC, producer=FILL_TRANSLATOR_AGENT_ID, payload=payload)
+    assert event.producer == FILL_TRANSLATOR_AGENT_ID
+    assert event.payload["source"] == "broker"
+    assert event.payload["commission"] == pytest.approx(0.94)
 
 
 @pytest.mark.unit
