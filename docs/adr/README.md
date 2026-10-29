@@ -73,6 +73,7 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0059 | Research Phase 5 empirical proof and Execution Fabric ports (no NT8 coupling, no orders) | Accepted | 2026-10-28 | [0059-research-phase5-empirical-proof-and-fabric-ports.md](./0059-research-phase5-empirical-proof-and-fabric-ports.md) |
 | 0060 | ResearchBridge SHADOW first: ungated-place freeze + hypothetical ADR-0055 fills | Accepted | 2026-10-28 | [0060-research-bridge-shadow-first.md](./0060-research-bridge-shadow-first.md) |
 | 0061 | SIM account whitelist + HMAC LIVE_RELEASE (S1; live path stays closed) | Accepted | 2026-10-29 | [0061-sim-whitelist-and-live-release.md](./0061-sim-whitelist-and-live-release.md) |
+| 0062 | Fill SSOT: ADR-0055 stamp, monitor observe, per-root calibration (S2) | Accepted | 2026-10-29 | [0062-fill-ssot-and-cost-calibration.md](./0062-fill-ssot-and-cost-calibration.md) |
 
 ## Legacy notitie
 

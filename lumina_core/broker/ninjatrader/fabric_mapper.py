@@ -7,6 +7,7 @@ import uuid
 from typing import Any
 
 from lumina_core.broker.broker_bridge.schemas import AccountInfo, Fill, Order, Position
+from lumina_core.research_bridge.fill_stamp import FillStampRefused, stamp_commission, stamp_slippage
 
 try:
     from lumina_core.broker.ninjatrader.generated import fabric_pb2
@@ -202,8 +203,16 @@ def position_update_to_position(pos: fabric_pb2.PositionUpdate) -> Position | No
     )
 
 
-def order_event_to_fill(event: fabric_pb2.OrderEvent) -> Fill | None:
-    """Build a Fill when the event represents a (partial) fill with price/qty."""
+def order_event_to_fill(
+    event: fabric_pb2.OrderEvent,
+    *,
+    reference_price: float | None = None,
+) -> Fill | None:
+    """Build a Fill when the event represents a (partial) fill with price/qty.
+
+    Commission is ADR-0055 Free-plan all-in × qty. Never left at 0.0.
+    Slippage is stamped only when ``reference_price`` is supplied.
+    """
     filled = int(event.filled_qty)
     if filled <= 0:
         return None
@@ -213,26 +222,57 @@ def order_event_to_fill(event: fabric_pb2.OrderEvent) -> Fill | None:
     ):
         return None
     side = order_action_to_side(event.action)
+    symbol = str(event.instrument or "")
+    price = float(event.avg_fill_price)
+    try:
+        commission_usd, commission_ticks, _tick_usd = stamp_commission(symbol, filled)
+    except FillStampRefused:
+        return None
+    slippage_ticks: float | None = None
+    slippage_usd: float | None = None
+    if reference_price is not None:
+        try:
+            slip = stamp_slippage(
+                symbol=symbol,
+                side=side,
+                fill_price=price,
+                reference_price=reference_price,
+                qty=filled,
+            )
+        except FillStampRefused:
+            return None
+        if slip is not None:
+            slippage_ticks, slippage_usd = slip
     fill_id = f"{event.nt_order_id or event.client_order_id}:{filled}:{event.timestamp_unix_ms}"
     ts = (
         time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(event.timestamp_unix_ms / 1000.0)) + "Z"
         if event.timestamp_unix_ms
         else time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     )
+    raw: dict[str, Any] = {
+        "client_order_id": event.client_order_id,
+        "state": int(event.state),
+        "correlation_id": event.correlation_id,
+        "commission_ticks": commission_ticks,
+        "commission_source": "adr0055_free",
+        "source": "broker",
+    }
+    if slippage_ticks is not None and slippage_usd is not None:
+        raw["slippage_ticks"] = slippage_ticks
+        raw["slippage_usd"] = slippage_usd
     return Fill(
         fill_id=fill_id,
         order_id=str(event.nt_order_id or event.client_order_id),
-        symbol=str(event.instrument or ""),
+        symbol=symbol,
         side=side,
         quantity=filled,
-        price=float(event.avg_fill_price),
+        price=price,
         timestamp=ts,
-        commission=0.0,
-        raw={
-            "client_order_id": event.client_order_id,
-            "state": int(event.state),
-            "correlation_id": event.correlation_id,
-        },
+        commission=float(commission_usd),
+        raw=raw,
+        slippage_ticks=slippage_ticks,
+        slippage_usd=slippage_usd,
+        commission_ticks=float(commission_ticks),
     )
 
 

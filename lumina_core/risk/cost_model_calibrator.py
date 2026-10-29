@@ -13,6 +13,7 @@ from pathlib import Path
 from statistics import mean, pstdev
 from typing import Any
 
+from lumina_core.market.nt_fees import CostCardError, contract_root
 from lumina_core.risk.cost_model import TradeExecutionCostModel, _instrument_tick_params
 
 
@@ -129,11 +130,24 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _is_live_broker_source(value: object) -> bool:
+    """Broker JSONL only. Hypothetical and unknown sources never enter live calibration.
+
+    Kept local so this module does not import ``research_bridge`` (Event Bus cycle).
+    """
+    text = str(value or "").strip().lower()
+    if text == "hypothetical_adr0055":
+        return False
+    return text in {"", "broker"}
+
+
 def load_reconciled_rows(audit_path: Path, *, since_day: date | None = None) -> list[dict[str, Any]]:
     rows = _read_jsonl(audit_path)
     out: list[dict[str, Any]] = []
     for row in rows:
         if str(row.get("event", "")).lower() != "reconciled":
+            continue
+        if not _is_live_broker_source(row.get("source", "")):
             continue
         if since_day is not None:
             day = _parse_day(row.get("ts"))
@@ -145,6 +159,14 @@ def load_reconciled_rows(audit_path: Path, *, since_day: date | None = None) -> 
     return out
 
 
+def row_instrument_root(row: dict[str, Any], *, fallback: str = "MES") -> str | None:
+    raw = str(row.get("root") or row.get("symbol") or row.get("instrument") or fallback)
+    try:
+        return contract_root(raw)
+    except CostCardError:
+        return None
+
+
 def compute_exit_leg_costs(
     row: dict[str, Any],
     model: TradeExecutionCostModel,
@@ -154,12 +176,17 @@ def compute_exit_leg_costs(
 ) -> tuple[float, float, float]:
     symbol = _normalize_symbol(str(row.get("symbol", model.instrument)), model.instrument)
     _, tick_value = _instrument_tick_params(symbol)
-    quantity = max(1, _safe_int(row.get("quantity"), 1))
-    slippage_points = abs(_safe_float(row.get("slippage_points"), 0.0))
+    quantity = max(1, _safe_int(row.get("qty", row.get("quantity")), 1))
     commission = max(0.0, _safe_float(row.get("commission"), 0.0))
-    entry_price = _safe_float(row.get("entry_price"), 0.0)
-
-    real_fill_cost_usd = commission + (slippage_points * tick_value * quantity)
+    entry_price = _safe_float(row.get("fill_price", row.get("entry_price")), 0.0)
+    if "slippage_usd" in row:
+        slip_usd = abs(_safe_float(row.get("slippage_usd"), 0.0))
+    elif "slippage_ticks" in row:
+        slip_usd = abs(_safe_float(row.get("slippage_ticks"), 0.0)) * tick_value * quantity
+    else:
+        slippage_points = abs(_safe_float(row.get("slippage_points"), 0.0))
+        slip_usd = slippage_points * tick_value * quantity
+    real_fill_cost_usd = commission + slip_usd
     model_cost = model.cost_for_trade(
         price=entry_price,
         quantity=float(quantity),
@@ -219,25 +246,39 @@ def run_daily_calibration(
     sigma_multiplier: float = 1.0,
     sigma_floor: float = 0.0,
 ) -> CalibrationResult:
-    model = TradeExecutionCostModel.from_config({}, instrument=instrument)
+    try:
+        want_root = contract_root(instrument)
+    except CostCardError:
+        want_root = _normalize_symbol(instrument, "MES")
+    model = TradeExecutionCostModel.from_config({}, instrument=want_root)
     rows = load_reconciled_rows(audit_path, since_day=since_day)
 
     grouped: dict[str, list[tuple[float, float, float]]] = {}
     biases_usd: list[float] = []
     biases_ticks: list[float] = []
+    by_root_costs: dict[str, list[float]] = {}
+    root_models: dict[str, TradeExecutionCostModel] = {want_root: model}
 
     for row in rows:
         day = _parse_day(row.get("ts"))
         if day is None:
             continue
+        root = row_instrument_root(row, fallback=want_root)
+        if root is None:
+            continue
+        if root not in root_models:
+            root_models[root] = TradeExecutionCostModel.from_config({}, instrument=root)
         real_usd, model_usd, tick_value = compute_exit_leg_costs(
             row,
-            model,
+            root_models[root],
             atr=float(atr_fallback),
             time_period=time_period,
         )
+        by_root_costs.setdefault(root, []).append(real_usd)
+        if root != want_root:
+            continue
         deviation_usd = real_usd - model_usd
-        quantity = max(1, _safe_int(row.get("quantity"), 1))
+        quantity = max(1, _safe_int(row.get("qty", row.get("quantity")), 1))
         tick_denom = max(1e-9, tick_value * quantity)
         deviation_ticks = deviation_usd / tick_denom
         biases_usd.append(deviation_usd)
@@ -280,5 +321,13 @@ def run_daily_calibration(
         state_path=str(state_path),
         daily=daily,
     )
-    _atomic_write_json(state_path, result.to_dict())
+    payload = result.to_dict()
+    payload["by_root"] = {
+        root: {
+            "sample_count": len(values),
+            "real_fill_cost_usd_avg": float(mean(values)),
+        }
+        for root, values in by_root_costs.items()
+    }
+    _atomic_write_json(state_path, payload)
     return result

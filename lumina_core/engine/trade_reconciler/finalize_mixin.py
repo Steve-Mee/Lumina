@@ -210,9 +210,16 @@ class FinalizeMixin:
                 "detected_exit_price": float(pending.detected_exit_price),
                 "final_exit_price": float(final_exit),
                 "quantity": int(quantity),
+                "qty": int(quantity),
+                "fill_price": float(final_exit),
                 "pnl": float(final_pnl),
                 "commission": float(commission),
+                "commission_ticks": float(getattr(fill, "commission_ticks", 0.0) or 0.0),
                 "slippage_points": float(slippage_points),
+                "slippage_ticks": float(getattr(fill, "slippage_ticks", 0.0) or 0.0),
+                "slippage_usd": float(getattr(fill, "slippage_usd", 0.0) or 0.0),
                 "fill_latency_ms": float(fill_latency_ms),
+                "strategy_id": str(getattr(fill, "strategy_id", "") or ""),
+                "source": str(getattr(fill, "source", "broker") or "broker"),
             }
         )

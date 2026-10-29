@@ -78,3 +78,5 @@ def test_order_event_to_fill_only_on_fill_states() -> None:
     assert fill.quantity == 1
     assert fill.price == pytest.approx(100.5)
     assert fill.side == "BUY"
+    assert fill.commission == pytest.approx(0.94)
+    assert fill.commission != 0.0

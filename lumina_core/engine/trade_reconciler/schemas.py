@@ -26,6 +26,8 @@ class FillEvent:
     slippage_usd: float = 0.0
     commission_ticks: float = 0.0
     source: str = "broker"
+    strategy_id: str = ""
+    expected_horizon: int = 0
 
     @property
     def fill_price(self) -> float:
@@ -34,6 +36,21 @@ class FillEvent:
     @property
     def qty(self) -> int:
         return self.quantity
+
+    def ssot_payload(self) -> dict[str, object]:
+        """Binding names for JSONL / calibrator / observe identity checks."""
+        return {
+            "fill_price": self.fill_price,
+            "qty": self.qty,
+            "slippage_ticks": self.slippage_ticks,
+            "slippage_usd": self.slippage_usd,
+            "commission": self.commission,
+            "commission_ticks": self.commission_ticks,
+            "source": self.source,
+            "strategy_id": self.strategy_id,
+            "symbol": self.symbol,
+            "fill_id": self.fill_id,
+        }
 
 
 @dataclass(slots=True)

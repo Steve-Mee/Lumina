@@ -1,0 +1,24 @@
+{
+  "excluded": [
+    {
+      "description": "calibrator_rows.py:raise-to-pass#28",
+      "detail": "survived kill battery",
+      "justification": "Dead after normalize_fill_source: the only legal sources are broker and hypothetical_adr0055, so source != broker is unreachable.",
+      "path": "lumina_core/research_bridge/calibrator_rows.py"
+    },
+    {
+      "description": "binding_policy.py:raise-to-pass#32",
+      "detail": "survived kill battery",
+      "justification": "D9 only maps 0.5 and 1.0; flatten returns open_qty first and 50% of a legal qty is never >= open_qty, so reduce_qty_not_partial is unreachable.",
+      "path": "lumina_core/research_bridge/binding_policy.py"
+    }
+  ],
+  "kill_rate": 1.0,
+  "n_excluded": 2,
+  "n_killed": 318,
+  "n_mutants": 320,
+  "n_non_equivalent": 318,
+  "n_survived": 0,
+  "raw_kill_rate": 0.99375,
+  "survivors": []
+}

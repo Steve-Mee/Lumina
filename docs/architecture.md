@@ -69,7 +69,7 @@ LUMINA gebruikt **bounded contexts** als domeingrenzen onder `lumina_core/` (zie
 | **Risk Management** | Risk gates, allocatie, Kelly-achtige begrenzing | [`lumina_core/risk/`](../lumina_core/risk/) | Via mixins/engine geïntegreerd; canoniek onder `risk/` |
 | **Agent Orchestration** | Event bus, engine↔blackboard bindingen | [`lumina_core/agent_orchestration/`](../lumina_core/agent_orchestration/) | Pub/sub en bindings centraliseren |
 | **Research** | Propose-only Validation Gate, hypotheses, monitoring | [`lumina_research/`](../lumina_research/) | Isolation: no live Risk Core, no NT broker. Research may only propose. |
-| **ResearchBridge (S0 SHADOW)** | `PromotionCandidate` → logged `SignalIntent` + ADR-0055 hypothetical fills | [`lumina_core/research_bridge/`](../lumina_core/research_bridge/) | Zero `PlaceOrderCommand`. Ungated places are code-frozen (D1/D8, ADR-0060). S1 adds SIM whitelist + HMAC `LIVE_RELEASE` (ADR-0061); live orders stay impossible. |
+| **ResearchBridge (S0 SHADOW + S2 fill SSOT)** | `PromotionCandidate` → logged `SignalIntent` + ADR-0055 hypothetical fills; broker fills → monitor + per-root calibrator | [`lumina_core/research_bridge/`](../lumina_core/research_bridge/) | Zero `PlaceOrderCommand`. Ungated places are code-frozen (D1/D8, ADR-0060). S1 SIM whitelist + HMAC `LIVE_RELEASE` (ADR-0061); live orders stay impossible. S2 `fill_translator` is the fill API (ADR-0062). |
 
 ```mermaid
 flowchart LR
@@ -440,7 +440,7 @@ Om schema-drift te beperken gebruiken Event Bus en Blackboard Pydantic contracte
 - `research.promotion.candidate` -> `PromotionCandidate`
 - `research.execution.signal_intent` -> `SignalIntent` (S0: log only; `expected_horizon` required)
 - `research.execution.order_intent` -> `ResearchExecutionOrderIntent` (S0: `admitted=False`)
-- `research.execution.fill` -> `ResearchExecutionFill` (S0: hypothetical ADR-0055)
+- `research.execution.fill` -> `ResearchExecutionFill` (S0 hypothetical ADR-0055; S2 also `fill_translator` / broker)
 
 **Blackboard topics:**
 - `agent.rl.proposal`, `agent.news.proposal`, `agent.emotional_twin.proposal`, `agent.swarm.proposal`, `agent.tape.proposal`, `agent.swarm.snapshot` -> `AgentProposalPayload`
@@ -610,7 +610,9 @@ flowchart LR
     gapTracker --> gapLog
 ```
 
-- [`lumina_core/risk/cost_model_calibrator.py`](../lumina_core/risk/cost_model_calibrator.py) vergelijkt per `reconciled` event `model_cost` versus `real_fill_cost` en schrijft running bias-statistiek naar `state/cost_model_calibration.json`.
+- [`lumina_core/risk/cost_model_calibrator.py`](../lumina_core/risk/cost_model_calibrator.py) vergelijkt per `reconciled` **broker** fill `model_cost` versus `real_fill_cost`, groepeert per root (ES ≠ MES), en schrijft running bias-statistiek naar `state/cost_model_calibration.json`. Hypothetical ADR-0055 fills never enter this file.
+- [`lumina_core/research_bridge/fill_translator.py`](../lumina_core/research_bridge/fill_translator.py) is the S2 FillEvent API: one fill fans out to monitor `observe()` (mapped `strategy_id` only) and the live calibrator JSONL (broker only). ADR-0055 commission; slippage is fill vs reference.
+- [`lumina_research/validation/cost_calibrate.py`](../lumina_research/validation/cost_calibrate.py) calibrates the research four-leg model *to* the card. It cannot undercut ADR-0055 or write the live calibrator state.
 - [`lumina_core/risk/cost_model.py`](../lumina_core/risk/cost_model.py) past de bias toe via `apply_calibration()` (ticks-bias + optionele sigma-update).
 - [`lumina_core/monitoring/reality_gap_tracker.py`](../lumina_core/monitoring/reality_gap_tracker.py) meet dagelijks de gap tussen live fills en baseline-metrics, en appendt records naar `logs/reality_gap.jsonl`.
 - [`scripts/validation/run_cost_model_calibration.py`](../scripts/validation/run_cost_model_calibration.py) is de dagelijkse validation-entrypoint voor beide stappen.

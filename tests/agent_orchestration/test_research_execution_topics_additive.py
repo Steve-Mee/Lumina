@@ -17,7 +17,9 @@ from lumina_core.agent_orchestration.schemas import (
 )
 from lumina_core.agent_orchestration.schemas_research import EVENT_BUS_GUARDED_TOPICS
 from lumina_core.agent_orchestration.schemas_research_execution import (
+    FILL_TRANSLATOR_AGENT_ID,
     RESEARCH_BRIDGE_AGENT_ID,
+    RESEARCH_EXECUTION_TOPIC_PRODUCERS,
     ResearchExecutionOrderIntent,
     SignalIntent,
 )
@@ -35,6 +37,13 @@ def test_execution_topics_are_registered_additively() -> None:
     assert RESEARCH_EXECUTION_FILL_TOPIC in CRITICAL_EVENT_BUS_TOPICS
     assert RESEARCH_EXECUTION_SIGNAL_TOPIC in EVENT_BUS_GUARDED_TOPICS
     assert DEFAULT_ALLOWED_PRODUCERS[RESEARCH_EXECUTION_SIGNAL_TOPIC] == {RESEARCH_BRIDGE_AGENT_ID}
+    assert DEFAULT_ALLOWED_PRODUCERS[RESEARCH_EXECUTION_FILL_TOPIC] == {
+        RESEARCH_BRIDGE_AGENT_ID,
+        FILL_TRANSLATOR_AGENT_ID,
+    }
+    assert RESEARCH_EXECUTION_TOPIC_PRODUCERS[RESEARCH_EXECUTION_FILL_TOPIC] == frozenset(
+        {RESEARCH_BRIDGE_AGENT_ID, FILL_TRANSLATOR_AGENT_ID}
+    )
 
 
 @pytest.mark.unit

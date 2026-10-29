@@ -64,6 +64,8 @@ class TestCostModelCalibration:
         assert persisted["rolling"]["sample_count"] == 2
         assert persisted["rolling"]["recommended_slippage_sigma"] >= 0.0
         assert len(persisted["daily"]) == 1
+        assert persisted["by_root"]["MES"]["sample_count"] == 2
+        assert "ES" not in persisted["by_root"]
 
     def test_apply_calibration_updates_cost_output_and_sigma(self) -> None:
         # gegeven
