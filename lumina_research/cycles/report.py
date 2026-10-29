@@ -81,8 +81,25 @@ class CycleReport:
     null_detected: bool | None = None
 
 
-def write_cycle_reports(report: CycleReport, directory: Path) -> tuple[Path, Path]:
+_REPO = Path(__file__).resolve().parents[2]
+_BASELINE_RESULTS = "phase5_p2_results.md"
+_BASELINE_CYCLES = "phase5_research_cycles"
+
+
+def write_cycle_reports(
+    report: CycleReport,
+    directory: Path,
+    *,
+    cycles_stem: str = _BASELINE_CYCLES,
+    results_name: str = _BASELINE_RESULTS,
+) -> tuple[Path, Path]:
     directory.mkdir(parents=True, exist_ok=True)
+    reports_root = (_REPO / "experiments" / "reports").resolve()
+    if directory.resolve() == reports_root:
+        if results_name == _BASELINE_RESULTS and (directory / _BASELINE_RESULTS).is_file():
+            raise RuntimeError("refusing to overwrite phase5_p2_results.md; pass a cost-fix/ES-NQ results_name")
+        if cycles_stem == _BASELINE_CYCLES and (directory / f"{_BASELINE_CYCLES}.json").is_file():
+            raise RuntimeError("refusing to overwrite phase5_research_cycles.json; pass a cost-fix/ES-NQ cycles_stem")
     body = {
         "generated_at": utc_now_iso(),
         "agent_id": "hypothesis_agent",
@@ -164,11 +181,11 @@ def write_cycle_reports(report: CycleReport, directory: Path) -> tuple[Path, Pat
         "planted_detected": report.planted_detected,
         "null_detected": report.null_detected,
     }
-    json_path = directory / "phase5_research_cycles.json"
+    json_path = directory / f"{cycles_stem}.json"
     json_path.write_text(json.dumps(body, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
-    md_path = directory / "phase5_research_cycles.md"
+    md_path = directory / f"{cycles_stem}.md"
     md_path.write_text(_markdown(report), encoding="utf-8")
-    (directory / "phase5_p2_results.md").write_text(_results_table(report), encoding="utf-8")
+    (directory / results_name).write_text(_results_table(report), encoding="utf-8")
     return json_path, md_path
 
 

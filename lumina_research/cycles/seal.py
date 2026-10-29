@@ -28,6 +28,7 @@ LEGACY_SEAL_SHA256 = "6e8fa88e3aad048271cb52a63f76cbf4ed8a9261b85b85f03f631b872c
 PENDING_COUNTS_SEAL_NAME = "phase5_p2_holdout_seal_legacy_2026-01-28T23Z_pending_counts.json"
 PENDING_COUNTS_SEAL_SHA256 = "51d55d770aa21fb8f10062c7aab53acebe4866e526eb3419501098bd67172a99"
 LIVE_SEAL_SHA256 = "85e4588fde77159315a72bdaa722d6487f93bbad9bf24999311f893950489d40"
+ES_NQ_SEAL_NAME = "phase5_p2_es_nq_holdout_seal.json"
 ZIP_SHA256: Mapping[str, str] = {
     "MES": "c5c094a199502fde9cc79f535441995ba7e326811e4e7e01bf1833a25c9c7b2e",
     "MNQ": "a1cefabd46c4109a93bb219df45d134f9e3e16ffd3abc8250242c88a3ee5d6e8",
@@ -54,9 +55,16 @@ def seal_holdout(
     *,
     report_dir: Path,
     require_known_files: bool = True,
+    filename: str = SEAL_NAME,
 ) -> dict[str, object]:
     """Lock the Globex session boundary onward. Call before any simulate() or gate."""
     report_dir.mkdir(parents=True, exist_ok=True)
+    path = report_dir / filename
+    if filename == SEAL_NAME and path.is_file():
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+        typed = as_object_dict(loaded)
+        if typed is not None and typed.get("seal_sha256") == LIVE_SEAL_SHA256:
+            raise HoldoutLocked("refusing to overwrite live MES/MNQ holdout seal 85e4588f")
     instruments: dict[str, object] = {}
     for tape in tapes:
         root = tape.instrument
@@ -109,7 +117,6 @@ def seal_holdout(
     }
     canonical = json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
     body["seal_sha256"] = hashlib.sha256(canonical).hexdigest()
-    path = report_dir / SEAL_NAME
     path.write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     body["path"] = str(path)
     return body
@@ -119,10 +126,11 @@ def reuse_holdout_seal(
     tapes: tuple[LoadedTape, ...],
     *,
     report_dir: Path,
+    filename: str = SEAL_NAME,
 ) -> dict[str, object] | None:
     """Return the current seal when pin and CSV hashes already match. Do not rewrite."""
     try:
-        loaded = load_seal(report_dir)
+        loaded = load_seal(report_dir, filename=filename)
     except HoldoutLocked:
         return None
     if loaded.get("bar_counts_pending_recompute") is True:
@@ -136,7 +144,9 @@ def reuse_holdout_seal(
             return None
         source = file_sha256(tape.path) if tape.path.is_file() else ""
         expected = CSV_SHA256.get(tape.instrument)
-        if not source or source != expected or row.get("file_sha256") != source:
+        if expected is not None and source != expected:
+            return None
+        if not source or row.get("file_sha256") != source:
             return None
         train_n = row.get("n_train")
         hold_n = row.get("n_holdout")
@@ -145,8 +155,8 @@ def reuse_holdout_seal(
     return loaded
 
 
-def load_seal(report_dir: Path) -> dict[str, object]:
-    path = report_dir / SEAL_NAME
+def load_seal(report_dir: Path, *, filename: str = SEAL_NAME) -> dict[str, object]:
+    path = report_dir / filename
     if not path.is_file():
         raise HoldoutLocked("holdout seal missing; refuse to run the cycle")
     loaded: object = json.loads(path.read_text(encoding="utf-8"))
