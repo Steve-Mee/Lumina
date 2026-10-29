@@ -61,6 +61,9 @@ from lumina_research.cycles.holdout import (
     split_holdout,
 )
 from lumina_research.cycles.positive_control import (
+    CONTROL_STOP_TICKS,
+    CONTROL_TARGET_TICKS,
+    CONTROL_TIME_STOP_BARS,
     _detected,
     execute_control,
     rth_session_direction,
@@ -76,6 +79,7 @@ from lumina_research.monitoring.acceptance import (
 )
 from lumina_research.cycles.seal import (
     LEGACY_SEAL_SHA256,
+    LIVE_SEAL_SHA256,
     PENDING_COUNTS_SEAL_SHA256,
     file_sha256,
     load_seal,
@@ -550,10 +554,16 @@ def _kill_deeper() -> None:
     if default_time_stop != 16:
         _fail("execution default time-stop must stay 16 bars")
     src = inspect.getsource(execute_control)
-    if "target_ticks=8" not in src or "stop_ticks=8" not in src:
-        _fail("control geometry must stay 8/8")
-    if "time_stop_bars=16" not in src:
-        _fail("control time-stop must stay 16")
+    if CONTROL_TARGET_TICKS != 20_000 or CONTROL_STOP_TICKS != 20_000:
+        _fail("control geometry must stay pre-registered 1:1 20000")
+    if CONTROL_TARGET_TICKS != CONTROL_STOP_TICKS:
+        _fail("control target/stop must stay 1:1")
+    if CONTROL_TIME_STOP_BARS != 2_000:
+        _fail("control time-stop must not clip one RTH session")
+    if "CONTROL_TARGET_TICKS" not in src or "CONTROL_STOP_TICKS" not in src:
+        _fail("execute_control must use pre-registered control geometry")
+    if "CONTROL_TIME_STOP_BARS" not in src:
+        _fail("execute_control must use pre-registered control time-stop")
     if INTRASESSION_HOLE_NS != 90 * 1_000_000_000:
         _fail("90s hole threshold drifted")
     if DEFAULT_BLOCK != 5 or DEFAULT_PATHS != 48:
@@ -1015,6 +1025,8 @@ def run() -> None:
         _fail("legacy seal sha drifted")
     if PENDING_COUNTS_SEAL_SHA256 != "51d55d770aa21fb8f10062c7aab53acebe4866e526eb3419501098bd67172a99":
         _fail("pending-counts seal sha drifted")
+    if LIVE_SEAL_SHA256 != "85e4588fde77159315a72bdaa722d6487f93bbad9bf24999311f893950489d40":
+        _fail("live holdout seal sha drifted")
     if FRIDAY_ROLL not in NT8_ROLL_SET or FRIDAY_ROLL != date(2026, 6, 12):
         _fail("Friday 2026-06-12 roll missing")
     require_friday_roll()

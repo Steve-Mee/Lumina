@@ -57,6 +57,8 @@ def write_first_cycle_preregister(directory: Path) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / "phase5_first_cycle_preregister.md"
     specs = first_cycle_specs()
+    if path.is_file():
+        return path
     lines = [
         "# Phase 5 first-cycle pre-registration (before seeing data)",
         "",

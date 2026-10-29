@@ -27,6 +27,7 @@ LEGACY_SEAL_NAME = "phase5_p2_holdout_seal_legacy_2026-01-29T00Z.json"
 LEGACY_SEAL_SHA256 = "6e8fa88e3aad048271cb52a63f76cbf4ed8a9261b85b85f03f631b872cf2e51b"
 PENDING_COUNTS_SEAL_NAME = "phase5_p2_holdout_seal_legacy_2026-01-28T23Z_pending_counts.json"
 PENDING_COUNTS_SEAL_SHA256 = "51d55d770aa21fb8f10062c7aab53acebe4866e526eb3419501098bd67172a99"
+LIVE_SEAL_SHA256 = "85e4588fde77159315a72bdaa722d6487f93bbad9bf24999311f893950489d40"
 ZIP_SHA256: Mapping[str, str] = {
     "MES": "c5c094a199502fde9cc79f535441995ba7e326811e4e7e01bf1833a25c9c7b2e",
     "MNQ": "a1cefabd46c4109a93bb219df45d134f9e3e16ffd3abc8250242c88a3ee5d6e8",
@@ -112,6 +113,36 @@ def seal_holdout(
     path.write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     body["path"] = str(path)
     return body
+
+
+def reuse_holdout_seal(
+    tapes: tuple[LoadedTape, ...],
+    *,
+    report_dir: Path,
+) -> dict[str, object] | None:
+    """Return the current seal when pin and CSV hashes already match. Do not rewrite."""
+    try:
+        loaded = load_seal(report_dir)
+    except HoldoutLocked:
+        return None
+    if loaded.get("bar_counts_pending_recompute") is True:
+        return None
+    instruments = as_object_dict(loaded.get("instruments"))
+    if instruments is None:
+        return None
+    for tape in tapes:
+        row = as_object_dict(instruments.get(tape.instrument))
+        if row is None:
+            return None
+        source = file_sha256(tape.path) if tape.path.is_file() else ""
+        expected = CSV_SHA256.get(tape.instrument)
+        if not source or source != expected or row.get("file_sha256") != source:
+            return None
+        train_n = row.get("n_train")
+        hold_n = row.get("n_holdout")
+        if not isinstance(train_n, int) or not isinstance(hold_n, int) or train_n < 1 or hold_n < 1:
+            return None
+    return loaded
 
 
 def load_seal(report_dir: Path) -> dict[str, object]:

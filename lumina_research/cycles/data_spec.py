@@ -37,6 +37,8 @@ DATA_SPEC: Mapping[str, str] = {
 def write_data_spec(directory: Path) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / "phase5_p2_data_spec.md"
+    if path.is_file():
+        return path
     lines = [
         "# Phase 5 P2 data spec (NT8 1m MES/MNQ)",
         "",

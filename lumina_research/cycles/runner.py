@@ -39,7 +39,14 @@ from lumina_research.cycles.p2_cycle import (
 from lumina_research.cycles.positive_control import ControlReport, PositiveControlFailed, run_controls
 from lumina_research.cycles.prepare import PreparedTape
 from lumina_research.cycles.report import CycleReport, CycleRow, death_reason, write_cycle_reports
-from lumina_research.cycles.seal import CSV_SHA256, LEGACY_SEAL_SHA256, file_sha256, load_seal, seal_holdout
+from lumina_research.cycles.seal import (
+    CSV_SHA256,
+    LEGACY_SEAL_SHA256,
+    file_sha256,
+    load_seal,
+    reuse_holdout_seal,
+    seal_holdout,
+)
 from lumina_research.cycles.sim_plan import write_sim_plan
 from lumina_research.cycles.strategies import Tape
 from lumina_research.proof.log import log_proof_event
@@ -86,7 +93,9 @@ def run_research_cycles(
     if _is_real_p2(status):
         real_p2 = True
         p2_tapes = tuple(pin_tape(item) for item in status.tapes if item.instrument in {"MES", "MNQ"})
-        sealed = seal_holdout(p2_tapes, report_dir=report_dir, require_known_files=True)
+        sealed = reuse_holdout_seal(p2_tapes, report_dir=report_dir)
+        if sealed is None:
+            sealed = seal_holdout(p2_tapes, report_dir=report_dir, require_known_files=True)
         checked = load_seal(report_dir)
         if checked.get("holdout_start_ns") != P2_HOLDOUT_START_NS:
             raise HoldoutLocked("holdout seal drifted from 2026-01-28T23:00:00Z after write")

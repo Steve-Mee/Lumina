@@ -25,12 +25,20 @@ from lumina_research.validation.static_rules import STATIC_POSITIVE_SHARE_MIN, s
 from lumina_research.validation.trial_registry import TrialRegistry
 
 Tape = tuple[tuple[float, ...], tuple[float, ...], tuple[MarketSnapshot, ...]]
+# Pre-registered 2026-10-29 (Steve OK). 1:1 limit-move ceiling so 1m noise cannot
+# clip the session-OC known size. Catalog templates keep their own geometry.
+CONTROL_TARGET_TICKS = 20_000
+CONTROL_STOP_TICKS = 20_000
+CONTROL_TIME_STOP_BARS = 2_000
+CONTROL_SESSION_FILTER = "rth"
 PLANTED_HORIZON_NOTE = (
     "Planted edge: at the first RTH bar of each session, the control knows the "
     "sign of that session's last-RTH-close minus first-RTH-open (unadjusted). "
-    "It enters in that direction with 1:1 8/8 geometry (so a 50% shuffled "
-    "null is not an artefact 2R edge), RTH filter, session-end flatten and "
-    "four-leg costs. Known size is the session RTH open-to-close move minus costs."
+    "It holds that direction until RTH close (session flatten, C10). Brackets "
+    "are 1:1 20000/20000 ticks (CME 20% limit-move ceiling; not an 8-tick clip) "
+    "so a shuffled 50% null is not a 2R artefact. time_stop_bars=2000 cannot "
+    "fire inside one RTH session. Four-leg costs unchanged. Known size is the "
+    "session RTH open-to-close move minus costs."
 )
 
 
@@ -93,7 +101,11 @@ def shuffle_signals(signals: Sequence[float], *, seed: int) -> tuple[float, ...]
 
 
 def execute_control(prepared: PreparedTape, signals: Sequence[float], *, root: str) -> ExecutionResult:
-    geometry = require_geometry(root=root, target_ticks=8, stop_ticks=8)
+    geometry = require_geometry(
+        root=root,
+        target_ticks=CONTROL_TARGET_TICKS,
+        stop_ticks=CONTROL_STOP_TICKS,
+    )
     return run_execution(
         bars=prepared.bars,
         signals=signals,
@@ -101,8 +113,8 @@ def execute_control(prepared: PreparedTape, signals: Sequence[float], *, root: s
         breaks=prepared.breaks,
         rth=prepared.rth,
         session_dates=prepared.session_dates,
-        session_filter="rth",
-        time_stop_bars=16,
+        session_filter=CONTROL_SESSION_FILTER,
+        time_stop_bars=CONTROL_TIME_STOP_BARS,
         session_end_flatten=True,
     )
 

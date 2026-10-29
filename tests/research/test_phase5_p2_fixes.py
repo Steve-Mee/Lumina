@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from lumina_research.cycles import seal as seal_mod
 from lumina_research.cycles.adjust import back_adjust
 from lumina_research.cycles.catalog import catalog
 from lumina_research.cycles.cost_bands import ES_NQ_ONE_WAY, MNQ_ONE_WAY_USD, band_for, report_band
@@ -17,7 +18,7 @@ from lumina_research.cycles.data import LoadedTape, ResearchBar
 from lumina_research.cycles.diagnostics import from_trades, window_sharpe
 from lumina_research.cycles.execution import ClosedTrade, bar_volatility_price, run_execution
 from lumina_research.cycles.fills import FILL_POLICY, touch_fill, trade_through_fill, traded_through
-from lumina_research.cycles.first_cycle import first_cycle_specs
+from lumina_research.cycles.first_cycle import first_cycle_specs, write_first_cycle_preregister
 from lumina_research.cycles.geometry import require_geometry
 from lumina_research.cycles.holdout import (
     DAYS_PER_MONTH,
@@ -30,16 +31,27 @@ from lumina_research.cycles.holdout import (
     holdout_ns,
 )
 from lumina_research.cycles.p2_cycle import session_day_count, window_note
-from lumina_research.cycles.positive_control import run_controls, rth_session_direction, shuffle_signals
+from lumina_research.cycles.positive_control import (
+    CONTROL_SESSION_FILTER,
+    CONTROL_STOP_TICKS,
+    CONTROL_TARGET_TICKS,
+    CONTROL_TIME_STOP_BARS,
+    execute_control,
+    run_controls,
+    rth_session_direction,
+    shuffle_signals,
+)
 from lumina_research.cycles.prepare import PreparedTape, prepare_tape
 from lumina_research.cycles.roll_verify import FRIDAY_ROLL, require_friday_roll, verify_nt8_rolls
 from lumina_research.cycles.rolls import NT8_ROLL_SET
 from lumina_research.cycles.seal import (
     LEGACY_SEAL_SHA256,
+    LIVE_SEAL_SHA256,
     PENDING_COUNTS_SEAL_NAME,
     PENDING_COUNTS_SEAL_SHA256,
     SEAL_NAME,
     load_seal,
+    reuse_holdout_seal,
     seal_holdout,
 )
 from lumina_research.cycles.sessions import (
@@ -569,6 +581,7 @@ def test_holdout_pin_is_session_boundary_and_legacy_seal_recorded(tmp_path: Path
         assert int(mes["n_train"]) > 0 and int(mes["n_holdout"]) > 0
         assert int(mnq["n_train"]) > 0 and int(mnq["n_holdout"]) > 0
         assert "bar_counts_pending_recompute" not in committed
+        assert committed["seal_sha256"] == LIVE_SEAL_SHA256
     train = access_bars(tape, purpose="gate", pinned_start_ns=P2_HOLDOUT_START_NS)
     locked = access_bars(tape, purpose="evaluation", pinned_start_ns=P2_HOLDOUT_START_NS)
     assert train[-1].ts_ns < P2_HOLDOUT_START_NS <= locked[0].ts_ns
@@ -746,6 +759,102 @@ def test_run_controls_detects_planted_edge_and_rejects_null(tmp_path: Path) -> N
     assert report.positive.detected is True
     assert report.null.detected is False
     assert report.positive.median_oos > report.null.median_oos
+
+
+@pytest.mark.unit
+def test_control_geometry_matches_2026_10_29_preregister() -> None:
+    assert CONTROL_TARGET_TICKS == 20_000
+    assert CONTROL_STOP_TICKS == 20_000
+    assert CONTROL_TARGET_TICKS == CONTROL_STOP_TICKS
+    assert CONTROL_TIME_STOP_BARS == 2_000
+    assert CONTROL_SESSION_FILTER == "rth"
+    specs = first_cycle_specs()
+    assert all(item.time_stop_bars == 16 for item in specs)
+
+
+@pytest.mark.unit
+def test_control_holds_wide_first_rth_bar_to_session_close() -> None:
+    start = datetime(2026, 3, 2, 14, 31, tzinfo=UTC)
+    first = _bar(start, open_=5000.0, high=5005.25, low=4999.75, close=5001.0)
+    adverse = _bar(
+        start + timedelta(minutes=1),
+        open_=5001.0,
+        high=5002.0,
+        low=4998.0,
+        close=5000.5,
+        volume=8_000.0,
+    )
+    rest: list[ResearchBar] = []
+    price = 5000.5
+    for index in range(2, 40):
+        nxt = price + 1.0
+        rest.append(
+            _bar(
+                start + timedelta(minutes=index),
+                open_=price,
+                high=nxt + 0.25,
+                low=price - 0.25,
+                close=nxt,
+                volume=8_000.0,
+            )
+        )
+        price = nxt
+    prepared = prepare_tape("MES", (first, adverse) + tuple(rest))
+    planted = rth_session_direction(prepared.bars, prepared.session_dates, prepared.rth)
+    executed = execute_control(prepared, planted, root="MES")
+    assert executed.trades
+    assert all(trade.reason == "session_end" for trade in executed.trades)
+    assert all(trade.pnl_ticks > 8.0 for trade in executed.trades)
+
+
+@pytest.mark.unit
+def test_pinned_first_cycle_preregister_is_not_rewritten(tmp_path: Path) -> None:
+    path = tmp_path / "phase5_first_cycle_preregister.md"
+    path.write_text("PINNED\n", encoding="utf-8")
+    out = write_first_cycle_preregister(tmp_path)
+    assert out.read_text(encoding="utf-8") == "PINNED\n"
+
+
+@pytest.mark.unit
+def test_reuse_holdout_seal_keeps_matching_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    start = datetime(2023, 10, 28, tzinfo=UTC)
+    end = datetime(2026, 10, 28, tzinfo=UTC)
+    n = 400
+    step = (end - start).total_seconds() / float(n - 1)
+    bars = tuple(
+        _bar(
+            datetime.fromtimestamp(start.timestamp() + float(index) * step, tz=UTC),
+            open_=5000.0,
+            high=5000.5,
+            low=4999.5,
+            close=5000.0,
+        )
+        for index in range(n)
+    )
+    path = tmp_path / "MES" / "1m" / "mes.csv"
+    path.parent.mkdir(parents=True)
+    path.write_text("timestamp,open,high,low,close,volume\n", encoding="utf-8")
+    tape = LoadedTape(
+        instrument="MES",
+        bar_size="1m",
+        path=path,
+        bars=bars,
+        holdout_start_ns=P2_HOLDOUT_START_NS,
+    )
+    report = tmp_path / "rep"
+    first = seal_holdout((tape,), report_dir=report, require_known_files=False)
+    instruments = first["instruments"]
+    assert isinstance(instruments, dict)
+    mes_row = instruments["MES"]
+    assert isinstance(mes_row, dict)
+    mes_sha = mes_row["file_sha256"]
+    assert isinstance(mes_sha, str)
+    monkeypatch.setattr(seal_mod, "CSV_SHA256", {"MES": mes_sha, "MNQ": mes_sha})
+    reused = reuse_holdout_seal((tape,), report_dir=report)
+    assert reused is not None
+    assert reused["seal_sha256"] == first["seal_sha256"]
 
 
 @pytest.mark.unit
