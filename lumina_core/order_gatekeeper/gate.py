@@ -7,6 +7,7 @@ from typing import Any, cast
 
 from lumina_core.engine.errors import ErrorSeverity, LuminaError
 from lumina_core.logging_utils import get_logger, log_gate_rejection, record_gate_rejection_monitoring
+from lumina_core.order_gatekeeper.admission_s1_steps import attach_s1_admission_metadata
 from lumina_core.order_gatekeeper.admission_steps import GateRuntimeContext, build_admission_step_handlers
 import lumina_core.order_gatekeeper as _og
 from lumina_core.order_gatekeeper.engine_helpers import (
@@ -171,6 +172,7 @@ def enforce_pre_trade_gate(
         step_handlers=build_admission_step_handlers(gate_ctx, audit_or_fail_closed=_audit_for_steps),
     )
     admission_context.metadata.setdefault("decision_context_id", decision_context_id)
+    attach_s1_admission_metadata(engine, admission_context.metadata)
 
     allowed, reason, trace = default_chain_for_mode(mode).run(admission_context)
 

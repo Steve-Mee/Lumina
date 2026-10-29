@@ -32,7 +32,14 @@ def test_runtime_trade_gates_blocks_strict_mode_without_final_arbitration() -> N
     warnings: list[str] = []
     logger = SimpleNamespace(warning=lambda message, *_args: warnings.append(str(message)))
     engine = SimpleNamespace(
-        config=SimpleNamespace(trade_mode="real", instrument="MES JUN26"),
+        config=SimpleNamespace(
+            trade_mode="sim_real_guard",
+            instrument="MES JUN26",
+            ninjatrader_sim_account_whitelist=("Sim101",),
+            ninjatrader_account_name="Sim101",
+            live_release_payload={"enabled": False, "mac": ""},
+        ),
+        nt_connected_account="Sim101",
         market_data=_complete_market_data(),
         risk_controller=SimpleNamespace(
             _active_limits=SimpleNamespace(enforce_session_guard=False),
@@ -103,7 +110,7 @@ def test_runtime_trade_gates_blocks_strict_mode_without_final_arbitration() -> N
         instrument="MES",
         risk_controller=None,
         logger=logger,
-        mode="real",
+        mode="sim_real_guard",
         engine=engine,
     )
 

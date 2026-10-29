@@ -8,11 +8,13 @@ if TYPE_CHECKING:
     from lumina_core.risk.shadow import ShadowExperimentResult, ShadowRiskEvaluator
 
 from lumina_core.engine.engine_ports import SupportsRisk
+from lumina_core.risk.mode_capabilities import resolve_mode_capabilities
 from lumina_core.risk.session_guard import SessionGuard
 from lumina_core.risk.dynamic_kelly import DynamicKellyEstimator
 from lumina_core.risk.final_arbitration import FinalArbitration
 from lumina_core.risk.risk_controller import HardRiskController, risk_limits_from_config
 from lumina_core.risk.risk_policy import RiskPolicy, load_risk_policy
+from lumina_core.risk.sim_account_guard import LOCK, whitelist_from_engine
 
 
 @dataclass(slots=True)
@@ -45,13 +47,18 @@ class RiskOrchestrator:
 
                 state_file = Path(state_file) / "risk_controller_state.json"
 
-            enforce_rules = self.engine.config.trade_mode == "real"
+            trade_mode = str(getattr(self.engine.config, "trade_mode", "paper") or "paper")
+            try:
+                enforce_rules = bool(resolve_mode_capabilities(trade_mode).risk_enforced)
+            except ValueError:
+                enforce_rules = True
             self.risk_controller = HardRiskController(
                 limits,
                 state_file=state_file,
                 enforce_rules=enforce_rules,
                 session_guard=self.session_guard,
             )
+        LOCK.freeze(whitelist_from_engine(self.engine))
         if self.risk_policy is None:
             self.risk_policy = load_risk_policy(mode=str(getattr(self.engine.config, "trade_mode", "paper")))
         if self.final_arbitration is None and self.risk_policy is not None:

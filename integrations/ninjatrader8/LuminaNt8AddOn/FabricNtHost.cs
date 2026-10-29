@@ -158,7 +158,11 @@ namespace NinjaTrader.NinjaScript.AddOns
                                 + " upgraded to NT Account bind (use GatewayMode=memory for in-process fills)");
                         }
 
-                        var ntGw = new NtAccountOrderGateway(config.AccountName, Log);
+                        var ntGw = new NtAccountOrderGateway(
+                            config.AccountName,
+                            Log,
+                            config.SimAccountWhitelist,
+                            config.LiveReleaseEnabled);
                         if (!ntGw.TryBindFromNtAccounts())
                         {
                             Log("FATAL: could not bind NT Account '" + config.AccountName

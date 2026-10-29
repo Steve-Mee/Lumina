@@ -11,6 +11,19 @@ from lumina_core.order_gatekeeper.admission_risk_steps import (
     make_final_arbitration_step,
     make_risk_policy_step,
 )
+from lumina_core.order_gatekeeper.admission_s1_steps import (
+    make_live_release_step,
+    make_sim_account_whitelist_step,
+)
+from lumina_core.risk.admission_chain import (
+    ADMISSION_STEP_AUDIT_WRITE,
+    ADMISSION_STEP_CONSTITUTION,
+    ADMISSION_STEP_FINAL_ARBITRATION,
+    ADMISSION_STEP_LIVE_RELEASE,
+    ADMISSION_STEP_RISK_POLICY,
+    ADMISSION_STEP_SESSION_EQUITY_SYNC,
+    ADMISSION_STEP_SIM_ACCOUNT_WHITELIST,
+)
 from lumina_core.order_gatekeeper.engine_helpers import (
     MODES_REQUIRING_EQUITY_SNAPSHOT,
     is_risk_reducing_side,
@@ -141,16 +154,10 @@ def build_admission_step_handlers(
             return False, str(audit_reason)
         return True, str(_ctx.metadata.get("risk_reason", "OK"))
 
-    from lumina_core.risk.admission_chain import (
-        ADMISSION_STEP_AUDIT_WRITE,
-        ADMISSION_STEP_CONSTITUTION,
-        ADMISSION_STEP_FINAL_ARBITRATION,
-        ADMISSION_STEP_RISK_POLICY,
-        ADMISSION_STEP_SESSION_EQUITY_SYNC,
-    )
-
     return {
         ADMISSION_STEP_SESSION_EQUITY_SYNC: _session_equity_sync_step,
+        ADMISSION_STEP_SIM_ACCOUNT_WHITELIST: make_sim_account_whitelist_step(ctx),
+        ADMISSION_STEP_LIVE_RELEASE: make_live_release_step(ctx),
         ADMISSION_STEP_RISK_POLICY: make_risk_policy_step(ctx),
         ADMISSION_STEP_FINAL_ARBITRATION: make_final_arbitration_step(ctx),
         ADMISSION_STEP_CONSTITUTION: make_constitution_step(ctx),

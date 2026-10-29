@@ -166,3 +166,57 @@ def _parse_swarm_symbols() -> list[str]:
     return symbols or [_default_trading_instrument()]
 
 
+def _yaml_sim_account_whitelist() -> tuple[str, ...]:
+    """Operator SIM list from yaml only. Env cannot inject extra names."""
+    raw = _config_yaml_nested(None, "broker", "ninjatrader", "sim_account_whitelist")
+    if raw is None or isinstance(raw, (str, bytes)):
+        return ()
+    if not isinstance(raw, list):
+        return ()
+    seen: dict[str, str] = {}
+    for item in raw:
+        label = str(item or "").strip()
+        if not label:
+            continue
+        key = label.casefold()
+        if key not in seen:
+            seen[key] = label
+    return tuple(seen.values())
+
+
+def _yaml_live_release_payload() -> dict[str, Any]:
+    raw = _config_yaml_nested({}, "live_release")
+    if not isinstance(raw, dict):
+        return {
+            "enabled": False,
+            "adr_path": "",
+            "adr_sha256": "",
+            "approved_by": "",
+            "approved_at_utc": "",
+            "expires_at_utc": "",
+            "nonce": "",
+            "mac": "",
+            "purpose": "live_enablement",
+            "schema_version": "live_release.v1",
+        }
+    return {
+        "enabled": bool(raw.get("enabled") is True),
+        "adr_path": str(raw.get("adr_path") or ""),
+        "adr_sha256": str(raw.get("adr_sha256") or ""),
+        "approved_by": str(raw.get("approved_by") or ""),
+        "approved_at_utc": str(raw.get("approved_at_utc") or ""),
+        "expires_at_utc": str(raw.get("expires_at_utc") or ""),
+        "nonce": str(raw.get("nonce") or ""),
+        "mac": str(raw.get("mac") or ""),
+        "purpose": str(raw.get("purpose") or "live_enablement"),
+        "schema_version": str(raw.get("schema_version") or "live_release.v1"),
+    }
+
+
+def _yaml_research_execution_mode() -> str:
+    raw = str(_config_yaml_nested("", "research_execution_mode") or "").strip().lower()
+    if raw in {"off", "shadow", "sim"}:
+        return raw
+    return "off"
+
+

@@ -1,0 +1,18 @@
+{
+  "excluded": [
+    {
+      "description": "sim_account_guard.py:const-int#0",
+      "detail": "survived kill battery",
+      "justification": "process HMAC seal with urandom(0) still authenticates the frozen set",
+      "path": "lumina_core/risk/sim_account_guard.py"
+    }
+  ],
+  "kill_rate": 1.0,
+  "n_excluded": 1,
+  "n_killed": 319,
+  "n_mutants": 320,
+  "n_non_equivalent": 319,
+  "n_survived": 0,
+  "raw_kill_rate": 0.996875,
+  "survivors": []
+}

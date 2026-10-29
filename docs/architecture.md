@@ -69,7 +69,7 @@ LUMINA gebruikt **bounded contexts** als domeingrenzen onder `lumina_core/` (zie
 | **Risk Management** | Risk gates, allocatie, Kelly-achtige begrenzing | [`lumina_core/risk/`](../lumina_core/risk/) | Via mixins/engine geïntegreerd; canoniek onder `risk/` |
 | **Agent Orchestration** | Event bus, engine↔blackboard bindingen | [`lumina_core/agent_orchestration/`](../lumina_core/agent_orchestration/) | Pub/sub en bindings centraliseren |
 | **Research** | Propose-only Validation Gate, hypotheses, monitoring | [`lumina_research/`](../lumina_research/) | Isolation: no live Risk Core, no NT broker. Research may only propose. |
-| **ResearchBridge (S0 SHADOW)** | `PromotionCandidate` → logged `SignalIntent` + ADR-0055 hypothetical fills | [`lumina_core/research_bridge/`](../lumina_core/research_bridge/) | Zero `PlaceOrderCommand`. Ungated places are code-frozen (D1/D8, ADR-0060). |
+| **ResearchBridge (S0 SHADOW)** | `PromotionCandidate` → logged `SignalIntent` + ADR-0055 hypothetical fills | [`lumina_core/research_bridge/`](../lumina_core/research_bridge/) | Zero `PlaceOrderCommand`. Ungated places are code-frozen (D1/D8, ADR-0060). S1 adds SIM whitelist + HMAC `LIVE_RELEASE` (ADR-0061); live orders stay impossible. |
 
 ```mermaid
 flowchart LR
@@ -511,21 +511,27 @@ Voor orderuitvoering gebruikt Lumina nu een expliciete **laatste gate**:
 Pre-trade toelating loopt nu canoniek via [`lumina_core/risk/admission_chain.py`](../lumina_core/risk/admission_chain.py), aangeroepen vanuit [`lumina_core/order_gatekeeper.py`](../lumina_core/order_gatekeeper.py).
 
 - De keten blijft modulair (`AdmissionChain(steps=...)`), zodat nieuwe experimentele lagen als extra stap kunnen worden ingeplugd zonder de kernchecks te herschrijven.
-- De canonieke volgorde is: `SessionGuard+EquitySnapshot(sync) -> RiskPolicy+VaR/ES/MC -> FinalArbitration -> Constitution -> AuditWrite`.
-- Deze keten beschermt het levende organisme met een vaste volgorde: eerst markttoegang en account-context syncen, dan risicodruk meten, dan arbitreren, daarna constitutioneel toetsen, en pas als laatste audit-write committen.
+- De canonieke volgorde is: `SessionGuard+EquitySnapshot(sync) -> SIM whitelist -> LIVE_RELEASE -> RiskPolicy+VaR/ES/MC -> FinalArbitration -> Constitution -> AuditWrite`.
+- S1 (ADR-0061): `sim_account_whitelist` and `live_release` are unbypassable. Empty whitelist denies every account. Prefix `Sim*`/`DEMO*` never allows. SUBMIT and MODIFY are whitelisted; CANCEL/flatten may skip for emergency flatten and cannot be reused as place/modify/size-up. REAL stays closed (`live_account_path_closed_s1`) even with a valid HMAC. Rejects are ConstitutionViolation-equivalent structured logs, not Event Bus publishes from Risk Core.
+- Deze keten beschermt het levende organisme met een vaste volgorde: eerst markttoegang en account-context syncen, dan SIM-account en live-release, dan risicodruk meten, dan arbitreren, daarna constitutioneel toetsen, en pas als laatste audit-write committen.
 - Pre-chain hygiene (stale contract + broker metadata/control-plane checks) blijft in de gatekeeper-entrypoint, zodat contractvalidatie nooit kan wegvallen bij experimentele stapvarianten.
-- In **SIM/PAPER** zijn experimentele bypasses toegestaan via expliciete stapconfiguratie; elke bypass wordt gelogd met mode/step/symbol voor transparantie.
+- In **SIM/PAPER** blijven experimentele bypasses voor niet-S1-stappen mogelijk via expliciete stapconfiguratie; elke bypass wordt gelogd met mode/step/symbol.
+- `sim_account_whitelist` en `live_release` zijn in elke mode unbypassable (ADR-0061).
 - In **REAL** zijn experimentele bypasses fail-closed verboden.
 
 ```mermaid
 flowchart LR
   sessionEquitySync[SessionGuardPlusEquitySnapshot]
+  simWhitelist[SimAccountWhitelist]
+  liveRelease[LiveReleaseHmac]
   riskPolicy[RiskPolicyPlusVaR_ES_MC]
   finalArbitration[FinalArbitration]
   constitution[Constitution]
   auditWrite[AuditWrite]
 
-  sessionEquitySync --> riskPolicy
+  sessionEquitySync --> simWhitelist
+  simWhitelist --> liveRelease
+  liveRelease --> riskPolicy
   riskPolicy --> finalArbitration
   finalArbitration --> constitution
   constitution --> auditWrite
