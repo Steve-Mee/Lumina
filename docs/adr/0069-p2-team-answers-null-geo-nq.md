@@ -2,7 +2,7 @@
 
 **Status:** Proposed
 **Date:** 2026-10-29
-**Deciders:** Onderzoeksteam answers 2026-10-29 17:34, 18:17, 19:24, 21:29, and 22:08 (forwarded by Steve; not Steve's opinion) + LUMINA Engineering
+**Deciders:** Onderzoeksteam answers 2026-10-29 17:34, 18:17, 19:24, 21:29, 22:08, and 23:07 (forwarded by Steve; not Steve's opinion) + LUMINA Engineering
 
 Addendum to ADR-0067 / 0068. Does not rewrite CostModel 1.2.0, DSR 0.95, PBO 0.50,
 A2 planted detection, holdout pin `2026-01-28T23:00:00Z`, or Risk Core.
@@ -25,6 +25,10 @@ content sha256 `af183d1d6a9f329942d84bf80854791d69b20cd4264a88ae3da1d9677116e757
 Binding input (22:08, power floor + limited prereg; research-team answers, not Steve):
 `docs/research/ONDERZOEKERS-ANTWOORDEN-POWER-S4-20261029T2208.md`
 content sha256 `991138fdd4b741041e3288387dd8aaf89a09652329ada7eec7eaa0f037bfae9d`.
+
+Binding input (23:07, GO for the limited ES run; research-team answers, not Steve):
+`docs/research/ONDERZOEKERS-ANTWOORDEN-LIMITEDGO-20261029T2307.md`
+content sha256 `332003298fadfff06f28fced134d0a8c1a363933705d573cb3bd0407d4d9c414`.
 
 ## Context
 
@@ -107,6 +111,14 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
     data; no extra variants. This change records TOD **keep** (lowest
     n_trades of the six ATR siblings; RTH-only) and does **not** start the
     limited run.
+16. **Limited ES GO (23:07).** Power at 6.25% is sufficient; the detection
+    floor was not found but is not a reason to wait. Run exactly the six
+    pre-registered `p2l-*` configs including `p2l-tod-es` on the attached
+    pre-holdout ES tape. ES only. No NQ, no promotion, no SIM, holdout
+    sealed, max trials = 6, no extra variants, no parameter changes after
+    seeing results. Full Charter gate plus the 7/8 null gate. Optional
+    lower-hitrate / no-lookahead plants stay later diagnostics, not this
+    run.
 
 ## Consequences
 
@@ -185,7 +197,16 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
 14. Drop `p2l-tod-es` without checking existing ATR turnover/ETH — rejected.
     Existing PIT: lowest n_trades of the six, RTH-only. Keep 6 configs.
 15. Start the limited ES run in this change after the floor check — rejected
-    by the current task; preregister only.
+    by the 22:08 task; preregister only. **Superseded at 23:07:** the
+    research team GO runs the six locked configs on the attached ES tape
+    with no promotion and no extra variants.
+16. Drop `p2l-tod-es` at GO time — rejected; 23:07 keeps all six.
+17. Open NQ, promote, or start SIM because the limited run exists —
+    rejected.
+18. Change lookbacks/thresholds/geometry after seeing limited-run numbers —
+    rejected.
+19. Run optional lower-hitrate / no-lookahead plants in this change —
+    rejected (non-blocking, later).
 
 ## Links
 
@@ -194,12 +215,13 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
 - Answers freeze (19:24): `docs/research/ONDERZOEKERS-ANTWOORDEN-NULLVAL-20261029T1924.md`
 - Answers freeze (21:29): `docs/research/ONDERZOEKERS-ANTWOORDEN-MIDPOINT-20261029T2129.md`
 - Answers freeze (22:08): `docs/research/ONDERZOEKERS-ANTWOORDEN-POWER-S4-20261029T2208.md`
+- Answers freeze (23:07): `docs/research/ONDERZOEKERS-ANTWOORDEN-LIMITEDGO-20261029T2307.md`
 - Pre-register (null v2): `experiments/reports/phase5_p2_null_v2_preregister_addendum_2026-10-29.md`
 - Pre-register (midpoint D13): `experiments/reports/phase5_p2_midpoint_d13_preregister_2026-10-29.md`
 - Pre-register (midpoint power): `experiments/reports/phase5_p2_midpoint_power_preregister_2026-10-29.md`
 - Pre-register (midpoint power floor): `experiments/reports/phase5_p2_midpoint_power_floor_preregister_2026-10-29.md`
-- Pre-register (limited ES, not run): `experiments/reports/phase5_p2_limited_es_preregister_2026-10-29.md`
+- Pre-register (limited ES): `experiments/reports/phase5_p2_limited_es_preregister_2026-10-29.md`
 - Code: `lumina_research/cycles/null_model.py`, `null_only.py`, `null_lock.py`,
   `nq_lock.py`, `geometry.py`, `diagnostics.py`, `atr_cycle.py`,
-  `positive_control.py`, `midpoint_d13.py`
+  `positive_control.py`, `midpoint_d13.py`, `limited_es.py`, `runner.py`
 - Related: ADR-0067, ADR-0068

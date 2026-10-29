@@ -1,9 +1,27 @@
-# P2 limited ES strategy-run — pre-registration only (2026-10-29 22:08)
+# P2 limited ES strategy-run — pre-registration (2026-10-29)
 
-**Not executed.** This file is the proposed lock for a later limited
-strategy-run. It does not increment `TrialRegistry`. It does not open
-holdout. It does not propose promotion or SIM. Do not start this run from
-the 22:08 power-floor task.
+## GO addendum (2026-10-29 23:07)
+
+Research team (NOT Steve) GO. Frozen answers
+`docs/research/ONDERZOEKERS-ANTWOORDEN-LIMITEDGO-20261029T2307.md`
+content sha256 `332003298fadfff06f28fced134d0a8c1a363933705d573cb3bd0407d4d9c414`
+(prefix `33200329`).
+
+This lock is executed in this change: ES only, the six `p2l-*` configs
+including `p2l-tod-es`, no extra variants, no NQ, no promotion, no SIM,
+holdout sealed, max trials = 6. Results:
+`phase5_p2_limited_es.json` / `phase5_p2_limited_es_end_report_2026-10-29.md`.
+
+The 22:08 body below is the parameter lock. Do not change lookbacks,
+thresholds, or geometry after seeing results. Optional lower-hitrate /
+no-lookahead plants are **not** in this run.
+
+## Historical 22:08 lock (parameter freeze)
+
+**Not executed at 22:08.** This file was the proposed lock for a later limited
+strategy-run. The 22:08 task did not increment `TrialRegistry`, did not open
+holdout, and did not propose promotion or SIM. Do not start this run from
+the 22:08 power-floor task (superseded by the 23:07 GO above).
 
 Binding input (Steve forwarded; **not** Steve's opinion):
 `docs/research/ONDERZOEKERS-ANTWOORDEN-POWER-S4-20261029T2208.md`
@@ -88,9 +106,10 @@ and is **not** this lock.
 **Decision: keep `p2l-tod-es`. n configs stays 6. No extra variants. No
 drop.** If a later start-OK disagrees, rewrite this lock before any run.
 
-## Explicitly not in this file
+## Explicitly not in this file (22:08 lock; 23:07 executes the six)
 
 - No NQ row
 - No `p2a-or-bo-es` / `p2a-rm-es` revival
-- No execution, no CLI cycle invocation, no holdout unseal
+- 22:08: no execution. 23:07 GO: `--cycle limited-es` on the attached pre-holdout ES tape; holdout stays sealed
 - No promotion candidate, no SIM whitelist change
+- No extra variants; no parameter changes after seeing results

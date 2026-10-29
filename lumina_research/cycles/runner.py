@@ -99,6 +99,10 @@ def run_research_cycles(
     control_geometry_mode: str = "unclipped",
     required_control_roots: frozenset[str] | None = None,
     control_block_seeds: tuple[int, ...] | None = None,
+    prepared_tapes: dict[str, PreparedTape] | None = None,
+    status_override: DataStatus | None = None,
+    seal_sha_override: str | None = None,
+    required_control_geometries: tuple[tuple[str, float, float], ...] | None = None,
 ) -> ResearchCycleResult:
     """Pre-register template variants, then gate them on real data. No live/SIM orders."""
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -110,7 +114,7 @@ def run_research_cycles(
     specs = specs if specs is not None else first_cycle_specs()
     requested = specs
     root = repo_root if repo_root is not None else _REPO
-    status = discover_data(repo_root=root, data_dir=data_dir)
+    status = status_override if status_override is not None else discover_data(repo_root=root, data_dir=data_dir)
     seal_sha = ""
     prepared: dict[str, PreparedTape] = {}
     holdout_prepared: dict[str, PreparedTape] = {}
@@ -118,7 +122,14 @@ def run_research_cycles(
     skipped: tuple[HypothesisSpec, ...] = ()
     skip_reason = "not_tested_no_real_data"
     control_note = ""
-    if allowed_instruments is None and _is_real_p2(status):
+    if prepared_tapes is not None:
+        real_p2 = True
+        prepared = dict(prepared_tapes)
+        holdout_prepared = {}
+        seal_sha = seal_sha_override or ""
+        specs, skipped, skip_reason = _active_specs(specs, prepared)
+        specs = with_walk_forward_sizes(specs, prepared)
+    elif allowed_instruments is None and _is_real_p2(status):
         real_p2 = True
         p2_tapes = tuple(pin_tape(item) for item in status.tapes if item.instrument in {"MES", "MNQ"})
         sealed = reuse_holdout_seal(p2_tapes, report_dir=report_dir, filename=seal_filename)
@@ -188,8 +199,116 @@ def run_research_cycles(
     geometries = _geometries(tuple(specs) + skipped)
     bus = EventBus()
     registry = TrialRegistry(audit)
-    if specs and prepared and real_p2 and min(len(item.bars) for item in prepared.values()) >= DAILY_RESAMPLE_MIN_BARS:
-        if control_per_instrument:
+    tape_ready = bool(
+        specs and prepared and real_p2 and min(len(item.bars) for item in prepared.values()) >= DAILY_RESAMPLE_MIN_BARS
+    )
+    if required_control_geometries and not tape_ready:
+        report = CycleReport(
+            n_hypotheses=len(specs) + len(skipped),
+            n_tested=0,
+            n_killed=0,
+            n_survivors=0,
+            kill_rate=None,
+            kill_rate_flag="not_tested",
+            cost_bands=tuple(report_band(root) for root in ("ES", "NQ", "MES", "MNQ")),
+            data=status,
+            rows=(),
+            geometry_by_root=geometries,
+            stopped=True,
+            stop_reason="positive_control_failed",
+            holdout_seal_sha256=seal_sha,
+            wf_note=window_note(specs, n_days),
+            n_days=n_days,
+            previous_holdout_seal_sha256=LEGACY_SEAL_SHA256,
+            control_note="required control geometries need a real P2-length tape",
+            planted_detected=False,
+            null_detected=None,
+        )
+        json_path, md_path = _write_reports(
+            report,
+            report_dir,
+            cycles_stem=cycles_stem,
+            results_name=results_name,
+            write_sidecars=write_sidecars,
+        )
+        return ResearchCycleResult(
+            report=report,
+            json_path=json_path,
+            md_path=md_path,
+            data=status,
+            kill_rate=None,
+            kill_rate_flag="not_tested",
+        )
+    if tape_ready:
+        if required_control_geometries:
+            mes = prepared.get("MES") or next(iter(prepared.values()))
+            notes: list[str] = []
+            try:
+                for name, target, stop in required_control_geometries:
+                    control = run_controls(
+                        prepared=prepared,
+                        registry=registry,
+                        audit_path=audit,
+                        is_size=specs[0].is_size,
+                        oos_size=specs[0].oos_size,
+                        market_returns=market_series(mes),
+                        n_days=n_days,
+                        geometry_mode=control_geometry_mode,
+                        block_seeds=control_block_seeds,
+                        fail_closed=True,
+                        target_atr=target,
+                        stop_atr=stop,
+                    )
+                    if not control.positive.passed_gate:
+                        reasons = ",".join(control.positive.reject_reasons) or "unknown"
+                        raise PositiveControlFailed(
+                            f"{name} {target:g}/{stop:g}: passed_gate false ({reasons})",
+                            report=control,
+                        )
+                    audit_row = control.null_audit
+                    edge = "n/a" if audit_row is None else audit_row.exact_edge
+                    notes.append(f"{name} {target:g}/{stop:g}: planted detected, passed_gate, null 7/8 {edge}")
+                if control is None:
+                    raise PositiveControlFailed("required control geometries produced no report")
+            except PositiveControlFailed as exc:
+                report = CycleReport(
+                    n_hypotheses=len(specs) + len(skipped),
+                    n_tested=0,
+                    n_killed=0,
+                    n_survivors=0,
+                    kill_rate=None,
+                    kill_rate_flag="not_tested",
+                    cost_bands=tuple(report_band(root) for root in ("ES", "NQ", "MES", "MNQ")),
+                    data=status,
+                    rows=(),
+                    geometry_by_root=geometries,
+                    stopped=True,
+                    stop_reason="positive_control_failed",
+                    holdout_seal_sha256=seal_sha,
+                    wf_note=window_note(specs, n_days),
+                    n_days=n_days,
+                    previous_holdout_seal_sha256=LEGACY_SEAL_SHA256,
+                    control_note=str(exc),
+                    planted_detected=False,
+                    null_detected=None,
+                )
+                json_path, md_path = _write_reports(
+                    report,
+                    report_dir,
+                    cycles_stem=cycles_stem,
+                    results_name=results_name,
+                    write_sidecars=write_sidecars,
+                )
+                return ResearchCycleResult(
+                    report=report,
+                    json_path=json_path,
+                    md_path=md_path,
+                    data=status,
+                    kill_rate=None,
+                    kill_rate_flag="not_tested",
+                )
+            control_note = "; ".join(notes)
+        elif control_per_instrument:
             accepted, failed = run_controls_per_instrument(
                 prepared=prepared,
                 registry=registry,

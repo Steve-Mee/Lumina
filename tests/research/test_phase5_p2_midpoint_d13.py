@@ -222,10 +222,8 @@ def test_committed_midpoint_power_json_is_clean_and_gate_passes() -> None:
 
 @pytest.mark.unit
 def test_limited_es_preregister_is_not_an_executed_run() -> None:
-    text = Path("experiments/reports/phase5_p2_limited_es_preregister_2026-10-29.md").read_text(
-        encoding="utf-8"
-    )
-    assert "**Not executed.**" in text
+    text = Path("experiments/reports/phase5_p2_limited_es_preregister_2026-10-29.md").read_text(encoding="utf-8")
+    assert "Not executed at 22:08" in text
     assert "p2l-mr-es" in text
     assert "p2l-vx-es" in text
     assert "p2l-tod-es" in text
@@ -234,14 +232,13 @@ def test_limited_es_preregister_is_not_an_executed_run() -> None:
     assert "NQ closed" in text
     assert "p2a-or-bo-es" in text
     assert "SIM / REAL" in text
-    assert "Do not start this run" in text
+    assert "33200329" in text
+    assert "GO addendum" in text
 
 
 @pytest.mark.unit
 def test_committed_midpoint_power_floor_json_is_clean_and_gate_passes() -> None:
-    payload = json.loads(
-        Path("experiments/reports/phase5_p2_midpoint_power_floor.json").read_text(encoding="utf-8")
-    )
+    payload = json.loads(Path("experiments/reports/phase5_p2_midpoint_power_floor.json").read_text(encoding="utf-8"))
     assert payload["null_leaked"] is False
     assert payload["templates_run"] is False
     assert payload["research_run"] is False

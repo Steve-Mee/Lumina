@@ -9,6 +9,7 @@ from typing import Sequence
 
 from lumina_research.cycles.atr_cycle import run_atr_es_cycle
 from lumina_research.cycles.four_instrument import run_four_instrument_cycle
+from lumina_research.cycles.limited_es import run_limited_es_cycle
 from lumina_research.cycles.midpoint_d13 import (
     POWER_CLEAN,
     run_midpoint_d13,
@@ -54,6 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
             "midpoint-d13",
             "midpoint-power",
             "midpoint-power-floor",
+            "limited-es",
         ),
         default="first",
         help=(
@@ -61,7 +63,8 @@ def build_parser() -> argparse.ArgumentParser:
             "atr-es: ES ATR grid. null-only: FPR validation, no templates. "
             "midpoint-d13: planted+null under fade/breakout midpoints, no templates. "
             "midpoint-power: 100/50/25% planted magnitude, no templates. "
-            "midpoint-power-floor: 12.5%/6.25% planted magnitude, no templates."
+            "midpoint-power-floor: 12.5%/6.25% planted magnitude, no templates. "
+            "limited-es: six pre-registered p2l-* configs on pre-holdout ES."
         ),
     )
     research.add_argument(
@@ -69,8 +72,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help=(
-            "null-only / midpoint-d13 / midpoint-power / midpoint-power-floor: "
-            "local pre-holdout ES CSV. Not committed."
+            "null-only / midpoint-d13 / midpoint-power / midpoint-power-floor / "
+            "limited-es: local pre-holdout ES CSV. Not committed."
         ),
     )
     research.add_argument(
@@ -161,7 +164,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sys.stderr.write("midpoint-power-floor: null leaked; no strategy-run\n")
                 return 2
             return 0
-        if str(args.cycle) in {"first", "four-instrument", "atr-es"}:
+        if str(args.cycle) == "limited-es" and args.es_csv is None:
+            sys.stderr.write("limited-es: --es-csv is required\n")
+            return 2
+        if str(args.cycle) in {"first", "four-instrument", "atr-es", "limited-es"}:
             try:
                 assert_research_allowed(Path(args.report_dir))
             except NullLeaks as exc:
@@ -175,6 +181,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             if not audit.method_ready:
                 sys.stderr.write("null-audit fail-closed: MES/MNQ/ES planted miss or null unreliable\n")
+                return 2
+            return 0
+        if str(args.cycle) == "limited-es":
+            if args.es_csv is None:
+                sys.stderr.write("limited-es: --es-csv is required\n")
+                return 2
+            try:
+                limited = run_limited_es_cycle(
+                    work_dir=args.work_dir,
+                    report_dir=args.report_dir,
+                    es_csv=args.es_csv,
+                )
+            except ValueError as exc:
+                sys.stderr.write(f"limited-es: {exc}\n")
+                return 2
+            if limited.report.stop_reason == "positive_control_failed":
+                sys.stderr.write(f"limited-es control failed: {limited.report.control_note}\n")
+                return 2
+            if limited.report.stopped:
+                sys.stderr.write(f"limited-es stopped: {limited.report.stop_reason}\n")
                 return 2
             return 0
         if str(args.cycle) == "atr-es":
