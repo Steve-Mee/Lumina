@@ -442,8 +442,34 @@ namespace NinjaTrader.NinjaScript.AddOns
                 {
                     if (!TryStartAtm(atmTemplate, order, out var atmReason))
                     {
+                        var filledAfterSubmit = order.OrderState == NtOrderState.Filled
+                            || order.OrderState == NtOrderState.PartFilled;
                         try { acct.Cancel(new[] { order }); } catch { /* ignore */ }
-                        Log("ATM attach failed template='" + atmTemplate + "' reason='" + atmReason + "'");
+                        Log("ATM attach failed template='" + atmTemplate + "' reason='" + atmReason + "' filled=" + filledAfterSubmit);
+                        if (filledAfterSubmit)
+                        {
+                            // Fill-before-ATM: do not hide the fill behind a clean reject.
+                            // Brain must flatten if ATM is not confirmed in the short window.
+                            var filledNtId = order.OrderId ?? order.Id.ToString(CultureInfo.InvariantCulture);
+                            return new[]
+                            {
+                                new OrderEvent
+                                {
+                                    ClientOrderId = clientId,
+                                    NtOrderId = filledNtId,
+                                    State = OrderState.Filled,
+                                    FilledQty = order.Filled,
+                                    AvgFillPrice = order.AverageFillPrice,
+                                    Instrument = instrument.FullName ?? command.Instrument,
+                                    Action = command.Action,
+                                    LeavesQty = 0,
+                                    CorrelationId = command.CorrelationId ?? "",
+                                    TimestampUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                                    ProtectiveAttach = "",
+                                    RejectionReason = "atm_unconfirmed_after_fill",
+                                },
+                            };
+                        }
                         return new[] { Reject(command, atmReason) };
                     }
                     protectiveAttach = "atm";

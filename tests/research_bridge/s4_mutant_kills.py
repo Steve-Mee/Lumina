@@ -30,20 +30,27 @@ from lumina_core.research_bridge.continuity_meter import (
     measure_fixture_daily,
 )
 from lumina_core.research_bridge.protective_attach import (
+    ATM_STOP_ATR_MULTIPLE,
     ATM_UNCONFIRMED,
     ATTACH_ATM,
     COMPANION_UNCONFIRMED,
+    DEFAULT_ATM_CONFIRM_TIMEOUT_MS,
     DEFAULT_COMPANION_CONFIRM_TIMEOUT_MS,
+    FILL_BEFORE_ATM,
+    GENERIC_ATM_INSTRUMENTS,
+    GENERIC_ATM_TEMPLATE_NAME,
     PATH_ATM,
     PATH_COMPANION,
     PATH_REFUSED,
     PROTECTIVE_REFUSED,
     ProtectiveAttachConfig,
     atm_confirmed,
+    atm_confirmed_on_time,
     companion_confirmed,
     emergency_flatten_order,
     from_engine,
     from_mapping,
+    live_fill_without_confirmed_atm,
     plan_protective_attach,
     resolve_atm_template,
 )
@@ -374,7 +381,7 @@ def _kill_protective_stop() -> None:
         metadata={
             "mode_context": "sim_real_guard",
             "stop_price": 4950.0,
-            "atm_strategy_template": "LuminaProtectiveMES",
+            "atm_strategy_template": "LuminaProtective",
         },
     )
     atm_comp = companion_stop_order(atm_tagged, client_order_id="c-atm")
@@ -397,6 +404,14 @@ def _kill_protective_stop() -> None:
 def _kill_protective_attach() -> None:
     if DEFAULT_COMPANION_CONFIRM_TIMEOUT_MS != 5000:
         _fail("companion timeout drifted")
+    if DEFAULT_ATM_CONFIRM_TIMEOUT_MS != 5000:
+        _fail("ATM timeout drifted")
+    if GENERIC_ATM_TEMPLATE_NAME != "LuminaProtective":
+        _fail("generic ATM template name drifted")
+    if GENERIC_ATM_INSTRUMENTS != ("ES", "NQ", "MES", "MNQ"):
+        _fail("generic ATM markets drifted")
+    if ATM_STOP_ATR_MULTIPLE != 1.5:
+        _fail("ATM ATR stop multiple drifted")
     if PATH_ATM != "atm" or PATH_COMPANION != "companion" or PATH_REFUSED != "refused":
         _fail("attach path labels drifted")
     if ATTACH_ATM != "atm":
@@ -427,11 +442,11 @@ def _kill_protective_attach() -> None:
     if plan_protective_attach(conn_off).path != PATH_COMPANION:
         _fail("connection ATM-off did not fall to C")
     acct = from_mapping(
-        {"atm": {"templates_by_account": {"Sim101": "LuminaProtectiveMES"}}},
+        {"atm": {"templates_by_account": {"Sim101": "LuminaProtective"}}},
         account="Sim101",
     )
     plan_a = plan_protective_attach(acct)
-    if plan_a.path != PATH_ATM or plan_a.atm_template != "LuminaProtectiveMES":
+    if plan_a.path != PATH_ATM or plan_a.atm_template != "LuminaProtective":
         _fail("account template did not select A")
     refused = from_mapping({"atm": {"fallback_companion": False}}, account="Sim101")
     plan_r = plan_protective_attach(refused)
@@ -451,7 +466,7 @@ def _kill_protective_attach() -> None:
             config=SimpleNamespace(
                 ninjatrader={
                     "atm": {
-                        "templates_by_account": {"Sim101": "LuminaProtectiveMES"},
+                        "templates_by_account": {"Sim101": "LuminaProtective"},
                         "fallback_companion": True,
                     }
                 }
@@ -484,7 +499,7 @@ def _kill_protective_attach() -> None:
             nt_connected_account="Sim101",
             config=SimpleNamespace(
                 ninjatrader=SimpleNamespace(
-                    templates_by_account={"Sim101": "LuminaProtectiveMES"},
+                    templates_by_account={"Sim101": "LuminaProtective"},
                     templates_by_connection={},
                     atm_strategy_template="",
                     atm_fallback_companion=True,
@@ -533,7 +548,7 @@ def _kill_protective_attach() -> None:
     nested_nt = from_engine(
         SimpleNamespace(
             nt_connected_account="Sim101",
-            config=SimpleNamespace(ninjatrader=SimpleNamespace(atm={"templates_by_account": {"Sim101": "LuminaProtectiveMES"}})),
+            config=SimpleNamespace(ninjatrader=SimpleNamespace(atm={"templates_by_account": {"Sim101": "LuminaProtective"}})),
         )
     )
     if plan_protective_attach(nested_nt).path != PATH_ATM:
@@ -548,6 +563,20 @@ def _kill_protective_attach() -> None:
     if atm_confirmed(None) is True or atm_confirmed(OrderResult(accepted=False, order_id="", status="rejected")) is True:
         _fail("rejected ATM counted confirmed")
     started = T0
+    if atm_confirmed_on_time(ok_res, started=started, now=started + timedelta(milliseconds=5001), timeout_ms=5000) is True:
+        _fail("late ATM tag counted on-time")
+    hidden_fill = OrderResult(
+        accepted=False,
+        order_id="h",
+        status="rejected",
+        filled_qty=1,
+        message=FILL_BEFORE_ATM,
+        raw={"rejection_reason": FILL_BEFORE_ATM},
+    )
+    if live_fill_without_confirmed_atm(hidden_fill) is not True:
+        _fail("fill-before-ATM hidden reject not live")
+    if live_fill_without_confirmed_atm(ok_res) is True:
+        _fail("confirmed ATM counted as live unconfirmed fill")
     ok_stop = OrderResult(accepted=True, order_id="s", status="accepted")
     if companion_confirmed(ok_stop, started=started, now=started + timedelta(milliseconds=5000), timeout_ms=5000) is not True:
         _fail("timeout boundary 5000ms rejected")
@@ -588,7 +617,7 @@ def _kill_protective_attach() -> None:
             )
 
         atm_cfg = ProtectiveAttachConfig(
-            templates_by_account=(("Sim101", "LuminaProtectiveMES"),),
+            templates_by_account=(("Sim101", "LuminaProtective"),),
             account="Sim101",
         )
         atm_sub = RecordingSubmitter()
@@ -596,7 +625,7 @@ def _kill_protective_attach() -> None:
         atm_res = atm_rt.on_candidate(sealed_candidate(atm_rt._authority, instrument="MES"))
         if atm_res is None or atm_confirmed(atm_res) is not True or len(atm_sub.orders) != 1:
             _fail("ATM path submitted companion or missed ATM tag")
-        if atm_sub.orders[0].metadata.get("atm_strategy_template") != "LuminaProtectiveMES":
+        if atm_sub.orders[0].metadata.get("atm_strategy_template") != "LuminaProtective":
             _fail("ATM template missing on entry")
         if isinstance(atm_res.raw, dict) and atm_res.raw.get("nt_child") != "atm-stop":
             _fail("ATM raw child tag dropped")
@@ -618,7 +647,7 @@ def _kill_protective_attach() -> None:
         reject_rt = _rt(
             reject,
             ProtectiveAttachConfig(
-                templates_by_account=(("Sim101", "LuminaProtectiveMES"),),
+                templates_by_account=(("Sim101", "LuminaProtective"),),
                 account="Sim101",
                 fallback_companion=True,
             ),
@@ -646,7 +675,7 @@ def _kill_protective_attach() -> None:
 
         live_c = _AcceptAtmUnconfirmed()
         live_rt = _rt(live_c, ProtectiveAttachConfig(
-            templates_by_account=(("Sim101", "LuminaProtectiveMES"),),
+            templates_by_account=(("Sim101", "LuminaProtective"),),
             account="Sim101",
             fallback_companion=True,
         ))
@@ -661,7 +690,7 @@ def _kill_protective_attach() -> None:
         live_flat_rt = _rt(
             live_flat,
             ProtectiveAttachConfig(
-                templates_by_account=(("Sim101", "LuminaProtectiveMES"),),
+                templates_by_account=(("Sim101", "LuminaProtective"),),
                 account="Sim101",
                 fallback_companion=False,
             ),
@@ -717,6 +746,69 @@ def _kill_protective_attach() -> None:
         slow_text = (root / "slow.jsonl").read_text(encoding="utf-8")
         if COMPANION_UNCONFIRMED not in slow_text:
             _fail("slow companion used the ATM refuse code")
+        bind_sim_gate(None)
+
+        class _FillBeforeAtm(RecordingSubmitter):
+            def submit_order(self, order: Order) -> OrderResult:
+                meta = order.metadata if isinstance(order.metadata, dict) else {}
+                if str(meta.get("atm_strategy_template") or "").strip() and str(order.order_type).upper() != "STOP":
+                    self.orders.append(order)
+                    return OrderResult(
+                        accepted=True,
+                        order_id="fill-before-atm",
+                        status="filled",
+                        filled_qty=int(order.quantity),
+                        raw={},
+                    )
+                return super().submit_order(order)
+
+        class _SlowAtm(RecordingSubmitter):
+            def __init__(self, clock: _JumpClock) -> None:
+                super().__init__()
+                self.clock = clock
+
+            def submit_order(self, order: Order) -> OrderResult:
+                meta = order.metadata if isinstance(order.metadata, dict) else {}
+                if str(meta.get("atm_strategy_template") or "").strip() and str(order.order_type).upper() != "STOP":
+                    self.clock.jump_ms(6000)
+                return super().submit_order(order)
+
+        race = _FillBeforeAtm()
+        race_rt = _rt(
+            race,
+            ProtectiveAttachConfig(
+                templates_by_account=(("Sim101", GENERIC_ATM_TEMPLATE_NAME),),
+                account="Sim101",
+                fallback_companion=False,
+                atm_confirm_timeout_ms=5000,
+            ),
+            jsonl="fill-before-atm.jsonl",
+        )
+        if race_rt.on_candidate(sealed_candidate(race_rt._authority, instrument="MES")) is not None:
+            _fail("fill-before-ATM without C kept the fill")
+        race_reasons = [str(o.metadata.get("reason") or "") for o in race.orders]
+        if "unconfirmed_protective_stop" not in race_reasons:
+            _fail("fill-before-ATM without C skipped flatten")
+        bind_sim_gate(None)
+
+        atm_clock = _JumpClock()
+        slow_atm = _SlowAtm(atm_clock)
+        slow_atm_rt = _rt(
+            slow_atm,
+            ProtectiveAttachConfig(
+                templates_by_account=(("Sim101", GENERIC_ATM_TEMPLATE_NAME),),
+                account="Sim101",
+                fallback_companion=False,
+                atm_confirm_timeout_ms=5000,
+            ),
+            clock=atm_clock,
+            jsonl="slow-atm.jsonl",
+        )
+        if slow_atm_rt.on_candidate(sealed_candidate(slow_atm_rt._authority, instrument="MNQ")) is not None:
+            _fail("slow ATM confirm kept the fill")
+        slow_atm_reasons = [str(o.metadata.get("reason") or "") for o in slow_atm.orders]
+        if "unconfirmed_protective_stop" not in slow_atm_reasons:
+            _fail("slow ATM confirm skipped flatten")
         bind_sim_gate(None)
 
         none_sub = RecordingSubmitter()
@@ -864,6 +956,8 @@ def _kill_caps() -> None:
     allowed, reason = advisory.check_can_trade("MES", "trending_up", 100.0)
     if allowed is not True:
         _fail("advisory path closed")
+    if "all caps bypassed" in reason.lower():
+        _fail("advisory path still advertises SIM caps-bypass")
 
 
 def _kill_stale_sim() -> None:

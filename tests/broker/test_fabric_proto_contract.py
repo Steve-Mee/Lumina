@@ -50,7 +50,7 @@ def test_place_order_command_roundtrip() -> None:
         protected=False,
         correlation_id="corr-1",
         mode_context="sim",
-        atm_strategy_template="LuminaProtectiveMES",
+        atm_strategy_template="LuminaProtective",
     )
     raw = cmd.SerializeToString()
     restored = fabric_pb2.PlaceOrderCommand()
@@ -59,7 +59,7 @@ def test_place_order_command_roundtrip() -> None:
     assert restored.instrument == "MNQ"
     assert restored.action == fabric_pb2.ORDER_ACTION_BUY
     assert restored.quantity == 1
-    assert restored.atm_strategy_template == "LuminaProtectiveMES"
+    assert restored.atm_strategy_template == "LuminaProtective"
 
 
 def test_order_event_protective_attach_roundtrip() -> None:

@@ -40,6 +40,8 @@ namespace Lumina.Execution.Fabric.Execution
         public System.Collections.Generic.HashSet<string>? KnownAtmTemplates { get; set; }
         /// <summary>Force ATM attach failure (CI). Entry is not filled.</summary>
         public bool AtmAttachDisabled { get; set; }
+        /// <summary>CI: MARKET fills and ATM children are missing (fill-before-ATM race).</summary>
+        public bool SimulateFillBeforeAtm { get; set; }
 
         public AccountMetrics GetAccountMetrics()
         {
@@ -102,7 +104,7 @@ namespace Lumina.Execution.Fabric.Execution
                     || KnownAtmTemplates.Contains(atmTemplate);
                 if (AtmAttachDisabled || !knownOk)
                     return new[] { RejectEvent(command, ntId, "atm_unavailable", now) };
-                atmOk = true;
+                atmOk = !SimulateFillBeforeAtm;
             }
 
             var isMarket = command.OrderType == OrderType.Market ||

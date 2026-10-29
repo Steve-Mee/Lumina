@@ -115,7 +115,7 @@ namespace Lumina.Execution.Fabric.Tests
                 OrderType = OrderType.Market,
                 StopPrice = 4950,
                 ModeContext = "sim_real_guard",
-                AtmStrategyTemplate = "LuminaProtectiveMES",
+                AtmStrategyTemplate = "LuminaProtective",
             });
             Assert.Contains(events, e => e.ProtectiveAttach == "atm" && e.State == OrderState.Filled);
             Assert.Contains(gw.GetWorkingOrders(), o => o.ClientOrderId == "atm-entry-atm-stop" && o.Protected);
@@ -139,6 +139,26 @@ namespace Lumina.Execution.Fabric.Tests
             });
             Assert.Contains(events, e => e.State == OrderState.Rejected && e.RejectionReason == "atm_unavailable");
             Assert.Empty(gw.GetPositions());
+        }
+
+        [Fact]
+        public void AtmTemplate_fill_before_atm_fills_without_child_stop()
+        {
+            var gw = new SimOrderGateway { SimulateFillBeforeAtm = true };
+            var events = gw.PlaceOrder(new PlaceOrderCommand
+            {
+                ClientOrderId = "atm-race",
+                Instrument = "MES",
+                Action = OrderAction.Buy,
+                Quantity = 1,
+                OrderType = OrderType.Market,
+                StopPrice = 4950,
+                ModeContext = "sim_real_guard",
+                AtmStrategyTemplate = "LuminaProtective",
+            });
+            Assert.Contains(events, e => e.State == OrderState.Filled && e.ProtectiveAttach == "");
+            Assert.DoesNotContain(gw.GetWorkingOrders(), o => o.ClientOrderId == "atm-race-atm-stop");
+            Assert.NotEmpty(gw.GetPositions());
         }
 
         [Fact]
