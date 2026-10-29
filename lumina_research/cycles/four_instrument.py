@@ -12,8 +12,10 @@ from pathlib import Path
 from typing import Mapping
 
 from lumina_research.cycles.catalog import HypothesisSpec
+from lumina_research.cycles.data import DataStatus
 from lumina_research.cycles.first_cycle import first_cycle_specs
 from lumina_research.cycles.p2_cycle import clear_materialize_cache
+from lumina_research.cycles.report import CycleReport
 from lumina_research.cycles.runner import ResearchCycleResult, run_research_cycles
 from lumina_research.cycles.seal import ES_NQ_SEAL_NAME, SEAL_NAME
 from lumina_research.proof.runner import DEFAULT_REPORTS
@@ -88,28 +90,32 @@ def run_four_instrument_cycle(
     data_dir: Path | None = None,
     repo_root: Path | None = None,
     seed: int = 20261028,
+    reuse_mes_mnq: bool = False,
 ) -> FourInstrumentResult:
     """MES/MNQ cost-fix, then ES/NQ. Sidecars and baseline reports stay untouched."""
     root = repo_root if repo_root is not None else _REPO
     work_dir.mkdir(parents=True, exist_ok=True)
     report_dir.mkdir(parents=True, exist_ok=True)
-    clear_materialize_cache()
-    mes_mnq = run_research_cycles(
-        work_dir=work_dir / "mes_mnq",
-        report_dir=report_dir,
-        evolution_log_dir=None,
-        data_dir=data_dir,
-        repo_root=root,
-        seed=seed,
-        specs=first_cycle_specs(),
-        cycles_stem=MES_MNQ_CYCLES_STEM,
-        results_name=MES_MNQ_RESULTS_NAME,
-        allowed_instruments=frozenset({"MES", "MNQ"}),
-        control_per_instrument=True,
-        write_sidecars=False,
-        seal_filename=SEAL_NAME,
-        require_known_files=True,
-    )
+    if reuse_mes_mnq:
+        mes_mnq = _reuse_mes_mnq_result(report_dir)
+    else:
+        clear_materialize_cache()
+        mes_mnq = run_research_cycles(
+            work_dir=work_dir / "mes_mnq",
+            report_dir=report_dir,
+            evolution_log_dir=None,
+            data_dir=data_dir,
+            repo_root=root,
+            seed=seed,
+            specs=first_cycle_specs(),
+            cycles_stem=MES_MNQ_CYCLES_STEM,
+            results_name=MES_MNQ_RESULTS_NAME,
+            allowed_instruments=frozenset({"MES", "MNQ"}),
+            control_per_instrument=True,
+            write_sidecars=False,
+            seal_filename=SEAL_NAME,
+            require_known_files=True,
+        )
     clear_materialize_cache()
     es_nq = run_research_cycles(
         work_dir=work_dir / "es_nq",
@@ -125,7 +131,7 @@ def run_four_instrument_cycle(
         control_per_instrument=True,
         write_sidecars=False,
         seal_filename=ES_NQ_SEAL_NAME,
-        require_known_files=False,
+        require_known_files=True,
     )
     comparison = write_comparison(
         report_dir=report_dir,
@@ -133,6 +139,53 @@ def run_four_instrument_cycle(
         es_nq=es_nq,
     )
     return FourInstrumentResult(mes_mnq=mes_mnq, es_nq=es_nq, comparison_path=comparison)
+
+
+def _reuse_mes_mnq_result(report_dir: Path) -> ResearchCycleResult:
+    """Keep the CostModel 1.2.0 MES/MNQ files; do not rerun or overwrite them."""
+    json_path = report_dir / f"{MES_MNQ_CYCLES_STEM}.json"
+    md_path = report_dir / f"{MES_MNQ_CYCLES_STEM}.md"
+    results = report_dir / MES_MNQ_RESULTS_NAME
+    missing = [str(path) for path in (json_path, md_path, results) if not path.is_file()]
+    if missing:
+        raise RuntimeError("reuse_mes_mnq missing: " + ", ".join(missing))
+    loaded = _load_json(json_path)
+    if loaded is None:
+        raise RuntimeError(f"reuse_mes_mnq unreadable: {json_path}")
+    n_tested = _as_int(loaded.get("n_tested"))
+    n_killed = _as_int(loaded.get("n_killed"))
+    n_survivors = _as_int(loaded.get("n_survivors"))
+    n_hypotheses = _as_int(loaded.get("n_hypotheses"))
+    raw_rate = loaded.get("kill_rate")
+    kill_rate = float(raw_rate) if isinstance(raw_rate, (int, float)) and not isinstance(raw_rate, bool) else None
+    planted = loaded.get("planted_detected")
+    null = loaded.get("null_detected")
+    report = CycleReport(
+        n_hypotheses=n_hypotheses,
+        n_tested=n_tested,
+        n_killed=n_killed,
+        n_survivors=n_survivors,
+        kill_rate=kill_rate,
+        kill_rate_flag=str(loaded.get("kill_rate_flag") or "ok"),
+        cost_bands=(),
+        data=DataStatus(usable=True, tapes=(), searched=(), missing=(), required={}),
+        rows=(),
+        geometry_by_root=(),
+        stopped=False,
+        stop_reason="",
+        holdout_seal_sha256=str(loaded.get("holdout_seal_sha256") or ""),
+        control_note="reused MES/MNQ cost-fix reports; not rerun",
+        planted_detected=planted if isinstance(planted, bool) else None,
+        null_detected=null if isinstance(null, bool) else None,
+    )
+    return ResearchCycleResult(
+        report=report,
+        json_path=json_path,
+        md_path=md_path,
+        data=report.data,
+        kill_rate=kill_rate,
+        kill_rate_flag=report.kill_rate_flag,
+    )
 
 
 def write_comparison(
@@ -185,6 +238,33 @@ def write_comparison(
     )
     for row in _rows_of(costfix) + _rows_of(esnq):
         lines.append(_four_root_row(row))
+    esnq_rows = _rows_by_id(esnq)
+    family_by_id = {item.config_id: item.template_id for item in first_cycle_specs()}
+    lines.extend(
+        [
+            "",
+            "## Same-family ES vs MES and NQ vs MNQ (16/8, CostModel 1.2.0)",
+            "",
+            "Translations keep lookback/threshold/mode/16/8. Commission card: "
+            "MES/MNQ $1.88 RT, ES/NQ $5.74 RT. Gaps were not filled from MES.",
+            "",
+            "| family | micro | mini | micro n | mini n | micro hit | mini hit | "
+            "micro BE | mini BE | micro comm/trade | mini comm/trade | "
+            "micro 4leg/trade | mini 4leg/trade | micro gross/trade | mini gross/trade | "
+            "micro net | mini net | micro death | mini death |",
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+        ]
+    )
+    for src_id, dst_id, _mini in ES_NQ_TRANSLATIONS:
+        lines.append(
+            _pair_row(
+                family_by_id[src_id],
+                src_id,
+                dst_id,
+                fix_rows.get(src_id, {}),
+                esnq_rows.get(dst_id, {}),
+            )
+        )
     es_status = es_nq.report
     missing = ", ".join(es_status.data.missing) or "(none)"
     lines.extend(
@@ -196,7 +276,15 @@ def write_comparison(
             f"- this batch stopped: `{es_status.stopped}` reason: `{es_status.stop_reason or '(ran)'}`",
             f"- missing roots for this batch: {missing}",
             f"- planted_detected: `{es_status.planted_detected}` null_detected: `{es_status.null_detected}`",
+            f"- control_note: `{es_status.control_note or '(none)'}`",
             f"- needed if fail-closed: {ES_NQ_NEEDED}",
+            "",
+            "## ES/NQ tape gaps (not filled)",
+            "",
+            "Holdout pin `2026-01-28T23:00:00Z` stays closed. No MES/MNQ bars were copied.",
+            "Detail: `phase5_p2_es_nq_data_gaps_2026-10-29.md`.",
+            "- TRAIN (gate uses this): ES missing 2025-07-13/14 and half of 2025-07-15; both roots thin on 2025-11-28.",
+            "- HOLDOUT (sealed, unused for ranking): ES 2026-04-22..04-27 and 2026-05-08/11/12.",
             "",
             "## Holdout",
             "",
@@ -209,6 +297,10 @@ def write_comparison(
     path = report_dir / COMPARISON_NAME
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
+
+
+def _as_int(value: object) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
 
 def _load_json(path: Path) -> dict[str, object] | None:
@@ -349,6 +441,33 @@ def _per_trade_value(row: Mapping[str, object], value: float) -> float | None:
     if trades is None or trades <= 0.0:
         return None
     return value / trades
+
+
+def _pair_row(
+    family: str,
+    micro_id: str,
+    mini_id: str,
+    micro: Mapping[str, object],
+    mini: Mapping[str, object],
+) -> str:
+    micro_leg = _four_leg(micro)
+    mini_leg = _four_leg(mini)
+    micro_leg_pt = None if micro_leg is None else _per_trade_value(micro, micro_leg)
+    mini_leg_pt = None if mini_leg is None else _per_trade_value(mini, mini_leg)
+    return (
+        f"| {family} | {micro_id} | {mini_id} | "
+        f"{_fmt(_num(micro, 'n_trades'), 6)} | {_fmt(_num(mini, 'n_trades'), 6)} | "
+        f"{_fmt(_num(micro, 'hitrate'))} | {_fmt(_num(mini, 'hitrate'))} | "
+        f"{_fmt(_num(micro, 'break_even_win_rate'))} | "
+        f"{_fmt(_num(mini, 'break_even_win_rate'))} | "
+        f"{_fmt(_per_trade(micro, 'commission_usd'))} | "
+        f"{_fmt(_per_trade(mini, 'commission_usd'))} | "
+        f"{_fmt(micro_leg_pt)} | {_fmt(mini_leg_pt)} | "
+        f"{_fmt(_per_trade(micro, 'gross_pnl'))} | "
+        f"{_fmt(_per_trade(mini, 'gross_pnl'))} | "
+        f"{_fmt(_num(micro, 'net_pnl'))} | {_fmt(_num(mini, 'net_pnl'))} | "
+        f"{micro.get('death_reason', 'n/a')} | {mini.get('death_reason', 'n/a')} |"
+    )
 
 
 def _four_root_row(row: Mapping[str, object]) -> str:

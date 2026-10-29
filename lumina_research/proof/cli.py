@@ -39,6 +39,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="first",
         help="first: locked MES/MNQ 12. four-instrument: cost-fix rerun + ES/NQ.",
     )
+    research.add_argument(
+        "--reuse-mes-mnq",
+        action="store_true",
+        help="four-instrument: keep existing cost-fix MES/MNQ reports; run ES/NQ only.",
+    )
     weekly = sub.add_parser("weekly", help="Guardian weekly scan plus weekly metrics report")
     weekly.add_argument("--state-dir", type=Path, required=True)
     weekly.add_argument("--report-dir", type=Path, required=True)
@@ -74,7 +79,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 work_dir=args.work_dir,
                 report_dir=args.report_dir,
                 data_dir=args.data_dir,
+                reuse_mes_mnq=bool(args.reuse_mes_mnq),
             )
+            if four.es_nq.report.stop_reason == "positive_control_failed":
+                sys.stderr.write(f"ES/NQ control failed: {four.es_nq.report.control_note}\n")
+                return 2
             if four.mes_mnq.data.usable:
                 if four.mes_mnq.kill_rate_flag.startswith("flag_"):
                     sys.stderr.write(f"P2 kill-rate diagnostic: {four.mes_mnq.kill_rate_flag}\n")

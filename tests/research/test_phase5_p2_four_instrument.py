@@ -25,7 +25,13 @@ from lumina_research.cycles.holdout import HoldoutLocked
 from lumina_research.cycles.positive_control import run_controls_per_instrument
 from lumina_research.cycles.report import CycleReport, write_cycle_reports
 from lumina_research.cycles.runner import run_research_cycles
-from lumina_research.cycles.seal import ES_NQ_SEAL_NAME, LIVE_SEAL_SHA256, SEAL_NAME, seal_holdout
+from lumina_research.cycles.seal import (
+    CSV_SHA256,
+    ES_NQ_SEAL_NAME,
+    LIVE_SEAL_SHA256,
+    SEAL_NAME,
+    seal_holdout,
+)
 from lumina_research.proof.cli import build_parser, main as proof_main
 from lumina_research.validation.trial_registry import TrialRegistry
 from tests.research.test_phase5_p2 import _span_bars
@@ -133,8 +139,64 @@ def test_four_instrument_missing_es_nq_is_fail_closed(tmp_path: Path) -> None:
     assert "MES/MNQ cost-fix effect" in comparison
     assert "### MES cost-fix effect" in comparison
     assert "### MNQ cost-fix effect" in comparison
+    assert "Same-family ES vs MES and NQ vs MNQ" in comparison
+    assert "ES/NQ tape gaps (not filled)" in comparison
     assert "comm/trade" in comparison
     assert ES_NQ_NEEDED.split("(")[0].strip() in comparison or "PIT NT8 1m" in comparison
+
+
+@pytest.mark.unit
+def test_csv_sha256_pins_es_nq_continuous() -> None:
+    assert CSV_SHA256["ES"].startswith("6b23a4dd")
+    assert CSV_SHA256["NQ"].startswith("9d41f220")
+    assert len(CSV_SHA256["ES"]) == 64
+    assert len(CSV_SHA256["NQ"]) == 64
+
+
+@pytest.mark.unit
+def test_reuse_mes_mnq_requires_existing_reports(tmp_path: Path) -> None:
+    with pytest.raises(RuntimeError, match="reuse_mes_mnq missing"):
+        run_four_instrument_cycle(
+            work_dir=tmp_path / "work",
+            report_dir=tmp_path / "reports",
+            repo_root=tmp_path,
+            reuse_mes_mnq=True,
+        )
+
+
+@pytest.mark.unit
+def test_reuse_mes_mnq_keeps_costfix_files(tmp_path: Path) -> None:
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    payload = {
+        "n_hypotheses": 12,
+        "n_tested": 12,
+        "n_killed": 12,
+        "n_survivors": 0,
+        "kill_rate": 1.0,
+        "kill_rate_flag": "ok",
+        "hypotheses": [],
+        "planted_detected": True,
+        "null_detected": False,
+        "holdout_seal_sha256": "85e4588fde77159315a72bdaa722d6487f93bbad9bf24999311f893950489d40",
+    }
+    (reports / f"{MES_MNQ_CYCLES_STEM}.json").write_text(json.dumps(payload), encoding="utf-8")
+    (reports / f"{MES_MNQ_CYCLES_STEM}.md").write_text("costfix\n", encoding="utf-8")
+    (reports / MES_MNQ_RESULTS_NAME).write_text("results\n", encoding="utf-8")
+    before = (reports / MES_MNQ_RESULTS_NAME).read_text(encoding="utf-8")
+    result = run_four_instrument_cycle(
+        work_dir=tmp_path / "work",
+        report_dir=reports,
+        repo_root=tmp_path,
+        data_dir=tmp_path / "missing-research-data",
+        reuse_mes_mnq=True,
+    )
+    assert result.mes_mnq.report.n_tested == 12
+    assert result.mes_mnq.report.control_note.startswith("reused MES/MNQ")
+    assert result.es_nq.report.stopped is True
+    assert (reports / MES_MNQ_RESULTS_NAME).read_text(encoding="utf-8") == before
+    comparison = (reports / COMPARISON_NAME).read_text(encoding="utf-8")
+    assert "p2c-mr-es-10-1.5" in comparison
 
 
 @pytest.mark.unit
@@ -214,3 +276,19 @@ def test_cli_four_instrument_cycle_flag(tmp_path: Path, monkeypatch: pytest.Monk
     )
     assert proof_main(["research", "--cycle", "four-instrument", "--work-dir", str(tmp_path)]) == 0
     assert captured and captured[0]["work_dir"] == tmp_path
+    assert captured[0]["reuse_mes_mnq"] is False
+    captured.clear()
+    assert (
+        proof_main(
+            [
+                "research",
+                "--cycle",
+                "four-instrument",
+                "--reuse-mes-mnq",
+                "--work-dir",
+                str(tmp_path),
+            ]
+        )
+        == 0
+    )
+    assert captured and captured[0]["reuse_mes_mnq"] is True
