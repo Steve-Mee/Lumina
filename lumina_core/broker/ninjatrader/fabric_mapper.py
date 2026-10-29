@@ -51,6 +51,14 @@ def order_action_to_side(action: int) -> str:
     return "UNKNOWN"
 
 
+def research_correlation_id(strategy_id: str, client_order_id: str) -> str:
+    sid = str(strategy_id or "").strip()
+    cid = str(client_order_id or "").strip()
+    if not sid or not cid:
+        raise ValueError("correlation_id_incomplete")
+    return f"{sid}:{cid}"
+
+
 def order_to_place_command(
     order: Order,
     *,
@@ -71,6 +79,11 @@ def order_to_place_command(
         reduce_only = bool(meta["reduce_only"])
     if meta.get("protected") is not None:
         protected = bool(meta["protected"])
+    strategy_id = str(meta.get("strategy_id") or "").strip()
+    corr = str(correlation_id or "").strip()
+    if strategy_id and client_order_id and ":" not in corr:
+        corr = research_correlation_id(strategy_id, str(client_order_id))
+    context = str(meta.get("mode_context") or mode_context or "sim")
 
     return fabric_pb2.PlaceOrderCommand(
         client_order_id=client_order_id,
@@ -83,8 +96,8 @@ def order_to_place_command(
         time_in_force=fabric_pb2.TIME_IN_FORCE_DAY,
         reduce_only=reduce_only,
         protected=protected,
-        correlation_id=correlation_id,
-        mode_context=str(mode_context or "sim"),
+        correlation_id=corr,
+        mode_context=context,
     )
 
 

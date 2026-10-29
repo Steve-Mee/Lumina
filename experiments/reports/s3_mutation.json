@@ -1,0 +1,150 @@
+{
+  "excluded": [
+    {
+      "description": "independence.py:boolop#6",
+      "detail": "survived kill battery",
+      "justification": "None series still fail-closed in _finite_series via list(None) TypeError.",
+      "path": "lumina_core/research_bridge/independence.py"
+    },
+    {
+      "description": "independence.py:boolop#8",
+      "detail": "survived kill battery",
+      "justification": "str series still fail-closed in _finite_series because chars are not floats.",
+      "path": "lumina_core/research_bridge/independence.py"
+    },
+    {
+      "description": "nt_tape.py:raise-to-pass#19",
+      "detail": "survived kill battery",
+      "justification": "is_forming_bar is ts>now; lookahead_future_bar is the same predicate.",
+      "path": "lumina_research/validation/nt_tape.py"
+    },
+    {
+      "description": "nt_tape.py:raise-to-pass#23",
+      "detail": "survived kill battery",
+      "justification": "is_forming_bar is ts>now; forming_bar_refused is the same predicate.",
+      "path": "lumina_research/validation/nt_tape.py"
+    },
+    {
+      "description": "independence.py:kw-bool#24",
+      "detail": "survived kill battery",
+      "justification": "min() equalizes lengths before zip; strict=True vs False is identical.",
+      "path": "lumina_core/research_bridge/independence.py"
+    },
+    {
+      "description": "sim_runtime.py:return-none#26",
+      "detail": "survived kill battery",
+      "justification": "evaluate() after evaluate_instrument(MES/MNQ) is the same ctx; dead second fail.",
+      "path": "lumina_core/research_bridge/sim_runtime.py"
+    },
+    {
+      "description": "nt_tape.py:raise-to-pass#30",
+      "detail": "survived kill battery",
+      "justification": "holdout_pin_is_closed() is hardcoded True; holdout_pin_open is unreachable.",
+      "path": "lumina_research/validation/nt_tape.py"
+    },
+    {
+      "description": "independence.py:binop#38",
+      "detail": "survived kill battery",
+      "justification": "sqrt(den_a/den_b) vs sqrt(den_a*den_b) is clamped to [-1, 1]; anti-corr stays -1.",
+      "path": "lumina_core/research_bridge/independence.py"
+    },
+    {
+      "description": "alarm_executor.py:kw-bool#41",
+      "detail": "survived kill battery",
+      "justification": "escalate is deleted unused in _execute; True vs False is a no-op.",
+      "path": "lumina_core/risk/alarm_executor.py"
+    },
+    {
+      "description": "independence.py:const-float#45",
+      "detail": "survived kill battery",
+      "justification": "Pearson on finite series never exceeds 1.0, so the clamp body is unreachable.",
+      "path": "lumina_core/research_bridge/independence.py"
+    },
+    {
+      "description": "sim_runtime.py:binop#49",
+      "detail": "survived kill battery",
+      "justification": "gate_order cannot fail after bind_sim_gate of a ctx that already passed evaluate.",
+      "path": "lumina_core/research_bridge/sim_runtime.py"
+    },
+    {
+      "description": "sim_runtime.py:return-none#50",
+      "detail": "survived kill battery",
+      "justification": "gate_order cannot fail after bind_sim_gate of a ctx that already passed evaluate.",
+      "path": "lumina_core/research_bridge/sim_runtime.py"
+    },
+    {
+      "description": "independence.py:const-float#51",
+      "detail": "survived kill battery",
+      "justification": "Pearson on finite series never goes below -1.0, so the clamp body is unreachable.",
+      "path": "lumina_core/research_bridge/independence.py"
+    },
+    {
+      "description": "independence.py:unary#52",
+      "detail": "survived kill battery",
+      "justification": "Pearson on finite series never goes below -1.0, so the clamp body is unreachable.",
+      "path": "lumina_core/research_bridge/independence.py"
+    },
+    {
+      "description": "sim_runtime.py:return-none#52",
+      "detail": "survived kill battery",
+      "justification": "SimGateRefused is unreachable after evaluate() already passed on the same ctx.",
+      "path": "lumina_core/research_bridge/sim_runtime.py"
+    },
+    {
+      "description": "alarm_executor.py:except-pass#52",
+      "detail": "survived kill battery",
+      "justification": "sla_decision cannot refuse after miss_count is incremented to >= 1.",
+      "path": "lumina_core/risk/alarm_executor.py"
+    },
+    {
+      "description": "sim_runtime.py:except-pass#53",
+      "detail": "survived kill battery",
+      "justification": "arm_research_place uses the same ctx evaluate() already passed.",
+      "path": "lumina_core/research_bridge/sim_runtime.py"
+    },
+    {
+      "description": "alarm_executor.py:kw-bool#58",
+      "detail": "survived kill battery",
+      "justification": "escalate is deleted unused in _execute; True vs False is a no-op.",
+      "path": "lumina_core/risk/alarm_executor.py"
+    },
+    {
+      "description": "alarm_executor.py:compare#61",
+      "detail": "survived kill battery",
+      "justification": "elapsed>600 is redundant with sla_decision which already escalates on that wall.",
+      "path": "lumina_core/risk/alarm_executor.py"
+    },
+    {
+      "description": "alarm_executor.py:compare-not#62",
+      "detail": "survived kill battery",
+      "justification": "elapsed>600 is redundant with sla_decision which already escalates on that wall.",
+      "path": "lumina_core/risk/alarm_executor.py"
+    },
+    {
+      "description": "alarm_executor.py:compare#63",
+      "detail": "survived kill battery",
+      "justification": "decision==escalate already covers the reachable SLA-miss states.",
+      "path": "lumina_core/risk/alarm_executor.py"
+    },
+    {
+      "description": "nt_tape.py:boolop#64",
+      "detail": "survived kill battery",
+      "justification": "None/str frames still refuse via missing to_dict after the or/and swap.",
+      "path": "lumina_research/validation/nt_tape.py"
+    },
+    {
+      "description": "alarm_executor.py:compare-not#64",
+      "detail": "survived kill battery",
+      "justification": "decision==escalate already covers the reachable SLA-miss states.",
+      "path": "lumina_core/risk/alarm_executor.py"
+    }
+  ],
+  "kill_rate": 1.0,
+  "n_excluded": 23,
+  "n_killed": 297,
+  "n_mutants": 320,
+  "n_non_equivalent": 297,
+  "n_survived": 0,
+  "raw_kill_rate": 0.928125,
+  "survivors": []
+}

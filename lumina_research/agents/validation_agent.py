@@ -191,6 +191,7 @@ class ValidationAgent(Frozen):
             "n_oos_windows": report.n_oos_windows,
             "median_oos_after_costs": json_float(report.median_oos_after_costs),
             **integrity_fields(report),
+            "tape_kind": self._result_tape_kind(),
         }
         digest, mac = self._authority.seal_validation(fields)
         median_raw = fields["median_oos_after_costs"]
@@ -221,10 +222,21 @@ class ValidationAgent(Frozen):
             regimes_complete=bool(integrity["regimes_complete"]),
             report_sha256=digest,
             provenance_mac=mac,
+            tape_kind="nt_pit" if self._result_tape_kind() == "nt_pit" else "synthetic",
         )
 
     def _guard_validation(self, producer: str, payload: dict[str, object]) -> bool:
         return self._authority.guard_validation(producer, payload)
+
+    def _result_tape_kind(self) -> str:
+        mapper = self._materialize
+        if mapper is None:
+            return "synthetic"
+        module = str(getattr(mapper, "__module__", "") or "")
+        kind = str(getattr(mapper, "tape_kind", "synthetic") or "synthetic")
+        if kind == "nt_pit" and module.startswith("lumina_research.validation.nt_tape"):
+            return "nt_pit"
+        return "synthetic"
 
     def _tape(self, hypothesis: HypothesisProposed) -> Tape:
         mapper = self._materialize

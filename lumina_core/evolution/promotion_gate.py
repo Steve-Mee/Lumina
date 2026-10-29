@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 import statistics
@@ -9,7 +8,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field
 
 from lumina_core.audit import get_audit_logger
 from lumina_core.config_loader import ConfigLoader
@@ -33,6 +32,7 @@ class PromotionCriterion(str, Enum):
     REALITY_GAP = "reality_gap"
     STRESS_DRAWDOWN = "stress_drawdown"
     STATISTICAL_SIGNIFICANCE = "statistical_significance"
+    RESEARCH_SEAL = "research_seal"
 
 
 class PromotionCriterionResult(BaseModel):
@@ -63,6 +63,10 @@ class PromotionGateEvidence(BaseModel):
     live_fill_rate: float | None = Field(default=None, ge=0.0, le=1.0)
     backtest_slippage: float | None = Field(default=None, ge=0.0)
     live_slippage: float | None = Field(default=None, ge=0.0)
+    source: str = ""
+    validation_mac: str = ""
+    report_sha256: str = ""
+    tape_kind: str = ""
 
 
 class PromotionGateDecision(BaseModel):
@@ -134,6 +138,12 @@ class PromotionGate:
         get_audit_logger().register_stream(_STREAM_NAME, self._audit_path)
 
     def evaluate(self, dna_hash: str, *, evidence: PromotionGateEvidence) -> PromotionGateDecision:
+        if not isinstance(evidence, PromotionGateEvidence):
+            return reject_untyped_research_evidence(
+                str(dna_hash or "").strip() or "unknown",
+                timestamp=_utcnow(),
+                config_snapshot=self._config_snapshot(),
+            )
         safe_hash = str(dna_hash or evidence.dna_hash).strip()
         if not safe_hash:
             safe_hash = evidence.dna_hash
@@ -144,6 +154,8 @@ class PromotionGate:
             self._evaluate_stress_drawdown(evidence),
             self._evaluate_statistical_significance(evidence),
         ]
+        if str(evidence.source).strip().lower() == "research":
+            criteria.append(research_seal_result(evidence))
         fail_reasons = tuple(item.criterion.value for item in criteria if not item.passed)
         decision = PromotionGateDecision(
             dna_hash=safe_hash,
@@ -378,18 +390,8 @@ class PromotionGate:
         )
 
 
-def load_promotion_gate_evidence(path: Path, *, dna_hash: str) -> PromotionGateEvidence | None:
-    """Optional helper for offline/CLI checks from a JSON file."""
-    if not path.exists():
-        return None
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(payload, dict):
-        return None
-    payload.setdefault("dna_hash", dna_hash)
-    try:
-        return PromotionGateEvidence.model_validate(payload)
-    except ValidationError:
-        return None
+# Circular: research_seal imports PromotionGate types defined above.
+from lumina_core.evolution.research_seal import (  # noqa: E402
+    reject_untyped_research_evidence,
+    research_seal_result,
+)
