@@ -82,6 +82,30 @@ def sprt_threshold(*, alpha: float, beta: float) -> float:
     return math.log((1.0 - beta) / alpha)
 
 
+def live_noise_vol(values: Sequence[float], *, window: int) -> float | None:
+    """First-difference vol of the last window. Robust to a single mean-shift jump."""
+    if window < 3 or len(values) < 3:
+        return None
+    chunk = tuple(float(item) for item in values[-window:])
+    if any(not math.isfinite(item) for item in chunk):
+        raise ContinuityRefused("non-finite live metric")
+    diffs = tuple(chunk[index] - chunk[index - 1] for index in range(1, len(chunk)))
+    if len(diffs) < 2:
+        return None
+    return float(statistics.pstdev(diffs)) / math.sqrt(2.0)
+
+
+def effective_sigma(oos_stdev: float, series: Sequence[float], *, window: int) -> float:
+    """Regime-conditional variance: never below OOS vol, never changes packaged thresholds."""
+    baseline = oos_stdev if oos_stdev > 0.0 else 0.0
+    live = live_noise_vol(series, window=window)
+    if live is None:
+        return baseline if baseline > 0.0 else 1.0
+    if baseline <= 0.0:
+        return live if live > 0.0 else 1.0
+    return max(baseline, live)
+
+
 def assess_decay(
     series: Sequence[float],
     oos: Sequence[float],
@@ -115,13 +139,18 @@ def assess_decay(
             ready=False,
         )
     live_mean = rolling_mean(series, window)
-    percentile = empirical_percentile(live_mean, oos_values)
-    z_value = z_score(live_mean=live_mean, oos_mean=oos_mean, oos_stdev=oos_stdev, n=window)
-    k = config.cusum_k * (oos_stdev if oos_stdev > 0.0 else 1.0)
+    sigma = effective_sigma(oos_stdev, series, window=window)
+    scale = 1.0
+    if oos_stdev > 0.0 and sigma > oos_stdev:
+        scale = oos_stdev / sigma
+    percentile_live = oos_mean + (live_mean - oos_mean) * scale
+    percentile = empirical_percentile(percentile_live, oos_values)
+    z_value = z_score(live_mean=live_mean, oos_mean=oos_mean, oos_stdev=sigma, n=window)
+    k = config.cusum_k * sigma
     cusum_path = cusum_down(series, mu0=oos_mean, k=k)
     cusum = cusum_path[-1]
-    mu1 = oos_mean - config.sprt_delta * (oos_stdev if oos_stdev > 0.0 else 1.0)
-    llr = sprt_llr(tuple(series)[-window:], mu0=oos_mean, mu1=mu1, sigma=oos_stdev if oos_stdev > 0.0 else 1.0)
+    mu1 = oos_mean - config.sprt_delta * sigma
+    llr = sprt_llr(tuple(series)[-window:], mu0=oos_mean, mu1=mu1, sigma=sigma)
     a_limit = sprt_threshold(alpha=config.sprt_alpha, beta=config.sprt_beta)
     z_sev = _lower_severity(z_value, config.z_deweight, config.z_suspend, config.z_retire)
     pct_sev = _lower_severity(

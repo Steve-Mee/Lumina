@@ -64,6 +64,17 @@ Fitness remains `lumina_research/fitness.py` (median OOS Sharpe after costs, 1�
 
 Staged reductions: `active → deweighted → suspended → retired`. Weights never rise. Additive topics: `research.decay.detected`, `research.signal.deweighted`, `research.signal.suspended`, `research.signal.retired`, `research.capacity.scaled`, `research.guardian.finding`, `research.replenishment.requested`. ADR-0058.
 
+## Phase 5 — empirical proof and Fabric ports (no coupling)
+
+| Path | Role |
+|------|------|
+| `proof/` | Independent P1 suite: Phase 1 gate + two-horizon FAR/TTD vs frozen Phase 4 floors. CLI: `python -m lumina_research.proof verify` |
+| `cycles/` | 12 economic templates × 2 variants (24 pre-filter). First cycle: 12 MES/MNQ variants pre-registered before seeing bars. NT8 1m holdout lock (last 9 months, fail-closed). Real data or a graceful stop. Cost bands and limit-fill model. P3 SIM plan (not started). `python -m lumina_research.proof research` |
+| `ports/` | Research-side Execution Fabric contracts: `SignalIntent`, `ResearchOrderIntent`, `ResearchFillEvent`, fail-closed alerts. Shadow book logs signals and CostModel hypothetical fills. `place_order` / `connect_fabric` raise. ADR-0059 |
+| `monitoring/weekly.py` | Weekly hypothesis / FAR / TTD / capital-preservation report. Guardian also asserts mutation kill ≥ 0.80 and sealed gate passage |
+
+This layer does **not** open a gRPC stream, write NinjaTrader state, expand the SIM whitelist, or set `LIVE_RELEASE`. Those remain live Risk Core + a dedicated ADR.
+
 ## This layer may only propose
 
 `lumina_research` may generate hypotheses, reports, and Validation Gate evidence. It **must never**:

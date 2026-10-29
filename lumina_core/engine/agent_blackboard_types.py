@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from lumina_core.agent_orchestration.schemas_research import (
     CAPACITY_AGENT_ID,
+    FILL_AGENT_ID,
     GOVERNANCE_AGENT_ID,
     GUARDIAN_AGENT_ID,
     HYPOTHESIS_AGENT_ID,
@@ -18,15 +19,21 @@ from lumina_core.agent_orchestration.schemas_research import (
     RESEARCH_CAPACITY_TOPIC,
     RESEARCH_DECAY_TOPIC,
     RESEARCH_DEWEIGHT_TOPIC,
+    RESEARCH_EXECUTION_ALERT_TOPIC,
+    RESEARCH_FILL_OBSERVED_TOPIC,
     RESEARCH_GOVERNANCE_TOPIC,
     RESEARCH_GUARDIAN_TOPIC,
     RESEARCH_HYPOTHESIS_TOPIC,
     RESEARCH_MUTATION_TOPIC,
+    RESEARCH_ORDER_INTENT_TOPIC,
     RESEARCH_PROMOTION_TOPIC,
     RESEARCH_REPLENISH_TOPIC,
     RESEARCH_RETIRE_TOPIC,
+    RESEARCH_SIGNAL_INTENT_TOPIC,
     RESEARCH_SUSPEND_TOPIC,
     RESEARCH_VALIDATION_TOPIC,
+    SAFETY_AGENT_ID,
+    SHADOW_AGENT_ID,
     VALIDATION_AGENT_ID,
 )
 
@@ -93,6 +100,10 @@ DEFAULT_ALLOWED_PRODUCERS: dict[str, set[str]] = {
     RESEARCH_CAPACITY_TOPIC: {CAPACITY_AGENT_ID},
     RESEARCH_GUARDIAN_TOPIC: {GUARDIAN_AGENT_ID},
     RESEARCH_REPLENISH_TOPIC: {REPLENISH_AGENT_ID},
+    RESEARCH_SIGNAL_INTENT_TOPIC: {SHADOW_AGENT_ID},
+    RESEARCH_ORDER_INTENT_TOPIC: {SHADOW_AGENT_ID},
+    RESEARCH_FILL_OBSERVED_TOPIC: {FILL_AGENT_ID, SHADOW_AGENT_ID},
+    RESEARCH_EXECUTION_ALERT_TOPIC: {SAFETY_AGENT_ID},
 }
 
 
@@ -124,6 +135,10 @@ DEFAULT_TOPIC_POLICIES: dict[str, TopicPolicy] = {
     RESEARCH_CAPACITY_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
     RESEARCH_GUARDIAN_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
     RESEARCH_REPLENISH_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
+    RESEARCH_SIGNAL_INTENT_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
+    RESEARCH_ORDER_INTENT_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
+    RESEARCH_FILL_OBSERVED_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
+    RESEARCH_EXECUTION_ALERT_TOPIC: TopicPolicy(critical=True, overflow_strategy="block_fail"),
 }
 
 

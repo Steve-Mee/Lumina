@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import random
-from typing import Literal
+from typing import Literal, assert_never
 
 from lumina_core.agent_orchestration.schemas_research import HypothesisProposed
 from lumina_research.validation.cost_model import MarketSnapshot
+
+
+class MaterializeRefused(ValueError):
+    """Economic hypotheses cannot be turned into a synthetic tape."""
 
 
 def gauss(rng: random.Random) -> float:
@@ -18,6 +22,8 @@ def materialize(
     hypothesis: HypothesisProposed,
 ) -> tuple[tuple[float, ...], tuple[float, ...], tuple[MarketSnapshot, ...]]:
     """Map a sealed hypothesis to gross returns, positions and markets."""
+    if hypothesis.kind == "economic":
+        raise MaterializeRefused("economic hypotheses require a real-data materializer")
     rng = random.Random(hypothesis.seed)
     n = hypothesis.n_obs
     if hypothesis.overfit_in_sample:
@@ -25,10 +31,12 @@ def materialize(
         positions = tuple(1.0 for _ in range(n))
     elif hypothesis.kind == "planted_edge":
         gross = _planted_gross(n, hypothesis.mu, hypothesis.sigma, rng)
-        positions = _positions(hypothesis.kind, n, hypothesis.seed)
-    else:
+        positions = _positions("planted_edge", n, hypothesis.seed)
+    elif hypothesis.kind == "noise":
         gross = tuple(hypothesis.mu + hypothesis.sigma * gauss(rng) for _ in range(n))
-        positions = _positions(hypothesis.kind, n, hypothesis.seed)
+        positions = _positions("noise", n, hypothesis.seed)
+    else:
+        assert_never(hypothesis.kind)
     snap = MarketSnapshot(volume=10_000.0, average_volume=10_000.0, volatility_price=2.0)
     markets = tuple(snap for _ in range(n))
     return gross, positions, markets

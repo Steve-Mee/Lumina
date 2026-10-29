@@ -50,27 +50,30 @@ def canonical_admission(fields: Mapping[str, object]) -> bytes:
 
 
 def canonical_decay(fields: Mapping[str, object]) -> bytes:
-    return _dumps(
-        {
-            "schema_version": fields.get("schema_version", DECAY_SCHEMA_VERSION),
-            "signal_id": fields["signal_id"],
-            "hypothesis_id": fields["hypothesis_id"],
-            "config_id": fields["config_id"],
-            "trial_id": fields["trial_id"],
-            "agent_id": fields["agent_id"],
-            "method": fields["method"],
-            "statistic": fields["statistic"],
-            "threshold": fields["threshold"],
-            "window": fields["window"],
-            "live_mean": fields["live_mean"],
-            "oos_mean": fields["oos_mean"],
-            "oos_stdev": fields["oos_stdev"],
-            "percentile": fields["percentile"],
-            "cusum": fields["cusum"],
-            "sprt_llr": fields["sprt_llr"],
-            "stage": fields["stage"],
-        }
-    )
+    body: dict[str, object] = {
+        "schema_version": fields.get("schema_version", DECAY_SCHEMA_VERSION),
+        "signal_id": fields["signal_id"],
+        "hypothesis_id": fields["hypothesis_id"],
+        "config_id": fields["config_id"],
+        "trial_id": fields["trial_id"],
+        "agent_id": fields["agent_id"],
+        "method": fields["method"],
+        "statistic": fields["statistic"],
+        "threshold": fields["threshold"],
+        "window": fields["window"],
+        "live_mean": fields["live_mean"],
+        "oos_mean": fields["oos_mean"],
+        "oos_stdev": fields["oos_stdev"],
+        "percentile": fields["percentile"],
+        "cusum": fields["cusum"],
+        "sprt_llr": fields["sprt_llr"],
+        "stage": fields["stage"],
+    }
+    if "vol_regime" in fields:
+        body["vol_regime"] = fields["vol_regime"]
+    if "horizon" in fields:
+        body["horizon"] = fields["horizon"]
+    return _dumps(body)
 
 
 def canonical_deweight(fields: Mapping[str, object]) -> bytes:

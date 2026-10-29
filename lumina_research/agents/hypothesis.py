@@ -14,6 +14,7 @@ from lumina_core.agent_orchestration.schemas_research import (
     HypothesisProposed,
 )
 from lumina_core.engine.agent_blackboard import AgentBlackboard
+from lumina_research.agents.economic_templates import TemplateRefused, require_economic_template
 from lumina_research.agents.experiment_log import log_experiment
 from lumina_research.agents.frozen import Frozen
 from lumina_research.agents.generators import HypothesisDraft, HypothesisGenerator
@@ -25,6 +26,11 @@ _INSTRUMENTS: dict[str, Literal["ES", "NQ", "MES", "MNQ"]] = {
     "NQ": "NQ",
     "MES": "MES",
     "MNQ": "MNQ",
+}
+_KINDS: dict[str, Literal["noise", "planted_edge", "economic"]] = {
+    "noise": "noise",
+    "planted_edge": "planted_edge",
+    "economic": "economic",
 }
 
 
@@ -74,8 +80,13 @@ class HypothesisAgent(Frozen):
             if len(drafts) != int(count):
                 raise HypothesisRefused("generator dropped variants; every variant must be emitted")
             for draft in drafts:
-                if draft.kind not in {"noise", "planted_edge"}:
+                if draft.kind not in _KINDS:
                     raise HypothesisRefused(f"unknown hypothesis kind {draft.kind!r}")
+                if draft.kind == "economic":
+                    try:
+                        require_economic_template(draft.generator_id)
+                    except TemplateRefused as exc:
+                        raise HypothesisRefused(str(exc)) from exc
                 published.append(self._accept(draft))
             start += int(count)
         return tuple(published)
@@ -88,7 +99,7 @@ class HypothesisAgent(Frozen):
             metrics={"phase": "generate", "kind": draft.kind, "generator_id": draft.generator_id},
         )
         hypothesis_id = f"hyp-{draft.config_id}"
-        kind: Literal["noise", "planted_edge"] = "planted_edge" if draft.kind == "planted_edge" else "noise"
+        kind = _KINDS[draft.kind]
         payload = HypothesisProposed(
             hypothesis_id=hypothesis_id,
             config_id=draft.config_id,

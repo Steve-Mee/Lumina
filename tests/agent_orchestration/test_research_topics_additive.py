@@ -23,6 +23,10 @@ from lumina_core.agent_orchestration.schemas import (
     RESEARCH_RETIRE_TOPIC,
     RESEARCH_SUSPEND_TOPIC,
     RESEARCH_VALIDATION_TOPIC,
+    RESEARCH_SIGNAL_INTENT_TOPIC,
+    RESEARCH_ORDER_INTENT_TOPIC,
+    RESEARCH_FILL_OBSERVED_TOPIC,
+    RESEARCH_EXECUTION_ALERT_TOPIC,
 )
 from lumina_core.engine.agent_blackboard_types import DEFAULT_ALLOWED_PRODUCERS
 from lumina_core.agent_orchestration.schemas_research import EVENT_BUS_GUARDED_TOPICS
@@ -78,6 +82,10 @@ def test_research_topics_are_registered_and_guarded_additively() -> None:
     assert RESEARCH_CAPACITY_TOPIC in EVENT_BUS_TOPIC_MODELS
     assert RESEARCH_GUARDIAN_TOPIC in EVENT_BUS_TOPIC_MODELS
     assert RESEARCH_REPLENISH_TOPIC in EVENT_BUS_TOPIC_MODELS
+    assert RESEARCH_SIGNAL_INTENT_TOPIC in EVENT_BUS_TOPIC_MODELS
+    assert RESEARCH_ORDER_INTENT_TOPIC in EVENT_BUS_TOPIC_MODELS
+    assert RESEARCH_FILL_OBSERVED_TOPIC in EVENT_BUS_TOPIC_MODELS
+    assert RESEARCH_EXECUTION_ALERT_TOPIC in EVENT_BUS_TOPIC_MODELS
     assert EVENT_BUS_GUARDED_TOPICS == frozenset(
         {
             RESEARCH_PROMOTION_TOPIC,
@@ -91,6 +99,10 @@ def test_research_topics_are_registered_and_guarded_additively() -> None:
             RESEARCH_CAPACITY_TOPIC,
             RESEARCH_GUARDIAN_TOPIC,
             RESEARCH_REPLENISH_TOPIC,
+            RESEARCH_SIGNAL_INTENT_TOPIC,
+            RESEARCH_ORDER_INTENT_TOPIC,
+            RESEARCH_FILL_OBSERVED_TOPIC,
+            RESEARCH_EXECUTION_ALERT_TOPIC,
         }
     )
 

@@ -273,9 +273,9 @@ class ContinuityRuntime(Frozen):
             evolution_log_dir=self._evolution_log_dir,
         )
 
-    def observe(self, signal_id: str, metric: float) -> LiveSignal:
+    def observe(self, signal_id: str, metric: float, *, vix: float | None = None) -> LiveSignal:
         self.assert_intact()
-        return self.monitor.observe(signal_id, metric)
+        return self.monitor.observe(signal_id, metric, vix=vix)
 
     def rebalance(self) -> tuple[LiveSignal, ...]:
         self.assert_intact()
@@ -308,6 +308,7 @@ class ContinuityRuntime(Frozen):
         *,
         decisions: Sequence[dict[str, object]] = (),
         report_dir: Path | None = None,
+        mutation_report: Path | None = None,
     ) -> GuardianReport:
         self.assert_intact(refresh=True)
         if cadence not in {"daily", "weekly"}:
@@ -318,6 +319,7 @@ class ContinuityRuntime(Frozen):
             baseline=self._snapshot,
             trials=self.trials.records(),
             decisions=decisions,
+            mutation_report=mutation_report,
         )
         for signal_id in report.suspend_proposals:
             if self.registry.get(signal_id) is not None:

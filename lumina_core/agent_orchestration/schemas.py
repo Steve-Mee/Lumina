@@ -93,24 +93,32 @@ from lumina_core.agent_orchestration.schemas_research import (
     RESEARCH_CAPACITY_TOPIC,
     RESEARCH_DECAY_TOPIC,
     RESEARCH_DEWEIGHT_TOPIC,
+    RESEARCH_EXECUTION_ALERT_TOPIC,
+    RESEARCH_FILL_OBSERVED_TOPIC,
     RESEARCH_GOVERNANCE_TOPIC,
     RESEARCH_GUARDIAN_TOPIC,
     RESEARCH_HYPOTHESIS_TOPIC,
     RESEARCH_MUTATION_TOPIC,
+    RESEARCH_ORDER_INTENT_TOPIC,
     RESEARCH_PROMOTION_TOPIC,
     RESEARCH_REPLENISH_TOPIC,
     RESEARCH_RETIRE_TOPIC,
+    RESEARCH_SIGNAL_INTENT_TOPIC,
     RESEARCH_SUSPEND_TOPIC,
     RESEARCH_VALIDATION_TOPIC,
     CapacityScaled,
     DecayDetected,
+    ExecutionAlert,
     GovernanceDecision,
     GuardianFinding,
     HypothesisProposed,
     MutationProposed,
     PromotionCandidate,
     ReplenishmentRequested,
+    ResearchFillEvent,
+    ResearchOrderIntent,
     SignalDeweighted,
+    SignalIntent,
     SignalRetired,
     SignalSuspended,
     ValidationResult,
@@ -196,6 +204,10 @@ EVENT_BUS_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     RESEARCH_CAPACITY_TOPIC: CapacityScaled,
     RESEARCH_GUARDIAN_TOPIC: GuardianFinding,
     RESEARCH_REPLENISH_TOPIC: ReplenishmentRequested,
+    RESEARCH_SIGNAL_INTENT_TOPIC: SignalIntent,
+    RESEARCH_ORDER_INTENT_TOPIC: ResearchOrderIntent,
+    RESEARCH_FILL_OBSERVED_TOPIC: ResearchFillEvent,
+    RESEARCH_EXECUTION_ALERT_TOPIC: ExecutionAlert,
 }
 
 CRITICAL_EVENT_BUS_TOPICS: frozenset[str] = frozenset(
@@ -229,6 +241,10 @@ CRITICAL_EVENT_BUS_TOPICS: frozenset[str] = frozenset(
         RESEARCH_CAPACITY_TOPIC,
         RESEARCH_GUARDIAN_TOPIC,
         RESEARCH_REPLENISH_TOPIC,
+        RESEARCH_SIGNAL_INTENT_TOPIC,
+        RESEARCH_ORDER_INTENT_TOPIC,
+        RESEARCH_FILL_OBSERVED_TOPIC,
+        RESEARCH_EXECUTION_ALERT_TOPIC,
     }
 )
 
@@ -260,6 +276,10 @@ BLACKBOARD_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     RESEARCH_CAPACITY_TOPIC: CapacityScaled,
     RESEARCH_GUARDIAN_TOPIC: GuardianFinding,
     RESEARCH_REPLENISH_TOPIC: ReplenishmentRequested,
+    RESEARCH_SIGNAL_INTENT_TOPIC: SignalIntent,
+    RESEARCH_ORDER_INTENT_TOPIC: ResearchOrderIntent,
+    RESEARCH_FILL_OBSERVED_TOPIC: ResearchFillEvent,
+    RESEARCH_EXECUTION_ALERT_TOPIC: ExecutionAlert,
 }
 
 
