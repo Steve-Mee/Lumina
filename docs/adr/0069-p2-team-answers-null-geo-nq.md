@@ -2,7 +2,7 @@
 
 **Status:** Proposed
 **Date:** 2026-10-29
-**Deciders:** Onderzoeksteam answers 2026-10-29 17:34, 18:17, 19:24, and 21:29 (forwarded by Steve; not Steve's opinion) + LUMINA Engineering
+**Deciders:** Onderzoeksteam answers 2026-10-29 17:34, 18:17, 19:24, 21:29, and 22:08 (forwarded by Steve; not Steve's opinion) + LUMINA Engineering
 
 Addendum to ADR-0067 / 0068. Does not rewrite CostModel 1.2.0, DSR 0.95, PBO 0.50,
 A2 planted detection, holdout pin `2026-01-28T23:00:00Z`, or Risk Core.
@@ -21,6 +21,10 @@ content sha256 `74e5941cc57fccaa5d08ea32bcf86bbc07b310db6efdabda431071bb4b9e777c
 Binding input (21:29, passed_gate + power):
 `docs/research/ONDERZOEKERS-ANTWOORDEN-MIDPOINT-20261029T2129.md`
 content sha256 `af183d1d6a9f329942d84bf80854791d69b20cd4264a88ae3da1d9677116e757`.
+
+Binding input (22:08, power floor + limited prereg; research-team answers, not Steve):
+`docs/research/ONDERZOEKERS-ANTWOORDEN-POWER-S4-20261029T2208.md`
+content sha256 `991138fdd4b741041e3288387dd8aaf89a09652329ada7eec7eaa0f037bfae9d`.
 
 ## Context
 
@@ -94,6 +98,15 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
     DSR/PBO see N=33. Do **not** remove the gate check. Then rerun the plant
     at 50% and 25% of known size (linear scale of costed session net; same
     midpoints and seeds). Limited strategy-run stays unrun until a new OK.
+13. **Detection floor (22:08).** Before any limited strategy-run, rerun the
+    same midpoint plant at 12.5% and 6.25% of known size. Same geometry,
+    seeds, v2 builder, and null-first `passed_gate` wiring. Report +OOS /8,
+    DSR, `passed_gate`, and strict null `/32`. A miss with a silent null is
+    a power finding, not a looser gate. Limited ES grid: keep the six
+    `p2l-*` configs unless `p2l-tod-es` is high turnover / ETH on existing
+    data; no extra variants. This change records TOD **keep** (lowest
+    n_trades of the six ATR siblings; RTH-only) and does **not** start the
+    limited run.
 
 ## Consequences
 
@@ -124,6 +137,13 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
   and `n_edge` 0/32 hold on all six rows. Median OOS scales linearly
   (0.0116 / 0.00580 / 0.00290 fade). Verdict `clean` at every band. No
   strategy-run. JSON: `experiments/reports/phase5_p2_midpoint_power.json`.
+- Midpoint power floor PIT (22:08, same ES tape, holdout cut): fade and
+  breakout stay `clean` at 12.5% and 6.25% (`passed_gate` true, +OOS 8/8,
+  DSR 1.0, PBO n=33, `n_edge` 0/32). Median OOS is the exact eighth and
+  sixteenth of the 19:24 known size. Detection floor of this lookahead
+  plant is **at or below 6.25%**. Still saturated; not a realistic-strategy
+  floor. Limited strategy-run not started. JSON:
+  `experiments/reports/phase5_p2_midpoint_power_floor.json`.
 - Null-only empirical (local ES pre-holdout, not committed; 818851 bars,
   `2023-10-01T22:01:00Z`–`2026-01-28T22:00:00Z`, 598 sessions):
 
@@ -160,6 +180,12 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
     peers as trials first.
 12. Run the limited ES fade/breakout grid in this change — rejected (21:29);
     pre-register only.
+13. Skip 12.5%/6.25% because 25% was already saturated — rejected (22:08);
+    measure the floor.
+14. Drop `p2l-tod-es` without checking existing ATR turnover/ETH — rejected.
+    Existing PIT: lowest n_trades of the six, RTH-only. Keep 6 configs.
+15. Start the limited ES run in this change after the floor check — rejected
+    by the current task; preregister only.
 
 ## Links
 
@@ -167,9 +193,11 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
 - Answers freeze (18:17): `docs/research/ONDERZOEKERS-ANTWOORDEN-NULLGATE-20261029T1817.md`
 - Answers freeze (19:24): `docs/research/ONDERZOEKERS-ANTWOORDEN-NULLVAL-20261029T1924.md`
 - Answers freeze (21:29): `docs/research/ONDERZOEKERS-ANTWOORDEN-MIDPOINT-20261029T2129.md`
+- Answers freeze (22:08): `docs/research/ONDERZOEKERS-ANTWOORDEN-POWER-S4-20261029T2208.md`
 - Pre-register (null v2): `experiments/reports/phase5_p2_null_v2_preregister_addendum_2026-10-29.md`
 - Pre-register (midpoint D13): `experiments/reports/phase5_p2_midpoint_d13_preregister_2026-10-29.md`
 - Pre-register (midpoint power): `experiments/reports/phase5_p2_midpoint_power_preregister_2026-10-29.md`
+- Pre-register (midpoint power floor): `experiments/reports/phase5_p2_midpoint_power_floor_preregister_2026-10-29.md`
 - Pre-register (limited ES, not run): `experiments/reports/phase5_p2_limited_es_preregister_2026-10-29.md`
 - Code: `lumina_research/cycles/null_model.py`, `null_only.py`, `null_lock.py`,
   `nq_lock.py`, `geometry.py`, `diagnostics.py`, `atr_cycle.py`,

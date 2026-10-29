@@ -238,6 +238,39 @@ def test_limited_es_preregister_is_not_an_executed_run() -> None:
 
 
 @pytest.mark.unit
+def test_committed_midpoint_power_floor_json_is_clean_and_gate_passes() -> None:
+    payload = json.loads(
+        Path("experiments/reports/phase5_p2_midpoint_power_floor.json").read_text(encoding="utf-8")
+    )
+    assert payload["null_leaked"] is False
+    assert payload["templates_run"] is False
+    assert payload["research_run"] is False
+    assert payload["holdout_opened"] is False
+    assert payload["nq_closed"] is True
+    assert payload["magnitudes"] == [0.125, 0.0625]
+    assert payload["csv_sha256"].startswith("6100588d")
+    assert payload["n_bars_es"] == 818851
+    assert payload["es_last_ts"] == "2026-01-28T22:00:00Z"
+    by_mag = {row["planted_magnitude"]: row for row in payload["bands"]}
+    for magnitude in (0.125, 0.0625):
+        band = by_mag[magnitude]
+        assert band["overall_verdict"] == POWER_CLEAN
+        names = {row["name"]: row for row in band["geometries"]}
+        for name in ("fade", "breakout"):
+            row = names[name]
+            assert row["planted_detected"] is True
+            assert row["planted_passed_gate"] is True
+            assert row["planted_reject_reasons"] == []
+            assert row["planted_pbo_n_configs"] == 33
+            assert row["n_trials"] == 33
+            assert row["exact_edge"] == "0/32"
+            assert row["exact_oos"] == "8/8"
+            assert row["planted_n_oos_windows"] == 8
+            assert row["planted_n_positive_oos"] == 8
+            assert row["planted_dsr"] == 1.0
+
+
+@pytest.mark.unit
 def test_power_floor_preregister_locks_125_and_625_before_a_run() -> None:
     text = Path("experiments/reports/phase5_p2_midpoint_power_floor_preregister_2026-10-29.md").read_text(
         encoding="utf-8"
