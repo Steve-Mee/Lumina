@@ -1,9 +1,9 @@
 # Phase 5 P2 research cycles
 
-- generated_at: `2026-10-29T11:24:25.952275+00:00`
-- hypotheses: `12` tested: `0` killed: `0` survivors: `0`
-- kill_rate: `n/a` (expectation > 0.90, diagnostic flag `not_tested`)
-- stopped: `True` reason: `positive_control_failed`
+- generated_at: `2026-10-29T11:49:05.667883+00:00`
+- hypotheses: `12` tested: `12` killed: `12` survivors: `0`
+- kill_rate: `1.0000` (expectation > 0.90, diagnostic flag `expected_high_kill`)
+- stopped: `False` reason: ``
 - real data usable: `True`
 
 ## Data requirement (if unusable)
@@ -39,6 +39,18 @@
 
 | id | template | inst | tested | passed | death | PBO | DSR | WFE |
 |---|---|---|---|---|---|---|---|---|
+| hyp-mr-mes-10-1.5 | mean_reversion | MES | True | False | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 | 0.000 | 0.000 | n/a |
+| hyp-vi-mnq-10-0.55 | volume_imbalance | MNQ | True | False | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 | 0.000 | 0.000 | n/a |
+| hyp-rm-mes-10-0.40 | regime_momentum | MES | True | False | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 | 0.000 | 0.000 | n/a |
+| hyp-or-mes-5-bo | opening_range_breakout | MES | True | False | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 | 0.000 | 0.000 | n/a |
+| hyp-or-mnq-15-fade | opening_range_fade | MNQ | True | False | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 | 0.000 | 0.000 | n/a |
+| hyp-gap-mes-8 | overnight_gap | MES | True | False | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 | 0.000 | 0.000 | n/a |
+| hyp-vwap-mes-20-1.5 | vwap_distance | MES | True | False | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 | 0.000 | 0.000 | n/a |
+| hyp-rc-mes-20-0.25 | range_compression | MES | True | False | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 | 0.000 | 0.000 | n/a |
+| hyp-cr-mes-3 | close_reversal | MES | True | False | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 | 0.000 | 0.000 | n/a |
+| hyp-tod-mes-15 | time_of_day_inventory | MES | True | False | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60,static_structural_decay | 0.000 | 0.000 | n/a |
+| hyp-pb-mnq-20 | trend_pullback | MNQ | True | False | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 | 0.000 | 0.000 | n/a |
+| hyp-vx-mes-20 | volatility_expansion | MES | True | False | dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 | 0.000 | 0.000 | n/a |
 
 ## Survivors
 
@@ -55,8 +67,8 @@ None. Expected: most economically simple hypotheses die at the Validation Gate.
 - 1m four-leg costs (ADR-0055/1.1 vol-term) then Globex session-day resample
 - floors unchanged: DSR>=0.95, PBO hard 0.50 / warn 0.25, min 6 OOS; static rules use A2 not WFE
 - geometry is pre-registered per template; shadow only; zero orders; S0 freeze untouched
-- positive_control_detected: `False` null_detected: `None`
-- control: positive control was not detected or the null control looked like an edge
+- positive_control_detected: `True` null_detected: `False`
+- control: Planted edge: at the first RTH bar of each session, the control knows the sign of that session's last-RTH-close minus first-RTH-open (unadjusted). It holds that direction until RTH close (session flatten, C10). Brackets are 1:1 20000/20000 ticks (CME 20% limit-move ceiling; not an 8-tick clip) so a shuffled 50% null is not a 2R artefact. time_stop_bars=2000 cannot fire inside one RTH session. Four-leg costs unchanged. Known size is the session RTH open-to-close move minus costs.
 
 
 ## Holdout evaluation (survivors only, one pass)

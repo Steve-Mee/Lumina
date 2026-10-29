@@ -6,7 +6,7 @@
     "rolls": "NinjaTrader 8",
     "timestamps": "UTC bar-close"
   },
-  "generated_at": "2026-10-29T11:24:19.600110+00:00",
+  "generated_at": "2026-10-29T11:47:57.523359+00:00",
   "holdout_start_utc": "2026-01-28T23:00:00+00:00",
   "instruments": {
     "MES": {
