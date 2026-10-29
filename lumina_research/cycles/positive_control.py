@@ -20,12 +20,13 @@ from lumina_research.cycles.data import ResearchBar
 from lumina_research.cycles.execution import ExecutionResult, run_execution
 from lumina_research.cycles.geometry import require_geometry
 from lumina_research.cycles.null_model import (
+    NULL_BUILDER,
     NULL_EMBARGO,
     classify_null_a2,
     default_block_seeds,
     default_null_seeds,
-    drift_aware_null_signals,
     null_seed_is_false_edge,
+    null_signals_for_builder,
     remap_session_net,
     session_open_close,
     signal_map_by_session,
@@ -187,9 +188,10 @@ def build_null_signals(
     is_size: int,
     oos_size: int,
     embargo: int = NULL_EMBARGO,
+    builder: str = NULL_BUILDER,
 ) -> tuple[float, ...]:
-    """Patch point for the identity-null attack. Production is drift-aware."""
-    return drift_aware_null_signals(
+    """Patch point for the identity-null attack. Production is the v2 builder."""
+    return null_signals_for_builder(
         planted,
         seed=seed,
         session_dates=session_dates,
@@ -197,6 +199,7 @@ def build_null_signals(
         is_size=is_size,
         oos_size=oos_size,
         embargo=embargo,
+        builder=builder,
     )
 
 
@@ -360,6 +363,7 @@ def run_controls(
     geometry_mode: str = "unclipped",
     target_atr: float | None = None,
     stop_atr: float | None = None,
+    null_builder: str = NULL_BUILDER,
 ) -> ControlReport:
     tape = prepared.get("MES") or next(iter(prepared.values()))
     root = tape.instrument
@@ -402,6 +406,7 @@ def run_controls(
             is_size=is_size,
             oos_size=oos_size,
             embargo=embargo,
+            builder=null_builder,
         )
         if remap_ok:
             null_map = signal_map_by_session(null_signals, tape.session_dates)
@@ -553,12 +558,10 @@ def run_controls(
         median_of_medians=float(median_of_medians),
         planted_beats_null=planted_beats,
         drift_seeds=tuple(
-            _seed_outcome(seed, "drift", evaluation, hit, false_edge=edge)
-            for seed, evaluation, hit, edge in drift_rows
+            _seed_outcome(seed, "drift", evaluation, hit, false_edge=edge) for seed, evaluation, hit, edge in drift_rows
         ),
         block_seeds=tuple(
-            _seed_outcome(seed, "block", evaluation, hit, false_edge=edge)
-            for seed, evaluation, hit, edge in block_rows
+            _seed_outcome(seed, "block", evaluation, hit, false_edge=edge) for seed, evaluation, hit, edge in block_rows
         ),
         n_trials_this_root=n_trials_root,
         n_edge=n_edge,
@@ -584,7 +587,7 @@ def run_controls(
                 f"Drift-aware null, {len(seeds)} seeds, A2 {a2_class.exact} "
                 f"({a2_class.status}), calibrated 7/8 edge {edge_class.exact} "
                 f"({edge_class.status}); fail-closed cap {edge_class.ten_pct_cap}, "
-                f"borderline {edge_class.borderline_count}; week-block extra only; "
+                f"fail-at {edge_class.borderline_count}; week-block extra only; "
                 f"median-of-medians {median_of_medians:.6g}."
             ),
         ),

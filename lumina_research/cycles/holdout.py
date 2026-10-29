@@ -12,6 +12,7 @@ for selection, tuning, or gate calibration.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timezone
 
 from lumina_research.cycles.data import LoadedTape, ResearchBar
@@ -34,6 +35,17 @@ EVAL_PURPOSES: frozenset[str] = frozenset({"evaluation", "holdout_eval"})
 
 class HoldoutLocked(ValueError):
     """Holdout bars were requested for a forbidden purpose, or the split cannot be formed."""
+
+
+def assert_no_holdout_timestamps(
+    bars: Sequence[ResearchBar],
+    *,
+    pin_ns: int = P2_HOLDOUT_START_NS,
+) -> None:
+    """Refuse any bar on or after the Globex holdout pin 2026-01-28T23:00:00Z."""
+    for item in bars:
+        if int(item.ts_ns) >= int(pin_ns):
+            raise HoldoutLocked(f"pre-holdout tape contains a timestamp on or after {P2_HOLDOUT_START_UTC.isoformat()}")
 
 
 def holdout_ns(months: int = HOLDOUT_MONTHS) -> int:

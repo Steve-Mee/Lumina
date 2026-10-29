@@ -10,6 +10,8 @@ from typing import Sequence
 from lumina_research.cycles.atr_cycle import run_atr_es_cycle
 from lumina_research.cycles.four_instrument import run_four_instrument_cycle
 from lumina_research.cycles.null_audit import run_null_audit
+from lumina_research.cycles.null_lock import NullLeaks, assert_research_allowed
+from lumina_research.cycles.null_only import run_null_only, synthetic_drift_tape
 from lumina_research.cycles.runner import run_research_cycles
 from lumina_research.monitoring.cli import run_scan as run_guardian_scan
 from lumina_research.proof.independent import HOLDOUT_INSTRUMENTS, HOLDOUT_SEEDS, assert_holdout_seeds
@@ -37,9 +39,15 @@ def build_parser() -> argparse.ArgumentParser:
     research.add_argument("--data-dir", type=Path, default=None)
     research.add_argument(
         "--cycle",
-        choices=("first", "four-instrument", "null-audit", "atr-es"),
+        choices=("first", "four-instrument", "null-audit", "atr-es", "null-only"),
         default="first",
-        help="first: MES/MNQ 12. four-instrument: cost-fix+ES/NQ. null-audit: D13 multi-seed. atr-es: ES ATR grid.",
+        help="first: MES/MNQ 12. four-instrument: cost-fix+ES/NQ. null-audit: D13 multi-seed. atr-es: ES ATR grid. null-only: FPR validation, no templates.",
+    )
+    research.add_argument(
+        "--es-csv",
+        type=Path,
+        default=None,
+        help="null-only: local pre-holdout ES CSV. Not committed.",
     )
     research.add_argument(
         "--reuse-mes-mnq",
@@ -76,6 +84,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stderr.write("empirical verification floors failed; detector may be tuned, floors may not\n")
         return 2
     if command == "research":
+        if str(args.cycle) == "null-only":
+            null_cycle = run_null_only(
+                work_dir=args.work_dir,
+                report_dir=args.report_dir,
+                es_csv=args.es_csv,
+                synthetic=synthetic_drift_tape(),
+            )
+            if not null_cycle.strict_gate_pass:
+                sys.stderr.write("null-only: strict 7/8 FPR is above 3/32; research-run stays locked\n")
+                return 2
+            return 0
+        if str(args.cycle) in {"first", "four-instrument", "atr-es"}:
+            try:
+                assert_research_allowed(Path(args.report_dir))
+            except NullLeaks as exc:
+                sys.stderr.write(f"{exc}\n")
+                return 2
         if str(args.cycle) == "null-audit":
             audit = run_null_audit(
                 work_dir=args.work_dir,

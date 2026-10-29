@@ -34,6 +34,7 @@ from lumina_research.cycles.seal import (
 )
 from lumina_research.proof.cli import build_parser, main as proof_main
 from lumina_research.validation.trial_registry import TrialRegistry
+from tests.research.null_only_stub import write_passing_null_only_json
 from tests.research.test_phase5_p2 import _span_bars
 from tests.research.test_phase5_p2_fixes import _control_tape
 
@@ -274,7 +275,21 @@ def test_cli_four_instrument_cycle_flag(tmp_path: Path, monkeypatch: pytest.Monk
         "lumina_research.proof.cli.run_four_instrument_cycle",
         _run,
     )
-    assert proof_main(["research", "--cycle", "four-instrument", "--work-dir", str(tmp_path)]) == 0
+    write_passing_null_only_json(tmp_path)
+    assert (
+        proof_main(
+            [
+                "research",
+                "--cycle",
+                "four-instrument",
+                "--work-dir",
+                str(tmp_path),
+                "--report-dir",
+                str(tmp_path),
+            ]
+        )
+        == 0
+    )
     assert captured and captured[0]["work_dir"] == tmp_path
     assert captured[0]["reuse_mes_mnq"] is False
     captured.clear()
@@ -286,6 +301,8 @@ def test_cli_four_instrument_cycle_flag(tmp_path: Path, monkeypatch: pytest.Monk
                 "four-instrument",
                 "--reuse-mes-mnq",
                 "--work-dir",
+                str(tmp_path),
+                "--report-dir",
                 str(tmp_path),
             ]
         )

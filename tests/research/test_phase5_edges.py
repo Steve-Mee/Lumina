@@ -58,7 +58,11 @@ from lumina_research.monitoring.config import load_default_config
 from lumina_research.monitoring.horizons import combined_assessment
 from lumina_research.monitoring.loop import ContinuityRuntime
 from lumina_research.monitoring.material import _max_drawdown, _ratio, assess_material
-from lumina_research.monitoring.mutation_report import MutationFloorResult, evaluate_mutation_floor, resolve_mutation_report
+from lumina_research.monitoring.mutation_report import (
+    MutationFloorResult,
+    evaluate_mutation_floor,
+    resolve_mutation_report,
+)
 from lumina_research.monitoring.report import (
     DetectionPath,
     DetectionReport,
@@ -77,11 +81,17 @@ from lumina_research.ports.sim_safety import SimSafetyConfig, SimSafetyGate, Sim
 from lumina_research.proof import cli as cli_mod
 from lumina_research.proof import runner as runner_mod
 from lumina_research.proof.cli import build_parser, main as proof_main
-from lumina_research.proof.continuity_suite import ContinuitySuiteReport, _medium_holds, _short_holds, run_independent_continuity
+from lumina_research.proof.continuity_suite import (
+    ContinuitySuiteReport,
+    _medium_holds,
+    _short_holds,
+    run_independent_continuity,
+)
 from lumina_research.proof.gate_suite import GateCase, GateSuiteReport
 from lumina_research.proof.independent import INDEPENDENT_SEEDS, assert_independent_seeds, decaying_kind, path_for
 from lumina_research.proof.log import log_proof_event
 from lumina_research.proof.runner import _failures, run_empirical_verification
+from tests.research.null_only_stub import write_passing_null_only_json
 from tests.research.phase4_harness import admit_signal, make_runtime
 from tests.research.test_phase5_cycles import _bars, _write_csv
 from tests.research.test_phase5_proof import _kind, _report
@@ -190,14 +200,15 @@ def test_proof_cli_verify_weekly_and_unknown(tmp_path: Path, monkeypatch: pytest
         kill_rate_flag = "flag_all_dead_check_known_good_synthetics"
 
     monkeypatch.setattr(cli_mod, "run_research_cycles", lambda **_kwargs: _Cycle())
-    assert proof_main(["research"]) == 0
+    write_passing_null_only_json(tmp_path)
+    assert proof_main(["research", "--report-dir", str(tmp_path)]) == 0
 
     class _Quiet:
         data = _Data()
         kill_rate_flag = "within_expectation"
 
     monkeypatch.setattr(cli_mod, "run_research_cycles", lambda **_kwargs: _Quiet())
-    assert proof_main(["research"]) == 0
+    assert proof_main(["research", "--report-dir", str(tmp_path)]) == 0
 
     captured: list[list[str]] = []
 
@@ -997,4 +1008,6 @@ def test_strategy_signed_branches() -> None:
                 volume=1_000.0,
             )
         )
-    simulate(family="range_compression", bars=tuple(compress), geometry=geo, lookback=20, threshold=0.1, mode="breakout")
+    simulate(
+        family="range_compression", bars=tuple(compress), geometry=geo, lookback=20, threshold=0.1, mode="breakout"
+    )

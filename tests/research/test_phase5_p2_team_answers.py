@@ -18,6 +18,7 @@ from lumina_research.cycles.null_model import (
     NULL_CALIBRATED_POSITIVE_SHARE,
     classify_null_a2,
     fail_closed_a2_cap,
+    fail_closed_hit_count,
     null_seed_is_false_edge,
 )
 from lumina_research.cycles.positive_control import (
@@ -40,12 +41,14 @@ AUDIT_JSON = Path("experiments/reports/phase5_p2_multiseed_null_audit.json")
 @pytest.mark.unit
 def test_null_bar_is_four_of_thirty_two_not_majority() -> None:
     assert fail_closed_a2_cap(32) == 3
+    assert fail_closed_hit_count(32) == 4
     assert classify_null_a2(0, 32).status == "reliable"
     assert classify_null_a2(3, 32).exact == "3/32"
     assert classify_null_a2(3, 32).within_ten_pct is True
     mes_atr = classify_null_a2(4, 32)
-    assert mes_atr.status == "borderline"
-    assert mes_atr.reliable is True
+    assert mes_atr.status == "unreliable"
+    assert mes_atr.reliable is False
+    assert mes_atr.borderline is False
     assert mes_atr.exact == "4/32"
     leaked = classify_null_a2(5, 32)
     assert leaked.status == "unreliable"
@@ -78,12 +81,13 @@ def test_action1_unclipped_null_a2_and_calibrated_edge_from_frozen_json() -> Non
 
 
 @pytest.mark.unit
-def test_atr_d13_counts_from_end_report_are_es_pass_mes_borderline() -> None:
+def test_atr_d13_counts_from_end_report_are_es_pass_mes_fail() -> None:
     es = classify_null_a2(1, 32)
     mes = classify_null_a2(4, 32)
     assert es.status == "reliable"
     assert es.exact == "1/32"
-    assert mes.status == "borderline"
+    assert mes.status == "unreliable"
+    assert mes.reliable is False
     assert mes.exact == "4/32"
 
 

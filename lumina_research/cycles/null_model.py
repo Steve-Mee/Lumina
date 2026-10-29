@@ -1,22 +1,18 @@
 """Drift-aware multi-seed null for D13. Pre-registered 2026-10-29.
 
 A permutation of session signs keeps the up/down count. On a tape with
-positive drift that imbalance still clears A2. This builder **detrends and
-balances** signs inside each non-overlapping walk-forward partition
-(onderzoeksteam 17:34: keep both; Q-NULL-2).
+positive drift that imbalance still clears A2. Production builder (18:17):
+linear OLS detrend of session OC vs time index, session-shuffle of residual
+signs, count-balance, then greedy magnitude-balance on ``|OC|`` inside each
+walk-forward partition. Detrend and balance both stay required.
 
-Fail-closed (Q-NULL-1, 17:34): a null is unreliable when too many of the 32
-seeds *look like an edge*. Majority ``16/32`` is not the gate. Exact
-``n_a2/n_seeds`` is always reported as an A2 diagnostic (``4/32`` =
-borderline/monitor, e.g. MES ATR).
+Replacing the session shuffle with an ISO-week block-shuffle would preserve
+intra-week drift and raise FPR. Week-block of planted signs stays the
+report-only extra 8 seeds, never the production shuffle.
 
-Raw A2 (median>0 and +OOS≥0.60 on 8 windows) has P≈0.36 under a fair null,
-so P(n_a2≥4)≈1 and cannot be the cycle stop. The gate uses the calibrated
-7/8 tail (``NULL_CALIBRATED_POSITIVE_SHARE``): a seed is a false edge only
-when A2 fires *and* +OOS≥0.875. Then the same 3/4/5 classifier applies to
-``n_edge``. P(n_edge≥4 | 32)≈0.025, inside a conservative 5–10% Type I band.
-
-ISO calendar-week block-shuffle is an extra reported check, never the gate.
+Primary gate (18:17): a seed is a false edge when A2 fires **and** +OOS≥7/8.
+Exact ``n_a2`` stays diagnostic. The null fails when ``n_edge >= 4/32``
+(4 is fail, not monitor). Target FPR 5–10%. Majority ``16/32`` is not the gate.
 """
 
 from __future__ import annotations
@@ -36,12 +32,12 @@ NULL_A2_MAX_SHARE = 0.10
 NULL_BLOCK_N_SEEDS = 8
 NULL_BLOCK_SEED_BASE = 20261129
 NULL_EMBARGO = 1
-# Team 17:34: 4/32 is the edge of the fail region (MES ATR). Not a silent pass.
-NULL_BORDERLINE_SHARE_OFFSET = 1
-# Calibrated "looks like an edge" for the 32-seed gate. A2 is median>0 and
-# +OOS>=0.60 (5/8). On 8 fair windows P(A2)≈0.36, so P(n_a2>=4)≈1 and a true
-# null would always fail. 7/8 is Bin(8,0.5) one-sided p≈0.035; then
-# P(n_edge>=4 | 32)≈0.025, inside a conservative 5–10% Type I band.
+# Team 18:17: 4/32 is fail (band 4–5). Not borderline/monitor.
+NULL_FAIL_AT_OFFSET = 1
+NULL_BUILDER_V1 = "mean_shuffle"
+NULL_BUILDER_V2 = "linear_magnitude"
+NULL_BUILDER = NULL_BUILDER_V2
+# Gate: A2 and +OOS>=0.875 (7/8). Raw A2 (+OOS>=0.60) is diagnostic only.
 NULL_CALIBRATED_POSITIVE_SHARE = 0.875
 
 
@@ -61,13 +57,18 @@ def max_a2_hits(n_seeds: int, *, share: float = NULL_A2_MAX_SHARE) -> int:
 
 
 def fail_closed_a2_cap(n_seeds: int) -> int:
-    """Classifier cap for both A2 diagnostics and calibrated 7/8 edge counts."""
+    """Last reliable count: ``3`` of 32 (10% cap). ``4`` fails."""
     return max_a2_hits(n_seeds)
 
 
+def fail_closed_hit_count(n_seeds: int) -> int:
+    """First fail count: ``4`` of 32."""
+    return max_a2_hits(n_seeds) + NULL_FAIL_AT_OFFSET
+
+
 def borderline_a2_hits(n_seeds: int) -> int:
-    """Exactly one above the 10% cap (4 of 32). Monitor, do not hard-stop."""
-    return max_a2_hits(n_seeds) + NULL_BORDERLINE_SHARE_OFFSET
+    """Retired 18:17 alias for the fail-at count. ``4`` is fail, not monitor."""
+    return fail_closed_hit_count(n_seeds)
 
 
 def majority_a2_cap(n_seeds: int) -> int:
@@ -102,37 +103,30 @@ def null_seed_is_false_edge(*, detected: bool, pct_positive: float) -> bool:
 def classify_null_a2(n_a2: int, n_seeds: int) -> NullReliability:
     """Classify a 32-seed count. Always keep the exact fraction.
 
-    Used for the A2 diagnostic (``n_a2``) and the calibrated 7/8 gate
-    (``n_edge``). Same bar: ``≤3`` reliable, ``4`` borderline/monitor,
-    ``≥5`` unreliable. Cycle stop uses ``n_edge``, not raw A2.
+    Gate uses calibrated ``n_edge`` (A2 and +OOS≥7/8). Raw ``n_a2`` is
+    diagnostic. ``≤3/32`` reliable; ``≥4/32`` unreliable (4 is fail).
     """
     if n_seeds < 1:
         raise ValueError("n_seeds must be >= 1")
     if n_a2 < 0:
         raise ValueError("n_a2 must be >= 0")
     cap = fail_closed_a2_cap(n_seeds)
-    edge = borderline_a2_hits(n_seeds)
+    fail_at = fail_closed_hit_count(n_seeds)
     exact = f"{int(n_a2)}/{int(n_seeds)}"
     if n_a2 <= cap:
         status = "reliable"
         reliable = True
-        borderline = False
-    elif n_a2 == edge:
-        status = "borderline"
-        reliable = True
-        borderline = True
     else:
         status = "unreliable"
         reliable = False
-        borderline = False
     return NullReliability(
         n_a2=int(n_a2),
         n_seeds=int(n_seeds),
         exact=exact,
         ten_pct_cap=cap,
-        borderline_count=edge,
+        borderline_count=fail_at,
         within_ten_pct=n_a2 <= cap,
-        borderline=borderline,
+        borderline=False,
         reliable=reliable,
         status=status,
     )
@@ -197,6 +191,29 @@ def partition_session_windows(
     return tuple(ranges)
 
 
+def mean_shuffle_balance_null_signals(
+    planted: Sequence[float],
+    *,
+    seed: int,
+    session_dates: Sequence[date],
+    oc_by_date: Mapping[date, float],
+    is_size: int,
+    oos_size: int,
+    embargo: int = NULL_EMBARGO,
+) -> tuple[float, ...]:
+    """v1 builder (before 18:17): mean detrend, session shuffle, count-balance."""
+    return _partition_null_signals(
+        planted,
+        seed=seed,
+        session_dates=session_dates,
+        oc_by_date=oc_by_date,
+        is_size=is_size,
+        oos_size=oos_size,
+        embargo=embargo,
+        builder=NULL_BUILDER_V1,
+    )
+
+
 def drift_aware_null_signals(
     planted: Sequence[float],
     *,
@@ -207,10 +224,64 @@ def drift_aware_null_signals(
     oos_size: int,
     embargo: int = NULL_EMBARGO,
 ) -> tuple[float, ...]:
-    """Detrend session OC **and** balance signs per walk-forward partition.
+    """v2 builder (18:17): linear detrend, session shuffle, count+magnitude balance."""
+    return _partition_null_signals(
+        planted,
+        seed=seed,
+        session_dates=session_dates,
+        oc_by_date=oc_by_date,
+        is_size=is_size,
+        oos_size=oos_size,
+        embargo=embargo,
+        builder=NULL_BUILDER,
+    )
 
-    Both steps are required (Q-NULL-2). Do not drop either.
-    """
+
+def null_signals_for_builder(
+    planted: Sequence[float],
+    *,
+    seed: int,
+    session_dates: Sequence[date],
+    oc_by_date: Mapping[date, float],
+    is_size: int,
+    oos_size: int,
+    embargo: int = NULL_EMBARGO,
+    builder: str = NULL_BUILDER,
+) -> tuple[float, ...]:
+    if builder == NULL_BUILDER_V1:
+        return mean_shuffle_balance_null_signals(
+            planted,
+            seed=seed,
+            session_dates=session_dates,
+            oc_by_date=oc_by_date,
+            is_size=is_size,
+            oos_size=oos_size,
+            embargo=embargo,
+        )
+    if builder != NULL_BUILDER_V2:
+        raise ValueError(f"unknown null builder {builder!r}")
+    return drift_aware_null_signals(
+        planted,
+        seed=seed,
+        session_dates=session_dates,
+        oc_by_date=oc_by_date,
+        is_size=is_size,
+        oos_size=oos_size,
+        embargo=embargo,
+    )
+
+
+def _partition_null_signals(
+    planted: Sequence[float],
+    *,
+    seed: int,
+    session_dates: Sequence[date],
+    oc_by_date: Mapping[date, float],
+    is_size: int,
+    oos_size: int,
+    embargo: int,
+    builder: str,
+) -> tuple[float, ...]:
     if len(planted) != len(session_dates):
         raise ValueError("planted signals and session dates must align")
     sessions = unique_sessions(session_dates)
@@ -229,18 +300,17 @@ def drift_aware_null_signals(
         if not signed:
             continue
         ocs = [float(oc_by_date.get(day, 0.0)) for day in signed]
-        mean_oc = sum(ocs) / float(len(ocs))
-        residuals: list[float] = []
-        for day, oc in zip(signed, ocs, strict=True):
-            delta = oc - mean_oc
-            if delta > 0.0:
-                residuals.append(1.0)
-            elif delta < 0.0:
-                residuals.append(-1.0)
-            else:
-                residuals.append(float(planted[first_index[day]]))
-        rng.shuffle(residuals)
-        balanced = _balance_signs(residuals)
+        if builder == NULL_BUILDER_V1:
+            mean_oc = sum(ocs) / float(len(ocs))
+            residuals = [oc - mean_oc for oc in ocs]
+            signs = _signs_from_residuals(residuals, planted, signed, first_index)
+            rng.shuffle(signs)
+            balanced = _balance_signs(signs)
+        else:
+            residuals = _linear_residuals(ocs)
+            signs = _signs_from_residuals(residuals, planted, signed, first_index)
+            rng.shuffle(signs)
+            balanced = _balance_signed_magnitude(_balance_signs(signs), ocs)
         for day, sign in zip(signed, balanced, strict=True):
             assigned[day] = sign
     out = [0.0] * len(planted)
@@ -308,6 +378,87 @@ def remap_session_net(
             continue
         out.append((null / planted) * float(gross) - cost)
     return tuple(out)
+
+
+def _linear_residuals(values: Sequence[float]) -> list[float]:
+    count = len(values)
+    if count < 2:
+        mean = sum(values) / float(count) if count else 0.0
+        return [float(item) - mean for item in values]
+    sum_x = float(count * (count - 1)) / 2.0
+    sum_xx = float((count - 1) * count * (2 * count - 1)) / 6.0
+    sum_y = sum(float(item) for item in values)
+    sum_xy = sum(float(index) * float(item) for index, item in enumerate(values))
+    denom = float(count) * sum_xx - sum_x * sum_x
+    if denom == 0.0:
+        mean = sum_y / float(count)
+        return [float(item) - mean for item in values]
+    slope = (float(count) * sum_xy - sum_x * sum_y) / denom
+    intercept = (sum_y - slope * sum_x) / float(count)
+    return [float(item) - (intercept + slope * float(index)) for index, item in enumerate(values)]
+
+
+def _signs_from_residuals(
+    residuals: Sequence[float],
+    planted: Sequence[float],
+    signed: Sequence[date],
+    first_index: Mapping[date, int],
+) -> list[float]:
+    out: list[float] = []
+    for day, residual in zip(signed, residuals, strict=True):
+        if residual > 0.0:
+            out.append(1.0)
+        elif residual < 0.0:
+            out.append(-1.0)
+        else:
+            out.append(float(planted[first_index[day]]))
+    return out
+
+
+def _week_block_shuffle_in_window(
+    days: Sequence[date],
+    signs: Sequence[float],
+    rng: random.Random,
+) -> list[float]:
+    weeks: dict[tuple[int, int], list[float]] = {}
+    order: list[tuple[int, int]] = []
+    for day, sign in zip(days, signs, strict=True):
+        iso = day.isocalendar()
+        key = (int(iso.year), int(iso.week))
+        if key not in weeks:
+            weeks[key] = []
+            order.append(key)
+        weeks[key].append(float(sign))
+    shuffled = list(order)
+    rng.shuffle(shuffled)
+    flat: list[float] = []
+    for key in shuffled:
+        flat.extend(weeks[key])
+    return flat
+
+
+def _balance_signed_magnitude(signs: Sequence[float], moves: Sequence[float]) -> list[float]:
+    out = [float(item) for item in signs]
+    mags = [abs(float(item)) for item in moves]
+    if len(out) != len(mags):
+        raise ValueError("signs and moves must align")
+    for _ in range(len(out)):
+        current = sum(sign * mag for sign, mag in zip(out, mags, strict=True))
+        best_abs = abs(current)
+        swap: tuple[int, int] | None = None
+        pos = [index for index, value in enumerate(out) if value > 0.0]
+        neg = [index for index, value in enumerate(out) if value < 0.0]
+        for left in pos:
+            for right in neg:
+                candidate = current - 2.0 * mags[left] + 2.0 * mags[right]
+                if abs(candidate) + 1e-12 < best_abs:
+                    best_abs = abs(candidate)
+                    swap = (left, right)
+        if swap is None:
+            break
+        left, right = swap
+        out[left], out[right] = out[right], out[left]
+    return out
 
 
 def _first_signal_index(

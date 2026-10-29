@@ -68,11 +68,14 @@ from lumina_research.cycles.holdout import (
 )
 from lumina_research.cycles.null_model import (
     NULL_A2_MAX_SHARE,
+    NULL_BUILDER,
+    NULL_BUILDER_V2,
     NULL_CALIBRATED_POSITIVE_SHARE,
     NULL_N_SEEDS,
     classify_null_a2,
     default_null_seeds,
     fail_closed_a2_cap,
+    fail_closed_hit_count,
     majority_a2_cap,
     max_a2_hits,
     null_seed_is_false_edge,
@@ -615,8 +618,16 @@ def _kill_deeper() -> None:
         _fail("5/8 A2 must not count as a calibrated false edge")
     if null_seed_is_false_edge(detected=True, pct_positive=0.875) is not True:
         _fail("7/8 A2 must count as a calibrated false edge")
-    if classify_null_a2(4, 32).status != "borderline":
-        _fail("4/32 A2 must stay borderline/monitor")
+    if fail_closed_hit_count(32) != 4:
+        _fail("fail-at must stay 4 of 32")
+    if NULL_BUILDER != NULL_BUILDER_V2 or NULL_BUILDER != "linear_magnitude":
+        _fail("production null builder must stay linear_magnitude")
+    if classify_null_a2(4, 32).status != "unreliable":
+        _fail("4/32 is fail, not monitor")
+    if classify_null_a2(4, 32).reliable is not False:
+        _fail("4/32 must not be reliable")
+    if classify_null_a2(3, 32).reliable is not True:
+        _fail("3/32 must stay reliable")
     if classify_null_a2(5, 32).reliable is not False:
         _fail(">=5/32 A2 must stay fail-closed unreliable")
     if majority_a2_cap(32) != 16:

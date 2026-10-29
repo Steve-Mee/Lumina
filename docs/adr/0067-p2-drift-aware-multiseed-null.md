@@ -32,8 +32,8 @@ First principles:
    OC, shuffle residual signs, balance `|n_pos − n_neg| ≤ 1`.
 3. Fail-closed reliability: **ADR-0069 supersedes the majority 16/32 bar.**
    Exact `n_a2/32` is always reported (A2 diagnostic). The cycle stop uses
-   calibrated 7/8 false-edge counts (`n_edge`), classified with the same
-   `≤3` / `4` borderline / `≥5` bar. Planted must beat the median of the
+   calibrated 7/8 false-edge counts (`n_edge`): `≤3/32` reliable, `≥4/32`
+   fail (18:17; 4 is fail, not monitor). Planted must beat the median of the
    32 null median-OOS values.
 4. Extra only: 8 ISO calendar-week block-shuffles, report-only, never the gate.
 5. Same builder on MES, MNQ, ES, NQ. NQ **templates** stay closed until a new

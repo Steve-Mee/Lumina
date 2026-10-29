@@ -1,5 +1,9 @@
 # P2 drift-aware null — addendum after team answers (2026-10-29 17:34)
 
+**Partial supersession (18:17):** `4/32` is fail, not borderline/monitor.
+Production builder is `linear_magnitude`. See
+`phase5_p2_null_v2_preregister_addendum_2026-10-29.md`.
+
 Does **not** rewrite the original pre-register
 `phase5_p2_multiseed_null_preregister_2026-10-29.md` (git `bf665e5d`).
 Binding answers:
