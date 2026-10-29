@@ -1,0 +1,60 @@
+{
+  "bar_counts_pending_recompute": true,
+  "eval_purposes": [
+    "evaluation",
+    "holdout_eval"
+  ],
+  "holdout_months": 9,
+  "holdout_start_ns": 1769641200000000000,
+  "holdout_start_utc": "2026-01-28T23:00:00+00:00",
+  "instruments": {
+    "MES": {
+      "bar_size": "1m",
+      "file_sha256": "a9e9100c5544d59120a37a994955633e835cec8938ed20048164d0f726cf9c01",
+      "first_utc": "2023-10-01T22:01:00+00:00",
+      "holdout_first_utc": "2026-01-29T00:00:00+00:00",
+      "holdout_last_utc": "2026-10-29T07:54:00+00:00",
+      "last_utc": "2026-10-29T07:54:00+00:00",
+      "n_bars": 1088731,
+      "n_holdout": 267878,
+      "n_train": 820853,
+      "path": "$LUMINA_RESEARCH_DATA_DIR/MES/1m/MES_continuous_unadj_1m_2023-10-01_2026-10-29.csv",
+      "train_last_utc": "2026-01-28T23:59:00+00:00",
+      "zip_sha256": "c5c094a199502fde9cc79f535441995ba7e326811e4e7e01bf1833a25c9c7b2e"
+    },
+    "MNQ": {
+      "bar_size": "1m",
+      "file_sha256": "47422de88a2f662c664425b87d79d29fa7a5854d99ed76dd0b946bee7e7a9bf1",
+      "first_utc": "2023-10-01T22:01:00+00:00",
+      "holdout_first_utc": "2026-01-29T00:00:00+00:00",
+      "holdout_last_utc": "2026-10-29T07:38:00+00:00",
+      "last_utc": "2026-10-29T07:38:00+00:00",
+      "n_bars": 1083531,
+      "n_holdout": 267888,
+      "n_train": 815643,
+      "path": "$LUMINA_RESEARCH_DATA_DIR/MNQ/1m/MNQ_continuous_unadj_1m_2023-10-01_2026-10-29.csv",
+      "train_last_utc": "2026-01-28T23:59:00+00:00",
+      "zip_sha256": "a1cefabd46c4109a93bb219df45d134f9e3e16ffd3abc8250242c88a3ee5d6e8"
+    }
+  },
+  "locked_purposes": [
+    "calibration",
+    "first_cycle",
+    "gate",
+    "selection",
+    "template_selection",
+    "tuning"
+  ],
+  "note": "Holdout resealed at the Globex session boundary 2026-01-28T23:00:00Z. Instrument n_train/n_holdout remain those of the 2026-01-29T00:00:00Z seal because the NT8 CSVs are not mounted in this environment; they will be recomputed on the next real-tape reseal. The holdout stays unopened for selection, tuning, and gate calibration.",
+  "previous_seals": [
+    {
+      "file": "phase5_p2_holdout_seal_legacy_2026-01-29T00Z.json",
+      "holdout_start_ns": 1769644800000000000,
+      "holdout_start_utc": "2026-01-29T00:00:00+00:00",
+      "note": "P2 first cycle 2026-10-29; holdout never opened for ranking or calibration",
+      "seal_sha256": "6e8fa88e3aad048271cb52a63f76cbf4ed8a9261b85b85f03f631b872cf2e51b"
+    }
+  ],
+  "seal_sha256": "51d55d770aa21fb8f10062c7aab53acebe4866e526eb3419501098bd67172a99",
+  "sealed_at": "2026-10-29T10:10:00+00:00"
+}

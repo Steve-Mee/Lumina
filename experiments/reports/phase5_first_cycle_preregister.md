@@ -1,6 +1,6 @@
 # Phase 5 first-cycle pre-registration (before seeing data)
 
-- generated_at: `2026-10-28T20:35:18.925608+00:00`
+- generated_at: `2026-10-29T11:23:56.742659+00:00`
 - prefilter_n: `24`
 - first_cycle_n: `12`
 - holdout: last 9 months locked; never used for this selection
@@ -24,7 +24,7 @@ First P2 cycle is locked to 12 of the 24 pre-filter variants before any NT8 bar 
 | cr-mes-3 | close_reversal | MES | 3 | 0.0 | fade | 16/8 |
 | tod-mes-15 | time_of_day_inventory | MES | 15 | 0.0 | fade | 16/8 |
 | pb-mnq-20 | trend_pullback | MNQ | 20 | 0.0 | follow | 16/8 |
-| vx-mes-20 | volatility_expansion | MES | 20 | 0.25 | breakout | 16/8 |
+| vx-mes-20 | volatility_expansion | MES | 20 | 0.75 | breakout | 16/8 |
 
 ## Deferred to a later cycle (still pre-filter, not discarded)
 

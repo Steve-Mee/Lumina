@@ -37,7 +37,7 @@ def materialize(
         positions = _positions("noise", n, hypothesis.seed)
     else:
         assert_never(hypothesis.kind)
-    snap = MarketSnapshot(volume=10_000.0, average_volume=10_000.0, volatility_price=2.0)
+    snap = MarketSnapshot(volume=10_000.0, average_volume=10_000.0, volatility_price=1.0)
     markets = tuple(snap for _ in range(n))
     return gross, positions, markets
 

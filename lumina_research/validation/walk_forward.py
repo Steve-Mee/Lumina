@@ -197,8 +197,8 @@ def _wfe(
     if any(not math.isfinite(value) for value in (*is_sharpes, *oos_sharpes)):
         return WFESnapshot(
             wfe=math.nan,
-            mean_is_sharpe=float(statistics.fmean(is_sharpes)) if is_sharpes else math.nan,
-            mean_oos_sharpe=float(statistics.fmean(oos_sharpes)) if oos_sharpes else math.nan,
+            mean_is_sharpe=_finite_mean(is_sharpes),
+            mean_oos_sharpe=_finite_mean(oos_sharpes),
             n_windows=len(oos_sharpes),
             mode=mode,
             parameter_stability=parameter_stability(parameter_rows),
@@ -217,6 +217,13 @@ def _wfe(
         mode=mode,
         parameter_stability=parameter_stability(parameter_rows),
     )
+
+
+def _finite_mean(values: Sequence[float]) -> float:
+    finite = tuple(float(item) for item in values if math.isfinite(item))
+    if not finite:
+        return math.nan
+    return float(statistics.fmean(finite))
 
 
 def _t1(n_obs: int, horizon: int, t1: Sequence[int] | None) -> tuple[int, ...]:

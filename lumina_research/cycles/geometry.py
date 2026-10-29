@@ -1,23 +1,30 @@
-"""Tick floors and break-even win rates per contract type. Not Validation Gate floors."""
+"""Pre-registered trade geometry per contract. Not Validation Gate floors.
+
+Researchers (2026-10-29): target/stop is a design choice per template/family,
+pre-registered, never tuned on holdout. There is no fixed 16/8 tick floor.
+``CATALOG_DEFAULT_GEOMETRY`` records what the first P2 cycle used.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from lumina_research.cycles.slippage_calibration import reference_market
 from lumina_research.validation.contracts import ContractSpec, spec_for
-from lumina_research.validation.cost_model import CostModel, MarketSnapshot
+from lumina_research.validation.cost_model import CostModel
 
-# ES/NQ full-size vs MES/MNQ micros. Target/stop are in ticks, not gate thresholds.
-TICK_FLOORS: dict[str, tuple[int, int]] = {
+# Historical first-cycle defaults. Not enforced.
+CATALOG_DEFAULT_GEOMETRY: dict[str, tuple[int, int]] = {
     "ES": (8, 4),
     "NQ": (8, 4),
     "MES": (16, 8),
     "MNQ": (16, 8),
 }
+TICK_FLOORS = CATALOG_DEFAULT_GEOMETRY
 
 
 class GeometryRefused(ValueError):
-    """Target or stop is below the per-contract tick floor."""
+    """Target or stop is non-positive, or the root has no catalog default."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,11 +52,10 @@ def floors_for(root: str) -> tuple[int, int]:
 
 def require_geometry(*, root: str, target_ticks: int, stop_ticks: int) -> Geometry:
     spec = spec_for(root)
-    min_target, min_stop = floors_for(spec.root)
-    if target_ticks < min_target:
-        raise GeometryRefused(f"{spec.root} target {target_ticks} < floor {min_target}")
-    if stop_ticks < min_stop:
-        raise GeometryRefused(f"{spec.root} stop {stop_ticks} < floor {min_stop}")
+    if int(target_ticks) < 1:
+        raise GeometryRefused(f"{spec.root} target {target_ticks} must be >= 1 tick")
+    if int(stop_ticks) < 1:
+        raise GeometryRefused(f"{spec.root} stop {stop_ticks} must be >= 1 tick")
     cost = _roundtrip_ticks(spec)
     net_target = float(target_ticks) - cost
     net_stop = float(stop_ticks) + cost
@@ -72,6 +78,5 @@ def require_geometry(*, root: str, target_ticks: int, stop_ticks: int) -> Geomet
 
 def _roundtrip_ticks(spec: ContractSpec) -> float:
     model = CostModel()
-    market = MarketSnapshot(volume=10_000.0, average_volume=10_000.0, volatility_price=2.0)
-    fill = model.ticks_for_fill(spec=spec, quantity=1.0, market=market)
+    fill = model.ticks_for_fill(spec=spec, quantity=1.0, market=reference_market(spec))
     return 2.0 * fill.total_ticks

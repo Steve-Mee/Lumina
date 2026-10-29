@@ -24,29 +24,29 @@ Distributions only. No single-backtest claim.
 
 | id | planted | gate | promoted | DSR | PBO | WFE | OOS median | OOS worst | pct+ | n_oos | reasons |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `hyp-noise-0000-s2088460572` | no | FAIL | no | 0.0013 | 0.0000 | n/a | -0.8315 | -0.8315 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,doubt` |
-| `hyp-noise-0001-s1327243828` | no | FAIL | no | 0.0001 | 0.0000 | n/a | -1.3649 | -1.3649 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,negative_median_oos_after_costs,doubt` |
-| `hyp-noise-0002-s1199329012` | no | FAIL | no | 0.0010 | 0.0000 | -4.7674 | -0.8737 | -0.8737 | 0.0000 | 9 | `dsr_below_threshold,negative_median_oos_after_costs,wfe_below_threshold` |
-| `hyp-noise-0003-s1479552164` | no | FAIL | no | 0.2110 | 0.0000 | 0.6342 | 1.0609 | 1.0609 | 1.0000 | 9 | `dsr_below_threshold` |
-| `hyp-noise-0004-s1555985896` | no | FAIL | no | 0.0053 | 0.0000 | n/a | -0.4047 | -0.4047 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,doubt` |
-| `hyp-noise-0005-s1253421050` | no | FAIL | no | 0.3273 | 0.0000 | 1.4158 | 1.3782 | 1.3782 | 1.0000 | 9 | `dsr_below_threshold` |
-| `hyp-noise-0006-s2013042981` | no | FAIL | no | 0.0061 | 0.0000 | n/a | -0.3387 | -0.3387 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,negative_median_oos_after_costs,doubt` |
-| `hyp-noise-0007-s97563383` | no | FAIL | no | 0.0307 | 0.0000 | 0.6528 | 0.2020 | 0.2020 | 1.0000 | 9 | `dsr_below_threshold,negative_median_oos_after_costs` |
-| `hyp-noise-0008-s1241774772` | no | FAIL | no | 0.0251 | 0.0000 | 3.6647 | 0.1393 | 0.1393 | 1.0000 | 9 | `dsr_below_threshold` |
-| `hyp-noise-0009-s1468188361` | no | FAIL | no | 0.1616 | 0.0000 | 1.2709 | 0.9614 | 0.9614 | 1.0000 | 9 | `dsr_below_threshold` |
-| `hyp-noise-0010-s455561258` | no | FAIL | no | 0.0000 | 0.0000 | n/a | -1.9405 | -1.9405 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,negative_median_oos_after_costs,doubt` |
-| `hyp-noise-0011-s80735816` | no | FAIL | no | 0.0304 | 0.0000 | 1.7702 | 0.2368 | 0.2368 | 1.0000 | 9 | `dsr_below_threshold,negative_median_oos_after_costs` |
-| `hyp-noise-0012-s1072134541` | no | FAIL | no | 0.0692 | 0.0000 | 23.6046 | 0.5787 | 0.5787 | 1.0000 | 9 | `dsr_below_threshold,negative_median_oos_after_costs` |
-| `hyp-noise-0013-s1161127665` | no | FAIL | no | 0.0665 | 0.0000 | 0.3241 | 0.5685 | 0.5685 | 1.0000 | 9 | `dsr_below_threshold,negative_median_oos_after_costs,wfe_below_threshold` |
-| `hyp-noise-0014-s304847128` | no | FAIL | no | 0.0048 | 0.0000 | n/a | -0.3383 | -0.3383 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,negative_median_oos_after_costs,doubt` |
-| `hyp-noise-0015-s1764887916` | no | FAIL | no | 0.1001 | 0.0000 | 2.3984 | 0.7676 | 0.7676 | 1.0000 | 9 | `dsr_below_threshold` |
-| `hyp-noise-0016-s564474925` | no | FAIL | no | 0.0870 | 0.0000 | 0.6274 | 0.7108 | 0.7108 | 1.0000 | 9 | `dsr_below_threshold` |
-| `hyp-noise-0017-s15517151` | no | FAIL | no | 0.0244 | 0.0000 | -1.0501 | 0.2077 | 0.2077 | 1.0000 | 9 | `dsr_below_threshold,wfe_below_threshold` |
-| `hyp-noise-0018-s986496812` | no | FAIL | no | 0.0005 | 0.0000 | n/a | -0.8769 | -0.8769 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,negative_median_oos_after_costs,doubt` |
-| `hyp-noise-0019-s2084892231` | no | FAIL | no | 0.0053 | 0.0000 | n/a | -0.2660 | -0.2660 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,negative_median_oos_after_costs,doubt` |
-| `hyp-noise-0020-s500792651` | no | FAIL | no | 0.2210 | 0.0000 | 0.8264 | 1.2293 | 1.2293 | 1.0000 | 9 | `dsr_below_threshold` |
-| `hyp-noise-0021-s1280858948` | no | FAIL | no | 0.0058 | 0.0000 | n/a | -0.2295 | -0.2295 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,doubt` |
-| `hyp-noise-0022-s1777274006` | no | FAIL | no | 0.0083 | 0.0000 | n/a | -0.1120 | -0.1120 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,doubt` |
+| `hyp-noise-0000-s2088460572` | no | FAIL | no | 0.0014 | 0.0000 | n/a | -0.8242 | -0.8242 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,doubt` |
+| `hyp-noise-0001-s1327243828` | no | FAIL | no | 0.0001 | 0.0000 | n/a | -1.3578 | -1.3578 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,negative_median_oos_after_costs,doubt` |
+| `hyp-noise-0002-s1199329012` | no | FAIL | no | 0.0010 | 0.0000 | -4.5969 | -0.8667 | -0.8667 | 0.0000 | 9 | `dsr_below_threshold,negative_median_oos_after_costs,wfe_below_threshold` |
+| `hyp-noise-0003-s1479552164` | no | FAIL | no | 0.2131 | 0.0000 | 0.6362 | 1.0670 | 1.0670 | 1.0000 | 9 | `dsr_below_threshold` |
+| `hyp-noise-0004-s1555985896` | no | FAIL | no | 0.0054 | 0.0000 | n/a | -0.3976 | -0.3976 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,doubt` |
+| `hyp-noise-0005-s1253421050` | no | FAIL | no | 0.3301 | 0.0000 | 1.4141 | 1.3847 | 1.3847 | 1.0000 | 9 | `dsr_below_threshold` |
+| `hyp-noise-0006-s2013042981` | no | FAIL | no | 0.0063 | 0.0000 | n/a | -0.3318 | -0.3318 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,negative_median_oos_after_costs,doubt` |
+| `hyp-noise-0007-s97563383` | no | FAIL | no | 0.0312 | 0.0000 | 0.6559 | 0.2082 | 0.2082 | 1.0000 | 9 | `dsr_below_threshold,negative_median_oos_after_costs` |
+| `hyp-noise-0008-s1241774772` | no | FAIL | no | 0.0256 | 0.0000 | 3.5949 | 0.1462 | 0.1462 | 1.0000 | 9 | `dsr_below_threshold` |
+| `hyp-noise-0009-s1468188361` | no | FAIL | no | 0.1634 | 0.0000 | 1.2700 | 0.9676 | 0.9676 | 1.0000 | 9 | `dsr_below_threshold` |
+| `hyp-noise-0010-s455561258` | no | FAIL | no | 0.0000 | 0.0000 | n/a | -1.9335 | -1.9335 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,negative_median_oos_after_costs,doubt` |
+| `hyp-noise-0011-s80735816` | no | FAIL | no | 0.0309 | 0.0000 | 1.7499 | 0.2435 | 0.2435 | 1.0000 | 9 | `dsr_below_threshold,negative_median_oos_after_costs` |
+| `hyp-noise-0012-s1072134541` | no | FAIL | no | 0.0703 | 0.0000 | 20.6265 | 0.5855 | 0.5855 | 1.0000 | 9 | `dsr_below_threshold,negative_median_oos_after_costs` |
+| `hyp-noise-0013-s1161127665` | no | FAIL | no | 0.0675 | 0.0000 | 0.3281 | 0.5746 | 0.5746 | 1.0000 | 9 | `dsr_below_threshold,negative_median_oos_after_costs,wfe_below_threshold` |
+| `hyp-noise-0014-s304847128` | no | FAIL | no | 0.0049 | 0.0000 | n/a | -0.3316 | -0.3316 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,negative_median_oos_after_costs,doubt` |
+| `hyp-noise-0015-s1764887916` | no | FAIL | no | 0.1015 | 0.0000 | 2.3711 | 0.7744 | 0.7744 | 1.0000 | 9 | `dsr_below_threshold` |
+| `hyp-noise-0016-s564474925` | no | FAIL | no | 0.0883 | 0.0000 | 0.6287 | 0.7172 | 0.7172 | 1.0000 | 9 | `dsr_below_threshold` |
+| `hyp-noise-0017-s15517151` | no | FAIL | no | 0.0249 | 0.0000 | -1.0033 | 0.2144 | 0.2144 | 1.0000 | 9 | `dsr_below_threshold,wfe_below_threshold` |
+| `hyp-noise-0018-s986496812` | no | FAIL | no | 0.0006 | 0.0000 | n/a | -0.8700 | -0.8700 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,negative_median_oos_after_costs,doubt` |
+| `hyp-noise-0019-s2084892231` | no | FAIL | no | 0.0055 | 0.0000 | n/a | -0.2583 | -0.2583 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,negative_median_oos_after_costs,doubt` |
+| `hyp-noise-0020-s500792651` | no | FAIL | no | 0.2233 | 0.0000 | 0.8275 | 1.2360 | 1.2360 | 1.0000 | 9 | `dsr_below_threshold` |
+| `hyp-noise-0021-s1280858948` | no | FAIL | no | 0.0059 | 0.0000 | n/a | -0.2224 | -0.2224 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,doubt` |
+| `hyp-noise-0022-s1777274006` | no | FAIL | no | 0.0085 | 0.0000 | n/a | -0.1052 | -0.1052 | 0.0000 | 9 | `missing_or_undefined_wfe,dsr_below_threshold,doubt` |
 | `hyp-planted-0023-s464809217` | yes | PASS | yes | 0.9999 | 0.0000 | 1.3865 | 5.4006 | 5.4006 | 1.0000 | 9 | `` |
 | `hyp-planted-0024-s1256019940` | yes | PASS | yes | 0.9998 | 0.0000 | 1.1651 | 5.3584 | 5.3584 | 1.0000 | 9 | `` |
 

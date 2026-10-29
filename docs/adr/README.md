@@ -73,6 +73,8 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0059 | Research Phase 5 empirical proof and Execution Fabric ports (no NT8 coupling, no orders) | Accepted | 2026-10-28 | [0059-research-phase5-empirical-proof-and-fabric-ports.md](./0059-research-phase5-empirical-proof-and-fabric-ports.md) |
 | 0060 | ResearchBridge SHADOW first: ungated-place freeze + hypothetical ADR-0055 fills | Accepted | 2026-10-28 | [0060-research-bridge-shadow-first.md](./0060-research-bridge-shadow-first.md) |
 | 0061 | SIM account whitelist + HMAC LIVE_RELEASE (S1; live path stays closed) | Accepted | 2026-10-29 | [0061-sim-whitelist-and-live-release.md](./0061-sim-whitelist-and-live-release.md) |
+| 0062 | Static-rule WFE replacement (A2) and CPCV skip (A3); DSR/PBO floors unchanged | Proposed | 2026-10-29 | [0062-static-rule-wfe-replacement.md](./0062-static-rule-wfe-replacement.md) |
+| 0063 | P2 positive-control session hold (D13 respec); 1:1 20000-tick brackets, RTH flatten | Proposed | 2026-10-29 | [0063-p2-positive-control-session-hold.md](./0063-p2-positive-control-session-hold.md) |
 
 ## Legacy notitie
 

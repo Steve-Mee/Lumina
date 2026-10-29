@@ -1,4 +1,8 @@
-"""Volatility and trend regime robustness on OOS (net of costs) returns."""
+"""Volatility and trend regime robustness on MARKET regimes, not strategy PnL.
+
+Researchers (D12): split on instrument realized vol and trend (or the existing
+quiet-mask). Strategy Sharpe is then measured inside those market buckets.
+"""
 
 from __future__ import annotations
 
@@ -13,25 +17,34 @@ from lumina_research.validation.types import RegimeSnapshot
 def regime_robustness(
     returns: Sequence[float],
     *,
+    market_returns: Sequence[float] | None = None,
     periods_per_year: float = 252.0,
     vol_window: int = 20,
     trend_window: int = 20,
 ) -> RegimeSnapshot:
     series = tuple(float(item) for item in returns)
     n = len(series)
+    if market_returns is None:
+        return RegimeSnapshot.missing()
     if n < max(vol_window, trend_window) + 2:
         return RegimeSnapshot.missing()
-    vol = _rolling_vol(series, vol_window)
-    trend = _rolling_trend(series, trend_window)
-    median_vol = statistics.median(vol)
+    labels = tuple(float(item) for item in market_returns)
+    if len(labels) != n:
+        return RegimeSnapshot.missing()
+    vol = _rolling_vol(labels, vol_window)
+    trend = _rolling_trend(labels, trend_window)
+    finite_vol = tuple(item for item in vol if math.isfinite(item))
+    if len(finite_vol) < 2:
+        return RegimeSnapshot.missing()
+    median_vol = statistics.median(finite_vol)
     high_vol = tuple(series[i] for i in range(n) if vol[i] >= median_vol and math.isfinite(vol[i]))
     low_vol = tuple(series[i] for i in range(n) if vol[i] < median_vol and math.isfinite(vol[i]))
     up = tuple(series[i] for i in range(n) if trend[i] > 0.0)
     down = tuple(series[i] for i in range(n) if trend[i] <= 0.0)
-    vol_high = annualized_sharpe(high_vol, periods_per_year=periods_per_year)
-    vol_low = annualized_sharpe(low_vol, periods_per_year=periods_per_year)
-    trend_up = annualized_sharpe(up, periods_per_year=periods_per_year)
-    trend_down = annualized_sharpe(down, periods_per_year=periods_per_year)
+    vol_high = _finite_regime_sharpe(annualized_sharpe(high_vol, periods_per_year=periods_per_year))
+    vol_low = _finite_regime_sharpe(annualized_sharpe(low_vol, periods_per_year=periods_per_year))
+    trend_up = _finite_regime_sharpe(annualized_sharpe(up, periods_per_year=periods_per_year))
+    trend_down = _finite_regime_sharpe(annualized_sharpe(down, periods_per_year=periods_per_year))
     parts = (vol_high, vol_low, trend_up, trend_down)
     finite = tuple(part for part in parts if math.isfinite(part))
     if len(finite) < 4:
@@ -67,6 +80,21 @@ def _rolling_trend(series: Sequence[float], window: int) -> tuple[float, ...]:
         start = max(0, index - window + 1)
         out.append(float(sum(series[start : index + 1])))
     return tuple(out)
+
+
+def _finite_regime_sharpe(value: float) -> float:
+    """Keep regime snapshots complete when a bucket has zero variance.
+
+    Constant-loss strategy PnL inside a market bucket used to yield -inf and
+    then ``missing_regimes``. Researchers (D12): labels come from the market;
+    strategy Sharpe inside the bucket may be negative, but it must be defined.
+    Empty buckets stay NaN (fail-closed).
+    """
+    if math.isfinite(value):
+        return value
+    if math.isinf(value):
+        return 10.0 if value > 0.0 else -10.0
+    return math.nan
 
 
 def _squash(sharpe: float) -> float:

@@ -42,7 +42,8 @@ def compute_fitness(
         raise FitnessRefused(f"unknown fitness argument(s): {sorted(kwargs)}")
     if not isinstance(report, GateReport):
         raise FitnessRefused("fitness requires a GateReport from passes_validation_gate")
-    _require_gate_metrics(report)
+    static = report.wfe.mode == "static_rules"
+    _require_gate_metrics(report, static=static)
     if turnover < 0.0 or not math.isfinite(turnover):
         raise FitnessRefused("turnover must be a finite number >= 0")
 
@@ -54,7 +55,10 @@ def compute_fitness(
 
     median_oos = _finite(report.oos_distribution.median, "oos_distribution.median")
     pbo = _finite(report.pbo.pbo, "pbo")
-    wfe = _finite(report.wfe.wfe, "wfe")
+    if static:
+        wfe = _finite(report.wfe.parameter_stability, "static_stability")
+    else:
+        wfe = _finite(report.wfe.wfe, "wfe")
     regime = _finite(report.regimes.robustness, "regime_robustness")
     dsr = _finite(report.dsr.probability, "dsr")
 
@@ -80,12 +84,13 @@ def compute_fitness(
     )
 
 
-def _require_gate_metrics(report: GateReport) -> None:
+def _require_gate_metrics(report: GateReport, *, static: bool = False) -> None:
+    wfe_ok = math.isfinite(report.wfe.parameter_stability) if static else math.isfinite(report.wfe.wfe)
     required_ok = (
         report.oos_distribution.is_complete(),
         math.isfinite(report.dsr.probability),
         math.isfinite(report.pbo.pbo),
-        math.isfinite(report.wfe.wfe),
+        wfe_ok,
         math.isfinite(report.regimes.robustness),
         report.dsr.n_trials >= 1,
     )

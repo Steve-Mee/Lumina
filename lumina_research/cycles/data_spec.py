@@ -12,9 +12,10 @@ DATA_SPEC: Mapping[str, str] = {
     "universe_first": "MES and MNQ 1-minute bars; ES/NQ later after the micro cycle",
     "period": "recent 2-3 years through the export date",
     "holdout": (
-        f"last {HOLDOUT_MONTHS} calendar months (allowed {HOLDOUT_MONTHS_MIN}-{HOLDOUT_MONTHS_MAX}) "
-        "from the last bar; never used for template selection, first-cycle ranking, tuning, "
-        "or Validation Gate calibration; evaluation-only accessor"
+        f"last {HOLDOUT_MONTHS} calendar months (allowed {HOLDOUT_MONTHS_MIN}-{HOLDOUT_MONTHS_MAX}); "
+        "P2 NT8 tapes pin 2026-01-28T23:00:00Z (Globex session boundary; legacy "
+        "2026-01-29T00:00:00Z recorded) before selection, ranking, tuning, or gate calibration; "
+        "evaluation-only accessor for the locked window; holdout stays sealed and unopened"
     ),
     "locations": (
         "$LUMINA_RESEARCH_DATA_DIR/{MES,MNQ}/1m/*.csv ; "
@@ -36,11 +37,13 @@ DATA_SPEC: Mapping[str, str] = {
 def write_data_spec(directory: Path) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / "phase5_p2_data_spec.md"
+    if path.is_file():
+        return path
     lines = [
         "# Phase 5 P2 data spec (NT8 1m MES/MNQ)",
         "",
         f"- generated_at: `{utc_now_iso()}`",
-        "- status: prep only; this PR does not run the cycle on real bars",
+        "- status: P2 cycle loads NT8 1m MES/MNQ via $LUMINA_RESEARCH_DATA_DIR; raw CSVs are not committed",
         "",
     ]
     for key, value in DATA_SPEC.items():

@@ -52,6 +52,7 @@ def test_evaluate_candidate_wires_costs_registry_gate_and_fitness(tmp_path: Path
         registry=registry,
         peer_net_returns=peers,
         audit_path=audit,
+        market_returns=candidate_gross,
     )
     assert evaluation.results.cost_provenance is not None
     assert evaluation.results.cost_provenance.is_valid()

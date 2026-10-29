@@ -504,6 +504,7 @@ def test_config_bounds_and_oos_empty_and_pipeline_turnover(tmp_path: Path) -> No
         registry=registry,
         peer_net_returns=(peer_net,),
         audit_path=audit,
+        market_returns=gross,
     )
     assert evaluation.turnover >= 0.0
     assert propose_order(_proposal()).kind is DecisionKind.REJECTED

@@ -28,6 +28,12 @@ class HypothesisSpec:
     target_ticks: int
     stop_ticks: int
     rationale: EconomicRationale
+    is_size: int = 60
+    oos_size: int = 30
+    session_filter: str = "rth"
+    time_stop_bars: int = CATALOG_EXPECTED_HORIZON_BARS
+    session_end_flatten: bool = True
+    has_fit_step: bool = False
 
 
 def catalog() -> tuple[HypothesisSpec, ...]:
@@ -88,8 +94,8 @@ class EconomicCatalogGenerator(HypothesisGenerator):
                     proposed_price=5_000.0,
                     proposed_notional=5_000.0,
                     rationale=spec.rationale,
-                    is_size=60,
-                    oos_size=30,
+                    is_size=spec.is_size,
+                    oos_size=spec.oos_size,
                     expected_horizon_bars=CATALOG_EXPECTED_HORIZON_BARS,
                 )
             )
@@ -110,7 +116,10 @@ def _rationale(
         why_edge_exists=why,
         other_side=other,
         expected_regime=regime,
-        falsification_criterion="median OOS after costs <= 0 or PBO > 0.50 or DSR < 0.95 or WFE < 0.5",
+        falsification_criterion=(
+            "median OOS after costs <= 0 or share of positive OOS windows < 0.60 "
+            "or structural decay or PBO > 0.50 or DSR < 0.95"
+        ),
         holding_period=holding,
         survives_costs=costs,
     )
@@ -133,9 +142,7 @@ def _require_rationale(rationale: EconomicRationale) -> None:
 def _mean_reversion() -> tuple[HypothesisSpec, ...]:
     why = "Dealers fade transitory inventory shocks; impatient flow pays the spread to unwind"
     other = "Short-horizon discretionary and CTA flow that must transact immediately"
-    costs = (
-        "Net target after four-leg costs exceeds 1R at the tick floors so BE win rate is attainable"
-    )
+    costs = "Net target after four-leg costs exceeds 1R at the tick floors so BE win rate is attainable"
     hold = "half-life 10-20 bars; flatten at target/stop the same session"
     return (
         _spec("mr-mes-10-1.5", "mean_reversion", "MES", 10, 1.5, "fade", 16, 8, why, other, hold, costs),
@@ -259,8 +266,8 @@ def _volatility_expansion() -> tuple[HypothesisSpec, ...]:
     costs = "Expansion stop sits beyond modeled slippage plus impact; target is 2x stop"
     hold = "holding 8-25 bars of the expansion leg"
     return (
-        _spec("vx-mes-20", "volatility_expansion", "MES", 20, 0.25, "breakout", 16, 8, why, other, hold, costs),
-        _spec("vx-es-20", "volatility_expansion", "ES", 20, 0.25, "breakout", 8, 4, why, other, hold, costs),
+        _spec("vx-mes-20", "volatility_expansion", "MES", 20, 0.75, "breakout", 16, 8, why, other, hold, costs),
+        _spec("vx-es-20", "volatility_expansion", "ES", 20, 0.75, "breakout", 8, 4, why, other, hold, costs),
     )
 
 
@@ -309,9 +316,7 @@ def _spec(
     holding: str,
     costs: str,
 ) -> HypothesisSpec:
-    mechanism = (
-        f"{template_id} on {instrument}: lookback={lookback} threshold={threshold} mode={mode}"
-    )
+    mechanism = f"{template_id} on {instrument}: lookback={lookback} threshold={threshold} mode={mode}"
     return HypothesisSpec(
         config_id=config_id,
         template_id=template_id,
@@ -322,6 +327,10 @@ def _spec(
         mode=mode,
         target_ticks=target,
         stop_ticks=stop,
+        session_filter="rth",
+        time_stop_bars=CATALOG_EXPECTED_HORIZON_BARS,
+        session_end_flatten=True,
+        has_fit_step=False,
         rationale=_rationale(
             mechanism=mechanism,
             why=why,

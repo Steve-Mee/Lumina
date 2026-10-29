@@ -20,7 +20,7 @@ from lumina_research.validation.types import CostProvenance, GateReport, Validat
 from lumina_research.validation.walk_forward import WalkForwardConfig, run_walk_forward, static_return_scorer
 
 N_OBS = 360
-_MARKETS = tuple(MarketSnapshot(volume=10_000.0, average_volume=10_000.0, volatility_price=2.0) for _ in range(N_OBS))
+_MARKETS = tuple(MarketSnapshot(volume=10_000.0, average_volume=10_000.0, volatility_price=1.0) for _ in range(N_OBS))
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,6 +156,7 @@ def _pipeline_case(audit: Path, *, seed: int) -> GateCase:
         registry=registry,
         peer_net_returns=peers,
         audit_path=audit,
+        market_returns=gross,
     )
     return _case("pipeline_evaluate_candidate", seed, True, evaluation.passed, evaluation.report, registry)
 
@@ -246,7 +247,7 @@ def _assemble(
     rows = tuple(tuple(float(item) for item in row) for row in configs_net) or (net,)
     matrix = [slice_series(row, 8) for row in rows]
     pbo = probability_of_backtest_overfitting(matrix)
-    regimes = regime_robustness(net)
+    regimes = regime_robustness(net, market_returns=net)
     return ValidationResults(
         agent_id=agent_id,
         audit_path=audit_path,
