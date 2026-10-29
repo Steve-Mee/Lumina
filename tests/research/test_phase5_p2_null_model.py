@@ -13,9 +13,11 @@ from lumina_research.cycles.null_model import (
     NULL_A2_MAX_SHARE,
     NULL_N_SEEDS,
     NULL_SEED_BASE,
+    classify_null_a2,
     default_block_seeds,
     default_null_seeds,
     drift_aware_null_signals,
+    fail_closed_a2_cap,
     majority_a2_cap,
     max_a2_hits,
     partition_session_windows,
@@ -77,8 +79,14 @@ def test_locked_seed_table() -> None:
     assert seeds[-1] == 20261060
     assert len(set(seeds)) == 32
     assert max_a2_hits(32) == 3
+    assert fail_closed_a2_cap(32) == 3
     assert majority_a2_cap(32) == 16
     assert NULL_A2_MAX_SHARE == 0.10
+    assert classify_null_a2(3, 32).status == "reliable"
+    assert classify_null_a2(4, 32).status == "borderline"
+    assert classify_null_a2(4, 32).reliable is True
+    assert classify_null_a2(5, 32).status == "unreliable"
+    assert classify_null_a2(5, 32).exact == "5/32"
     assert len(default_block_seeds()) == 8
     assert default_block_seeds()[0] == 20261129
 
@@ -185,10 +193,14 @@ def test_run_controls_multiseed_accepts_balanced_tape(tmp_path: Path) -> None:
     assert report.null_audit is not None
     assert report.null_audit.n_seeds == 32
     assert report.null_audit.reliable is True
-    assert report.null_audit.n_a2 <= 16
-    assert report.null_audit.max_a2 == 16
+    assert report.null_audit.exact_a2 == f"{report.null_audit.n_a2}/32"
+    assert report.null_audit.exact_edge == f"{report.null_audit.n_edge}/32"
+    assert report.null_audit.n_edge <= 3 or report.null_audit.status == "borderline"
+    assert report.null_audit.max_a2 == 3
     assert report.null_audit.ten_pct_cap == 3
     assert report.null_audit.n_trials_this_root == 1 + 32 + 8
+    assert all(seed.kind == "block" for seed in report.null_audit.block_seeds)
+    assert len(report.null_audit.block_seeds) == 8
 
 
 @pytest.mark.unit

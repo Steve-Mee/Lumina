@@ -21,11 +21,11 @@ from lumina_research.cycles.execution import ExecutionResult, run_execution
 from lumina_research.cycles.geometry import require_geometry
 from lumina_research.cycles.null_model import (
     NULL_EMBARGO,
+    classify_null_a2,
     default_block_seeds,
     default_null_seeds,
     drift_aware_null_signals,
-    majority_a2_cap,
-    max_a2_hits,
+    null_seed_is_false_edge,
     remap_session_net,
     session_open_close,
     signal_map_by_session,
@@ -47,6 +47,10 @@ CONTROL_TIME_STOP_BARS = 2_000
 CONTROL_SESSION_FILTER = "rth"
 CONTROL_ATR_MULTIPLE = 1.5
 CONTROL_ATR_SESSIONS = ATR_N_SESSIONS
+# Team 17:34: fade 1.0/1.2 and breakout 1.8/0.9 are pre-registered midpoints,
+# not final. The positive control must pass under exactly these params.
+FADE_MIDPOINT_ATR = (1.0, 1.2)
+BREAKOUT_MIDPOINT_ATR = (1.8, 0.9)
 PLANTED_HORIZON_NOTE = (
     "Planted edge: at the first RTH bar of each session, the control knows the "
     "sign of that session's last-RTH-close minus first-RTH-open (unadjusted). "
@@ -107,6 +111,7 @@ class NullSeedOutcome:
     pct_positive: float
     dsr: float
     n_trials: int
+    false_edge: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +128,12 @@ class NullAudit:
     drift_seeds: tuple[NullSeedOutcome, ...]
     block_seeds: tuple[NullSeedOutcome, ...]
     n_trials_this_root: int
+    n_edge: int = 0
+    borderline: bool = False
+    status: str = "unreliable"
+    exact_a2: str = ""
+    exact_edge: str = ""
+    a2_status: str = "unreliable"
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,6 +200,14 @@ def build_null_signals(
     )
 
 
+def required_midpoint_controls() -> tuple[tuple[str, float, float], ...]:
+    """Positive control must pass under these exact pre-registered midpoints."""
+    return (
+        ("fade", FADE_MIDPOINT_ATR[0], FADE_MIDPOINT_ATR[1]),
+        ("breakout", BREAKOUT_MIDPOINT_ATR[0], BREAKOUT_MIDPOINT_ATR[1]),
+    )
+
+
 def execute_control(
     prepared: PreparedTape,
     signals: Sequence[float],
@@ -196,6 +215,8 @@ def execute_control(
     root: str,
     geometry_mode: str = "unclipped",
     atr_points: Sequence[float] | None = None,
+    target_atr: float | None = None,
+    stop_atr: float | None = None,
 ) -> ExecutionResult:
     if geometry_mode == "atr":
         geometry = require_geometry(root=root, target_ticks=1, stop_ticks=1)
@@ -207,6 +228,8 @@ def execute_control(
                 prepared.rth,
                 n_sessions=CONTROL_ATR_SESSIONS,
             )
+        tgt = CONTROL_ATR_MULTIPLE if target_atr is None else float(target_atr)
+        stp = CONTROL_ATR_MULTIPLE if stop_atr is None else float(stop_atr)
         return run_execution(
             bars=prepared.bars,
             signals=signals,
@@ -218,8 +241,8 @@ def execute_control(
             time_stop_bars=CONTROL_TIME_STOP_BARS,
             session_end_flatten=True,
             atr_points=series,
-            target_atr=CONTROL_ATR_MULTIPLE,
-            stop_atr=CONTROL_ATR_MULTIPLE,
+            target_atr=tgt,
+            stop_atr=stp,
         )
     geometry = require_geometry(
         root=root,
@@ -265,7 +288,13 @@ def _from_daily_net(daily_net: Sequence[float]) -> Tape:
     return tuple(float(item) for item in daily_net), positions, markets
 
 
-def _seed_outcome(seed: int, kind: str, evaluation: CandidateEvaluation, detected: bool) -> NullSeedOutcome:
+def _seed_outcome(
+    seed: int,
+    kind: str,
+    evaluation: CandidateEvaluation,
+    detected: bool,
+    false_edge: bool = False,
+) -> NullSeedOutcome:
     return NullSeedOutcome(
         seed=int(seed),
         kind=kind,
@@ -274,6 +303,7 @@ def _seed_outcome(seed: int, kind: str, evaluation: CandidateEvaluation, detecte
         pct_positive=float(evaluation.report.oos_distribution.pct_positive),
         dsr=float(evaluation.report.dsr.probability),
         n_trials=int(evaluation.report.dsr.n_trials),
+        false_edge=bool(false_edge),
     )
 
 
@@ -328,6 +358,8 @@ def run_controls(
     embargo: int = NULL_EMBARGO,
     fail_closed: bool = True,
     geometry_mode: str = "unclipped",
+    target_atr: float | None = None,
+    stop_atr: float | None = None,
 ) -> ControlReport:
     tape = prepared.get("MES") or next(iter(prepared.values()))
     root = tape.instrument
@@ -346,7 +378,15 @@ def run_controls(
             tape.rth,
             n_sessions=CONTROL_ATR_SESSIONS,
         )
-    pos_exec = execute_control(tape, planted, root=root, geometry_mode=geometry_mode, atr_points=atr_series)
+    pos_exec = execute_control(
+        tape,
+        planted,
+        root=root,
+        geometry_mode=geometry_mode,
+        atr_points=atr_series,
+        target_atr=target_atr,
+        stop_atr=stop_atr,
+    )
     daily_gross, daily_net = _costed_daily(tape, pos_exec, root=root)
     sessions = unique_sessions(tape.session_dates)
     planted_map = signal_map_by_session(planted, tape.session_dates)
@@ -381,6 +421,8 @@ def run_controls(
                 root=root,
                 geometry_mode=geometry_mode,
                 atr_points=atr_series,
+                target_atr=target_atr,
+                stop_atr=stop_atr,
             )
             _gross, null_daily = _costed_daily(tape, null_exec, root=root)
             drift_dailies.append(null_daily)
@@ -401,7 +443,7 @@ def run_controls(
             market_returns=market_returns,
             n_days=n_days,
         )
-        drift_rows: list[tuple[int, CandidateEvaluation, bool]] = []
+        drift_rows: list[tuple[int, CandidateEvaluation, bool, bool]] = []
         for seed, daily in zip(seeds, drift_dailies, strict=True):
             null_eval = evaluate_candidate(
                 agent_id="positive_control",
@@ -419,8 +461,19 @@ def run_controls(
                 market_returns=market_returns,
                 n_days=n_days,
             )
-            drift_rows.append((int(seed), null_eval, _detected(null_eval, null_median=None)))
-        block_rows: list[tuple[int, CandidateEvaluation, bool]] = []
+            a2_hit = _detected(null_eval, null_median=None)
+            drift_rows.append(
+                (
+                    int(seed),
+                    null_eval,
+                    a2_hit,
+                    null_seed_is_false_edge(
+                        detected=a2_hit,
+                        pct_positive=float(null_eval.report.oos_distribution.pct_positive),
+                    ),
+                )
+            )
+        block_rows: list[tuple[int, CandidateEvaluation, bool, bool]] = []
         for seed in extra:
             block_signals = week_block_shuffle_signals(planted, tape.session_dates, seed=int(seed))
             if remap_ok:
@@ -439,6 +492,8 @@ def run_controls(
                     root=root,
                     geometry_mode=geometry_mode,
                     atr_points=atr_series,
+                    target_atr=target_atr,
+                    stop_atr=stop_atr,
                 )
                 _bg, block_daily = _costed_daily(tape, block_exec, root=root)
             block_eval = evaluate_candidate(
@@ -457,7 +512,18 @@ def run_controls(
                 market_returns=market_returns,
                 n_days=n_days,
             )
-            block_rows.append((int(seed), block_eval, _detected(block_eval, null_median=None)))
+            block_a2 = _detected(block_eval, null_median=None)
+            block_rows.append(
+                (
+                    int(seed),
+                    block_eval,
+                    block_a2,
+                    null_seed_is_false_edge(
+                        detected=block_a2,
+                        pct_positive=float(block_eval.report.oos_distribution.pct_positive),
+                    ),
+                )
+            )
     except PositiveControlFailed:
         raise
     except Exception as exc:
@@ -466,10 +532,9 @@ def run_controls(
     finite = tuple(value for value in medians if math.isfinite(value))
     median_of_medians = _median(finite) if finite else math.nan
     n_a2 = sum(1 for row in drift_rows if row[2])
-    ten_pct_cap = max_a2_hits(len(seeds))
-    max_hits = majority_a2_cap(len(seeds))
-    reliable = n_a2 <= max_hits
-    within_ten = n_a2 <= ten_pct_cap
+    n_edge = sum(1 for row in drift_rows if row[3])
+    a2_class = classify_null_a2(n_a2, len(seeds))
+    edge_class = classify_null_a2(n_edge, len(seeds))
     pos_detected = _detected(planted_eval, null_median=median_of_medians)
     planted_beats = (
         math.isfinite(float(planted_eval.report.median_oos_after_costs))
@@ -481,15 +546,27 @@ def run_controls(
         n_seeds=len(seeds),
         n_a2=n_a2,
         a2_share=float(n_a2) / float(len(seeds)),
-        max_a2=max_hits,
-        ten_pct_cap=ten_pct_cap,
-        reliable=reliable,
-        a2_within_ten_pct=within_ten,
+        max_a2=edge_class.ten_pct_cap,
+        ten_pct_cap=edge_class.ten_pct_cap,
+        reliable=edge_class.reliable,
+        a2_within_ten_pct=a2_class.within_ten_pct,
         median_of_medians=float(median_of_medians),
         planted_beats_null=planted_beats,
-        drift_seeds=tuple(_seed_outcome(seed, "drift", evaluation, hit) for seed, evaluation, hit in drift_rows),
-        block_seeds=tuple(_seed_outcome(seed, "block", evaluation, hit) for seed, evaluation, hit in block_rows),
+        drift_seeds=tuple(
+            _seed_outcome(seed, "drift", evaluation, hit, false_edge=edge)
+            for seed, evaluation, hit, edge in drift_rows
+        ),
+        block_seeds=tuple(
+            _seed_outcome(seed, "block", evaluation, hit, false_edge=edge)
+            for seed, evaluation, hit, edge in block_rows
+        ),
         n_trials_this_root=n_trials_root,
+        n_edge=n_edge,
+        borderline=a2_class.borderline or edge_class.borderline,
+        status=edge_class.status,
+        exact_a2=a2_class.exact,
+        exact_edge=edge_class.exact,
+        a2_status=a2_class.status,
     )
     representative = drift_rows[0][1]
     report = ControlReport(
@@ -502,14 +579,16 @@ def run_controls(
         null=_outcome(
             "null_drift_aware_multiseed",
             representative,
-            not reliable,
+            not edge_class.reliable,
             (
-                f"Drift-aware null, {len(seeds)} seeds, A2 hits {n_a2}/{len(seeds)} "
-                f"(fail-closed cap {max_hits}, 10% diagnostic {ten_pct_cap}); "
+                f"Drift-aware null, {len(seeds)} seeds, A2 {a2_class.exact} "
+                f"({a2_class.status}), calibrated 7/8 edge {edge_class.exact} "
+                f"({edge_class.status}); fail-closed cap {edge_class.ten_pct_cap}, "
+                f"borderline {edge_class.borderline_count}; week-block extra only; "
                 f"median-of-medians {median_of_medians:.6g}."
             ),
         ),
-        accepted=pos_detected and reliable and planted_beats,
+        accepted=pos_detected and edge_class.reliable and planted_beats,
         null_audit=audit,
     )
     if fail_closed and not report.accepted:
@@ -530,6 +609,8 @@ def run_controls_per_instrument(
     n_days_by_root: Mapping[str, int] | None = None,
     geometry_mode: str = "unclipped",
     block_seeds: Sequence[int] | None = None,
+    target_atr: float | None = None,
+    stop_atr: float | None = None,
 ) -> tuple[dict[str, ControlReport], dict[str, str]]:
     """D13 on each tape. A failed root does not stop a passing sibling."""
     accepted: dict[str, ControlReport] = {}
@@ -550,6 +631,8 @@ def run_controls_per_instrument(
                 n_days=days,
                 geometry_mode=geometry_mode,
                 block_seeds=block_seeds,
+                target_atr=target_atr,
+                stop_atr=stop_atr,
             )
         except PositiveControlFailed as exc:
             failed[root] = str(exc)

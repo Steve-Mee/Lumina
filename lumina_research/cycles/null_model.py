@@ -1,14 +1,29 @@
 """Drift-aware multi-seed null for D13. Pre-registered 2026-10-29.
 
 A permutation of session signs keeps the up/down count. On a tape with
-positive drift that imbalance still clears A2. This builder detrends and
-balances signs inside each non-overlapping walk-forward partition.
+positive drift that imbalance still clears A2. This builder **detrends and
+balances** signs inside each non-overlapping walk-forward partition
+(onderzoeksteam 17:34: keep both; Q-NULL-2).
+
+Fail-closed (Q-NULL-1, 17:34): a null is unreliable when too many of the 32
+seeds *look like an edge*. Majority ``16/32`` is not the gate. Exact
+``n_a2/n_seeds`` is always reported as an A2 diagnostic (``4/32`` =
+borderline/monitor, e.g. MES ATR).
+
+Raw A2 (median>0 and +OOS≥0.60 on 8 windows) has P≈0.36 under a fair null,
+so P(n_a2≥4)≈1 and cannot be the cycle stop. The gate uses the calibrated
+7/8 tail (``NULL_CALIBRATED_POSITIVE_SHARE``): a seed is a false edge only
+when A2 fires *and* +OOS≥0.875. Then the same 3/4/5 classifier applies to
+``n_edge``. P(n_edge≥4 | 32)≈0.025, inside a conservative 5–10% Type I band.
+
+ISO calendar-week block-shuffle is an extra reported check, never the gate.
 """
 
 from __future__ import annotations
 
 import math
 import random
+from dataclasses import dataclass
 from datetime import date
 from typing import Mapping, Sequence
 
@@ -21,6 +36,13 @@ NULL_A2_MAX_SHARE = 0.10
 NULL_BLOCK_N_SEEDS = 8
 NULL_BLOCK_SEED_BASE = 20261129
 NULL_EMBARGO = 1
+# Team 17:34: 4/32 is the edge of the fail region (MES ATR). Not a silent pass.
+NULL_BORDERLINE_SHARE_OFFSET = 1
+# Calibrated "looks like an edge" for the 32-seed gate. A2 is median>0 and
+# +OOS>=0.60 (5/8). On 8 fair windows P(A2)≈0.36, so P(n_a2>=4)≈1 and a true
+# null would always fail. 7/8 is Bin(8,0.5) one-sided p≈0.035; then
+# P(n_edge>=4 | 32)≈0.025, inside a conservative 5–10% Type I band.
+NULL_CALIBRATED_POSITIVE_SHARE = 0.875
 
 
 def default_null_seeds() -> tuple[int, ...]:
@@ -32,17 +54,88 @@ def default_block_seeds() -> tuple[int, ...]:
 
 
 def max_a2_hits(n_seeds: int, *, share: float = NULL_A2_MAX_SHARE) -> int:
-    """Ten-percent diagnostic cap. Not the fail-closed reliability bar."""
+    """Fail-closed cap: ``n_a2 <= floor(0.10 * n_seeds)`` is reliable (3 of 32)."""
     if n_seeds < 1:
         raise ValueError("n_seeds must be >= 1")
     return int(math.floor(share * float(n_seeds)))
 
 
+def fail_closed_a2_cap(n_seeds: int) -> int:
+    """Classifier cap for both A2 diagnostics and calibrated 7/8 edge counts."""
+    return max_a2_hits(n_seeds)
+
+
+def borderline_a2_hits(n_seeds: int) -> int:
+    """Exactly one above the 10% cap (4 of 32). Monitor, do not hard-stop."""
+    return max_a2_hits(n_seeds) + NULL_BORDERLINE_SHARE_OFFSET
+
+
 def majority_a2_cap(n_seeds: int) -> int:
-    """Fail-closed: strict majority of seeds must not hit A2."""
+    """Historical majority lock (16 of 32). Not fail-closed after 17:34."""
     if n_seeds < 1:
         raise ValueError("n_seeds must be >= 1")
     return n_seeds // 2
+
+
+@dataclass(frozen=True, slots=True)
+class NullReliability:
+    n_a2: int
+    n_seeds: int
+    exact: str
+    ten_pct_cap: int
+    borderline_count: int
+    within_ten_pct: bool
+    borderline: bool
+    reliable: bool
+    status: str
+
+
+def null_seed_is_false_edge(*, detected: bool, pct_positive: float) -> bool:
+    """Calibrated null-edge: A2 and +OOS in the 7/8 tail. Planted A2 is unchanged."""
+    if not detected:
+        return False
+    if not math.isfinite(pct_positive):
+        return False
+    return float(pct_positive) >= NULL_CALIBRATED_POSITIVE_SHARE
+
+
+def classify_null_a2(n_a2: int, n_seeds: int) -> NullReliability:
+    """Classify a 32-seed count. Always keep the exact fraction.
+
+    Used for the A2 diagnostic (``n_a2``) and the calibrated 7/8 gate
+    (``n_edge``). Same bar: ``≤3`` reliable, ``4`` borderline/monitor,
+    ``≥5`` unreliable. Cycle stop uses ``n_edge``, not raw A2.
+    """
+    if n_seeds < 1:
+        raise ValueError("n_seeds must be >= 1")
+    if n_a2 < 0:
+        raise ValueError("n_a2 must be >= 0")
+    cap = fail_closed_a2_cap(n_seeds)
+    edge = borderline_a2_hits(n_seeds)
+    exact = f"{int(n_a2)}/{int(n_seeds)}"
+    if n_a2 <= cap:
+        status = "reliable"
+        reliable = True
+        borderline = False
+    elif n_a2 == edge:
+        status = "borderline"
+        reliable = True
+        borderline = True
+    else:
+        status = "unreliable"
+        reliable = False
+        borderline = False
+    return NullReliability(
+        n_a2=int(n_a2),
+        n_seeds=int(n_seeds),
+        exact=exact,
+        ten_pct_cap=cap,
+        borderline_count=edge,
+        within_ten_pct=n_a2 <= cap,
+        borderline=borderline,
+        reliable=reliable,
+        status=status,
+    )
 
 
 def session_open_close(
@@ -114,6 +207,10 @@ def drift_aware_null_signals(
     oos_size: int,
     embargo: int = NULL_EMBARGO,
 ) -> tuple[float, ...]:
+    """Detrend session OC **and** balance signs per walk-forward partition.
+
+    Both steps are required (Q-NULL-2). Do not drop either.
+    """
     if len(planted) != len(session_dates):
         raise ValueError("planted signals and session dates must align")
     sessions = unique_sessions(session_dates)
@@ -158,6 +255,10 @@ def week_block_shuffle_signals(
     *,
     seed: int,
 ) -> tuple[float, ...]:
+    """ISO calendar-week block shuffle. Report-only extra check, never the gate.
+
+    Q-NULL-3: calendar week (ISO week), 8 seeds. Month blocks are too coarse.
+    """
     first_index = _first_signal_index(planted, session_dates)
     if not first_index:
         return tuple(0.0 for _ in planted)

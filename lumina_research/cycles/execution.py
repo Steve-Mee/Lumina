@@ -178,6 +178,9 @@ def _session_end_flags(
     allow: Sequence[bool],
     session_end_flatten: bool,
 ) -> tuple[bool, ...]:
+    """Flatten at the last *allowed* bar of the Globex session (RTH close when
+    the filter is RTH). Never UTC calendar midnight (Q-GEO flatten, 17:34).
+    """
     n = len(session_dates)
     flags = [False] * n
     if not session_end_flatten or n == 0:

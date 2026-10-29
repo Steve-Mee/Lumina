@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from lumina_research.cycles.atr import causal_session_atr, points_to_ticks
-from lumina_research.cycles.atr_cycle import ATR_SEAL_NAME, atr_es_specs
+from lumina_research.cycles.atr_cycle import ATR_SEAL_NAME, DSR_ONLY_KILLS, atr_es_specs
 from lumina_research.cycles.data import LoadedTape
 from lumina_research.cycles.diagnostics import from_trades
 from lumina_research.cycles.execution import ClosedTrade, ExecutionRefused, run_execution
@@ -47,6 +47,7 @@ def test_atr_es_grid_is_ten_es_configs() -> None:
     assert "close_reversal" not in templates
     assert "volume_imbalance" not in templates
     assert all(item.session_filter == "rth" for item in specs)
+    assert DSR_ONLY_KILLS <= {item.config_id for item in specs}
     assert ATR_SEAL_NAME == "phase5_p2_atr_es_holdout_seal.json"
     assert ATR_SEAL_NAME != "phase5_p2_es_nq_holdout_seal.json"
 

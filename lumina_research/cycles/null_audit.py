@@ -8,7 +8,13 @@ from pathlib import Path
 
 from lumina_research.cycles.daily import unique_sessions
 from lumina_research.cycles.data import MIN_BARS, DataStatus, LoadedTape, discover_data
-from lumina_research.cycles.null_model import default_block_seeds, default_null_seeds, max_a2_hits
+from lumina_research.cycles.null_model import (
+    NULL_CALIBRATED_POSITIVE_SHARE,
+    classify_null_a2,
+    default_block_seeds,
+    default_null_seeds,
+    fail_closed_a2_cap,
+)
 from lumina_research.cycles.p2_cycle import market_series, pin_tape, prepare_for_purpose
 from lumina_research.cycles.positive_control import (
     ControlReport,
@@ -48,6 +54,12 @@ class RootAudit:
     nq_closed: bool
     note: str
     report: ControlReport | None
+    borderline: bool = False
+    status: str = "unreliable"
+    exact_a2: str = ""
+    n_edge: int = 0
+    exact_edge: str = ""
+    a2_status: str = "unreliable"
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,10 +221,11 @@ def _from_report(
     note: str = "",
 ) -> RootAudit:
     audit = report.null_audit
-    n_seeds = audit.n_seeds if audit is not None else 0
+    n_seeds = audit.n_seeds if audit is not None else len(default_null_seeds())
     n_a2 = audit.n_a2 if audit is not None else 0
-    reliable = bool(audit.reliable) if audit is not None else False
-    share = float(audit.a2_share) if audit is not None else 0.0
+    classified = classify_null_a2(n_a2, n_seeds)
+    reliable = bool(audit.reliable) if audit is not None else classified.reliable
+    share = float(audit.a2_share) if audit is not None else classified.n_a2 / float(n_seeds)
     median_null = float(audit.median_of_medians) if audit is not None else float("nan")
     text = note or ("accepted" if report.accepted else "planted miss or null unreliable")
     return RootAudit(
@@ -232,6 +245,12 @@ def _from_report(
         nq_closed=root == "NQ",
         note=text,
         report=report,
+        borderline=bool(audit.borderline) if audit is not None else classified.borderline,
+        status=audit.status if audit is not None else classified.status,
+        exact_a2=audit.exact_a2 if audit is not None else classified.exact,
+        n_edge=int(audit.n_edge) if audit is not None else 0,
+        exact_edge=audit.exact_edge if audit is not None else classified.exact,
+        a2_status=audit.a2_status if audit is not None else classified.status,
     )
 
 
@@ -245,9 +264,13 @@ def _write_reports(cycle: NullAuditCycle, *, report_dir: Path, repo_root: Path) 
         "n_seeds": len(default_null_seeds()),
         "null_seeds": list(default_null_seeds()),
         "block_seeds": list(default_block_seeds()),
-        "max_a2": max_a2_hits(len(default_null_seeds())),
+        "max_a2": fail_closed_a2_cap(len(default_null_seeds())),
+        "fail_closed_cap": fail_closed_a2_cap(len(default_null_seeds())),
+        "borderline_count": fail_closed_a2_cap(len(default_null_seeds())) + 1,
+        "calibrated_positive_share": NULL_CALIBRATED_POSITIVE_SHARE,
         "method_ready": cycle.method_ready,
         "nq_templates_closed": True,
+        "nq_closed_until_new_preregister": True,
         "n_trials_total": cycle.n_trials_total,
         "n_trials_by_root": cycle.n_trials_by_root,
         "holdout_pin": "2026-01-28T23:00:00Z",
@@ -258,6 +281,12 @@ def _write_reports(cycle: NullAuditCycle, *, report_dir: Path, repo_root: Path) 
                 "accepted": item.accepted,
                 "planted_detected": item.planted_detected,
                 "reliable": item.reliable,
+                "borderline": item.borderline,
+                "status": item.status,
+                "exact_a2": item.exact_a2 or f"{item.n_a2}/{item.n_seeds}",
+                "n_edge": item.n_edge,
+                "exact_edge": item.exact_edge or f"{item.n_edge}/{item.n_seeds}",
+                "a2_status": item.a2_status,
                 "a2_within_ten_pct": (
                     item.report.null_audit.a2_within_ten_pct
                     if item.report is not None and item.report.null_audit is not None
@@ -278,6 +307,7 @@ def _write_reports(cycle: NullAuditCycle, *, report_dir: Path, repo_root: Path) 
                         {
                             "seed": seed.seed,
                             "detected": seed.detected,
+                            "false_edge": seed.false_edge,
                             "median_oos": seed.median_oos,
                             "pct_positive": seed.pct_positive,
                             "dsr": seed.dsr,
@@ -292,6 +322,7 @@ def _write_reports(cycle: NullAuditCycle, *, report_dir: Path, repo_root: Path) 
                         {
                             "seed": seed.seed,
                             "detected": seed.detected,
+                            "false_edge": seed.false_edge,
                             "median_oos": seed.median_oos,
                             "pct_positive": seed.pct_positive,
                             "dsr": seed.dsr,
@@ -313,33 +344,29 @@ def _write_reports(cycle: NullAuditCycle, *, report_dir: Path, repo_root: Path) 
         f"- pre-register: `{PREREG_SHA_NAME}`",
         f"- CostModel: `{COST_MODEL_VERSION}`",
         f"- seeds: `{len(default_null_seeds())}` (`{default_null_seeds()[0]}`..`{default_null_seeds()[-1]}`)",
-        f"- A2 fail-closed cap (majority): `{len(default_null_seeds()) // 2}` of {len(default_null_seeds())}",
-        f"- A2 10% diagnostic: `{max_a2_hits(len(default_null_seeds()))}` of {len(default_null_seeds())}",
-        f"- method_ready (MES/MNQ/ES planted+null): `{cycle.method_ready}`",
-        "- NQ templates: **closed** this cycle (action 5 is ES+MES only)",
+        f"- A2 diagnostic cap: `{fail_closed_a2_cap(len(default_null_seeds()))}` of {len(default_null_seeds())} (not majority 16/32)",
+        f"- A2 borderline: `{fail_closed_a2_cap(len(default_null_seeds())) + 1}` of {len(default_null_seeds())} (monitor)",
+        f"- calibrated false-edge: A2 and +OOS ≥ `{NULL_CALIBRATED_POSITIVE_SHARE:.3f}` (7/8); gate uses `n_edge`",
+        f"- method_ready (MES/MNQ/ES planted+calibrated-null): `{cycle.method_ready}`",
+        "- NQ templates: **closed** until a new team-approved pre-register",
+        "- Week-block ISO calendar-week shuffle: extra reported check, not a gate",
         f"- n_trials total: `{cycle.n_trials_total}`",
         "- holdout pin `2026-01-28T23:00:00Z`: closed",
         "",
         "## Per root",
         "",
-        "| root | planted | null reliable | A2 hits | ≤10% diag | planted median OOS | null median-of-medians | days | IS/OOS | N | note |",
-        "|---|---|---|---|---|---|---|---|---|---|---|",
+        "| root | planted | A2 exact | A2 status | edge exact | edge status | planted median OOS | null median-of-medians | days | IS/OOS | N | note |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for item in cycle.roots:
         lines.append(
-            "| {root} | {planted} | {reliable} | {hits}/{seeds} | {ten} | {pmed:.6g} | {nmed:.6g} | {days} | {is_size}/{oos} | {n} | {note} |".format(
+            "| {root} | {planted} | {exact_a2} | {a2_status} | {exact_edge} | {edge_status} | {pmed:.6g} | {nmed:.6g} | {days} | {is_size}/{oos} | {n} | {note} |".format(
                 root=item.root,
                 planted=item.planted_detected,
-                reliable=item.reliable,
-                hits=item.n_a2,
-                seeds=item.n_seeds,
-                ten=(
-                    "yes"
-                    if item.report is not None
-                    and item.report.null_audit is not None
-                    and item.report.null_audit.a2_within_ten_pct
-                    else "no"
-                ),
+                exact_a2=item.exact_a2 or f"{item.n_a2}/{item.n_seeds}",
+                a2_status=item.a2_status or "unreliable",
+                exact_edge=item.exact_edge or f"{item.n_edge}/{item.n_seeds}",
+                edge_status=item.status or ("reliable" if item.reliable else "unreliable"),
                 pmed=item.median_oos_planted,
                 nmed=item.median_of_null_medians,
                 days=item.n_days,
@@ -359,8 +386,12 @@ def _write_reports(cycle: NullAuditCycle, *, report_dir: Path, repo_root: Path) 
             "## Fail-closed",
             "",
             "- No seed reroll, no config respec.",
-            "- If MES, MNQ, or ES planted misses or the null is unreliable: stop later strategy reruns.",
-            "- NQ stays closed until its null is reliable; even then this cycle does not run NQ templates.",
+            "- Always report exact `n_a2/32` (A2 diagnostic) and exact `n_edge/32` (calibrated 7/8 gate).",
+            "- Cycle stop: planted miss, calibrated `n_edge` unreliable (`>=5/32`), or planted does not beat median-of-medians.",
+            "- `4/32` is borderline/monitor (MES ATR A2). Not a hard stop.",
+            "- Raw A2 `>=5/32` is a leak diagnostic, not by itself the stop: P(A2)≈0.36 on 8 fair windows.",
+            "- NQ stays closed until a new pre-register is explicitly approved. Null reliability alone does not open NQ.",
+            "- Week-block is extra; it does not decide pass/fail.",
             "",
         ]
     )

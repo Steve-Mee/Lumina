@@ -29,8 +29,8 @@ from lumina_research.cycles.cost_bands import (
 )
 from lumina_research.cycles.data import LoadedTape, ResearchBar
 from lumina_research.cycles.atr import ATR_N_SESSIONS, causal_session_atr, points_to_ticks
-from lumina_research.cycles.atr_cycle import ATR_SEAL_NAME, atr_es_specs
-from lumina_research.cycles.diagnostics import from_trades
+from lumina_research.cycles.atr_cycle import ATR_SEAL_NAME, DSR_ONLY_KILLS, atr_es_specs
+from lumina_research.cycles.diagnostics import UNBRACKET_HORIZONS, from_trades
 from lumina_research.cycles.execution import (
     ClosedTrade,
     ExecutionRefused,
@@ -49,7 +49,8 @@ from lumina_research.cycles.fills import (
     traded_through,
 )
 from lumina_research.cycles.gaps import in_known_gap
-from lumina_research.cycles.geometry import GeometryRefused, floors_for, require_geometry
+from lumina_research.cycles.geometry import GeometryRefused, family_break_even_win_rate, floors_for, require_geometry
+from lumina_research.cycles.nq_lock import NQTemplatesClosed, assert_nq_templates_closed
 from lumina_research.cycles.holdout import (
     DAYS_PER_MONTH,
     HOLDOUT_MONTHS,
@@ -67,20 +68,28 @@ from lumina_research.cycles.holdout import (
 )
 from lumina_research.cycles.null_model import (
     NULL_A2_MAX_SHARE,
+    NULL_CALIBRATED_POSITIVE_SHARE,
     NULL_N_SEEDS,
+    classify_null_a2,
     default_null_seeds,
+    fail_closed_a2_cap,
     majority_a2_cap,
     max_a2_hits,
+    null_seed_is_false_edge,
 )
 from lumina_research.cycles.positive_control import (
+    BREAKOUT_MIDPOINT_ATR,
     CONTROL_ATR_MULTIPLE,
     CONTROL_STOP_TICKS,
     CONTROL_TARGET_TICKS,
     CONTROL_TIME_STOP_BARS,
+    FADE_MIDPOINT_ATR,
     _detected,
     execute_control,
     horizon_note,
+    required_midpoint_controls,
     rth_session_direction,
+    run_controls,
     shuffle_signals,
 )
 from lumina_research.cycles.prepare import _high_vol_sessions, _quiet_mask, prepare_tape
@@ -598,8 +607,20 @@ def _kill_deeper() -> None:
         _fail("null seed base drifted")
     if abs(NULL_A2_MAX_SHARE - 0.10) > 1e-12 or max_a2_hits(32) != 3:
         _fail("null 10% diagnostic cap must stay floor(0.10*32)=3")
+    if fail_closed_a2_cap(32) != 3:
+        _fail("null fail-closed cap must stay 3 of 32")
+    if abs(NULL_CALIBRATED_POSITIVE_SHARE - 0.875) > 1e-12:
+        _fail("calibrated null-edge share must stay 7/8")
+    if null_seed_is_false_edge(detected=True, pct_positive=0.625) is not False:
+        _fail("5/8 A2 must not count as a calibrated false edge")
+    if null_seed_is_false_edge(detected=True, pct_positive=0.875) is not True:
+        _fail("7/8 A2 must count as a calibrated false edge")
+    if classify_null_a2(4, 32).status != "borderline":
+        _fail("4/32 A2 must stay borderline/monitor")
+    if classify_null_a2(5, 32).reliable is not False:
+        _fail(">=5/32 A2 must stay fail-closed unreliable")
     if majority_a2_cap(32) != 16:
-        _fail("null fail-closed cap must stay majority-not-A2 (16 of 32)")
+        _fail("historical majority helper must stay 16 and must not be the gate")
     if INTRASESSION_HOLE_NS != 90 * 1_000_000_000:
         _fail("90s hole threshold drifted")
     if DEFAULT_BLOCK != 5 or DEFAULT_PATHS != 48:
@@ -1043,6 +1064,31 @@ def _kill_atr_geometry() -> None:
         _fail("no new 1m high-turnover templates")
     if any(item.time_stop_bars != 2000 or not item.session_end_flatten for item in specs):
         _fail("ATR grid must session-flatten with time_stop_bars=2000")
+    if any(item.instrument == "NQ" for item in specs):
+        _fail("NQ templates must stay closed")
+    if FADE_MIDPOINT_ATR != (1.0, 1.2) or BREAKOUT_MIDPOINT_ATR != (1.8, 0.9):
+        _fail("pre-registered midpoints must stay fade 1.0/1.2 and breakout 1.8/0.9")
+    if required_midpoint_controls()[0][1:] != FADE_MIDPOINT_ATR:
+        _fail("positive control must keep fade midpoint params")
+    control_params = inspect.signature(run_controls).parameters
+    if "target_atr" not in control_params or "stop_atr" not in control_params:
+        _fail("run_controls must accept pre-registered midpoint ATR params")
+    if DSR_ONLY_KILLS != frozenset({"p2a-or-bo-es", "p2a-rm-es", "p2a-pb-es", "p2a-gap-es"}):
+        _fail("four DSR-only kills must stay frozen")
+    if UNBRACKET_HORIZONS != (16, 60, 120):
+        _fail("unbracket hitrate horizons must stay 16/60/120")
+    fade_be = family_break_even_win_rate(target_atr=1.0, stop_atr=1.2)
+    if abs(fade_be - (1.2 / 2.2)) > 1e-12:
+        _fail("fade break-even must be stop/(target+stop) ATR multiples")
+    gap_be = family_break_even_win_rate(disable_brackets=True)
+    if gap_be == gap_be:
+        _fail("gap/no-bracket break-even must be NaN")
+    try:
+        assert_nq_templates_closed(("NQ",))
+    except NQTemplatesClosed:
+        pass
+    else:
+        _fail("NQ template lock must refuse NQ")
     if ATR_SEAL_NAME == "phase5_p2_es_nq_holdout_seal.json":
         _fail("ATR cycle must not reuse the ES/NQ seal filename")
     gap = next(item for item in specs if item.config_id == "p2a-gap-es")

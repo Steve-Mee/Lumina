@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from lumina_research.cycles.catalog import HypothesisSpec, catalog
+from lumina_research.cycles.nq_lock import assert_nq_templates_closed
+from lumina_research.cycles.positive_control import BREAKOUT_MIDPOINT_ATR, FADE_MIDPOINT_ATR
 from lumina_research.cycles.runner import ResearchCycleResult, run_research_cycles
 from lumina_research.proof.runner import DEFAULT_REPORTS
 
@@ -13,6 +15,16 @@ ATR_CYCLES_STEM = "phase5_p2_atr_es"
 ATR_RESULTS_NAME = "phase5_p2_atr_es_results.md"
 ATR_SEAL_NAME = "phase5_p2_atr_es_holdout_seal.json"
 ATR_TIME_STOP = 2000
+# Team 17:34: these four stay killed. DSR floor is not relaxed. A lower-turnover
+# version is a new pre-register (fresh trial), not a rerun of this grid.
+DSR_ONLY_KILLS: frozenset[str] = frozenset(
+    {
+        "p2a-or-bo-es",
+        "p2a-rm-es",
+        "p2a-pb-es",
+        "p2a-gap-es",
+    }
+)
 
 _GRID: tuple[tuple[str, str, str, str, int, float, float | None, float | None, bool], ...] = (
     ("p2a-mr-es", "mean_reversion", "mean_reversion", "fade", 60, 1.5, 1.0, 1.2, False),
@@ -59,6 +71,15 @@ def atr_es_specs() -> tuple[HypothesisSpec, ...]:
         raise RuntimeError("ATR ES grid must be 10 pre-registered configs")
     if any(item.instrument != "ES" for item in out):
         raise RuntimeError("ATR grid is ES only")
+    assert_nq_templates_closed(item.instrument for item in out)
+    fade_t, fade_s = FADE_MIDPOINT_ATR
+    bo_t, bo_s = BREAKOUT_MIDPOINT_ATR
+    fade = {item.config_id for item in out if item.target_atr == fade_t and item.stop_atr == fade_s}
+    breakout = {item.config_id for item in out if item.target_atr == bo_t and item.stop_atr == bo_s}
+    if not fade or not breakout:
+        raise RuntimeError("ATR grid must keep pre-registered fade 1.0/1.2 and breakout 1.8/0.9 midpoints")
+    if not DSR_ONLY_KILLS <= {item.config_id for item in out}:
+        raise RuntimeError("DSR-only kills must remain in the frozen grid")
     return tuple(out)
 
 

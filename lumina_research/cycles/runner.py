@@ -24,7 +24,7 @@ from lumina_research.cycles.data import (
 from lumina_research.cycles.data_spec import write_data_spec
 from lumina_research.cycles.diagnostics import ConfigDiagnostics, empty_diagnostics
 from lumina_research.cycles.first_cycle import first_cycle_specs, write_first_cycle_preregister
-from lumina_research.cycles.geometry import Geometry, require_geometry
+from lumina_research.cycles.geometry import Geometry, family_break_even_win_rate, require_geometry
 from lumina_research.cycles.holdout import HoldoutLocked, P2_HOLDOUT_START_NS, P2_PIN_MIN_BARS, access_bars
 from lumina_research.cycles.independence import IndependenceRow, select_independent
 from lumina_research.cycles.kill_rate import diagnose_kill_rate
@@ -784,7 +784,14 @@ def _overlay_diagnostics(
         seed = base
     else:
         geometry = require_geometry(root=spec.instrument, target_ticks=spec.target_ticks, stop_ticks=spec.stop_ticks)
-        seed = empty_diagnostics(be=geometry.break_even_win_rate)
+        seed = empty_diagnostics(
+            be=family_break_even_win_rate(
+                target_atr=spec.target_atr,
+                stop_atr=spec.stop_atr,
+                disable_brackets=spec.disable_brackets,
+                tick_geometry=geometry,
+            )
+        )
     net = float(sum(evaluation.net_returns)) if evaluation.net_returns else seed.net_pnl
     return replace(
         seed,
@@ -838,8 +845,8 @@ def _row(
         death_reason=death_reason(tested=tested, passed=passed, reasons=reasons, stopped=stopped),
         n_trades=None if diag is None else diag.n_trades,
         hitrate=None if diag is None else diag.hitrate,
-        break_even_win_rate=None if diag is None else diag.break_even_win_rate,
-        hitrate_minus_be=None if diag is None else diag.hitrate_minus_be,
+        break_even_win_rate=_finite_or_none(None if diag is None else diag.break_even_win_rate),
+        hitrate_minus_be=_finite_or_none(None if diag is None else diag.hitrate_minus_be),
         gross_pnl=None if diag is None else diag.gross_pnl,
         net_pnl=None if diag is None else diag.net_pnl,
         commission_usd=None if diag is None else diag.commission_usd,
@@ -862,8 +869,11 @@ def _row(
         exit_session_end=None if diag is None else diag.exit_session_end,
         mean_mfe_ticks=None if diag is None else diag.mean_mfe_ticks,
         mean_mae_ticks=None if diag is None else diag.mean_mae_ticks,
-        hitrate_unbracket_n=None if diag is None else diag.hitrate_unbracket_n,
-        hitrate_1r1r=None if diag is None else diag.hitrate_1r1r,
+        hitrate_unbracket_n=_finite_or_none(None if diag is None else diag.hitrate_unbracket_n),
+        hitrate_1r1r=_finite_or_none(None if diag is None else diag.hitrate_1r1r),
+        hitrate_unbracket_16=_finite_or_none(None if diag is None else diag.hitrate_unbracket_16),
+        hitrate_unbracket_60=_finite_or_none(None if diag is None else diag.hitrate_unbracket_60),
+        hitrate_unbracket_120=_finite_or_none(None if diag is None else diag.hitrate_unbracket_120),
         gross_ticks=None if diag is None else diag.gross_ticks,
         net_ticks=None if diag is None else diag.net_ticks,
         gross_points=None if diag is None else diag.gross_points,
@@ -873,3 +883,11 @@ def _row(
         disable_brackets=spec.disable_brackets,
         time_stop_bars=spec.time_stop_bars,
     )
+
+
+def _finite_or_none(value: float | None) -> float | None:
+    if value is None:
+        return None
+    if value != value:
+        return None
+    return float(value)

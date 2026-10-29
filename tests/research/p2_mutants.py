@@ -29,6 +29,7 @@ TARGETS: tuple[tuple[str, str], ...] = (
     ("lumina_research/cycles", "diagnostics.py"),
     ("lumina_research/cycles", "positive_control.py"),
     ("lumina_research/cycles", "null_model.py"),
+    ("lumina_research/cycles", "nq_lock.py"),
     ("lumina_research/cycles", "holdout.py"),
     ("lumina_research/cycles", "seal.py"),
     ("lumina_research/cycles", "roll_verify.py"),
