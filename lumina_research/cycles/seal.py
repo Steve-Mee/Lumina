@@ -29,6 +29,7 @@ PENDING_COUNTS_SEAL_NAME = "phase5_p2_holdout_seal_legacy_2026-01-28T23Z_pending
 PENDING_COUNTS_SEAL_SHA256 = "51d55d770aa21fb8f10062c7aab53acebe4866e526eb3419501098bd67172a99"
 LIVE_SEAL_SHA256 = "85e4588fde77159315a72bdaa722d6487f93bbad9bf24999311f893950489d40"
 ES_NQ_SEAL_NAME = "phase5_p2_es_nq_holdout_seal.json"
+ES_NQ_SEAL_SHA256 = "454b8d1f7fd8b0fe0ee43b9c4431515be3912e4859a6a268372ec1c3aff5abd4"
 ZIP_SHA256: Mapping[str, str] = {
     "MES": "c5c094a199502fde9cc79f535441995ba7e326811e4e7e01bf1833a25c9c7b2e",
     "MNQ": "a1cefabd46c4109a93bb219df45d134f9e3e16ffd3abc8250242c88a3ee5d6e8",
@@ -67,6 +68,11 @@ def seal_holdout(
         typed = as_object_dict(loaded)
         if typed is not None and typed.get("seal_sha256") == LIVE_SEAL_SHA256:
             raise HoldoutLocked("refusing to overwrite live MES/MNQ holdout seal 85e4588f")
+    if filename == ES_NQ_SEAL_NAME and path.is_file():
+        loaded_es = json.loads(path.read_text(encoding="utf-8"))
+        typed_es = as_object_dict(loaded_es)
+        if typed_es is not None and typed_es.get("seal_sha256") == ES_NQ_SEAL_SHA256:
+            raise HoldoutLocked("refusing to overwrite live ES/NQ holdout seal 454b8d1f")
     instruments: dict[str, object] = {}
     for tape in tapes:
         root = tape.instrument

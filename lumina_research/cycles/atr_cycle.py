@@ -6,12 +6,12 @@ from pathlib import Path
 
 from lumina_research.cycles.catalog import HypothesisSpec, catalog
 from lumina_research.cycles.runner import ResearchCycleResult, run_research_cycles
-from lumina_research.cycles.seal import ES_NQ_SEAL_NAME
 from lumina_research.proof.runner import DEFAULT_REPORTS
 
 _REPO = Path(__file__).resolve().parents[2]
 ATR_CYCLES_STEM = "phase5_p2_atr_es"
 ATR_RESULTS_NAME = "phase5_p2_atr_es_results.md"
+ATR_SEAL_NAME = "phase5_p2_atr_es_holdout_seal.json"
 ATR_TIME_STOP = 2000
 
 _GRID: tuple[tuple[str, str, str, str, int, float, float | None, float | None, bool], ...] = (
@@ -82,7 +82,7 @@ def run_atr_es_cycle(
         allowed_instruments=frozenset({"ES", "MES"}),
         control_per_instrument=True,
         write_sidecars=False,
-        seal_filename=ES_NQ_SEAL_NAME,
+        seal_filename=ATR_SEAL_NAME,
         require_known_files=True,
         control_geometry_mode="atr",
         required_control_roots=frozenset({"MES", "ES"}),

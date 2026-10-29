@@ -29,7 +29,7 @@ from lumina_research.cycles.cost_bands import (
 )
 from lumina_research.cycles.data import LoadedTape, ResearchBar
 from lumina_research.cycles.atr import ATR_N_SESSIONS, causal_session_atr, points_to_ticks
-from lumina_research.cycles.atr_cycle import atr_es_specs
+from lumina_research.cycles.atr_cycle import ATR_SEAL_NAME, atr_es_specs
 from lumina_research.cycles.diagnostics import from_trades
 from lumina_research.cycles.execution import (
     ClosedTrade,
@@ -1042,6 +1042,8 @@ def _kill_atr_geometry() -> None:
         _fail("no new 1m high-turnover templates")
     if any(item.time_stop_bars != 2000 or not item.session_end_flatten for item in specs):
         _fail("ATR grid must session-flatten with time_stop_bars=2000")
+    if ATR_SEAL_NAME == "phase5_p2_es_nq_holdout_seal.json":
+        _fail("ATR cycle must not reuse the ES/NQ seal filename")
     gap = next(item for item in specs if item.config_id == "p2a-gap-es")
     if gap.disable_brackets is not True or gap.target_atr is not None:
         _fail("gap family must have no 1m bracket")

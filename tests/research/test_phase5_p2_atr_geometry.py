@@ -3,21 +3,26 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
 from lumina_research.cycles.atr import causal_session_atr, points_to_ticks
-from lumina_research.cycles.atr_cycle import atr_es_specs
+from lumina_research.cycles.atr_cycle import ATR_SEAL_NAME, atr_es_specs
+from lumina_research.cycles.data import LoadedTape
 from lumina_research.cycles.diagnostics import from_trades
 from lumina_research.cycles.execution import ClosedTrade, ExecutionRefused, run_execution
 from lumina_research.cycles.gaps import in_known_gap
 from lumina_research.cycles.geometry import require_geometry
+from lumina_research.cycles.holdout import HoldoutLocked
 from lumina_research.cycles.prepare import prepare_tape
+from lumina_research.cycles.seal import ES_NQ_SEAL_NAME, ES_NQ_SEAL_SHA256, seal_holdout
 from lumina_research.cycles.sessions import annotate
 from lumina_research.proof.cli import build_parser
 from lumina_research.validation.contracts import spec_for
 from lumina_research.validation.cost_model import MarketSnapshot, apply_costs
 from lumina_research.validation.types import RegimeSnapshot
+from tests.research.test_phase5_p2 import _span_bars
 from tests.research.test_phase5_p2_fixes import _bar
 
 UTC = timezone.utc
@@ -41,6 +46,8 @@ def test_atr_es_grid_is_ten_es_configs() -> None:
     assert "close_reversal" not in templates
     assert "volume_imbalance" not in templates
     assert all(item.session_filter == "rth" for item in specs)
+    assert ATR_SEAL_NAME == "phase5_p2_atr_es_holdout_seal.json"
+    assert ATR_SEAL_NAME != "phase5_p2_es_nq_holdout_seal.json"
 
 
 @pytest.mark.unit
@@ -241,3 +248,28 @@ def test_target_atr_requires_stop_atr() -> None:
             session_dates=labels.session_dates,
             target_atr=1.0,
         )
+
+
+@pytest.mark.unit
+def test_atr_seal_does_not_overwrite_live_es_nq_seal(tmp_path: Path) -> None:
+    live = Path("experiments/reports") / ES_NQ_SEAL_NAME
+    (tmp_path / ES_NQ_SEAL_NAME).write_text(live.read_text(encoding="utf-8"), encoding="utf-8")
+    bars = _span_bars()
+    csv = tmp_path / "ES" / "1m" / "es.csv"
+    csv.parent.mkdir(parents=True)
+    csv.write_text("timestamp,open,high,low,close,volume\n", encoding="utf-8")
+    tape = LoadedTape(instrument="ES", bar_size="1m", path=csv, bars=bars)
+    with pytest.raises(HoldoutLocked, match="refusing to overwrite live ES/NQ"):
+        seal_holdout((tape,), report_dir=tmp_path, require_known_files=False, filename=ES_NQ_SEAL_NAME)
+    committed = Path(tmp_path / ES_NQ_SEAL_NAME).read_text(encoding="utf-8")
+    assert ES_NQ_SEAL_SHA256 in committed
+    alt = seal_holdout(
+        (tape,),
+        report_dir=tmp_path,
+        require_known_files=False,
+        filename=ATR_SEAL_NAME,
+    )
+    assert alt["seal_sha256"] != ES_NQ_SEAL_SHA256
+    assert (tmp_path / ATR_SEAL_NAME).is_file()
+    still = Path(tmp_path / ES_NQ_SEAL_NAME).read_text(encoding="utf-8")
+    assert ES_NQ_SEAL_SHA256 in still
