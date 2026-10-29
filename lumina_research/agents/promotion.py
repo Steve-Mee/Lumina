@@ -58,6 +58,7 @@ class PromotionAgent(Frozen):
     _blackboard: AgentBlackboard | None
     _issued: list[PromotionCandidate]
     _consume_trial: Callable[[int], bool]
+    _admit_for_sim: bool
 
     def __init_subclass__(cls) -> None:
         raise TypeError("PromotionAgent cannot be subclassed")
@@ -71,6 +72,7 @@ class PromotionAgent(Frozen):
         experiment_log_path: Path,
         hypotheses: Mapping[str, object] | None = None,
         blackboard: AgentBlackboard | None = None,
+        admit_for_sim: bool = False,
     ) -> None:
         self._bus = bus
         self._core = core
@@ -79,6 +81,7 @@ class PromotionAgent(Frozen):
         self._hypotheses = dict(hypotheses or {})
         self._blackboard = blackboard
         self._issued = []
+        self._admit_for_sim = bool(admit_for_sim)
         seen: set[int] = set()
 
         def consume(trial_id: int) -> bool:
@@ -127,6 +130,11 @@ class PromotionAgent(Frozen):
             reasons = _as_reasons(verified.get("reject_reasons"))
             self._log_kill(payload, reasons[0] if reasons else "gate_failed", reasons)
             return None
+        if self._admit_for_sim is True:
+            kind = str(verified.get("tape_kind") or payload.get("tape_kind") or "synthetic")
+            if kind != "nt_pit":
+                self._log_kill(payload, "survivors_not_nt_pit", ("survivors_not_nt_pit",))
+                return None
         hypothesis_id = str(verified["hypothesis_id"])
         hyp = self._lookup(hypothesis_id)
         if hyp is None:

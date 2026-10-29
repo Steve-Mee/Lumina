@@ -69,7 +69,7 @@ LUMINA gebruikt **bounded contexts** als domeingrenzen onder `lumina_core/` (zie
 | **Risk Management** | Risk gates, allocatie, Kelly-achtige begrenzing | [`lumina_core/risk/`](../lumina_core/risk/) | Via mixins/engine geïntegreerd; canoniek onder `risk/` |
 | **Agent Orchestration** | Event bus, engine↔blackboard bindingen | [`lumina_core/agent_orchestration/`](../lumina_core/agent_orchestration/) | Pub/sub en bindings centraliseren |
 | **Research** | Propose-only Validation Gate, hypotheses, monitoring | [`lumina_research/`](../lumina_research/) | Isolation: no live Risk Core, no NT broker. Research may only propose. |
-| **ResearchBridge (S0 SHADOW + S2 fill SSOT)** | `PromotionCandidate` → logged `SignalIntent` + ADR-0055 hypothetical fills; broker fills → monitor + per-root calibrator | [`lumina_core/research_bridge/`](../lumina_core/research_bridge/) | Zero `PlaceOrderCommand`. Ungated places are code-frozen (D1/D8, ADR-0060). S1 SIM whitelist + HMAC `LIVE_RELEASE` (ADR-0061); live orders stay impossible. S2 `fill_translator` is the fill API (ADR-0062). |
+| **ResearchBridge (S0 SHADOW + S2 fill SSOT + S3 gated SIM)** | `PromotionCandidate` → logged `SignalIntent` + ADR-0055 hypothetical fills; S3 `OrderIntent` only after `sim_gate` on NT-PIT survivors | [`lumina_core/research_bridge/`](../lumina_core/research_bridge/) | Ungated places stay code-frozen (D1/D8). S3 allows `source_agent=research_bridge` after `sim_gate` only (ADR-0063). Supervisor stays closed. S1 live path stays closed. S2 `fill_translator` is the fill API (ADR-0062). |
 
 ```mermaid
 flowchart LR
@@ -612,6 +612,9 @@ flowchart LR
 
 - [`lumina_core/risk/cost_model_calibrator.py`](../lumina_core/risk/cost_model_calibrator.py) vergelijkt per `reconciled` **broker** fill `model_cost` versus `real_fill_cost`, groepeert per root (ES ≠ MES), en schrijft running bias-statistiek naar `state/cost_model_calibration.json`. Hypothetical ADR-0055 fills never enter this file.
 - [`lumina_core/research_bridge/fill_translator.py`](../lumina_core/research_bridge/fill_translator.py) is the S2 FillEvent API: one fill fans out to monitor `observe()` (mapped `strategy_id` only) and the live calibrator JSONL (broker only). ADR-0055 commission; slippage is fill vs reference.
+- [`lumina_research/validation/nt_tape.py`](../lumina_research/validation/nt_tape.py) is the S2.5 NT-PIT tape. Forming bars and look-ahead refuse. `tape_kind` defaults to `synthetic`.
+- [`lumina_core/research_bridge/sim_gate.py`](../lumina_core/research_bridge/sim_gate.py) is the S3 entry gate (D2/D5/D11). [`sim_runtime.py`](../lumina_core/research_bridge/sim_runtime.py) submits only after that gate, through existing admission.
+- [`lumina_core/risk/alarm_executor.py`](../lumina_core/risk/alarm_executor.py) executes D7/D9/D10 proposals. Research does not call Fabric.
 - [`lumina_research/validation/cost_calibrate.py`](../lumina_research/validation/cost_calibrate.py) calibrates the research four-leg model *to* the card. It cannot undercut ADR-0055 or write the live calibrator state.
 - [`lumina_core/risk/cost_model.py`](../lumina_core/risk/cost_model.py) past de bias toe via `apply_calibration()` (ticks-bias + optionele sigma-update).
 - [`lumina_core/monitoring/reality_gap_tracker.py`](../lumina_core/monitoring/reality_gap_tracker.py) meet dagelijks de gap tussen live fills en baseline-metrics, en appendt records naar `logs/reality_gap.jsonl`.

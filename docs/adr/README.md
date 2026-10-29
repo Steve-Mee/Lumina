@@ -74,6 +74,7 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0060 | ResearchBridge SHADOW first: ungated-place freeze + hypothetical ADR-0055 fills | Accepted | 2026-10-28 | [0060-research-bridge-shadow-first.md](./0060-research-bridge-shadow-first.md) |
 | 0061 | SIM account whitelist + HMAC LIVE_RELEASE (S1; live path stays closed) | Accepted | 2026-10-29 | [0061-sim-whitelist-and-live-release.md](./0061-sim-whitelist-and-live-release.md) |
 | 0062 | Fill SSOT: ADR-0055 stamp, monitor observe, per-root calibration (S2) | Accepted | 2026-10-29 | [0062-fill-ssot-and-cost-calibration.md](./0062-fill-ssot-and-cost-calibration.md) |
+| 0063 | S2.5 NT-PIT tape + S3 gated SIM orders (MES/MNQ) | Accepted | 2026-10-29 | [0063-sim-orders-gated.md](./0063-sim-orders-gated.md) |
 
 ## Legacy notitie
 

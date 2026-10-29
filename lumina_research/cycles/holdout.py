@@ -9,6 +9,8 @@ move the lock window.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from lumina_research.cycles.data import LoadedTape, ResearchBar
 
 HOLDOUT_MONTHS = 9
@@ -16,6 +18,10 @@ HOLDOUT_MONTHS_MIN = 6
 HOLDOUT_MONTHS_MAX = 12
 NS_PER_DAY = 24 * 3600 * 1_000_000_000
 DAYS_PER_MONTH = 30.4375
+# Phase-5 pin. S3 must not open this window for gate/selection/tuning.
+HOLDOUT_PIN_ISO = "2026-01-28T23:00:00Z"
+HOLDOUT_PIN_UTC = datetime(2026, 1, 28, 23, 0, 0, tzinfo=timezone.utc)
+HOLDOUT_PIN_NS = int(HOLDOUT_PIN_UTC.timestamp() * 1_000_000_000)
 LOCKED_PURPOSES: frozenset[str] = frozenset(
     {"selection", "template_selection", "tuning", "calibration", "gate", "first_cycle"}
 )
@@ -24,6 +30,26 @@ EVAL_PURPOSES: frozenset[str] = frozenset({"evaluation", "holdout_eval"})
 
 class HoldoutLocked(ValueError):
     """Holdout bars were requested for a forbidden purpose, or the split cannot be formed."""
+
+
+def holdout_pin_is_closed() -> bool:
+    """The 2026-01-28T23:00:00Z pin cannot be opened from yaml, env, or a caller flag."""
+    return True
+
+
+def assert_holdout_pin_closed(*, ts_ns: int | None = None, purpose: str = "gate") -> None:
+    """Refuse gate/selection/tuning/calibration bars at or after the closed pin."""
+    if holdout_pin_is_closed() is not True:
+        raise HoldoutLocked("holdout pin 2026-01-28T23:00:00Z must stay closed")
+    key = purpose.strip().lower()
+    if key in EVAL_PURPOSES:
+        return
+    if key not in LOCKED_PURPOSES:
+        raise HoldoutLocked(f"unknown holdout purpose {purpose!r}; fail-closed")
+    if ts_ns is None:
+        return
+    if int(ts_ns) >= HOLDOUT_PIN_NS:
+        raise HoldoutLocked("holdout pin 2026-01-28T23:00:00Z is closed")
 
 
 def holdout_ns(months: int = HOLDOUT_MONTHS) -> int:

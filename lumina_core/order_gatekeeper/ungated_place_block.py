@@ -2,8 +2,8 @@
 
 A yaml ``research_execution_mode`` / ``mode`` key is observability only. This
 module never reads config or environment to allow a place. The source allow-list
-is hardcoded empty. Reopening requires an ADR plus a human-signed release
-(not implemented here).
+is hardcoded empty and is never consulted. S3 allows ``source_agent=research_bridge``
+only after ``sim_gate``; ``supervisor_tick_exec`` stays blocked.
 
 Flatten / cancel / emergency reduce remain allowed only when the order actually
 reduces live quantity and cannot flip the sign.
@@ -16,6 +16,13 @@ from collections.abc import Iterable, Mapping
 from typing import Any, Final
 
 from lumina_core.broker.broker_bridge.schemas import Order, OrderResult
+from lumina_core.research_bridge.sim_gate import (
+    RESEARCH_BRIDGE_SOURCE,
+    evaluate as evaluate_sim_gate,
+    non_research_release_allows,
+    research_place_is_armed,
+    supervisor_source_blocked,
+)
 
 logger = logging.getLogger("lumina.order_gatekeeper.ungated_place_block")
 
@@ -173,10 +180,9 @@ def assert_validation_gate_or_block(
     """Return ``(allowed, reason)``. Fail-closed for new risk-increasing orders.
 
     Does not read yaml, env, ``research_execution_mode``, or ``trade_mode``.
-    ``source_agent="research_bridge"`` is not an allow in S0.
+    ``source_agent="research_bridge"`` places only after ``sim_gate`` (S3).
     Emergency source/reason spoofing cannot open or flip a position.
     """
-    del source_agent  # S0 allow-list is empty; research_bridge cannot place.
     src = str(source or "").strip()
     tagged_exit = bool(emergency) or bool(reduce_only) or src in EMERGENCY_SOURCES or is_emergency_reason(reason)
     reducing = is_risk_reducing_side(
@@ -192,6 +198,40 @@ def assert_validation_gate_or_block(
             extra={"event_data": {"event": "ungated_place.reduce_allowed", "source": src, "reason": allow_reason}},
         )
         return True, allow_reason
+    # D8: supervisor is never on the research allow path, even with a spoofed source_agent.
+    if supervisor_source_blocked(src) is True:
+        logger.error(
+            "ungated_place.blocked",
+            extra={
+                "event_data": {
+                    "event": "ungated_place.blocked",
+                    "source": src,
+                    "reason": UNGATED_PLACE_BLOCK_REASON,
+                    "reduce_only": bool(reduce_only),
+                    "emergency": bool(emergency),
+                    "order_side": str(order_side or ""),
+                    "order_qty": order_qty,
+                    "live_position_qty": int(live_position_qty),
+                }
+            },
+        )
+        return False, UNGATED_PLACE_BLOCK_REASON
+    agent = str(source_agent or "").strip()
+    research_armed = research_place_is_armed() is True
+    if (agent == RESEARCH_BRIDGE_SOURCE or research_armed is True) and supervisor_source_blocked(src) is not True:
+        sim_ok, sim_reason = evaluate_sim_gate()
+        if sim_ok is True:
+            logger.info(
+                "ungated_place.research_sim_gate_ok",
+                extra={"event_data": {"event": "ungated_place.research_sim_gate_ok", "source": src}},
+            )
+            return True, sim_reason
+    if non_research_release_allows(src) is True:
+        logger.info(
+            "ungated_place.non_research_logged_release",
+            extra={"event_data": {"event": "ungated_place.non_research_logged_release", "source": src}},
+        )
+        return True, "non_research_logged_release"
     # D8: the documented source allow-list is never consulted. Yaml, env, and
     # rebinding that set cannot reopen a place. Reopen only via ADR + signed release.
     logger.error(

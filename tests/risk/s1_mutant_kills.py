@@ -316,17 +316,17 @@ def _live_battery() -> None:
 
     cases = (
         (None, LIVE_RELEASE_RECORD_MISSING),
-        (signed_live_release(enabled=False, nonce="n-disabled-16xxxx"), LIVE_RELEASE_DISABLED),
-        (signed_live_release(mac="", nonce="n-hmac-req-16xxxx"), LIVE_RELEASE_HMAC_REQUIRED),
-        (signed_live_release(mac="b" * 32, nonce="n-mac-inv-16xxxxx"), LIVE_RELEASE_MAC_INVALID),
-        (signed_live_release(mac="b" * 64, nonce="n-mac-mis-16xxxxx"), LIVE_RELEASE_MAC_MISMATCH),
-        (signed_live_release(approved_by="research_bridge", nonce="n-agent-16xxxxxxx"), LIVE_RELEASE_AGENT_APPROVER_FORBIDDEN),
-        (signed_live_release(adr_path="not-an-adr", nonce="n-adr-16xxxxxxxxxx"), LIVE_RELEASE_ADR_REQUIRED),
-        (signed_live_release(adr_sha256="nope", nonce="n-adr-hash-16xxxxx"), LIVE_RELEASE_ADR_HASH_INVALID),
-        (signed_live_release(purpose="other", nonce="n-purpose-16xxxxxxx"), LIVE_RELEASE_PURPOSE_INVALID),
-        (signed_live_release(schema_version="v0", nonce="n-schema-16xxxxxxxx"), LIVE_RELEASE_PURPOSE_INVALID),
-        (signed_live_release(nonce="short"), LIVE_RELEASE_NONCE_INVALID),
-        (signed_live_release(approved_at_utc="2026-10-29T00:00:00", nonce="n-naive-16xxxxxxxx"), LIVE_RELEASE_TIMESTAMP_NOT_UTC),
+        (signed_live_release(enabled=False, nonce="n-disabled-16xxxx", now=FROZEN_NOW), LIVE_RELEASE_DISABLED),
+        (signed_live_release(mac="", nonce="n-hmac-req-16xxxx", now=FROZEN_NOW), LIVE_RELEASE_HMAC_REQUIRED),
+        (signed_live_release(mac="b" * 32, nonce="n-mac-inv-16xxxxx", now=FROZEN_NOW), LIVE_RELEASE_MAC_INVALID),
+        (signed_live_release(mac="b" * 64, nonce="n-mac-mis-16xxxxx", now=FROZEN_NOW), LIVE_RELEASE_MAC_MISMATCH),
+        (signed_live_release(approved_by="research_bridge", nonce="n-agent-16xxxxxxx", now=FROZEN_NOW), LIVE_RELEASE_AGENT_APPROVER_FORBIDDEN),
+        (signed_live_release(adr_path="not-an-adr", nonce="n-adr-16xxxxxxxxxx", now=FROZEN_NOW), LIVE_RELEASE_ADR_REQUIRED),
+        (signed_live_release(adr_sha256="nope", nonce="n-adr-hash-16xxxxx", now=FROZEN_NOW), LIVE_RELEASE_ADR_HASH_INVALID),
+        (signed_live_release(purpose="other", nonce="n-purpose-16xxxxxxx", now=FROZEN_NOW), LIVE_RELEASE_PURPOSE_INVALID),
+        (signed_live_release(schema_version="v0", nonce="n-schema-16xxxxxxxx", now=FROZEN_NOW), LIVE_RELEASE_PURPOSE_INVALID),
+        (signed_live_release(nonce="short", now=FROZEN_NOW), LIVE_RELEASE_NONCE_INVALID),
+        (signed_live_release(approved_at_utc="2026-10-29T00:00:00", nonce="n-naive-16xxxxxxxx", now=FROZEN_NOW), LIVE_RELEASE_TIMESTAMP_NOT_UTC),
     )
     for record, want in cases:
         reset_live_release_nonces_for_tests()

@@ -50,6 +50,7 @@ class LivePositionManager:
             if self.engine is not None:
                 setattr(self.engine, "position_state", self._pos)  # wire if needed
         self._logger = getattr(app, "logger", logger)
+        self._strategy_qty: dict[str, int] = {}
 
     def sync_from_broker(self, instrument: str | None = None) -> None:
         """Relocated _paper_sync_sim_from_broker logic (zero or set sim_* + live_* + last from broker pos).
@@ -142,6 +143,26 @@ class LivePositionManager:
             setattr(self.engine, "live_trade_signal", str(action).upper())
 
     # Getters (for supervisor reads, risk, etc.; facade compatible)
+    def strategy_qty(self, strategy_id: str) -> int:
+        """Book qty for one research strategy_id. Does not decide D9 severity."""
+        key = str(strategy_id or "").strip()
+        if not key:
+            return 0
+        try:
+            return int(self._strategy_qty.get(key, 0) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def set_strategy_qty(self, strategy_id: str, qty: int) -> None:
+        key = str(strategy_id or "").strip()
+        if not key:
+            return
+        try:
+            value = int(qty)
+        except (TypeError, ValueError):
+            return
+        self._strategy_qty[key] = value
+
     def get_live_qty(self) -> int:
         return int(getattr(self._pos, "live_position_qty", 0) or 0)
 

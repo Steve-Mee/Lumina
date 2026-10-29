@@ -16,6 +16,13 @@ from tests.research_bridge.helpers import make_runtime, sealed_candidate
 
 ROOT = Path(__file__).resolve().parents[2]
 BRIDGE = ROOT / "lumina_core" / "research_bridge"
+S3_ALLOWED_IMPORTS = frozenset(
+    {
+        ("lumina_core/research_bridge/sim_runtime.py", "lumina_core.broker.broker_bridge.schemas"),
+        ("lumina_core/research_bridge/sim_gate.py", "lumina_core.broker.ninjatrader.account_names"),
+    }
+)
+S3_ALLOWED_CALLS = frozenset({("lumina_core/research_bridge/sim_runtime.py", "submit_order")})
 BANNED_IMPORT_PREFIXES = (
     "lumina_core.broker",
     "lumina_core.broker.ninjatrader",
@@ -54,11 +61,12 @@ def test_research_bridge_tree_has_no_broker_or_place_imports() -> None:
                 module = _imported_module(node)
                 for banned in BANNED_IMPORT_PREFIXES:
                     if module == banned or module.startswith(banned + "."):
-                        hits.append(f"{rel}:{node.lineno}:import {module}")
+                        if (rel, module) not in S3_ALLOWED_IMPORTS:
+                            hits.append(f"{rel}:{node.lineno}:import {module}")
             if isinstance(node, ast.Call):
                 func = node.func
                 name = func.id if isinstance(func, ast.Name) else (func.attr if isinstance(func, ast.Attribute) else "")
-                if name in BANNED_CALLS:
+                if name in BANNED_CALLS and (rel, name) not in S3_ALLOWED_CALLS:
                     hits.append(f"{rel}:{node.lineno}:call {name}")
             if isinstance(node, ast.Name) and node.id == "PlaceOrderCommand":
                 hits.append(f"{rel}:{node.lineno}:name PlaceOrderCommand")

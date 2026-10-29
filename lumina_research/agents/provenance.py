@@ -157,6 +157,7 @@ def _canonical_validation(fields: Mapping[str, object]) -> bytes:
         "cost_contract_root": fields["cost_contract_root"],
         "cost_model_id": fields["cost_model_id"],
         "regimes_complete": fields["regimes_complete"],
+        "tape_kind": _tape_kind(fields),
     }
     return _dumps(body)
 
@@ -184,6 +185,14 @@ def _canonical_issue(fields: Mapping[str, object]) -> bytes:
 
 def _dumps(value: object) -> bytes:
     return json.dumps(_stable(value), sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+
+
+def _tape_kind(fields: Mapping[str, object]) -> str:
+    raw = fields.get("tape_kind", "synthetic")
+    kind = str(raw or "synthetic").strip().lower()
+    if kind == "nt_pit":
+        return "nt_pit"
+    return "synthetic"
 
 
 def _require_sequence(value: object) -> list[object]:

@@ -294,6 +294,7 @@ class ValidationResult(BaseModel):
     regimes_complete: bool = False
     report_sha256: str = Field(min_length=64, max_length=64)
     provenance_mac: str = Field(min_length=64, max_length=64)
+    tape_kind: Literal["synthetic", "nt_pit"] = "synthetic"
 
 
 class PromotionCandidate(BaseModel):
