@@ -1,7 +1,7 @@
 """Additive Event Bus contracts for research SHADOW execution (S0).
 
-Existing ``TradeIntent`` / live ``OrderIntent`` stay unchanged except for
-optional fields added on the live schema. These topics are issuer-guarded:
+Existing ``TradeIntent`` / live ``OrderIntent`` stay unchanged. Research
+SHADOW uses these additive topics, not Final Arbitration. Issuer-guarded:
 only ``research_bridge`` may publish them.
 """
 
