@@ -28,6 +28,8 @@ class HypothesisSpec:
     target_ticks: int
     stop_ticks: int
     rationale: EconomicRationale
+    is_size: int = 60
+    oos_size: int = 30
 
 
 def catalog() -> tuple[HypothesisSpec, ...]:
@@ -88,8 +90,8 @@ class EconomicCatalogGenerator(HypothesisGenerator):
                     proposed_price=5_000.0,
                     proposed_notional=5_000.0,
                     rationale=spec.rationale,
-                    is_size=60,
-                    oos_size=30,
+                    is_size=spec.is_size,
+                    oos_size=spec.oos_size,
                     expected_horizon_bars=CATALOG_EXPECTED_HORIZON_BARS,
                 )
             )

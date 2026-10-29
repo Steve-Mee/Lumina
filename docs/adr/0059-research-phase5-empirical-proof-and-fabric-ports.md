@@ -79,6 +79,16 @@ Floors stay frozen: FAR high-vol ≤ 10% hard, normal ≤ 5%, short-horizon dete
 4. Official continuity FAR/TTD uses **held-out seeds** disjoint from Phase 4 tuning and from the PR #63 independent set. The Phase 1 planted gate suite stays on that independent set (not the FAR holdout).
 5. P2 prep (not run here): NT8 1m MES/MNQ, last 9 months locked, fail-closed accessor. First cycle is 12 of 24 variants, pre-registered before seeing bars.
 
+## Addendum — first real P2 research cycle (2026-10-29)
+
+Holdout pin `2026-01-29T00:00:00Z` was hash-sealed before template ranking, parameter search, or gate calibration. Raw NT8 CSVs stay out of git (`$LUMINA_RESEARCH_DATA_DIR`). Gaps from GAPS.md are excluded, never filled. Roll-session first bars take no return. Floors unchanged. Shadow only; S0 freeze untouched. Do not merge until a human reviews.
+
+Run: `python -m lumina_research.proof research --data-dir $LUMINA_RESEARCH_DATA_DIR`
+
+Result: **12/12 killed** (kill_rate 1.00, diagnostic `expected_high_kill`). Walk-forward formed **8** OOS windows (`is_size=43`, `oos_size=69`) on Globex session-day nets after 1m four-leg costs. Every template had **negative median OOS after costs** and DSR ≪ 0.95. WFE and some regime Sharpes were undefined (zero-vol IS/OOS slices) → fail-closed `doubt`. PBO printed 0.00 because all twelve were similarly unprofitable, not because an edge survived. **No independent survivors. Holdout was not opened for evaluation.**
+
+MES/MNQ tick floors 16/8 and commission $0.94 were not loosened. Modeled MES one-way ticks sit in the 1–2.5 band; MNQ modeled ticks sit above it (CostModel unchanged).
+
 ## Consequences
 
 ### Positive

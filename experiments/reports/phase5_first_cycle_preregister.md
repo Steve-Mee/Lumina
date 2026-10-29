@@ -1,6 +1,6 @@
 # Phase 5 first-cycle pre-registration (before seeing data)
 
-- generated_at: `2026-10-28T20:35:18.925608+00:00`
+- generated_at: `2026-10-29T08:33:55.068008+00:00`
 - prefilter_n: `24`
 - first_cycle_n: `12`
 - holdout: last 9 months locked; never used for this selection

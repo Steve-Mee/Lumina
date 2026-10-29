@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from typing import Sequence
 
 from lumina_research.cycles.data import ResearchBar
 from lumina_research.cycles.fills import trade_through_fill
 from lumina_research.cycles.geometry import Geometry
+from lumina_research.cycles.sessions import annotate
 from lumina_research.validation.cost_model import MarketSnapshot
 from lumina_research.validation.contracts import spec_for
 
@@ -26,34 +28,78 @@ def simulate(
     lookback: int,
     threshold: float,
     mode: str,
+    breaks: Sequence[bool] | None = None,
+    session_dates: Sequence[date] | None = None,
+    rth: Sequence[bool] | None = None,
+    quiet: Sequence[bool] | None = None,
 ) -> Tape:
     if len(bars) < 241:
         raise StrategyRefused("need >= 241 bars for the Validation Gate")
+    computed = annotate(bars)
+    sessions = tuple(session_dates) if session_dates is not None else computed.session_dates
+    rth_flags = tuple(rth) if rth is not None else computed.rth
+    hole = tuple(breaks) if breaks is not None else tuple(False for _ in bars)
     if family == "mean_reversion":
-        positions = _mean_reversion(bars, lookback=lookback, z_entry=threshold, geometry=geometry)
+        positions = _mean_reversion(
+            bars, lookback=lookback, z_entry=threshold, geometry=geometry, breaks=hole
+        )
     elif family == "volume_imbalance":
-        positions = _volume_imbalance(bars, lookback=lookback, cutoff=threshold, geometry=geometry)
+        positions = _volume_imbalance(
+            bars, lookback=lookback, cutoff=threshold, geometry=geometry, breaks=hole
+        )
     elif family == "regime_momentum":
-        positions = _regime_momentum(bars, lookback=lookback, vol_pct=threshold, geometry=geometry)
+        positions = _regime_momentum(
+            bars, lookback=lookback, vol_pct=threshold, geometry=geometry, breaks=hole, quiet=quiet
+        )
     elif family == "opening_range":
-        positions = _opening_range(bars, or_bars=lookback, mode=mode, geometry=geometry)
+        positions = _opening_range(
+            bars,
+            or_bars=lookback,
+            mode=mode,
+            geometry=geometry,
+            breaks=hole,
+            session_dates=sessions,
+            rth=rth_flags,
+        )
     elif family == "overnight_gap":
-        positions = _overnight_gap(bars, gap_ticks=threshold, geometry=geometry)
+        positions = _overnight_gap(
+            bars, gap_ticks=threshold, geometry=geometry, breaks=hole, session_dates=sessions
+        )
     elif family == "vwap_distance":
-        positions = _vwap_distance(bars, lookback=lookback, z_entry=threshold, geometry=geometry)
+        positions = _vwap_distance(
+            bars,
+            lookback=lookback,
+            z_entry=threshold,
+            geometry=geometry,
+            breaks=hole,
+            session_dates=sessions,
+        )
     elif family == "range_compression":
-        positions = _range_compression(bars, lookback=lookback, pct=threshold, geometry=geometry)
+        positions = _range_compression(
+            bars, lookback=lookback, pct=threshold, geometry=geometry, breaks=hole
+        )
     elif family == "close_reversal":
-        positions = _close_reversal(bars, streak=lookback, geometry=geometry)
+        positions = _close_reversal(bars, streak=lookback, geometry=geometry, breaks=hole)
     elif family == "time_of_day":
-        positions = _time_of_day(bars, first_bars=lookback, geometry=geometry)
+        positions = _time_of_day(
+            bars,
+            first_bars=lookback,
+            geometry=geometry,
+            breaks=hole,
+            session_dates=sessions,
+            rth=rth_flags,
+        )
     elif family == "trend_pullback":
-        positions = _trend_pullback(bars, lookback=lookback, geometry=geometry)
+        positions = _trend_pullback(
+            bars, lookback=lookback, geometry=geometry, breaks=hole, quiet=quiet
+        )
     elif family == "volatility_expansion":
-        positions = _volatility_expansion(bars, lookback=lookback, pct=threshold, geometry=geometry)
+        positions = _volatility_expansion(
+            bars, lookback=lookback, pct=threshold, geometry=geometry, breaks=hole
+        )
     else:
         raise StrategyRefused(f"unknown family {family!r}")
-    return _tape(bars, positions, geometry.root)
+    return _tape(bars, positions, geometry.root, breaks=hole)
 
 
 @dataclass
@@ -63,7 +109,17 @@ class _Book:
     pending: float = 0.0
     limit: float = 0.0
 
-    def step(self, bar: ResearchBar, geometry: Geometry, adv: float, signal: float) -> float:
+    def step(
+        self,
+        bar: ResearchBar,
+        geometry: Geometry,
+        adv: float,
+        signal: float,
+        flatten: bool = False,
+    ) -> float:
+        if flatten:
+            self.pos, self.entry, self.pending = 0.0, 0.0, 0.0
+            return 0.0
         if self.pending != 0.0 and self.pos == 0.0:
             if trade_through_fill(side=self.pending, limit=self.limit, bar=bar, average_volume=adv):
                 self.pos, self.entry = self.pending, self.limit
@@ -75,13 +131,24 @@ class _Book:
         return self.pos
 
 
+def _flat(breaks: Sequence[bool], index: int) -> bool:
+    return bool(breaks[index])
+
+
 def _adv(bars: Sequence[ResearchBar], index: int) -> float:
     window = bars[max(0, index - 20) : index + 1]
     total = sum(max(item.volume, 1.0) for item in window)
     return total / float(len(window))
 
 
-def _mean_reversion(bars: Sequence[ResearchBar], *, lookback: int, z_entry: float, geometry: Geometry) -> tuple[float, ...]:
+def _mean_reversion(
+    bars: Sequence[ResearchBar],
+    *,
+    lookback: int,
+    z_entry: float,
+    geometry: Geometry,
+    breaks: Sequence[bool],
+) -> tuple[float, ...]:
     closes = [item.close for item in bars]
     book = _Book()
     out: list[float] = []
@@ -97,11 +164,18 @@ def _mean_reversion(bars: Sequence[ResearchBar], *, lookback: int, z_entry: floa
                 signal = -1.0
             elif zed < -z_entry:
                 signal = 1.0
-        out.append(book.step(bar, geometry, _adv(bars, index), signal))
+        out.append(book.step(bar, geometry, _adv(bars, index), signal, flatten=_flat(breaks, index)))
     return tuple(out)
 
 
-def _volume_imbalance(bars: Sequence[ResearchBar], *, lookback: int, cutoff: float, geometry: Geometry) -> tuple[float, ...]:
+def _volume_imbalance(
+    bars: Sequence[ResearchBar],
+    *,
+    lookback: int,
+    cutoff: float,
+    geometry: Geometry,
+    breaks: Sequence[bool],
+) -> tuple[float, ...]:
     signed: list[float] = []
     book = _Book()
     out: list[float] = []
@@ -117,11 +191,19 @@ def _volume_imbalance(bars: Sequence[ResearchBar], *, lookback: int, cutoff: flo
                 signal = -1.0
             elif imb < -cutoff:
                 signal = 1.0
-        out.append(book.step(bar, geometry, _adv(bars, index), signal))
+        out.append(book.step(bar, geometry, _adv(bars, index), signal, flatten=_flat(breaks, index)))
     return tuple(out)
 
 
-def _regime_momentum(bars: Sequence[ResearchBar], *, lookback: int, vol_pct: float, geometry: Geometry) -> tuple[float, ...]:
+def _regime_momentum(
+    bars: Sequence[ResearchBar],
+    *,
+    lookback: int,
+    vol_pct: float,
+    geometry: Geometry,
+    breaks: Sequence[bool],
+    quiet: Sequence[bool] | None,
+) -> tuple[float, ...]:
     closes = [item.close for item in bars]
     rets = [0.0]
     for index in range(1, len(closes)):
@@ -129,32 +211,48 @@ def _regime_momentum(bars: Sequence[ResearchBar], *, lookback: int, vol_pct: flo
         rets.append(0.0 if prev == 0.0 else (closes[index] - prev) / prev)
     book = _Book()
     out: list[float] = []
+    sq_hist: list[float] = []
     for index, bar in enumerate(bars):
         signal = 0.0
         if index >= lookback:
             window = rets[index - lookback : index]
             vol = (sum(item * item for item in window) / float(lookback)) ** 0.5
-            ranked = sorted(sum(rets[max(0, j - lookback) : j]) ** 2 for j in range(lookback, index + 1))
-            median_vol = ranked[len(ranked) // 2] ** 0.5 if ranked else vol
-            quiet = vol <= max(median_vol * (0.5 + vol_pct), 1e-12)
+            sq_hist.append(sum(item * item for item in window))
+            history = sq_hist[-252:-1]
+            median_vol = (sorted(history)[len(history) // 2] ** 0.5) if history else vol
+            local_quiet = vol <= max(median_vol * (0.5 + vol_pct), 1e-12)
+            if quiet is not None:
+                local_quiet = local_quiet and bool(quiet[index])
             mom = sum(window)
-            if quiet and mom > 0.0:
+            if local_quiet and mom > 0.0:
                 signal = 1.0
-            elif quiet and mom < 0.0:
+            elif local_quiet and mom < 0.0:
                 signal = -1.0
-        out.append(book.step(bar, geometry, _adv(bars, index), signal))
+        out.append(book.step(bar, geometry, _adv(bars, index), signal, flatten=_flat(breaks, index)))
     return tuple(out)
 
 
-def _opening_range(bars: Sequence[ResearchBar], *, or_bars: int, mode: str, geometry: Geometry) -> tuple[float, ...]:
-    session = max(or_bars * 8, 60)
+def _opening_range(
+    bars: Sequence[ResearchBar],
+    *,
+    or_bars: int,
+    mode: str,
+    geometry: Geometry,
+    breaks: Sequence[bool],
+    session_dates: Sequence[date],
+    rth: Sequence[bool],
+) -> tuple[float, ...]:
+    first_rth: dict[date, list[int]] = {}
+    for index, session in enumerate(session_dates):
+        if rth[index]:
+            first_rth.setdefault(session, []).append(index)
     book = _Book()
     out: list[float] = []
     for index, bar in enumerate(bars):
-        start = (index // session) * session
-        opening = bars[start : start + or_bars]
         signal = 0.0
-        if len(opening) >= or_bars and index >= start + or_bars:
+        opening_idx = first_rth.get(session_dates[index], [])[:or_bars]
+        if len(opening_idx) >= or_bars and index > opening_idx[-1]:
+            opening = [bars[item] for item in opening_idx]
             hi = max(item.high for item in opening)
             lo = min(item.low for item in opening)
             if mode == "breakout":
@@ -167,33 +265,59 @@ def _opening_range(bars: Sequence[ResearchBar], *, or_bars: int, mode: str, geom
                     signal = -1.0
                 elif bar.close < lo:
                     signal = 1.0
-        out.append(book.step(bar, geometry, _adv(bars, index), signal))
+        out.append(book.step(bar, geometry, _adv(bars, index), signal, flatten=_flat(breaks, index)))
     return tuple(out)
 
 
-def _overnight_gap(bars: Sequence[ResearchBar], *, gap_ticks: float, geometry: Geometry) -> tuple[float, ...]:
+def _overnight_gap(
+    bars: Sequence[ResearchBar],
+    *,
+    gap_ticks: float,
+    geometry: Geometry,
+    breaks: Sequence[bool],
+    session_dates: Sequence[date],
+) -> tuple[float, ...]:
     spec = spec_for(geometry.root)
+    last_close: dict[date, float] = {}
     book = _Book()
     out: list[float] = []
     for index, bar in enumerate(bars):
+        session = session_dates[index]
         signal = 0.0
-        if index >= 1:
-            gap = (bar.open - bars[index - 1].close) / spec.tick_size
+        if index >= 1 and session != session_dates[index - 1] and not breaks[index]:
+            prev_session = session_dates[index - 1]
+            prev_close = last_close.get(prev_session, bars[index - 1].close)
+            gap = (bar.open - prev_close) / spec.tick_size
             if gap >= gap_ticks:
                 signal = -1.0
             elif gap <= -gap_ticks:
                 signal = 1.0
-        out.append(book.step(bar, geometry, _adv(bars, index), signal))
+        last_close[session] = bar.close
+        out.append(book.step(bar, geometry, _adv(bars, index), signal, flatten=_flat(breaks, index)))
     return tuple(out)
 
 
-def _vwap_distance(bars: Sequence[ResearchBar], *, lookback: int, z_entry: float, geometry: Geometry) -> tuple[float, ...]:
+def _vwap_distance(
+    bars: Sequence[ResearchBar],
+    *,
+    lookback: int,
+    z_entry: float,
+    geometry: Geometry,
+    breaks: Sequence[bool],
+    session_dates: Sequence[date],
+) -> tuple[float, ...]:
     book = _Book()
     out: list[float] = []
     pv = 0.0
     vol = 0.0
     dist: list[float] = []
+    current_session = session_dates[0] if session_dates else None
     for index, bar in enumerate(bars):
+        session = session_dates[index]
+        if current_session is not None and session != current_session:
+            pv = 0.0
+            vol = 0.0
+        current_session = session
         typical = (bar.high + bar.low + bar.close) / 3.0
         pv += typical * max(bar.volume, 1.0)
         vol += max(bar.volume, 1.0)
@@ -210,11 +334,18 @@ def _vwap_distance(bars: Sequence[ResearchBar], *, lookback: int, z_entry: float
                 signal = -1.0
             elif zed < -z_entry:
                 signal = 1.0
-        out.append(book.step(bar, geometry, _adv(bars, index), signal))
+        out.append(book.step(bar, geometry, _adv(bars, index), signal, flatten=_flat(breaks, index)))
     return tuple(out)
 
 
-def _range_compression(bars: Sequence[ResearchBar], *, lookback: int, pct: float, geometry: Geometry) -> tuple[float, ...]:
+def _range_compression(
+    bars: Sequence[ResearchBar],
+    *,
+    lookback: int,
+    pct: float,
+    geometry: Geometry,
+    breaks: Sequence[bool],
+) -> tuple[float, ...]:
     ranges = [item.high - item.low for item in bars]
     book = _Book()
     out: list[float] = []
@@ -230,11 +361,17 @@ def _range_compression(bars: Sequence[ResearchBar], *, lookback: int, pct: float
                     signal = 1.0
                 elif bar.close < mid:
                     signal = -1.0
-        out.append(book.step(bar, geometry, _adv(bars, index), signal))
+        out.append(book.step(bar, geometry, _adv(bars, index), signal, flatten=_flat(breaks, index)))
     return tuple(out)
 
 
-def _close_reversal(bars: Sequence[ResearchBar], *, streak: int, geometry: Geometry) -> tuple[float, ...]:
+def _close_reversal(
+    bars: Sequence[ResearchBar],
+    *,
+    streak: int,
+    geometry: Geometry,
+    breaks: Sequence[bool],
+) -> tuple[float, ...]:
     book = _Book()
     out: list[float] = []
     for index, bar in enumerate(bars):
@@ -247,34 +384,53 @@ def _close_reversal(bars: Sequence[ResearchBar], *, streak: int, geometry: Geome
                 signal = -1.0
             elif down:
                 signal = 1.0
-        out.append(book.step(bar, geometry, _adv(bars, index), signal))
+        out.append(book.step(bar, geometry, _adv(bars, index), signal, flatten=_flat(breaks, index)))
     return tuple(out)
 
 
-def _time_of_day(bars: Sequence[ResearchBar], *, first_bars: int, geometry: Geometry) -> tuple[float, ...]:
-    session = max(first_bars * 4, 60)
+def _time_of_day(
+    bars: Sequence[ResearchBar],
+    *,
+    first_bars: int,
+    geometry: Geometry,
+    breaks: Sequence[bool],
+    session_dates: Sequence[date],
+    rth: Sequence[bool],
+) -> tuple[float, ...]:
+    first_rth: dict[date, list[int]] = {}
+    for index, session in enumerate(session_dates):
+        if rth[index]:
+            first_rth.setdefault(session, []).append(index)
     book = _Book()
     out: list[float] = []
     for index, bar in enumerate(bars):
-        start = (index // session) * session
         signal = 0.0
-        if start < index <= start + first_bars:
-            opening = bars[start]
+        opening_idx = first_rth.get(session_dates[index], [])
+        if opening_idx and opening_idx[0] < index <= opening_idx[0] + first_bars:
+            opening = bars[opening_idx[0]]
             if bar.close > opening.open:
                 signal = -1.0
             elif bar.close < opening.open:
                 signal = 1.0
-        out.append(book.step(bar, geometry, _adv(bars, index), signal))
+        out.append(book.step(bar, geometry, _adv(bars, index), signal, flatten=_flat(breaks, index)))
     return tuple(out)
 
 
-def _trend_pullback(bars: Sequence[ResearchBar], *, lookback: int, geometry: Geometry) -> tuple[float, ...]:
+def _trend_pullback(
+    bars: Sequence[ResearchBar],
+    *,
+    lookback: int,
+    geometry: Geometry,
+    breaks: Sequence[bool],
+    quiet: Sequence[bool] | None,
+) -> tuple[float, ...]:
     closes = [item.close for item in bars]
     book = _Book()
     out: list[float] = []
     for index, bar in enumerate(bars):
         signal = 0.0
-        if index >= lookback:
+        allowed = True if quiet is None else bool(quiet[index])
+        if allowed and index >= lookback:
             window = closes[index - lookback : index]
             trend = window[-1] - window[0]
             mid = sum(window) / float(lookback)
@@ -282,11 +438,18 @@ def _trend_pullback(bars: Sequence[ResearchBar], *, lookback: int, geometry: Geo
                 signal = 1.0
             elif trend < 0.0 and bar.close > mid:
                 signal = -1.0
-        out.append(book.step(bar, geometry, _adv(bars, index), signal))
+        out.append(book.step(bar, geometry, _adv(bars, index), signal, flatten=_flat(breaks, index)))
     return tuple(out)
 
 
-def _volatility_expansion(bars: Sequence[ResearchBar], *, lookback: int, pct: float, geometry: Geometry) -> tuple[float, ...]:
+def _volatility_expansion(
+    bars: Sequence[ResearchBar],
+    *,
+    lookback: int,
+    pct: float,
+    geometry: Geometry,
+    breaks: Sequence[bool],
+) -> tuple[float, ...]:
     ranges = [item.high - item.low for item in bars]
     book = _Book()
     out: list[float] = []
@@ -301,7 +464,7 @@ def _volatility_expansion(bars: Sequence[ResearchBar], *, lookback: int, pct: fl
                     signal = 1.0
                 else:
                     signal = -1.0
-        out.append(book.step(bar, geometry, _adv(bars, index), signal))
+        out.append(book.step(bar, geometry, _adv(bars, index), signal, flatten=_flat(breaks, index)))
     return tuple(out)
 
 
@@ -327,10 +490,17 @@ def _manage(pos: float, entry: float, bar: ResearchBar, geometry: Geometry) -> t
     return pos, entry
 
 
-def _tape(bars: Sequence[ResearchBar], positions: Sequence[float], root: str) -> Tape:
+def _tape(
+    bars: Sequence[ResearchBar],
+    positions: Sequence[float],
+    root: str,
+    *,
+    breaks: Sequence[bool] | None = None,
+) -> Tape:
     spec = spec_for(root)
     n = len(bars)
-    if n != len(positions):
+    hole = tuple(False for _ in bars) if breaks is None else tuple(breaks)
+    if n != len(positions) or n != len(hole):
         raise StrategyRefused("positions must align with bars")
     equity = 100_000.0
     gross: list[float] = [0.0]
@@ -340,6 +510,9 @@ def _tape(bars: Sequence[ResearchBar], positions: Sequence[float], root: str) ->
     for index, bar in enumerate(bars):
         markets.append(MarketSnapshot(volume=max(bar.volume, 1.0), average_volume=avg_vol, volatility_price=2.0))
         if index == 0:
+            continue
+        if hole[index]:
+            gross.append(0.0)
             continue
         prev = bars[index - 1]
         delta = bar.close - prev.close

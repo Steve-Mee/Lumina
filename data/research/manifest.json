@@ -1,0 +1,96 @@
+{
+  "conventions": {
+    "bar_size": "1m",
+    "continuous": "unadjusted",
+    "gaps": "exclude, never fill",
+    "rolls": "NinjaTrader 8",
+    "timestamps": "UTC bar-close"
+  },
+  "generated_at": "2026-10-29T08:34:13.810467+00:00",
+  "holdout_start_utc": "2026-01-29T00:00:00+00:00",
+  "instruments": {
+    "MES": {
+      "bar_size": "1m",
+      "dropped_gap_bars": 451,
+      "expected_csv_sha256": "a9e9100c5544d59120a37a994955633e835cec8938ed20048164d0f726cf9c01",
+      "file_sha256": "a9e9100c5544d59120a37a994955633e835cec8938ed20048164d0f726cf9c01",
+      "first_utc": "2023-10-01T22:01:00+00:00",
+      "last_utc": "2026-10-29T07:54:00+00:00",
+      "n_bars": 1088731,
+      "path": "$LUMINA_RESEARCH_DATA_DIR/MES/1m/MES_continuous_unadj_1m_2023-10-01_2026-10-29.csv",
+      "zip_sha256": "c5c094a199502fde9cc79f535441995ba7e326811e4e7e01bf1833a25c9c7b2e"
+    },
+    "MNQ": {
+      "bar_size": "1m",
+      "dropped_gap_bars": 3228,
+      "expected_csv_sha256": "47422de88a2f662c664425b87d79d29fa7a5854d99ed76dd0b946bee7e7a9bf1",
+      "file_sha256": "47422de88a2f662c664425b87d79d29fa7a5854d99ed76dd0b946bee7e7a9bf1",
+      "first_utc": "2023-10-01T22:01:00+00:00",
+      "last_utc": "2026-10-29T07:38:00+00:00",
+      "n_bars": 1083531,
+      "path": "$LUMINA_RESEARCH_DATA_DIR/MNQ/1m/MNQ_continuous_unadj_1m_2023-10-01_2026-10-29.csv",
+      "zip_sha256": "a1cefabd46c4109a93bb219df45d134f9e3e16ffd3abc8250242c88a3ee5d6e8"
+    }
+  },
+  "known_gaps": [
+    {
+      "end_ns": 1751414399999999999,
+      "instrument": "MNQ",
+      "reason": "MNQ missing 2025-06-30..2025-07-01",
+      "start_ns": 1751241600000000000
+    },
+    {
+      "end_ns": 1752623999999999999,
+      "instrument": "MNQ",
+      "reason": "MNQ missing 2025-07-14..2025-07-15",
+      "start_ns": 1752451200000000000
+    },
+    {
+      "end_ns": 1769558399999999999,
+      "instrument": "MNQ",
+      "reason": "MNQ missing 2026-01-26..2026-01-27",
+      "start_ns": 1769385600000000000
+    },
+    {
+      "end_ns": 1784332799999999999,
+      "instrument": "MNQ",
+      "reason": "MNQ partial 2026-07-17",
+      "start_ns": 1784246400000000000
+    },
+    {
+      "end_ns": 1781019480000000000,
+      "instrument": "MES",
+      "reason": "MES short gap 2026-06-09 15:00-15:38Z",
+      "start_ns": 1781017200000000000
+    },
+    {
+      "end_ns": 1784908500000000000,
+      "instrument": "MES",
+      "reason": "MES short gap 2026-07-24 15:02-15:55Z",
+      "start_ns": 1784905320000000000
+    },
+    {
+      "end_ns": 1764374399999999999,
+      "instrument": "*",
+      "reason": "CME outage 2025-11-28",
+      "start_ns": 1764288000000000000
+    }
+  ],
+  "note": "Raw CSVs are not in git. Load via $LUMINA_RESEARCH_DATA_DIR.",
+  "nt8_rolls": [
+    "2023-09-11",
+    "2023-12-11",
+    "2024-03-11",
+    "2024-06-17",
+    "2024-09-16",
+    "2024-12-16",
+    "2025-03-17",
+    "2025-06-16",
+    "2025-09-15",
+    "2025-12-15",
+    "2026-03-16",
+    "2026-06-12",
+    "2026-09-14",
+    "2026-12-14"
+  ]
+}

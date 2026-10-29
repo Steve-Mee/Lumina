@@ -1,11 +1,11 @@
 # Phase 5 P2 data spec (NT8 1m MES/MNQ)
 
-- generated_at: `2026-10-28T20:35:18.925078+00:00`
-- status: prep only; this PR does not run the cycle on real bars
+- generated_at: `2026-10-29T08:33:55.067465+00:00`
+- status: P2 cycle loads NT8 1m MES/MNQ via $LUMINA_RESEARCH_DATA_DIR; raw CSVs are not committed
 
 - **universe_first**: MES and MNQ 1-minute bars; ES/NQ later after the micro cycle
 - **period**: recent 2-3 years through the export date
-- **holdout**: last 9 calendar months (allowed 6-12) from the last bar; never used for template selection, first-cycle ranking, tuning, or Validation Gate calibration; evaluation-only accessor
+- **holdout**: last 9 calendar months (allowed 6-12); P2 NT8 tapes pin 2026-01-29T00:00:00Z before selection, ranking, tuning, or gate calibration; evaluation-only accessor for the locked window
 - **locations**: $LUMINA_RESEARCH_DATA_DIR/{MES,MNQ}/1m/*.csv ; {--data-dir}/{MES,MNQ}/1m/*.csv ; {repo}/data/research/{MES,MNQ}/1m/*.csv
 - **filename_examples**: data/research/MES/1m/nt8_mes_1m.csv ; data/research/MNQ/1m/nt8_mnq_1m.csv
 - **format**: UTF-8 CSV with header timestamp,open,high,low,close,volume
