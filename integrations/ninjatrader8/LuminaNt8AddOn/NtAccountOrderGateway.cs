@@ -523,6 +523,16 @@ namespace NinjaTrader.NinjaScript.AddOns
             if (acct == null)
                 return new[] { RejectModify(command, "nt_account_not_bound") };
 
+            // Modify can increase size. CANCEL may skip the whitelist
+            // for emergency flatten; modify cannot (ADR-0061).
+            var acctName = acct.Name ?? "";
+            var whitelistDeny = SimAccountWhitelist.DenyReason(acctName, _simWhitelist);
+            if (whitelistDeny != null)
+            {
+                Log("Reject modify on account '" + acctName + "' reason='" + whitelistDeny + "'");
+                return new[] { RejectModify(command, whitelistDeny) };
+            }
+
             try
             {
                 var target = FindOrder(acct, command?.ClientOrderId, command?.NtOrderId);

@@ -54,6 +54,7 @@ def test_s1_mutation_campaign_kills_most_mutants(tmp_path: Path) -> None:
     assert report.n_mutants >= S1_MUTATION_MIN_MUTANTS
     assert report.n_excluded / report.n_mutants <= S1_MUTATION_EQUIVALENT_MAX_FRAC
     assert report.kill_rate >= S1_MUTATION_KILL_RATE_MIN
+    assert report.n_survived == 0
     payload = json.loads((REPO_REPORTS / "s1_mutation.json").read_text(encoding="utf-8"))
     assert payload["n_mutants"] >= S1_MUTATION_MIN_MUTANTS
     assert payload["kill_rate"] >= S1_MUTATION_KILL_RATE_MIN

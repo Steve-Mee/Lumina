@@ -512,7 +512,7 @@ Pre-trade toelating loopt nu canoniek via [`lumina_core/risk/admission_chain.py`
 
 - De keten blijft modulair (`AdmissionChain(steps=...)`), zodat nieuwe experimentele lagen als extra stap kunnen worden ingeplugd zonder de kernchecks te herschrijven.
 - De canonieke volgorde is: `SessionGuard+EquitySnapshot(sync) -> SIM whitelist -> LIVE_RELEASE -> RiskPolicy+VaR/ES/MC -> FinalArbitration -> Constitution -> AuditWrite`.
-- S1 (ADR-0061): `sim_account_whitelist` and `live_release` are unbypassable. Empty whitelist denies every account. Prefix `Sim*`/`DEMO*` never allows. REAL stays closed (`live_account_path_closed_s1`) even with a valid HMAC.
+- S1 (ADR-0061): `sim_account_whitelist` and `live_release` are unbypassable. Empty whitelist denies every account. Prefix `Sim*`/`DEMO*` never allows. SUBMIT and MODIFY are whitelisted; CANCEL/flatten may skip for emergency flatten and cannot be reused as place/modify/size-up. REAL stays closed (`live_account_path_closed_s1`) even with a valid HMAC. Rejects are ConstitutionViolation-equivalent structured logs, not Event Bus publishes from Risk Core.
 - Deze keten beschermt het levende organisme met een vaste volgorde: eerst markttoegang en account-context syncen, dan SIM-account en live-release, dan risicodruk meten, dan arbitreren, daarna constitutioneel toetsen, en pas als laatste audit-write committen.
 - Pre-chain hygiene (stale contract + broker metadata/control-plane checks) blijft in de gatekeeper-entrypoint, zodat contractvalidatie nooit kan wegvallen bij experimentele stapvarianten.
 - In **SIM/PAPER** blijven experimentele bypasses voor niet-S1-stappen mogelijk via expliciete stapconfiguratie; elke bypass wordt gelogd met mode/step/symbol.

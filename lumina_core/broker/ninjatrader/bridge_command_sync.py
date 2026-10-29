@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from lumina_core.broker.broker_bridge.schemas import Order
 from lumina_core.broker.ninjatrader.guards import assert_nt_bridge_capability
-from lumina_core.broker.ninjatrader.promotion_gate import NtBridgeAction
+from lumina_core.broker.ninjatrader.promotion_gate import action_for_command_frame
 
 if TYPE_CHECKING:
     from lumina_core.broker.ninjatrader.fabric_client import FabricGrpcClient
@@ -40,11 +40,7 @@ class BridgeCommandSyncMixin:
 
         with self._lock:
             connection = self.get_connection_state()
-            action = (
-                NtBridgeAction.SUBMIT_ORDER
-                if frame_type == "submit_order"
-                else NtBridgeAction.CANCEL
-            )
+            action = action_for_command_frame(frame_type)
             allowed, reason = assert_nt_bridge_capability(
                 action=action,
                 trade_mode=self.trade_mode,

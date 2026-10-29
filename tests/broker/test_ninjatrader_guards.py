@@ -5,7 +5,7 @@ import pytest
 
 from lumina_core.broker.ninjatrader.connection_state import NinjaTraderConnectionState
 from lumina_core.broker.ninjatrader.guards import assert_nt_bridge_capability, check_account_match
-from lumina_core.broker.ninjatrader.promotion_gate import NtBridgeAction
+from lumina_core.broker.ninjatrader.promotion_gate import NtBridgeAction, action_for_command_frame
 
 
 def _connected(account: str = "Sim101") -> NinjaTraderConnectionState:
@@ -209,6 +209,22 @@ def test_cancel_skips_sim_whitelist_so_emergency_exits_reach_nt() -> None:
     )
     assert ok is True
     assert reason == "ok"
+
+
+@pytest.mark.unit
+@pytest.mark.safety_gate
+def test_modify_requires_whitelist_cancel_does_not() -> None:
+    assert action_for_command_frame("modify_order") is NtBridgeAction.MODIFY_ORDER
+    ok, reason = assert_nt_bridge_capability(
+        action=NtBridgeAction.MODIFY_ORDER,
+        trade_mode="sim",
+        connection=_connected("Sim101"),
+        configured_account="Sim101",
+        ninjatrader_enabled=True,
+        sim_account_whitelist=(),
+    )
+    assert ok is False
+    assert reason == "sim_whitelist_empty"
 
 
 def test_ninjatrader_disabled_blocks_actions() -> None:

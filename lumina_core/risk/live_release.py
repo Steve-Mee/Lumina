@@ -17,6 +17,8 @@ from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from typing import Any, Final
 
+from lumina_core.risk.s1_events import s1_reject_event_data
+
 logger = logging.getLogger("lumina.risk.live_release")
 
 SECRET_ENV: Final[str] = "LUMINA_LIVE_RELEASE_SECRET"
@@ -73,13 +75,12 @@ def log_live_reject(*, reason: str, agent_id: str = "", approved_by: str = "") -
     logger.error(
         "s1.live_release.reject",
         extra={
-            "event_data": {
-                "event": "s1.live_release.reject",
-                "reason": str(reason),
-                "agent_id": str(agent_id or ""),
-                "approved_by": str(approved_by or ""),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
+            "event_data": s1_reject_event_data(
+                event="s1.live_release.reject",
+                reason=reason,
+                agent_id=agent_id,
+                approved_by=approved_by,
+            )
         },
     )
 
@@ -127,27 +128,26 @@ def _iso_z(moment: datetime) -> str:
 
 
 def _bool_enabled(value: object) -> bool:
-    if value is True:
-        return True
-    if value is False or value is None:
-        return False
-    return str(value).strip().lower() in {"true", "1", "yes", "on"}
+    """Only the JSON/Python boolean True enables. Strings never enable."""
+    return value is True
 
 
 def canonical_live_release_payload(record: Mapping[str, Any]) -> bytes:
     """Stable HMAC message. ``mac`` is excluded."""
     approved_at = _parse_utc(record.get("approved_at_utc"))
     expires_at = _parse_utc(record.get("expires_at_utc"))
+    # Insertion order is deliberately not alphabetical so sort_keys=True is
+    # load-bearing: HMAC bytes must not follow dict order.
     body = {
+        "enabled": bool(_bool_enabled(record.get("enabled"))),
+        "nonce": str(record.get("nonce") or "").strip(),
+        "purpose": str(record.get("purpose") or "").strip(),
+        "schema_version": str(record.get("schema_version") or "").strip(),
+        "approved_by": str(record.get("approved_by") or "").strip(),
         "adr_path": str(record.get("adr_path") or "").strip(),
         "adr_sha256": str(record.get("adr_sha256") or "").strip().lower(),
         "approved_at_utc": _iso_z(approved_at) if approved_at is not None else "",
-        "approved_by": str(record.get("approved_by") or "").strip(),
-        "enabled": bool(_bool_enabled(record.get("enabled"))),
         "expires_at_utc": _iso_z(expires_at) if expires_at is not None else "",
-        "nonce": str(record.get("nonce") or "").strip(),
-        "purpose": str(record.get("purpose") or PURPOSE_LIVE).strip(),
-        "schema_version": str(record.get("schema_version") or SCHEMA_VERSION).strip(),
     }
     return json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
@@ -202,7 +202,7 @@ def verify_live_release(
     record: Mapping[str, Any] | None,
     *,
     expected_purpose: str = PURPOSE_LIVE,
-    now: datetime | None = None,
+    now: object | None = None,
     agent_id: str = "",
 ) -> tuple[bool, str]:
     """Cryptographic + human-ADR checks. Does not enable a live account path."""
@@ -224,7 +224,7 @@ def verify_live_release(
     if not _mac_hex_ok(mac):
         log_live_reject(reason=LIVE_RELEASE_MAC_INVALID, agent_id=agent_id)
         return False, LIVE_RELEASE_MAC_INVALID
-    purpose = str(payload.get("purpose") or PURPOSE_LIVE).strip()
+    purpose = str(payload.get("purpose") or "").strip()
     if purpose not in LEGAL_PURPOSES or purpose != str(expected_purpose):
         log_live_reject(reason=LIVE_RELEASE_PURPOSE_INVALID, agent_id=agent_id)
         return False, LIVE_RELEASE_PURPOSE_INVALID
@@ -253,10 +253,17 @@ def verify_live_release(
     if approved_at is None or expires_at is None:
         log_live_reject(reason=LIVE_RELEASE_TIMESTAMP_NOT_UTC, agent_id=agent_id, approved_by=approved_by)
         return False, LIVE_RELEASE_TIMESTAMP_NOT_UTC
-    clock = now.astimezone(timezone.utc) if now is not None else datetime.now(timezone.utc)
-    if clock.tzinfo is None:
-        log_live_reject(reason=LIVE_RELEASE_TIMESTAMP_NOT_UTC, agent_id=agent_id, approved_by=approved_by)
-        return False, LIVE_RELEASE_TIMESTAMP_NOT_UTC
+    if now is not None:
+        if not isinstance(now, datetime) or now.tzinfo is None:
+            log_live_reject(
+                reason=LIVE_RELEASE_TIMESTAMP_NOT_UTC,
+                agent_id=agent_id,
+                approved_by=approved_by,
+            )
+            return False, LIVE_RELEASE_TIMESTAMP_NOT_UTC
+        clock = now.astimezone(timezone.utc)
+    else:
+        clock = datetime.now(timezone.utc)
     if approved_at - clock > MAX_CLOCK_SKEW:
         log_live_reject(reason=LIVE_RELEASE_CLOCK_SKEW, agent_id=agent_id, approved_by=approved_by)
         return False, LIVE_RELEASE_CLOCK_SKEW
@@ -283,7 +290,7 @@ def verify_live_release(
 def admit_live_orders(
     record: Mapping[str, Any] | None,
     *,
-    now: datetime | None = None,
+    now: object | None = None,
     agent_id: str = "",
 ) -> tuple[bool, str]:
     """S1: live account path stays closed even when HMAC verifies."""

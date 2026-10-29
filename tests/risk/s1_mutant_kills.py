@@ -4,18 +4,26 @@ from __future__ import annotations
 
 import hmac
 import json
+import logging
 import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from types import SimpleNamespace
 
 from lumina_core.broker.ninjatrader.account_names import account_on_sim_whitelist, is_local_sim_name
 from lumina_core.broker.ninjatrader.connection_state import NinjaTraderConnectionState
+from lumina_core.agent_orchestration.schemas import ConstitutionViolation
 from lumina_core.broker.ninjatrader.guards import assert_nt_bridge_capability, check_account_match
-from lumina_core.broker.ninjatrader.promotion_gate import NtBridgeAction
+from lumina_core.broker.ninjatrader.promotion_gate import (
+    NtBridgeAction,
+    action_enforces_sim_whitelist,
+    action_for_command_frame,
+)
 from lumina_core.code_evolution.operators import FORBIDDEN_PARAMETER_KEYS, validate_parameter_tweak
 from lumina_core.code_evolution.proposal import FORBIDDEN_TARGET_PREFIXES
 from lumina_core.engine.engine_config import _yaml_sim_account_whitelist
 from lumina_core.engine.mode_capabilities import resolve_mode_capabilities
+from lumina_core.order_gatekeeper import admission_s1_steps as s1_steps
 from lumina_core.order_gatekeeper.admission_s1_steps import (
     attach_s1_admission_metadata,
     make_live_release_step,
@@ -68,6 +76,8 @@ from lumina_core.risk.live_release import (
     nonce_was_used,
     reset_live_release_nonces_for_tests,
     verify_live_release,
+    _consume_nonce,
+    _parse_utc,
 )
 from lumina_core.risk.sim_account_guard import (
     ACCOUNT_UNKNOWN,
@@ -82,11 +92,15 @@ from lumina_core.risk.sim_account_guard import (
     apply_signed_whitelist_widen,
     canonicalize_whitelist,
     connected_account_from_engine,
+    log_sim_reject,
     modes_requiring_whitelist,
     whitelist_from_engine,
 )
+from lumina_core.risk.s1_events import s1_reject_event_data
 from lumina_core.runtime_config_reloader import _immutable_field_changes
 from tests.risk.s1_hmac import TEST_SECRET, signed_live_release
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 FROZEN_NOW = datetime(2026, 10, 29, 12, 0, tzinfo=timezone.utc)
 FROZEN_RECORD = {
@@ -172,10 +186,21 @@ def _whitelist_battery() -> None:
     unlocked = SimWhitelistLock()
     if unlocked.is_tampered() is not False:
         _fail("unfrozen lock is not tampered")
+    if unlocked.is_frozen() is not False:
+        _fail("unfrozen lock must not report frozen")
+    if unlocked.current() != frozenset():
+        _fail("unfrozen current must be empty")
+    frozen_ok = _fresh(("Sim101",))
+    if frozen_ok.is_frozen() is not True:
+        _fail("frozen lock must report frozen")
+    if "Sim101" not in frozen_ok.current():
+        _fail("frozen current must keep Sim101")
     tamper = _fresh(("Sim101",))
     tamper._frozen = frozenset({"Sim101", "Sim202"})  # noqa: SLF001
     if tamper.is_tampered() is not True:
         _fail("tamper not detected")
+    if tamper.current() != frozenset():
+        _fail("tampered current must deny-all")
     _expect_deny("Sim101", ("Sim101",), SIM_WHITELIST_TAMPERED)
     widen_tamper, widen_tamper_reason = tamper.widen(("Sim202",))
     if widen_tamper is not False or widen_tamper_reason != SIM_WHITELIST_TAMPERED:
@@ -195,6 +220,7 @@ def _whitelist_battery() -> None:
     if ok is not True or reason != SIM_WHITELIST_WIDENED:
         _fail(f"signed paper widen {ok} {reason}")
     _expect_allow("Sim202", ("Sim101",))
+    _expect_allow("Sim101", ("Sim101",))
     _fresh(("Sim101",))
     match_ok, match_reason = check_account_match(
         trade_mode="sim",
@@ -671,6 +697,218 @@ def _s0_and_policy_battery() -> None:
         _fail("consumed nonce must be marked used")
 
 
+class _MemLog(logging.Handler):
+    def __init__(self) -> None:
+        super().__init__()
+        self.events: list[dict[str, object]] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        payload = getattr(record, "event_data", None)
+        if isinstance(payload, dict):
+            self.events.append(payload)
+
+
+def _gap_battery() -> None:
+    live_src = (REPO_ROOT / "lumina_core/risk/live_release.py").read_text(encoding="utf-8")
+    guard_src = (REPO_ROOT / "lumina_core/risk/sim_account_guard.py").read_text(encoding="utf-8")
+    if "hmac.compare_digest(expected, mac)" not in live_src:
+        _fail("MAC compare must be timing-safe")
+    if "sort_keys=True" not in live_src:
+        _fail("canonical MAC must sort keys")
+    if guard_src.count("hmac.compare_digest") < 3:
+        _fail("seal compare must be timing-safe")
+    if account_on_sim_whitelist("Sim101", ("Sim",)) is not False:
+        _fail("prefix on list must not admit Sim101")
+    if account_on_sim_whitelist("Sim101\u200b", ("Sim101",)) is not False:
+        _fail("zero-width must not match")
+    if account_on_sim_whitelist("\u0405im101", ("Sim101",)) is not False:
+        _fail("homoglyph must not match")
+    if action_for_command_frame("modify_order") is not NtBridgeAction.MODIFY_ORDER:
+        _fail("modify_order frame must be MODIFY")
+    if action_for_command_frame("flatten") is not NtBridgeAction.CANCEL:
+        _fail("flatten must stay CANCEL")
+    if action_for_command_frame("weird") is not NtBridgeAction.SUBMIT_ORDER:
+        _fail("unknown frames must not skip whitelist")
+    if action_enforces_sim_whitelist(NtBridgeAction.MODIFY_ORDER) is not True:
+        _fail("modify must be whitelisted")
+    if action_enforces_sim_whitelist(NtBridgeAction.CANCEL) is not False:
+        _fail("cancel skip is flatten-only")
+    _fresh(())
+    conn = NinjaTraderConnectionState(state="connected", account_name="Sim101")
+    mod_ok, mod_reason = assert_nt_bridge_capability(
+        action=NtBridgeAction.MODIFY_ORDER,
+        trade_mode="sim",
+        connection=conn,
+        configured_account="Sim101",
+        ninjatrader_enabled=True,
+        sim_account_whitelist=(),
+    )
+    if mod_ok is not False or mod_reason != SIM_WHITELIST_EMPTY:
+        _fail(f"modify empty whitelist {mod_ok} {mod_reason}")
+    payload = s1_reject_event_data(
+        event="s1.sim_whitelist.reject",
+        reason=SIM_WHITELIST_EMPTY,
+        agent_id="agent-x",
+        mode="sim",
+        account="Sim101",
+    )
+    parsed = ConstitutionViolation.model_validate(payload)
+    if parsed.principle_name != SIM_WHITELIST_EMPTY or parsed.severity != "error":
+        _fail(f"constitution equivalent {parsed}")
+
+    handler = _MemLog()
+    sim_log = logging.getLogger("lumina.risk.sim_account_guard")
+    sim_log.addHandler(handler)
+    sim_log.setLevel(logging.ERROR)
+    try:
+        log_sim_reject(reason=SIM_WHITELIST_EMPTY, account="Sim101", mode="sim", agent_id="agent-x")
+        if not any(item.get("agent_id") == "agent-x" for item in handler.events):
+            _fail("agent_id must survive reject log")
+        lock = _fresh(("Sim101",))
+        handler.events.clear()
+        lock.effective(("Sim101", "Sim202"))
+        extras = [
+            item.get("extra")
+            for item in handler.events
+            if item.get("event") == "s1.sim_whitelist.widen_refused"
+        ]
+        if extras != [["Sim202"]]:
+            _fail(f"widen_refused extra {extras}")
+        handler.events.clear()
+        lock.effective(("Sim101",))
+        if any(item.get("event") == "s1.sim_whitelist.widen_refused" for item in handler.events):
+            _fail("same-set request must not log extras")
+    finally:
+        sim_log.removeHandler(handler)
+
+    if connected_account_from_engine(SimpleNamespace(nt_connection=SimpleNamespace(account_name="Sim101"))) != "Sim101":
+        _fail("nt_connection account")
+    if connected_account_from_engine(SimpleNamespace(connection=SimpleNamespace(account_name="Sim202"))) != "Sim202":
+        _fail("connection account")
+
+    reset_live_release_nonces_for_tests()
+    if _consume_nonce("short") is not False:
+        _fail("short nonce consume")
+    if _consume_nonce("long-enough-nonce1") is not True:
+        _fail("first long nonce")
+    if _consume_nonce("long-enough-nonce1") is not False:
+        _fail("replay consume")
+    if _parse_utc("") is not None:
+        _fail("empty timestamp")
+    if _parse_utc("not-a-timestamp") is not None:
+        _fail("invalid timestamp")
+    if _parse_utc(datetime(2026, 10, 29, 0, 0)) is not None:
+        _fail("naive datetime")
+    aware = datetime(2026, 10, 29, 0, 0, tzinfo=timezone.utc)
+    parsed_aware = _parse_utc(aware)
+    if parsed_aware is None or parsed_aware.tzinfo is None:
+        _fail("aware datetime")
+
+    os.environ[SECRET_ENV] = TEST_SECRET
+    reset_live_release_nonces_for_tests()
+    naive_now_rec = signed_live_release(now=FROZEN_NOW, nonce="n-kill-naive-now-16xx")
+    naive_now_ok, naive_now_reason = verify_live_release(
+        naive_now_rec, now=datetime(2026, 10, 29, 12, 0)
+    )
+    if naive_now_ok is not False or naive_now_reason != LIVE_RELEASE_TIMESTAMP_NOT_UTC:
+        _fail(f"naive now {naive_now_ok} {naive_now_reason}")
+    str_now_ok, str_now_reason = verify_live_release(
+        naive_now_rec, now="2026-10-29T12:00:00+00:00"
+    )
+    if str_now_ok is not False or str_now_reason != LIVE_RELEASE_TIMESTAMP_NOT_UTC:
+        _fail(f"string now {str_now_ok} {str_now_reason}")
+    str_enabled = signed_live_release(enabled="true", nonce="n-kill-str-true-16xxx")
+    str_ok, str_reason = verify_live_release(str_enabled, now=FROZEN_NOW)
+    if str_ok is not False or str_reason != LIVE_RELEASE_DISABLED:
+        _fail(f"string true must not enable {str_ok} {str_reason}")
+    plus = signed_live_release(
+        now=FROZEN_NOW,
+        approved_at_utc="2026-10-29T12:00:00+00:00",
+        expires_at_utc="2026-10-30T12:00:00+00:00",
+        nonce="n-kill-plus00-16xxxxx",
+    )
+    plus_ok, plus_reason = verify_live_release(plus, now=FROZEN_NOW)
+    if plus_ok is not True:
+        _fail(f"+00:00 timestamp {plus_ok} {plus_reason}")
+    empty_ts = signed_live_release(approved_at_utc="", nonce="n-kill-empty-ts-16xxxx")
+    empty_ok, empty_reason = verify_live_release(empty_ts, now=FROZEN_NOW)
+    if empty_ok is not False or empty_reason != LIVE_RELEASE_TIMESTAMP_NOT_UTC:
+        _fail(f"empty ts {empty_ok} {empty_reason}")
+    bad_ts = signed_live_release(approved_at_utc="%%%not-iso%%%", nonce="n-kill-bad-ts-16xxxxx")
+    bad_ok, bad_reason = verify_live_release(bad_ts, now=FROZEN_NOW)
+    if bad_ok is not False or bad_reason != LIVE_RELEASE_TIMESTAMP_NOT_UTC:
+        _fail(f"bad ts {bad_ok} {bad_reason}")
+    missing_purpose = signed_live_release(purpose="", nonce="n-kill-no-purpose-16xx")
+    mp_ok, mp_reason = verify_live_release(missing_purpose, now=FROZEN_NOW)
+    if mp_ok is not False or mp_reason != LIVE_RELEASE_PURPOSE_INVALID:
+        _fail(f"empty purpose {mp_ok} {mp_reason}")
+
+    widen_body = {
+        "adr_path": "docs/adr/0061-sim-whitelist-and-live-release.md",
+        "adr_sha256": "a" * 64,
+        "approved_at_utc": "2026-10-29T00:00:00Z",
+        "approved_by": "steve.operator",
+        "enabled": True,
+        "expires_at_utc": "2026-10-30T00:00:00Z",
+        "nonce": "n-kill-widen-can-16xxx",
+        "purpose": PURPOSE_WHITELIST_WIDEN,
+        "schema_version": SCHEMA_VERSION,
+    }
+    got_widen = canonical_live_release_payload(widen_body)
+    if b'"purpose":"sim_whitelist_widen"' not in got_widen:
+        _fail(f"canonical purpose {got_widen!r}")
+    if not got_widen.startswith(b'{"adr_path":'):
+        _fail(f"canonical must be sort_keys ordered {got_widen!r}")
+    unsorted_widen = (
+        b'{"enabled":true,"nonce":"n-kill-widen-can-16xxx","purpose":"sim_whitelist_widen"'
+    )
+    if got_widen.startswith(unsorted_widen):
+        _fail("canonical followed insertion order; sort_keys is not binding")
+    empty_schema = dict(widen_body)
+    empty_schema["schema_version"] = ""
+    empty_schema["purpose"] = PURPOSE_LIVE
+    got_schema = canonical_live_release_payload(empty_schema)
+    if b'"schema_version":""' not in got_schema:
+        _fail(f"canonical empty schema {got_schema!r}")
+
+    orig_admit = s1_steps.admit_live_orders
+    s1_steps.admit_live_orders = lambda *_a, **_k: (True, LIVE_RELEASE_HMAC_OK)
+    try:
+        engine = SimpleNamespace(config=SimpleNamespace(live_release_payload={"enabled": True}))
+        lr_ctx = AdmissionContext(
+            engine=engine,
+            mode="real",
+            symbol="MES",
+            regime="NEUTRAL",
+            proposed_risk=1.0,
+            metadata={"live_release": {"enabled": True}},
+            step_handlers={ADMISSION_STEP_LIVE_RELEASE: make_live_release_step(SimpleNamespace(engine=engine))},
+        )
+        allowed, reason, _trace = AdmissionChain(steps=(ADMISSION_STEP_LIVE_RELEASE,)).run(lr_ctx)
+        if allowed is not False or reason != LIVE_ACCOUNT_PATH_CLOSED_S1:
+            _fail(f"forced hmac_ok must still close {allowed} {reason}")
+    finally:
+        s1_steps.admit_live_orders = orig_admit
+
+    os.environ[SECRET_ENV] = TEST_SECRET
+    reset_live_release_nonces_for_tests()
+    good = signed_live_release(nonce="n-kill-meta-good-16xxx")
+    live_engine = SimpleNamespace(config=SimpleNamespace(live_release_payload=good))
+    disabled = signed_live_release(enabled=False, nonce="n-kill-meta-dis-16xxxx")
+    meta_ctx = AdmissionContext(
+        engine=live_engine,
+        mode="real",
+        symbol="MES",
+        regime="NEUTRAL",
+        proposed_risk=1.0,
+        metadata={"live_release": disabled},
+        step_handlers={ADMISSION_STEP_LIVE_RELEASE: make_live_release_step(SimpleNamespace(engine=live_engine))},
+    )
+    allowed, reason, _trace = AdmissionChain(steps=(ADMISSION_STEP_LIVE_RELEASE,)).run(meta_ctx)
+    if allowed is not False or reason != LIVE_RELEASE_DISABLED:
+        _fail(f"metadata must win {allowed} {reason}")
+
+
 def run() -> None:
     os.environ[SECRET_ENV] = TEST_SECRET
     reset_live_release_nonces_for_tests()
@@ -678,3 +916,4 @@ def run() -> None:
     _live_battery()
     _admission_battery()
     _s0_and_policy_battery()
+    _gap_battery()

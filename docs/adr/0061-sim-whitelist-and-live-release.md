@@ -62,9 +62,18 @@ First principles:
   expired/wrong-key/replay/clock-skew/tampered payload → reject.
 - `admit_live_orders` always returns `live_account_path_closed_s1` after a
   successful HMAC. S1 does not enable live orders.
-- ADAPT NT `check_account_match`: whitelist first on SUBMIT. CANCEL/flatten
-  may skip the whitelist so emergency exits still reach NT. REAL: demo ADR
-  reason, then live_release, then S1 close.
+- ADAPT NT `check_account_match`: whitelist first on SUBMIT and MODIFY.
+  CANCEL/flatten may skip the whitelist so emergency exits still reach NT.
+  A CANCEL frame cannot be a SUBMIT, a modify, or a size increase.
+  REAL: demo ADR reason, then live_release, then S1 close.
+- S1 reject logs are ConstitutionViolation-equivalent structured events
+  (`s1.sim_whitelist.reject`, `s1.live_release.reject`) with
+  `principle_name`, `severity=error`, `description`, `detail`, `mode`,
+  `agent_id`, `timestamp`. Risk Core does **not** publish
+  `safety.constitution.violation` onto the Event Bus: fail-closed admission
+  cannot depend on bus availability, and Risk vs Agent Orchestration stay
+  separate bounded contexts. Tests validate the payload with
+  `ConstitutionViolation.model_validate`.
 - ADAPT C# `SimAccountWhitelist` + `LiveReleaseGuard` on
   `NtAccountOrderGateway`. Empty Fabric list denies. A Fabric
   `LiveReleaseEnabled` boolean without Brain HMAC attestation is not
@@ -79,6 +88,29 @@ First principles:
   research. Yaml `mode: sim` / `research_execution_mode` is not a control.
 
 ## Consequences
+
+### ConstitutionViolation-equivalent event (S1 decision)
+
+S1 does not emit `safety.constitution.violation` from Risk Core.
+
+| Option | Verdict |
+|---|---|
+| Publish `ConstitutionViolation` on the Event Bus from `admit_sim_account` / `verify_live_release` | Rejected: fail-closed admit cannot depend on bus uptime or schema validation; Risk Core must not import Agent Orchestration |
+| Silent reject | Rejected: constitution-guard and risk-safety-review require a structured, testable reject |
+| Structured log event with ConstitutionViolation fields | **Accepted** |
+
+Mapping (`lumina_core/risk/s1_events.py`):
+
+| ConstitutionViolation | S1 `event_data` |
+|---|---|
+| `principle_name` | reject reason code |
+| `severity` | `error` |
+| `description` | `s1.sim_whitelist.reject` or `s1.live_release.reject` |
+| `detail` | same reason code |
+| `mode` | admission/trade mode |
+| extra (allowed) | `agent_id`, `account`, `approved_by`, `timestamp` |
+
+A unit test round-trips the payload through `ConstitutionViolation.model_validate`.
 
 ### Positive
 

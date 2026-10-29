@@ -10,7 +10,15 @@ from lumina_core.broker.ninjatrader.account_names import (
     paper_orders_allowed,
 )
 from lumina_core.broker.ninjatrader.connection_state import NinjaTraderConnectionState
-from lumina_core.broker.ninjatrader.promotion_gate import NtBridgeAction, action_allowed, normalize_trade_mode
+from lumina_core.broker.ninjatrader.promotion_gate import (
+    NtBridgeAction,
+    action_allowed,
+    action_blocked_in_safe_mode,
+    action_blocked_when_disconnected,
+    action_enforces_sim_whitelist,
+    action_requires_account_match,
+    normalize_trade_mode,
+)
 from lumina_core.risk.live_release import (
     LIVE_ACCOUNT_PATH_CLOSED_S1,
     LIVE_RELEASE_REQUIRED,
@@ -109,7 +117,7 @@ def check_disconnect_policy(
 ) -> tuple[bool, str]:
     """Fail-closed when disconnected for order actions in live-ish modes."""
     mode = normalize_trade_mode(trade_mode)
-    if action in {NtBridgeAction.SUBMIT_ORDER, NtBridgeAction.CANCEL}:
+    if action_blocked_when_disconnected(action):
         if not connection.is_connected:
             if mode in {"sim", "sim_real_guard", "real"}:
                 return False, f"ninjatrader_disconnected:{connection.state}"
@@ -126,7 +134,7 @@ def check_safe_mode_policy(
 
     Host cancels non-protected on disconnect/timeout; Brain must not place while SAFE.
     """
-    if action == NtBridgeAction.SUBMIT_ORDER and connection.is_fabric_safe_mode:
+    if action_blocked_in_safe_mode(action) and connection.is_fabric_safe_mode:
         return False, f"fabric_safe_mode_blocks_place:{connection.safe_mode}"
     return True, "ok"
 
@@ -158,14 +166,14 @@ def assert_nt_bridge_capability(
     if not ok:
         return False, reason
 
-    if action in {NtBridgeAction.SUBMIT_ORDER, NtBridgeAction.CANCEL}:
+    if action_requires_account_match(action):
         ok, reason = check_account_match(
             trade_mode=mode,
             configured_account=configured_account,
             connected_account=connection.account_name,
             sim_account_whitelist=sim_account_whitelist,
             live_release=live_release,
-            enforce_sim_whitelist=action == NtBridgeAction.SUBMIT_ORDER,
+            enforce_sim_whitelist=action_enforces_sim_whitelist(action),
         )
         if not ok:
             return False, reason

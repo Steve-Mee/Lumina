@@ -17,7 +17,7 @@ from typing import Iterable, Iterator
 ROOT = Path(__file__).resolve().parents[2]
 KILL_MOD = "tests.risk.s1_mutant_kills"
 S1_MUTATION_MIN_MUTANTS = 320
-S1_MUTATION_KILL_RATE_MIN = 0.80
+S1_MUTATION_KILL_RATE_MIN = 0.90
 S1_MUTATION_EQUIVALENT_MAX_FRAC = 0.10
 SKIP_FILES = frozenset({"__init__.py", "__main__.py"})
 TARGET_PATHS = (
@@ -302,12 +302,7 @@ def _run_one(mutant: Mutant, timeout: float) -> MutantResult:
 
 
 _EQUIVALENT: dict[str, str] = {
-    "live_release.py:boolop#3": "log helper coalesces empty agent_id; reject decision unchanged",
-    "live_release.py:boolop#4": "log helper coalesces empty approved_by; reject decision unchanged",
-    "live_release.py:kw-bool#65": "canonical body key insertion order already matches sort_keys=True",
-    "live_release.py:return-tuple-bool#150": "clock.tzinfo is None is unreachable after astimezone/now(timezone.utc)",
     "sim_account_guard.py:const-int#0": "process HMAC seal with urandom(0) still authenticates the frozen set",
-    "admission_s1_steps.py:boolop#0": "agent_id log coalescing; admission decision unchanged",
 }
 
 

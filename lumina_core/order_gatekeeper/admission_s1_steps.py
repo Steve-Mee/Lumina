@@ -22,7 +22,7 @@ AdmissionHandler = Callable[[AdmissionContext], tuple[bool, str]]
 
 
 def _agent_id(ctx: AdmissionContext) -> str:
-    return str(ctx.metadata.get("agent_id") or "")
+    return str(ctx.metadata.get("agent_id", ""))
 
 
 def make_sim_account_whitelist_step(ctx: Any) -> AdmissionHandler:

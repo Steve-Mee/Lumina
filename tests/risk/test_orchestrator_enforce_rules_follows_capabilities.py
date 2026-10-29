@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from lumina_core.risk import sim_account_guard as sim_guard_mod
 from lumina_core.risk.mode_capabilities import resolve_mode_capabilities
 from lumina_core.risk.orchestration import RiskOrchestrator
 
@@ -31,6 +32,7 @@ def test_orchestrator_enforce_rules_follows_capabilities() -> None:
         orch.initialize()
         assert orch.risk_controller is not None
         assert bool(orch.risk_controller.enforce_rules) is expected
+        assert sim_guard_mod.LOCK.is_frozen() is True
 
 
 @pytest.mark.unit

@@ -12,7 +12,6 @@ import logging
 import os
 import threading
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import datetime, timezone
 from typing import Final
 
 from lumina_core.broker.ninjatrader.account_names import (
@@ -20,6 +19,7 @@ from lumina_core.broker.ninjatrader.account_names import (
     canonicalize_account_name,
     is_paper_account_name,
 )
+from lumina_core.risk.s1_events import s1_reject_event_data
 
 logger = logging.getLogger("lumina.risk.sim_account_guard")
 
@@ -61,14 +61,13 @@ def log_sim_reject(*, reason: str, account: str, mode: str, agent_id: str = "") 
     logger.error(
         "s1.sim_whitelist.reject",
         extra={
-            "event_data": {
-                "event": "s1.sim_whitelist.reject",
-                "reason": str(reason),
-                "account": str(account),
-                "mode": str(mode),
-                "agent_id": str(agent_id or ""),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
+            "event_data": s1_reject_event_data(
+                event="s1.sim_whitelist.reject",
+                reason=reason,
+                agent_id=agent_id,
+                mode=mode,
+                account=account,
+            )
         },
     )
 
@@ -92,7 +91,7 @@ class SimWhitelistLock:
             return not hmac.compare_digest(self._seal, _seal_for(self._frozen))
 
     def freeze(self, names: Iterable[object] | None) -> frozenset[str]:
-        """First call wins. Later calls ignore extra names."""
+        """First call wins. Subsequent calls ignore extra names."""
         with self._mutex:
             if self._frozen is None:
                 frozen = frozenset(canonicalize_whitelist(names))
@@ -131,12 +130,11 @@ class SimWhitelistLock:
                 logger.error(
                     "s1.sim_whitelist.widen_refused",
                     extra={
-                        "event_data": {
-                            "event": "s1.sim_whitelist.widen_refused",
-                            "reason": SIM_WHITELIST_WIDEN_REFUSED,
-                            "extra": list(extra_labels),
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        }
+                        "event_data": s1_reject_event_data(
+                            event="s1.sim_whitelist.widen_refused",
+                            reason=SIM_WHITELIST_WIDEN_REFUSED,
+                            extra=list(extra_labels),
+                        )
                     },
                 )
             return current, "ok"
