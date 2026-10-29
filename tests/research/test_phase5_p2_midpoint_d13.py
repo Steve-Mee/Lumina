@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -113,3 +114,17 @@ def test_cli_midpoint_d13_requires_es_csv(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_required_midpoints_stay_locked() -> None:
     assert required_midpoint_controls() == (("fade", 1.0, 1.2), ("breakout", 1.8, 0.9))
+
+
+@pytest.mark.unit
+def test_committed_midpoint_d13_json_is_clean() -> None:
+    payload = json.loads(Path("experiments/reports/phase5_p2_midpoint_d13.json").read_text(encoding="utf-8"))
+    assert payload["overall_verdict"] == POWER_CLEAN
+    assert payload["templates_run"] is False
+    assert payload["research_run"] is False
+    assert payload["holdout_opened"] is False
+    by_name = {row["name"]: row for row in payload["geometries"]}
+    assert by_name["fade"]["planted_detected"] is True
+    assert by_name["breakout"]["planted_detected"] is True
+    assert by_name["fade"]["exact_edge"] == "0/32"
+    assert by_name["breakout"]["exact_edge"] == "0/32"

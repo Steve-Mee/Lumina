@@ -101,7 +101,12 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
   the diagnostic A2 count (18:17). Cycle stop still uses `n_edge`. ATR
   `n_edge` cannot be re-scored (PIT JSON has no per-seed +OOS). Template
   10/10 kill is unchanged (already DSR-dead).
-- Midpoint positive-control PIT is the 19:24 control run (not a strategy-run).
+- Midpoint D13 PIT (19:24, ES only, holdout cut): fade 1.0/1.2 and breakout
+  1.8/0.9 both **detect** the planted edge (median OOS 0.0116 / 0.0115, +OOS
+  8/8, DSR 1.0, beats null). Strict null `n_edge` **0/32** on both. Verdict
+  `clean` (not a power miss). Full packaged gate `passed_gate` is false on
+  the plant; detection used the pre-registered drempel. No strategy-run.
+  JSON: `experiments/reports/phase5_p2_midpoint_d13.json`.
 - Null-only empirical (local ES pre-holdout, not committed; 818851 bars,
   `2023-10-01T22:01:00Z`–`2026-01-28T22:00:00Z`, 598 sessions):
 
