@@ -16,7 +16,13 @@ from lumina_research.cycles.cost_bands import ES_NQ_ONE_WAY, MNQ_ONE_WAY_USD, ba
 from lumina_research.cycles.daily import daily_market_returns
 from lumina_research.cycles.data import LoadedTape, ResearchBar
 from lumina_research.cycles.diagnostics import from_trades, window_sharpe
-from lumina_research.cycles.execution import ClosedTrade, bar_volatility_price, run_execution
+from lumina_research.cycles.execution import (
+    ClosedTrade,
+    bar_volatility_price,
+    causal_adv,
+    causal_session_adv,
+    run_execution,
+)
 from lumina_research.cycles.fills import FILL_POLICY, touch_fill, trade_through_fill, traded_through
 from lumina_research.cycles.first_cycle import first_cycle_specs, write_first_cycle_preregister
 from lumina_research.cycles.geometry import require_geometry
@@ -61,12 +67,24 @@ from lumina_research.cycles.sessions import (
     annotate,
     is_rth_close,
 )
-from lumina_research.cycles.slippage_calibration import ASSUMPTION, SLIPPAGE_COEFFICIENT, load_slippage_calibration
+from lumina_research.cycles.slippage_calibration import (
+    ASSUMPTION,
+    ETH_SLIPPAGE_COEFFICIENT,
+    SLIPPAGE_COEFFICIENT,
+    load_slippage_calibration,
+)
 from lumina_research.cycles.strategies import simulate, simulate_full
 from lumina_research.cycles.wf_sizes import walk_forward_sizes
 from lumina_research.validation.block_bootstrap import block_bootstrap_sharpes
 from lumina_research.validation.contracts import spec_for
-from lumina_research.validation.cost_model import COST_MODEL_VERSION, CostModel, MarketSnapshot, apply_costs
+from lumina_research.validation.cost_model import (
+    COST_MODEL_VERSION,
+    MAX_VOLUME_SLIP_SCALE,
+    CostModel,
+    CostModelError,
+    MarketSnapshot,
+    apply_costs,
+)
 from lumina_research.validation.gate import passes_validation_gate
 from lumina_research.validation.pipeline import evaluate_candidate, missing_evaluation
 from lumina_research.validation.regimes import regime_robustness
@@ -382,13 +400,71 @@ def test_slippage_uses_bar_true_range_never_fixed_two() -> None:
     quiet_ticks = model.ticks_for_fill(spec=contract, quantity=1.0, market=quiet).slippage_ticks
     wild_ticks = model.ticks_for_fill(spec=contract, quantity=1.0, market=wild).slippage_ticks
     assert wild_ticks > quiet_ticks
-    assert COST_MODEL_VERSION == "1.1.0"
+    assert COST_MODEL_VERSION == "1.2.0"
     loaded = load_slippage_calibration()
     assert loaded.coefficient == SLIPPAGE_COEFFICIENT == 0.10
+    assert loaded.eth_coefficient == ETH_SLIPPAGE_COEFFICIENT == 0.10
     assert loaded.source == "documented_assumption"
     assert "true-range" in ASSUMPTION
+    assert "same-session" in ASSUMPTION
     bar = ResearchBar(ts_ns=1, open=10.0, high=12.0, low=9.0, close=11.0, volume=1.0)
     assert bar_volatility_price(bar) == 3.0
+
+
+@pytest.mark.unit
+def test_eth_adv_is_session_local_not_mixed_rth() -> None:
+    rth_bar = ResearchBar(ts_ns=1, open=10.0, high=10.25, low=9.75, close=10.0, volume=10_000.0)
+    eth_bar = ResearchBar(ts_ns=2, open=10.0, high=10.25, low=9.75, close=10.0, volume=100.0)
+    bars = tuple([rth_bar] * 21 + [eth_bar])
+    rth = tuple([True] * 21 + [False])
+    mixed = causal_adv(bars, 21)
+    session = causal_session_adv(bars, rth, 21)
+    assert mixed == pytest.approx((20 * 10_000.0 + 100.0) / 21.0)
+    assert session == pytest.approx(100.0)
+    model = CostModel()
+    contract = spec_for("MES")
+    mixed_market = MarketSnapshot(
+        volume=100.0,
+        average_volume=mixed,
+        volatility_price=0.5,
+        session="eth",
+    )
+    local_market = MarketSnapshot(
+        volume=100.0,
+        average_volume=session,
+        volatility_price=0.5,
+        session="eth",
+    )
+    mixed_slip = model.ticks_for_fill(spec=contract, quantity=1.0, market=mixed_market).slippage_ticks
+    local_slip = model.ticks_for_fill(spec=contract, quantity=1.0, market=local_market).slippage_ticks
+    assert mixed_slip > local_slip
+    assert local_slip == pytest.approx(0.10 * (0.5 / 0.25) * 1.0)
+
+
+@pytest.mark.unit
+def test_volume_slip_scale_is_capped_and_session_lookup() -> None:
+    model = CostModel()
+    contract = spec_for("MES")
+    thin = MarketSnapshot(volume=1.0, average_volume=10_000.0, volatility_price=0.25, session="rth")
+    fill = model.ticks_for_fill(spec=contract, quantity=1.0, market=thin)
+    uncapped = 0.10 * (0.25 / 0.25) * (10_000.0 / 1.0)
+    assert fill.slippage_ticks == pytest.approx(0.10 * (0.25 / 0.25) * MAX_VOLUME_SLIP_SCALE)
+    assert fill.slippage_ticks < uncapped
+    rth = MarketSnapshot(volume=10_000.0, average_volume=10_000.0, volatility_price=1.0, session="rth")
+    eth = MarketSnapshot(volume=10_000.0, average_volume=10_000.0, volatility_price=1.0, session="eth")
+    rth_ticks = model.ticks_for_fill(spec=contract, quantity=1.0, market=rth).slippage_ticks
+    eth_ticks = model.ticks_for_fill(spec=contract, quantity=1.0, market=eth).slippage_ticks
+    assert rth_ticks == pytest.approx(eth_ticks)
+    expensive_eth = CostModel(eth_slippage_coefficient=0.20)
+    assert expensive_eth.ticks_for_fill(spec=contract, quantity=1.0, market=eth).slippage_ticks == pytest.approx(
+        2.0 * rth_ticks
+    )
+    with pytest.raises(CostModelError, match="session"):
+        model.ticks_for_fill(
+            spec=contract,
+            quantity=1.0,
+            market=MarketSnapshot(volume=1.0, average_volume=1.0, volatility_price=1.0, session="globex"),
+        )
 
 
 @pytest.mark.unit
@@ -683,7 +759,7 @@ def test_costed_series_splits_four_legs() -> None:
     assert sum(costed.half_spread_usd) > 0.0
     assert sum(costed.slippage_usd) > 0.0
     assert sum(costed.impact_usd) > 0.0
-    assert costed.provenance.model_version == "1.1.0"
+    assert costed.provenance.model_version == "1.2.0"
 
 
 @pytest.mark.unit

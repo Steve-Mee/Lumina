@@ -44,9 +44,33 @@ class ExecutionRefused(ValueError):
 
 
 def causal_adv(bars: Sequence[ResearchBar], index: int) -> float:
+    """Mixed-session ADV. Tape costs use ``causal_session_adv`` instead."""
     window = bars[max(0, index - (ADV_WINDOW - 1)) : index + 1]
     total = sum(max(item.volume, 1.0) for item in window)
     return total / float(len(window))
+
+
+def causal_session_adv(bars: Sequence[ResearchBar], rth: Sequence[bool], index: int) -> float:
+    """Causal ADV over the last ``ADV_WINDOW`` bars of the *same* session type.
+
+    ETH volume is not compared to a window that includes the RTH open. That
+    inverse-volume artefact is what made overnight look several times more
+    expensive than cash hours.
+    """
+    if index < 0 or index >= len(bars) or len(bars) != len(rth):
+        raise ExecutionRefused("session ADV series must align")
+    target = bool(rth[index])
+    total = 0.0
+    count = 0
+    cursor = index
+    while cursor >= 0 and count < ADV_WINDOW:
+        if bool(rth[cursor]) == target:
+            total += max(bars[cursor].volume, 1.0)
+            count += 1
+        cursor -= 1
+    if count == 0:
+        return 1.0
+    return total / float(count)
 
 
 def bar_volatility_price(bar: ResearchBar) -> float:
@@ -82,12 +106,14 @@ def run_execution(
     trades: list[ClosedTrade] = []
     prev_close = bars[0].close
     for index, bar in enumerate(bars):
-        adv = causal_adv(bars, index)
+        session = "rth" if rth[index] else "eth"
+        adv = causal_session_adv(bars, rth, index)
         markets.append(
             MarketSnapshot(
                 volume=max(bar.volume, 1.0),
                 average_volume=adv,
                 volatility_price=bar_volatility_price(bar),
+                session=session,
             )
         )
         if breaks[index]:

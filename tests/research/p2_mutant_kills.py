@@ -34,6 +34,7 @@ from lumina_research.cycles.execution import (
     ExecutionRefused,
     _session_end_flags,
     bar_volatility_price,
+    causal_session_adv,
     run_execution,
 )
 from lumina_research.cycles.fills import (
@@ -93,6 +94,7 @@ from lumina_research.cycles.sessions import (
     is_rth_close,
 )
 from lumina_research.cycles.slippage_calibration import (
+    ETH_SLIPPAGE_COEFFICIENT,
     SLIPPAGE_COEFFICIENT,
     load_slippage_calibration,
     reference_market,
@@ -103,6 +105,7 @@ from lumina_research.validation.cost_model import (
     COST_COMPONENTS,
     COST_MODEL_ID,
     COST_MODEL_VERSION,
+    MAX_VOLUME_SLIP_SCALE,
     CostModel,
     CostModelError,
     MarketSnapshot,
@@ -1032,13 +1035,29 @@ def run() -> None:
     require_friday_roll()
     if band_for("MNQ") != MNQ_ONE_WAY_USD:
         _fail("MNQ band must be USD")
-    if COST_MODEL_VERSION != "1.1.0":
+    if COST_MODEL_VERSION != "1.2.0":
         _fail("cost model version drifted")
-    if SLIPPAGE_COEFFICIENT != 0.10:
+    if SLIPPAGE_COEFFICIENT != 0.10 or ETH_SLIPPAGE_COEFFICIENT != 0.10:
         _fail("slippage coefficient retuned")
+    if MAX_VOLUME_SLIP_SCALE != 4.0:
+        _fail("volume slip cap drifted")
     loaded = load_slippage_calibration()
     if loaded.source != "documented_assumption":
         _fail("slippage source drifted")
+    if loaded.eth_coefficient != ETH_SLIPPAGE_COEFFICIENT:
+        _fail("ETH coefficient missing from calibration")
+    exec_src = inspect.getsource(run_execution)
+    if "causal_session_adv" not in exec_src or "session=session" not in exec_src:
+        _fail("tape costs must use session-local ADV and session labels")
+    rth_bar = ResearchBar(ts_ns=1, open=10.0, high=10.25, low=9.75, close=10.0, volume=10_000.0)
+    eth_bar = ResearchBar(ts_ns=2, open=10.0, high=10.25, low=9.75, close=10.0, volume=100.0)
+    mixed_bars = tuple([rth_bar] * 21 + [eth_bar])
+    mixed_rth = tuple([True] * 21 + [False])
+    if abs(causal_session_adv(mixed_bars, mixed_rth, 21) - 100.0) > 1e-9:
+        _fail("ETH ADV must ignore RTH volume")
+    fill_src = inspect.getsource(CostModel.ticks_for_fill)
+    if "eth_slippage_coefficient" not in fill_src or "max_volume_slip_scale" not in fill_src:
+        _fail("ticks_for_fill must look up session coefficient and cap inverse volume")
     quiet = MarketSnapshot(volume=10_000.0, average_volume=10_000.0, volatility_price=0.25)
     wild = MarketSnapshot(volume=10_000.0, average_volume=10_000.0, volatility_price=5.0)
     model = CostModel()

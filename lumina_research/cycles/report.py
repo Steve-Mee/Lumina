@@ -307,7 +307,7 @@ def _markdown(report: CycleReport) -> str:
                 f"- n_days: `{report.n_days}`",
                 "- pin: `2026-01-28T23:00:00+00:00` Globex session boundary (legacy `2026-01-29T00:00:00Z` recorded)",
                 "- holdout sealed and unopened for ranking, tuning, and gate calibration",
-                "- 1m four-leg costs (ADR-0055/1.1 vol-term) then Globex session-day resample",
+                "- 1m four-leg costs (ADR-0055/1.2 RTH-ETH session slippage) then Globex session-day resample",
                 "- floors unchanged: DSR>=0.95, PBO hard 0.50 / warn 0.25, min 6 OOS; static rules use A2 not WFE",
                 "- geometry is pre-registered per template; shadow only; zero orders; S0 freeze untouched",
                 f"- positive_control_detected: `{report.planted_detected}` null_detected: `{report.null_detected}`",
