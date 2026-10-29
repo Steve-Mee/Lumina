@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-SIM_MIN_SURVIVORS = 3
+# Research team decision (relayed by Steve 2026-10-29): hard min is 2
+# (sim_gate). 3 is the documented target, not the gate.
+SIM_MIN_SURVIVORS = 2
+SIM_TARGET_SURVIVORS = 3
 SIM_MIN_TRADING_DAYS = 60
 SIM_MIN_TRADES = 100
 SIM_SHARPE_FLOOR_FRAC = 0.70
@@ -20,7 +23,8 @@ def sim_plan_markdown() -> str:
             "",
             "## Entry conditions (all required)",
             "",
-            f"- At least {SIM_MIN_SURVIVORS} independent, low-correlation Validation Gate survivors.",
+            f"- Hard minimum: {SIM_MIN_SURVIVORS} independent, low-correlation Validation Gate survivors (`sim_gate`).",
+            f"- Target: {SIM_TARGET_SURVIVORS} independent survivors before first SIM (plan only; gate stays {SIM_MIN_SURVIVORS}).",
             "- Correlation is measured on OOS net returns; a cluster of MES+ES clones does not count as independent.",
             "- Survivors still carry a valid sealed gate passage. Risk Core is untouched.",
             "",

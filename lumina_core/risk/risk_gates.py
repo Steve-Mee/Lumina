@@ -33,7 +33,11 @@ class RiskGatesMixin:
         raise NotImplementedError
 
     def check_can_trade(self, symbol: str, regime: str, proposed_risk: float) -> tuple[bool, str]:
-        if self.limits.sim_mode or not self.enforce_rules:
+        # NEEDS HUMAN REVIEW (ADR-0064 Proposed).
+        # Research team decision (relayed by Steve 2026-10-29): close Brain
+        # caps-bypass in mode sim. sim_mode must not skip caps; advisory remains
+        # only when enforce_rules is False.
+        if not self.enforce_rules:
             return True, "OK (SIM learning mode – all caps bypassed)"
 
         if self.state.kill_switch_engaged:
@@ -123,7 +127,7 @@ class RiskGatesMixin:
                     "CME MARGIN snapshot confidence too low: "
                     f"confidence={snapshot_conf:.3f} < min={float(limits.margin_min_confidence):.3f}"
                 )
-                if self.enforce_rules and (not self.limits.sim_mode):
+                if self.enforce_rules:
                     return False, conf_reason
                 logger.warning(conf_reason)
 
@@ -134,7 +138,7 @@ class RiskGatesMixin:
                     f"age={status['age_hours']}h > ttl={status['stale_after_hours']}h "
                     f"source={status['source']}"
                 )
-                if self.enforce_rules and (not self.limits.sim_mode):
+                if self.enforce_rules:
                     return False, stale_reason
                 logger.warning(stale_reason)
 
@@ -308,7 +312,9 @@ class RiskGatesMixin:
         return max(0.0, remaining.total_seconds() / 60.0)
 
     def should_force_close_eod(self) -> tuple[bool, str]:
-        if self.limits.sim_mode or not self.enforce_rules:
+        # NEEDS HUMAN REVIEW (ADR-0064 Proposed). Same sim_mode bypass as
+        # check_can_trade:36-37; close it. Advisory only when not enforce_rules.
+        if not self.enforce_rules:
             return False, "SIM/learning mode"
         limits = self._active_limits
         if not limits.enforce_session_guard:

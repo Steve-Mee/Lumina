@@ -28,7 +28,13 @@ from lumina_research.cycles.fills import FillRefused, fill_probability, trade_th
 from lumina_research.cycles.geometry import GeometryRefused, floors_for, require_geometry
 from lumina_research.cycles.kill_rate import diagnose_kill_rate
 from lumina_research.cycles.runner import run_research_cycles
-from lumina_research.cycles.sim_plan import SIM_MIN_SURVIVORS, SIM_MIN_TRADES, SIM_MIN_TRADING_DAYS, write_sim_plan
+from lumina_research.cycles.sim_plan import (
+    SIM_MIN_SURVIVORS,
+    SIM_MIN_TRADES,
+    SIM_MIN_TRADING_DAYS,
+    SIM_TARGET_SURVIVORS,
+    write_sim_plan,
+)
 from lumina_research.cycles.strategies import StrategyRefused, simulate
 from tests.research.test_phase2_coverage import _rationale
 
@@ -214,7 +220,10 @@ def test_research_cycles_stop_without_real_data(tmp_path: Path) -> None:
     assert (tmp_path / "reports" / "phase5_research_cycles.json").is_file()
     assert (tmp_path / "reports" / "phase5_sim_plan.md").is_file()
     plan = (tmp_path / "reports" / "phase5_sim_plan.md").read_text(encoding="utf-8")
+    assert SIM_MIN_SURVIVORS == 2
+    assert SIM_TARGET_SURVIVORS == 3
     assert str(SIM_MIN_SURVIVORS) in plan
+    assert str(SIM_TARGET_SURVIVORS) in plan
     assert str(SIM_MIN_TRADING_DAYS) in plan
     assert str(SIM_MIN_TRADES) in plan
     assert "do not start" in plan.lower() or "Do not start" in plan

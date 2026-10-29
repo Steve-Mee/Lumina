@@ -1,4 +1,4 @@
-"""S3 entry criteria 1–9. Missing evidence is ``research_sim_gated``. Yaml cannot lift D1."""
+"""S3/S4 entry criteria 1–9. Missing evidence is ``research_sim_gated``. Yaml cannot lift D1."""
 
 from __future__ import annotations
 
@@ -15,6 +15,14 @@ from lumina_core.broker.ninjatrader.account_names import (
     canonicalize_account_name,
     is_paper_account_name,
 )
+from lumina_core.research_bridge.continuity_meter import (
+    FAR_MAX,
+    POWER_MIN,
+    PRODUCED_BY,
+    TTD_FAST_MAX_DAYS,
+    TTD_SLOW_MAX_DAYS,
+    ContinuityMeterReport,
+)
 from lumina_core.research_bridge.independence import independent_set
 from lumina_core.risk.live_release import (
     PURPOSE_LIVE,
@@ -27,7 +35,6 @@ RESEARCH_SIM_GATED = "research_sim_gated"
 SIM_INSTRUMENT_NOT_YET_RELEASED = "sim_instrument_not_yet_released"
 S3_INSTRUMENTS: frozenset[str] = frozenset({"MES", "MNQ"})
 ADR0058_WINDOW_BARS = 20
-FAR_HEALTHY_MAX = 0.05
 MIN_SURVIVORS = 2
 MAX_SURVIVORS = 3
 SUPERVISOR_MARKERS: tuple[str, ...] = (
@@ -79,7 +86,7 @@ class SimGateContext:
     live_release_record: Mapping[str, object] | None
     instrument: str
     survivors: tuple[SurvivorRecord, ...]
-    far_healthy: float | None
+    continuity_meter: ContinuityMeterReport | None
     promotion_hmac_ok: bool
     approval_required: bool
     approval_present: bool
@@ -148,7 +155,7 @@ def evaluate(ctx: SimGateContext | None = None) -> tuple[bool, str]:
         _criterion_trade_mode,
         _criterion_instrument,
         _criterion_survivors,
-        _criterion_far,
+        _criterion_continuity,
         _criterion_promotion,
         _criterion_approval,
     )
@@ -256,17 +263,34 @@ def _survivor_eligible(row: SurvivorRecord) -> tuple[bool, str]:
     return True, "ok"
 
 
-def _criterion_far(ctx: SimGateContext) -> tuple[bool, str]:
-    value = ctx.far_healthy
-    if value is None:
-        return False, "far_unmeasured"
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return False, "far_unmeasured"
-    far = float(value)
+def _criterion_continuity(ctx: SimGateContext) -> tuple[bool, str]:
+    """Research team decision (relayed by Steve 2026-10-29): meter only, no caller float."""
+    report = ctx.continuity_meter
+    if report is None or type(report) is not ContinuityMeterReport:
+        return False, "continuity_unmeasured"
+    if str(report.produced_by) != PRODUCED_BY:
+        return False, "continuity_unmeasured"
+    if str(report.tape_kind) != "nt_pit":
+        return False, "continuity_not_nt_pit"
+    digest = str(report.bar_sha256)
+    if len(digest) != 64:
+        return False, "continuity_unbound"
+    far = float(report.far)
     if far != far or far < 0.0:
         return False, "far_unmeasured"
-    if far > FAR_HEALTHY_MAX:
+    if far > FAR_MAX:
         return False, "far_above_floor"
+    ttd_fast = float(report.ttd_fast_days)
+    if ttd_fast != ttd_fast or ttd_fast <= 0.0 or ttd_fast > TTD_FAST_MAX_DAYS:
+        return False, "ttd_fast_above_floor"
+    ttd_slow = float(report.ttd_slow_days)
+    if ttd_slow != ttd_slow or ttd_slow <= 0.0 or ttd_slow > TTD_SLOW_MAX_DAYS:
+        return False, "ttd_slow_above_floor"
+    power = float(report.power)
+    if power != power or power < POWER_MIN:
+        return False, "power_below_floor"
+    if report.passed is not True or str(report.reason) != "ok":
+        return False, str(report.reason or "continuity_failed")
     return True, "ok"
 
 

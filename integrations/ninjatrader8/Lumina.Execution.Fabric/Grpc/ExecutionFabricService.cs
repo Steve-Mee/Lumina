@@ -206,7 +206,14 @@ namespace Lumina.Execution.Fabric.Grpc
             if (request.HeartbeatTimeoutMs > 0)
                 _config.HeartbeatTimeoutMs = request.HeartbeatTimeoutMs;
             if (request.FlattenGraceMs > 0)
-                _config.FlattenGraceMs = request.FlattenGraceMs;
+            {
+                // Research team decision (relayed by Steve 2026-10-29): flatten-grace
+                // backup 30-60s. net48 has no Math.Clamp.
+                var grace = request.FlattenGraceMs;
+                if (grace < 30000) grace = 30000;
+                if (grace > 60000) grace = 60000;
+                _config.FlattenGraceMs = grace;
+            }
             _config.FlattenOnTimeout = request.FlattenOnTimeout;
             if (request.MaxPositionByInstrument != null && request.MaxPositionByInstrument.Count > 0)
             {

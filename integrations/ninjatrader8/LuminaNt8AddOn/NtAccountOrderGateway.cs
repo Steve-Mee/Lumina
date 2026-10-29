@@ -46,6 +46,8 @@ namespace NinjaTrader.NinjaScript.AddOns
             new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
         private readonly string[] _simWhitelist;
         private readonly bool _liveReleaseEnabled;
+        private readonly System.Collections.Generic.IReadOnlyDictionary<string, string>? _atmTemplateByAccount;
+        private readonly string _defaultAtmTemplate;
         private string _accountName;
 #if !FABRIC_STANDALONE
         private Account? _account;
@@ -61,12 +63,16 @@ namespace NinjaTrader.NinjaScript.AddOns
             string accountName,
             Action<string>? log,
             IEnumerable<string>? simAccountWhitelist,
-            bool liveReleaseEnabled = false)
+            bool liveReleaseEnabled = false,
+            IReadOnlyDictionary<string, string>? atmTemplateByAccount = null,
+            string atmStrategyTemplate = "")
         {
             _accountName = string.IsNullOrWhiteSpace(accountName) ? "Sim101" : accountName.Trim();
             _log = log;
             _simWhitelist = SimAccountWhitelist.Canonical(simAccountWhitelist);
             _liveReleaseEnabled = liveReleaseEnabled;
+            _atmTemplateByAccount = atmTemplateByAccount;
+            _defaultAtmTemplate = (atmStrategyTemplate ?? "").Trim();
         }
 
         public string AccountName
@@ -354,6 +360,18 @@ namespace NinjaTrader.NinjaScript.AddOns
                 return new[] { Reject(command, "invalid_order_fields") };
             }
 
+            // Research team decision (relayed by Steve 2026-10-29): server-side
+            // protective stop required on risk-increasing sim_real_guard/real.
+            // Option A (default): NT ATM template. Option C: companion STOP.
+            // Not B (raw OCO id) or D (stop-market as primary).
+            var placeMode = (command.ModeContext ?? "").Trim().ToLowerInvariant();
+            if ((placeMode == "sim_real_guard" || placeMode == "real")
+                && !command.ReduceOnly
+                && command.StopPrice <= 0)
+            {
+                return new[] { Reject(command, "unprotected_entry_refused") };
+            }
+
             // REAL stays closed in S1 (ADR-0061). Prefix helpers never allow.
             // Explicit whitelist is the only SIM admit; empty list denies.
             var acctName = acct.Name ?? "";
@@ -418,6 +436,20 @@ namespace NinjaTrader.NinjaScript.AddOns
                 }
 
                 acct.Submit(new[] { order });
+                var atmTemplate = ResolveAtmTemplate(command);
+                var protectiveAttach = "";
+                if (atmTemplate.Length > 0 && !command.ReduceOnly)
+                {
+                    if (!TryStartAtm(atmTemplate, order, out var atmReason))
+                    {
+                        try { acct.Cancel(new[] { order }); } catch { /* ignore */ }
+                        Log("ATM attach failed template='" + atmTemplate + "' reason='" + atmReason + "'");
+                        return new[] { Reject(command, atmReason) };
+                    }
+                    protectiveAttach = "atm";
+                    if (!string.IsNullOrEmpty(clientId))
+                        _protectedByClient[clientId] = true;
+                }
                 NoteSessionTouched(instrument.FullName ?? command.Instrument);
                 NoteSessionTouched(instrument.MasterInstrument?.Name);
 
@@ -439,6 +471,7 @@ namespace NinjaTrader.NinjaScript.AddOns
                     LeavesQty = Math.Max(0, command.Quantity - order.Filled),
                     CorrelationId = command.CorrelationId ?? "",
                     TimestampUnixMs = now,
+                    ProtectiveAttach = protectiveAttach,
                 };
                 // If already working/filled synchronously, map accurately.
                 if (order.OrderState == NtOrderState.Filled)
@@ -1213,6 +1246,68 @@ namespace NinjaTrader.NinjaScript.AddOns
                 Balance = 0,
                 Equity = 0,
             };
+        }
+
+        private string ResolveAtmTemplate(PlaceOrderCommand command)
+        {
+            var fromCmd = (command.AtmStrategyTemplate ?? "").Trim();
+            if (fromCmd.Length > 0)
+                return fromCmd;
+            var acct = AccountName;
+            if (_atmTemplateByAccount != null)
+            {
+                foreach (var kv in _atmTemplateByAccount)
+                {
+                    if (string.Equals(kv.Key, acct, StringComparison.OrdinalIgnoreCase))
+                        return (kv.Value ?? "").Trim();
+                }
+            }
+            return _defaultAtmTemplate;
+        }
+
+        private bool TryStartAtm(string template, object order, out string reason)
+        {
+#if FABRIC_STANDALONE
+            reason = "atm_api_unavailable";
+            return false;
+#else
+            try
+            {
+                var atmType = Type.GetType("NinjaTrader.NinjaScript.AtmStrategy, NinjaTrader.Core", throwOnError: false);
+                if (atmType == null)
+                    atmType = Type.GetType("NinjaTrader.NinjaScript.AtmStrategy, NinjaTrader.NinjaScript", throwOnError: false);
+                if (atmType == null)
+                {
+                    reason = "atm_api_unavailable";
+                    return false;
+                }
+                var method = atmType.GetMethod("StartAtmStrategy", new[] { typeof(string), order.GetType() });
+                if (method == null)
+                {
+                    foreach (var candidate in atmType.GetMethods())
+                    {
+                        if (candidate.Name != "StartAtmStrategy" || candidate.GetParameters().Length != 2)
+                            continue;
+                        method = candidate;
+                        break;
+                    }
+                }
+                if (method == null)
+                {
+                    reason = "atm_api_unavailable";
+                    return false;
+                }
+                method.Invoke(null, new[] { template, order });
+                reason = "atm_attached";
+                return true;
+            }
+            catch (Exception ex)
+            {
+                var inner = ex.InnerException ?? ex;
+                reason = "atm_attach_failed:" + inner.Message;
+                return false;
+            }
+#endif
         }
 
         private static OrderEvent Reject(PlaceOrderCommand? command, string reason)

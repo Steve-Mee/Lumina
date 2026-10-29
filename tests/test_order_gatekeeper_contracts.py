@@ -302,7 +302,7 @@ def test_enforce_pre_trade_gate_blocks_when_broker_metadata_rejects_symbol(monke
     assert "broker metadata" in reason.lower()
 
 
-def test_enforce_pre_trade_gate_sim_mode_risk_is_advisory(monkeypatch) -> None:
+def test_enforce_pre_trade_gate_sim_mode_risk_is_enforced(monkeypatch) -> None:
     engine = _make_engine(trade_mode="sim", risk_controller=_RiskController(can_trade=False, reason="daily_loss_cap"))
 
     monkeypatch.setattr("lumina_core.order_gatekeeper.is_stale_contract_symbol", lambda *_a, **_k: False)
@@ -316,7 +316,7 @@ def test_enforce_pre_trade_gate_sim_mode_risk_is_advisory(monkeypatch) -> None:
         order_side="BUY",
     )
 
-    assert allowed is True
+    assert allowed is False
     assert reason == "daily_loss_cap"
 
 
@@ -372,6 +372,28 @@ def test_enforce_pre_trade_gate_sim_var_es_is_advisory(monkeypatch) -> None:
     engine = _make_engine(
         trade_mode="sim",
         risk_controller=_RiskController(var_es_ok=False, var_es_reason="VAR_ES breached: ES95 1600 > 1500"),
+    )
+
+    monkeypatch.setattr("lumina_core.order_gatekeeper.is_stale_contract_symbol", lambda *_a, **_k: False)
+
+    allowed, reason = enforce_pre_trade_gate(
+        engine,
+        symbol="MES JUN26",
+        regime="NEUTRAL",
+        proposed_risk=50.0,
+        order_side="BUY",
+    )
+
+    assert allowed is True
+    assert reason == "OK"
+
+
+def test_enforce_pre_trade_gate_sim_mc_drawdown_is_advisory(monkeypatch) -> None:
+    engine = _make_engine(
+        trade_mode="sim",
+        risk_controller=_RiskController(
+            mc_ok=False, mc_reason="MC projected max drawdown 13.5% > threshold 12.0%"
+        ),
     )
 
     monkeypatch.setattr("lumina_core.order_gatekeeper.is_stale_contract_symbol", lambda *_a, **_k: False)

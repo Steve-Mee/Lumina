@@ -19,10 +19,18 @@ BRIDGE = ROOT / "lumina_core" / "research_bridge"
 S3_ALLOWED_IMPORTS = frozenset(
     {
         ("lumina_core/research_bridge/sim_runtime.py", "lumina_core.broker.broker_bridge.schemas"),
+        ("lumina_core/research_bridge/protective_stop.py", "lumina_core.broker.broker_bridge.schemas"),
+        ("lumina_core/research_bridge/protective_attach.py", "lumina_core.broker.broker_bridge.schemas"),
+        ("lumina_core/research_bridge/sim_protected.py", "lumina_core.broker.broker_bridge.schemas"),
         ("lumina_core/research_bridge/sim_gate.py", "lumina_core.broker.ninjatrader.account_names"),
     }
 )
-S3_ALLOWED_CALLS = frozenset({("lumina_core/research_bridge/sim_runtime.py", "submit_order")})
+S3_ALLOWED_CALLS = frozenset(
+    {
+        ("lumina_core/research_bridge/sim_runtime.py", "submit_order"),
+        ("lumina_core/research_bridge/sim_protected.py", "submit_order"),
+    }
+)
 BANNED_IMPORT_PREFIXES = (
     "lumina_core.broker",
     "lumina_core.broker.ninjatrader",

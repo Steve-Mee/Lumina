@@ -84,6 +84,7 @@ def order_to_place_command(
     if strategy_id and client_order_id and ":" not in corr:
         corr = research_correlation_id(strategy_id, str(client_order_id))
     context = str(meta.get("mode_context") or mode_context or "sim")
+    atm_template = str(meta.get("atm_strategy_template") or "").strip()
 
     return fabric_pb2.PlaceOrderCommand(
         client_order_id=client_order_id,
@@ -98,6 +99,7 @@ def order_to_place_command(
         protected=protected,
         correlation_id=corr,
         mode_context=context,
+        atm_strategy_template=atm_template,
     )
 
 
@@ -310,6 +312,7 @@ def order_event_to_response_dict(event: fabric_pb2.OrderEvent) -> dict[str, Any]
         "filled_qty": int(event.filled_qty),
         "avg_fill_price": float(event.avg_fill_price),
         "message": "",
+        "protective_attach": str(getattr(event, "protective_attach", "") or ""),
     }
 
 

@@ -182,6 +182,10 @@ message PlaceOrderCommand {
   bool protected = 10;
   string correlation_id = 11;
   string mode_context = 12;
+  // Research team decision (relayed by Steve 2026-10-29): NT ATM template
+  // name is option A (default). Empty = ATM not requested; Brain may fall
+  // back to companion STOP (option C). Additive; unknown hosts ignore it.
+  string atm_strategy_template = 13;
 }
 
 message CancelOrderCommand {
@@ -218,6 +222,8 @@ message OrderEvent {
   OrderAction action = 9;
   int32 leaves_qty = 10;
   string correlation_id = 11;
+  // How the protective stop was attached: "atm" | "companion" | "".
+  string protective_attach = 12;
 }
 
 message CommandReject {

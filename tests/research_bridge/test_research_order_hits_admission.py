@@ -78,6 +78,10 @@ def test_admission_ok_submits(tmp_path: Path) -> None:
     assert calls == ["gate"]
     assert result is not None
     assert result.accepted is True
-    assert len(submitter.orders) == 1
+    assert len(submitter.orders) == 2
     assert submitter.orders[0].symbol == "MES"
     assert submitter.orders[0].metadata.get("mode_context") == "sim_real_guard"
+    assert submitter.orders[0].stop_loss > 0.0
+    assert submitter.orders[1].order_type == "STOP"
+    assert submitter.orders[1].metadata.get("protected") is True
+    assert submitter.orders[1].metadata.get("reduce_only") is True

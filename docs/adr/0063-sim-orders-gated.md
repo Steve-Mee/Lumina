@@ -60,6 +60,12 @@ First principles:
 - Supervisor confluence still cannot place.
 - Alarms execute per strategy_id, not as an account-wide flatten.
 
+**D9 ≡ 6b — research team decision (relayed by Steve 2026-10-29):** there is
+no conflict with ADR-0059. Suspend/de-weight = 50% of that strategy;
+disable/critical/hard limit = flatten that strategy via Risk Core. Research
+still never sends flatten. Hard survivor floor stays **2**; `sim_plan.py`
+target is **3**.
+
 ### Negative
 
 - No S3 orders until two D11-independent NT-PIT survivors exist on MES/MNQ.

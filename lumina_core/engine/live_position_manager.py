@@ -163,6 +163,18 @@ class LivePositionManager:
             return
         self._strategy_qty[key] = value
 
+    def open_strategy_qtys(self) -> dict[str, int]:
+        """Book snapshot of non-zero strategy qty. Broker remains SoT after sync."""
+        out: dict[str, int] = {}
+        for key, raw in self._strategy_qty.items():
+            try:
+                value = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if value != 0:
+                out[str(key)] = value
+        return out
+
     def get_live_qty(self) -> int:
         return int(getattr(self._pos, "live_position_qty", 0) or 0)
 

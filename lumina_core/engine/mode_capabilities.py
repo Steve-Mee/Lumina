@@ -28,7 +28,13 @@ _MODES: dict[str, ModeCapabilities] = {
     ),
     "sim": ModeCapabilities(
         requires_live_broker=True,
-        risk_enforced=False,
+        # NEEDS HUMAN REVIEW (ADR-0064 Proposed).
+        # Research team decision (relayed by Steve 2026-10-29): close Brain
+        # caps-bypass in mode sim. Desk sim still is_learning_mode, but caps
+        # must enforce (supersedes ADR-0061 "sim stays learning-mode" for caps).
+        # VaR/ES and MC stay advisory in desk sim; do not treat this flag as
+        # a VaR/ES hard-block (admission_risk_steps._var_es_mc_is_hard).
+        risk_enforced=True,
         session_guard_enforced=True,
         eod_force_close_enabled=False,
         reconcile_fills_enabled_default=False,

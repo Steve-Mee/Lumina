@@ -136,7 +136,8 @@ def test_build_current_state_sim_keeps_default_equity_for_experiments() -> None:
     state = build_current_state_from_engine(engine)
     assert state.runtime_mode == "sim"
     assert state.account_equity == 50_000.0
-    assert state.equity_snapshot_reason == "not_required_non_real"
+    assert state.equity_snapshot_ok is False
+    assert state.equity_snapshot_reason == "provider_unavailable"
 
 
 @pytest.mark.unit

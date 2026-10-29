@@ -33,7 +33,9 @@ namespace Lumina.Execution.Fabric
         /// </summary>
         public string GatewayMode { get; set; } = "nt";
         public int HeartbeatTimeoutMs { get; set; } = 5000;
-        public int FlattenGraceMs { get; set; } = 15000;
+        // Research team decision (relayed by Steve 2026-10-29): flatten-grace
+        // backup 30-60s (chosen 30000). ADR-0064 Proposed / needs human review.
+        public int FlattenGraceMs { get; set; } = 30000;
         public bool FlattenOnTimeout { get; set; } = true;
         public bool BindLocalhostOnly { get; set; } = true;
         public int MaxPositionSize { get; set; } = 10;
@@ -43,6 +45,41 @@ namespace Lumina.Execution.Fabric
         public Dictionary<string, int>? MaxPositionByInstrument { get; set; }
         /// <summary>Optional path for append-only fabric-audit.jsonl (default %APPDATA%\LUMINA\).</summary>
         public string? AuditLogPath { get; set; }
+        /// <summary>
+        /// Research team decision (relayed by Steve 2026-10-29): NT ATM template
+        /// name (option A default). Empty = ATM not requested on this host.
+        /// Per-account map is the operator one-time config.
+        /// </summary>
+        public string AtmStrategyTemplate { get; set; } = "";
+        public Dictionary<string, string>? AtmStrategyTemplateByAccount { get; set; }
+        public Dictionary<string, string>? AtmStrategyTemplateByConnection { get; set; }
+        /// <summary>When ATM is missing/unreliable, Brain may send companion STOP (option C).</summary>
+        public bool AtmFallbackCompanion { get; set; } = true;
+
+        public string ResolveAtmTemplate(string accountName, string commandTemplate, string connectionName = "")
+        {
+            if (!string.IsNullOrWhiteSpace(commandTemplate))
+                return commandTemplate.Trim();
+            var conn = (connectionName ?? "").Trim();
+            if (conn.Length > 0 && AtmStrategyTemplateByConnection != null)
+            {
+                foreach (var kv in AtmStrategyTemplateByConnection)
+                {
+                    if (string.Equals(kv.Key, conn, StringComparison.OrdinalIgnoreCase))
+                        return (kv.Value ?? "").Trim();
+                }
+            }
+            var acct = (accountName ?? "").Trim();
+            if (acct.Length > 0 && AtmStrategyTemplateByAccount != null)
+            {
+                foreach (var kv in AtmStrategyTemplateByAccount)
+                {
+                    if (string.Equals(kv.Key, acct, StringComparison.OrdinalIgnoreCase))
+                        return (kv.Value ?? "").Trim();
+                }
+            }
+            return (AtmStrategyTemplate ?? "").Trim();
+        }
 
         /// <summary>In-memory gateway (no NT Account, no exchange). SimHost / unit tests only.</summary>
         public bool UseMemoryGateway

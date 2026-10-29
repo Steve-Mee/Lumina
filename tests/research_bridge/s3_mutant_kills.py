@@ -215,13 +215,13 @@ def _kill_sim_gate() -> None:
     ok, reason = evaluate(passing_context(boot="shadow", yaml_now="sim"))
     if ok is True:
         _fail("yaml sim lifted D1")
-    ok, reason = evaluate(passing_context(far=None))
-    if ok is True or reason != "far_unmeasured":
+    ok, reason = evaluate(passing_context(meter=None))
+    if ok is True or reason != "continuity_unmeasured":
         _fail("unmeasured FAR allowed")
-    ok, reason = evaluate(passing_context(far=0.06))
+    ok, reason = evaluate(passing_context(meter=0.06))
     if ok is True:
-        _fail("FAR above floor allowed")
-    ok, reason = evaluate(passing_context(far=float("nan")))
+        _fail("caller float FAR allowed")
+    ok, reason = evaluate(passing_context(meter=float("nan")))
     if ok is True:
         _fail("NaN FAR allowed")
     ok, reason = evaluate(passing_context(stale=True, reduce_only=False))

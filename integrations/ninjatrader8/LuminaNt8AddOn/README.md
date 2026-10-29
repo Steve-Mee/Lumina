@@ -58,7 +58,7 @@ Or use unit tests with an in-process mock server (`tests/broker/test_fabric_clie
   "AuthTokenEnv": "LUMINA_FABRIC_TOKEN",
   "AccountName": "Sim101",
   "HeartbeatTimeoutMs": 5000,
-  "FlattenGraceMs": 15000,
+  "FlattenGraceMs": 30000,
   "FlattenOnTimeout": true,
   "BindLocalhostOnly": true,
   "MaxPositionSize": 10
@@ -69,7 +69,8 @@ Or use unit tests with an in-process mock server (`tests/broker/test_fabric_clie
 
 - Heartbeat watchdog is **disarmed until AuthHello + at least one heartbeat**. NT open, Repair, or Test connection without a live Brain issues **no orders**.
 - After live heartbeats: timeout (default 5s) → cancel non-protected working orders → **SAFE_MODE**
-- After flatten grace (default 15s) → flatten **only instruments this process placed** (never leftover MES; never `FlattenEverything`; never NT `Name='Close'`)
+- After flatten grace (default 30s) → flatten **only instruments this process placed** (never leftover MES; never `FlattenEverything`; never NT `Name='Close'`)
+- Protective stop: ATM template name on `PlaceOrderCommand.atm_strategy_template` (option A). If the template is missing, Brain falls back to a companion STOP (option C) or refuses. Operator steps: [nt8-atm-template.md](../../../docs/runbooks/nt8-atm-template.md)
 - Brain stream close (last session) → same disconnect policy
 - Auth success → **StateSync** snapshot (`state_hash`) for reconciliation
 - Limit/stop orders stay WORKING; market fills immediately (SIM)

@@ -197,7 +197,7 @@ class SafetyAlert(_message.Message):
     def __init__(self, alert_type: _Optional[_Union[SafetyAlertType, str]] = ..., severity: _Optional[_Union[SafetySeverity, str]] = ..., message: _Optional[str] = ..., recommended_action: _Optional[str] = ..., timestamp_unix_ms: _Optional[int] = ..., correlation_id: _Optional[str] = ...) -> None: ...
 
 class PlaceOrderCommand(_message.Message):
-    __slots__ = ("client_order_id", "instrument", "action", "quantity", "order_type", "price", "stop_price", "time_in_force", "reduce_only", "protected", "correlation_id", "mode_context")
+    __slots__ = ("client_order_id", "instrument", "action", "quantity", "order_type", "price", "stop_price", "time_in_force", "reduce_only", "protected", "correlation_id", "mode_context", "atm_strategy_template")
     CLIENT_ORDER_ID_FIELD_NUMBER: _ClassVar[int]
     INSTRUMENT_FIELD_NUMBER: _ClassVar[int]
     ACTION_FIELD_NUMBER: _ClassVar[int]
@@ -210,6 +210,7 @@ class PlaceOrderCommand(_message.Message):
     PROTECTED_FIELD_NUMBER: _ClassVar[int]
     CORRELATION_ID_FIELD_NUMBER: _ClassVar[int]
     MODE_CONTEXT_FIELD_NUMBER: _ClassVar[int]
+    ATM_STRATEGY_TEMPLATE_FIELD_NUMBER: _ClassVar[int]
     client_order_id: str
     instrument: str
     action: OrderAction
@@ -222,7 +223,8 @@ class PlaceOrderCommand(_message.Message):
     protected: bool
     correlation_id: str
     mode_context: str
-    def __init__(self, client_order_id: _Optional[str] = ..., instrument: _Optional[str] = ..., action: _Optional[_Union[OrderAction, str]] = ..., quantity: _Optional[int] = ..., order_type: _Optional[_Union[OrderType, str]] = ..., price: _Optional[float] = ..., stop_price: _Optional[float] = ..., time_in_force: _Optional[_Union[TimeInForce, str]] = ..., reduce_only: bool = ..., protected: bool = ..., correlation_id: _Optional[str] = ..., mode_context: _Optional[str] = ...) -> None: ...
+    atm_strategy_template: str
+    def __init__(self, client_order_id: _Optional[str] = ..., instrument: _Optional[str] = ..., action: _Optional[_Union[OrderAction, str]] = ..., quantity: _Optional[int] = ..., order_type: _Optional[_Union[OrderType, str]] = ..., price: _Optional[float] = ..., stop_price: _Optional[float] = ..., time_in_force: _Optional[_Union[TimeInForce, str]] = ..., reduce_only: bool = ..., protected: bool = ..., correlation_id: _Optional[str] = ..., mode_context: _Optional[str] = ..., atm_strategy_template: _Optional[str] = ...) -> None: ...
 
 class CancelOrderCommand(_message.Message):
     __slots__ = ("client_order_id", "nt_order_id", "correlation_id")
@@ -261,7 +263,7 @@ class FlattenCommand(_message.Message):
     def __init__(self, instrument: _Optional[str] = ..., correlation_id: _Optional[str] = ..., emergency: bool = ...) -> None: ...
 
 class OrderEvent(_message.Message):
-    __slots__ = ("client_order_id", "nt_order_id", "state", "filled_qty", "avg_fill_price", "timestamp_unix_ms", "rejection_reason", "instrument", "action", "leaves_qty", "correlation_id")
+    __slots__ = ("client_order_id", "nt_order_id", "state", "filled_qty", "avg_fill_price", "timestamp_unix_ms", "rejection_reason", "instrument", "action", "leaves_qty", "correlation_id", "protective_attach")
     CLIENT_ORDER_ID_FIELD_NUMBER: _ClassVar[int]
     NT_ORDER_ID_FIELD_NUMBER: _ClassVar[int]
     STATE_FIELD_NUMBER: _ClassVar[int]
@@ -273,6 +275,7 @@ class OrderEvent(_message.Message):
     ACTION_FIELD_NUMBER: _ClassVar[int]
     LEAVES_QTY_FIELD_NUMBER: _ClassVar[int]
     CORRELATION_ID_FIELD_NUMBER: _ClassVar[int]
+    PROTECTIVE_ATTACH_FIELD_NUMBER: _ClassVar[int]
     client_order_id: str
     nt_order_id: str
     state: OrderState
@@ -284,7 +287,8 @@ class OrderEvent(_message.Message):
     action: OrderAction
     leaves_qty: int
     correlation_id: str
-    def __init__(self, client_order_id: _Optional[str] = ..., nt_order_id: _Optional[str] = ..., state: _Optional[_Union[OrderState, str]] = ..., filled_qty: _Optional[int] = ..., avg_fill_price: _Optional[float] = ..., timestamp_unix_ms: _Optional[int] = ..., rejection_reason: _Optional[str] = ..., instrument: _Optional[str] = ..., action: _Optional[_Union[OrderAction, str]] = ..., leaves_qty: _Optional[int] = ..., correlation_id: _Optional[str] = ...) -> None: ...
+    protective_attach: str
+    def __init__(self, client_order_id: _Optional[str] = ..., nt_order_id: _Optional[str] = ..., state: _Optional[_Union[OrderState, str]] = ..., filled_qty: _Optional[int] = ..., avg_fill_price: _Optional[float] = ..., timestamp_unix_ms: _Optional[int] = ..., rejection_reason: _Optional[str] = ..., instrument: _Optional[str] = ..., action: _Optional[_Union[OrderAction, str]] = ..., leaves_qty: _Optional[int] = ..., correlation_id: _Optional[str] = ..., protective_attach: _Optional[str] = ...) -> None: ...
 
 class CommandReject(_message.Message):
     __slots__ = ("correlation_id", "client_order_id", "code", "message", "safe_mode")

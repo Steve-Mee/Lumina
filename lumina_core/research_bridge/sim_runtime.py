@@ -33,6 +33,20 @@ from lumina_core.order_gatekeeper.gate import enforce_pre_trade_gate
 from lumina_core.order_gatekeeper.ungated_place_block import gate_order
 from lumina_core.research_bridge.alerts import AlertSink, LoggingAlertSink
 from lumina_core.research_bridge.fill_index import FillIndex
+from lumina_core.research_bridge.protective_attach import (
+    PATH_ATM,
+    PATH_REFUSED,
+    PROTECTIVE_REFUSED,
+    ProtectiveAttachConfig,
+    from_engine as attach_config_from_engine,
+    plan_protective_attach,
+)
+from lumina_core.research_bridge.protective_stop import (
+    UNPROTECTED_ENTRY,
+    default_stop_price,
+    require_protective_stop,
+)
+from lumina_core.research_bridge.sim_protected import SimProtectedMixin
 from lumina_core.research_bridge.horizon import HorizonRefused, require_expected_horizon_bars
 from lumina_core.research_bridge.jsonl import append_shadow_record
 from lumina_core.research_bridge.market_health import MarketHealth
@@ -57,7 +71,11 @@ class SimSubmitter(Protocol):
     def submit_order(self, order: Order) -> OrderResult: ...
 
 
-class SimRuntime:
+class UnconfirmedStopFlattener(Protocol):
+    def flatten_unconfirmed_protective_stop(self, *, instrument: str, strategy_id: str, qty: int) -> None: ...
+
+
+class SimRuntime(SimProtectedMixin):
     """PromotionCandidate → OrderIntent → existing admission + broker submit."""
 
     def __init__(
@@ -74,6 +92,8 @@ class SimRuntime:
         alert_sink: AlertSink | None = None,
         clock: Callable[[], datetime] | None = None,
         pre_trade_gate: Callable[..., tuple[bool, str]] | None = None,
+        protective: ProtectiveAttachConfig | None = None,
+        alarm_executor: UnconfirmedStopFlattener | None = None,
     ) -> None:
         self._bus = bus
         self._authority = authority
@@ -86,6 +106,8 @@ class SimRuntime:
         self._alerts = alert_sink if alert_sink is not None else LoggingAlertSink()
         self._clock = clock if clock is not None else (lambda: datetime.now(timezone.utc))
         self._pre_trade = pre_trade_gate if pre_trade_gate is not None else enforce_pre_trade_gate
+        self._protective = protective
+        self._alarm_executor = alarm_executor
         self._intents: list[SignalIntent] = []
         self._orders: list[Order] = []
         self._results: list[OrderResult] = []
@@ -183,6 +205,15 @@ class SimRuntime:
         if gate_ok is not True:
             self._refuse("admission_blocked:" + str(gate_reason), {"reason": gate_reason})
             return None
+        reference = self._market.reference_price()
+        if reference is None:
+            self._refuse(UNPROTECTED_ENTRY, {"reference": "missing"})
+            return None
+        try:
+            stop_price = default_stop_price(side=str(live_intent.side), reference=float(reference))
+        except ValueError as exc:
+            self._refuse(str(exc), {"reference": float(reference)})
+            return None
         client_order_id = f"s3-{uuid.uuid4()}"
         correlation = f"{candidate.hypothesis_id}:{client_order_id}"
         order = Order(
@@ -190,6 +221,7 @@ class SimRuntime:
             side=str(live_intent.side),
             quantity=int(live_intent.quantity),
             order_type="MARKET",
+            stop_loss=stop_price,
             metadata={
                 "clientOrderId": client_order_id,
                 "correlation_id": correlation,
@@ -197,8 +229,21 @@ class SimRuntime:
                 "source_agent": RESEARCH_BRIDGE_SOURCE,
                 "strategy_id": candidate.hypothesis_id,
                 "expected_horizon": horizon,
+                "stop_price": stop_price,
+                "protected": True,
             },
         )
+        stop_ok, stop_reason = require_protective_stop(order)
+        if stop_ok is not True:
+            self._refuse(stop_reason, {"stop_price": stop_price})
+            return None
+        attach_cfg = self._protective if self._protective is not None else attach_config_from_engine(self._engine)
+        plan = plan_protective_attach(attach_cfg)
+        if plan.path == PATH_REFUSED:
+            self._refuse(PROTECTIVE_REFUSED, {"reason": plan.reason})
+            return None
+        if plan.path == PATH_ATM:
+            order.metadata["atm_strategy_template"] = plan.atm_template
         bind_sim_gate(self._gate_ctx)
         allowed_place, place_reason = gate_order(
             "ninjatrader.broker.submit_order",
@@ -211,15 +256,14 @@ class SimRuntime:
             return None
         try:
             with arm_research_place(self._gate_ctx):
-                result = self._submitter.submit_order(order)
+                result = self._place_protected(order, client_order_id, plan, candidate.hypothesis_id)
+                if result is None:
+                    return None
+                if result.accepted is True:
+                    self._fill_index.remember(client_order_id, candidate.hypothesis_id, horizon)
         except SimGateRefused as exc:
             self._refuse(str(exc), {"armed": False})
             return None
-        self._orders.append(order)
-        self._broker_submits += 1
-        self._results.append(result)
-        if result.accepted is True:
-            self._fill_index.remember(client_order_id, candidate.hypothesis_id, horizon)
         append_shadow_record(
             self._jsonl_path,
             {
@@ -228,6 +272,7 @@ class SimRuntime:
                 "strategy_id": candidate.hypothesis_id,
                 "instrument": instrument,
                 "client_order_id": client_order_id,
+                "protective_path": plan.path,
             },
         )
         return result

@@ -122,7 +122,7 @@ def test_sim_gate_residual_rejects() -> None:
         )
     )
     assert ok is False
-    ok, reason = evaluate(passing_context(far=float("nan")))
+    ok, reason = evaluate(passing_context(meter=float("nan")))
     assert ok is False
     ok, reason = evaluate(passing_context(hmac_ok=False))
     assert ok is False

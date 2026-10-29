@@ -87,11 +87,17 @@ broker:
       gateway_mode: nt
       heartbeat_interval_ms: 1000
       heartbeat_timeout_ms: 5000
-      flatten_grace_ms: 15000
+      flatten_grace_ms: 30000
       bind_localhost_only: true
       max_position_size: 2
       max_orders_per_minute: 30
       daily_loss_limit: 0
+    atm:
+      default_template: ""
+      templates_by_account: {}
+      templates_by_connection: {}
+      fallback_companion: true
+      companion_confirm_timeout_ms: 5000
   crosstrade:
     api_key: ${CROSSTRADE_TOKEN}
     websocket_url: wss://app.crosstrade.io/ws/stream

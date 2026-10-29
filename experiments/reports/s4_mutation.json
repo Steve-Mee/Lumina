@@ -1,0 +1,72 @@
+{
+  "excluded": [
+    {
+      "description": "sim_protected.py:raise-to-pass#0",
+      "detail": "survived kill battery",
+      "justification": "Mixin _refuse is a type-stub; SimRuntime overrides it, so the raise is unreachable.",
+      "path": "lumina_core/research_bridge/sim_protected.py"
+    },
+    {
+      "description": "sim_protected.py:const-int#1",
+      "detail": "survived kill battery",
+      "justification": "ProtectiveAttachPlan always carries companion_confirm_timeout_ms; getattr default 5000 is unused.",
+      "path": "lumina_core/research_bridge/sim_protected.py"
+    },
+    {
+      "description": "protective_attach.py:continue-to-pass#5",
+      "detail": "survived kill battery",
+      "justification": "Empty mapping keys are stripped to ''; named account/connection lookup never matches them.",
+      "path": "lumina_core/research_bridge/protective_attach.py"
+    },
+    {
+      "description": "continuity_meter.py:const-int#18",
+      "detail": "survived kill battery",
+      "justification": "Default fixture start hour 21 vs 00 is the same UTC weekday; bar sequence unchanged.",
+      "path": "lumina_core/research_bridge/continuity_meter.py"
+    },
+    {
+      "description": "continuity_meter.py:const-int#19",
+      "detail": "survived kill battery",
+      "justification": "Default fixture start minute 00 vs 01 is the same UTC weekday; bar sequence unchanged.",
+      "path": "lumina_core/research_bridge/continuity_meter.py"
+    },
+    {
+      "description": "continuity_meter.py:const-int#25",
+      "detail": "survived kill battery",
+      "justification": "Default fixture clock hour 21 vs 00 still leaves 241 weekdays before the pin.",
+      "path": "lumina_core/research_bridge/continuity_meter.py"
+    },
+    {
+      "description": "continuity_meter.py:const-int#26",
+      "detail": "survived kill battery",
+      "justification": "Default fixture clock minute 00 vs 01 still leaves 241 weekdays before the pin.",
+      "path": "lumina_core/research_bridge/continuity_meter.py"
+    },
+    {
+      "description": "alarm_executor.py:continue-to-pass#31",
+      "detail": "survived kill battery",
+      "justification": "Zero-qty rows never enter the flatten loop; open_strategy_qtys and live_qty==0 already exclude them.",
+      "path": "lumina_core/risk/alarm_executor.py"
+    },
+    {
+      "description": "alarm_executor.py:kw-bool#37",
+      "detail": "survived kill battery",
+      "justification": "escalate is deleted unused in _execute; True vs False is a no-op.",
+      "path": "lumina_core/risk/alarm_executor.py"
+    },
+    {
+      "description": "sim_protected.py:return-none#46",
+      "detail": "survived kill battery",
+      "justification": "SimRuntime refuses before _place_protected when submitter is None; mixin return None is dead.",
+      "path": "lumina_core/research_bridge/sim_protected.py"
+    }
+  ],
+  "kill_rate": 1.0,
+  "n_excluded": 10,
+  "n_killed": 310,
+  "n_mutants": 320,
+  "n_non_equivalent": 310,
+  "n_survived": 0,
+  "raw_kill_rate": 0.96875,
+  "survivors": []
+}
