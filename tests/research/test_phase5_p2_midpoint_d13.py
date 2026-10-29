@@ -181,3 +181,16 @@ def test_committed_midpoint_power_json_is_clean_and_gate_passes() -> None:
             assert row["planted_pbo_n_configs"] == 33
             assert row["exact_edge"] == "0/32"
             assert row["n_trials"] == 33
+
+
+@pytest.mark.unit
+def test_limited_es_preregister_is_not_an_executed_run() -> None:
+    text = Path("experiments/reports/phase5_p2_limited_es_preregister_2026-10-29.md").read_text(
+        encoding="utf-8"
+    )
+    assert "**Not executed.**" in text
+    assert "p2l-mr-es" in text
+    assert "p2l-vx-es" in text
+    assert "NQ closed" in text
+    assert "p2a-or-bo-es" in text
+    assert "SIM / REAL" in text
