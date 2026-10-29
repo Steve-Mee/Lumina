@@ -33,8 +33,13 @@ FORBIDDEN_TARGET_PREFIXES: tuple[str, ...] = (
     "lumina_core/broker/",
     "lumina_core/safety/trading_constitution",
     "lumina_core/risk/final_arbitration",
+    "lumina_core/risk/live_release",
+    "lumina_core/risk/sim_account_guard",
     "order_gatekeeper",
+    "order_gatekeeper/ungated_place_block",
     "promotion_gate",
+    "config.yaml",
+    "fabric.json",
 )
 
 

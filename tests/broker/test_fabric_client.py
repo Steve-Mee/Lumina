@@ -387,7 +387,14 @@ def test_bridge_and_broker_submit_via_fabric(mock_fabric_server: tuple[str, _Moc
         ninjatrader_enabled=True,
         command_timeout_seconds=3.0,
         bridge_service=bridge,
-        engine=SimpleNamespace(config=SimpleNamespace(trade_mode="sim")),
+        engine=SimpleNamespace(
+            config=SimpleNamespace(
+                trade_mode="sim",
+                ninjatrader_sim_account_whitelist=("Sim101",),
+                ninjatrader_account_name="Sim101",
+            ),
+            nt_connected_account="Sim101",
+        ),
     )
 
     assert broker.connect() is True

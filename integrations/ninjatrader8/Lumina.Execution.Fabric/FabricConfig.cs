@@ -16,6 +16,16 @@ namespace Lumina.Execution.Fabric
         public string AuthToken { get; set; } = "";
         public string AccountName { get; set; } = "Sim101";
         /// <summary>
+        /// Explicit SIM accounts allowed to receive new places. Empty denies every name.
+        /// Prefix Sim*/DEMO* is never an allow. Operator-owned; not agent-mutable.
+        /// </summary>
+        public string[] SimAccountWhitelist { get; set; } = System.Array.Empty<string>();
+        /// <summary>
+        /// Operator boolean only. Never sufficient without Brain HMAC attestation.
+        /// S1 keeps REAL places closed even when this is true.
+        /// </summary>
+        public bool LiveReleaseEnabled { get; set; } = false;
+        /// <summary>
         /// Order gateway mode:
         /// - "nt" / "ninjatrader" / "account" / "sim101" → NT Account (Sim101 in NT process)
         /// - "memory" / "simhost" / "mock" → in-memory SimOrderGateway (CI / SimHost only)

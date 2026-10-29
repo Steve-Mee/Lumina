@@ -145,6 +145,8 @@ try:
         FORBIDDEN_PARAMETER_KEYS = {
             "max_risk_percent", "drawdown_kill_percent", "kelly_fraction",
             "daily_loss_cap", "max_total_open_risk", "max_open_risk_per_instrument",
+            "live_release", "sim_account_whitelist", "account_name",
+            "RealAccountName", "research_execution_mode", "mode", "trade_mode",
         }
         try:
             v = []

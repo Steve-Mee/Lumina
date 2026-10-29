@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Lumina.Execution.Fabric.Execution;
+using Lumina.Execution.Fabric.Safety;
 using Lumina.Execution.V1;
 using OrderAction = Lumina.Execution.V1.OrderAction;
 using OrderType = Lumina.Execution.V1.OrderType;
@@ -43,6 +44,8 @@ namespace NinjaTrader.NinjaScript.AddOns
             new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, byte> _sessionTouched =
             new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
+        private readonly string[] _simWhitelist;
+        private readonly bool _liveReleaseEnabled;
         private string _accountName;
 #if !FABRIC_STANDALONE
         private Account? _account;
@@ -50,9 +53,20 @@ namespace NinjaTrader.NinjaScript.AddOns
         private bool _disposed;
 
         public NtAccountOrderGateway(string accountName = "Sim101", Action<string>? log = null)
+            : this(accountName, log, null, false)
+        {
+        }
+
+        public NtAccountOrderGateway(
+            string accountName,
+            Action<string>? log,
+            IEnumerable<string>? simAccountWhitelist,
+            bool liveReleaseEnabled = false)
         {
             _accountName = string.IsNullOrWhiteSpace(accountName) ? "Sim101" : accountName.Trim();
             _log = log;
+            _simWhitelist = SimAccountWhitelist.Canonical(simAccountWhitelist);
+            _liveReleaseEnabled = liveReleaseEnabled;
         }
 
         public string AccountName
@@ -340,18 +354,22 @@ namespace NinjaTrader.NinjaScript.AddOns
                 return new[] { Reject(command, "invalid_order_fields") };
             }
 
-            // REAL stays on local Sim/Playback/Backtest until the promotion ADR.
-            // A brokerage DEMO name is paper only in sim, paper, or sim_real_guard.
+            // REAL stays closed in S1 (ADR-0061). Prefix helpers never allow.
+            // Explicit whitelist is the only SIM admit; empty list denies.
             var acctName = acct.Name ?? "";
             var mode = (command.ModeContext ?? "").Trim().ToLowerInvariant();
-            if (mode == "real" && !IsSimAccountName(acctName))
+            if (mode == "real")
             {
-                return new[] { Reject(command, "real_account_blocked_pending_promotion_adr") };
+                if (!SimAccountWhitelist.IsPaperAccountName(acctName))
+                    return new[] { Reject(command, LiveReleaseGuard.RealAccountBlocked) };
+                var liveDeny = LiveReleaseGuard.DenyRealPlace(mode, _liveReleaseEnabled, brainAttested: false);
+                return new[] { Reject(command, liveDeny ?? LiveReleaseGuard.LiveAccountPathClosedS1) };
             }
-            if (!AllowsPaperOrders(acctName, mode))
+            var whitelistDeny = SimAccountWhitelist.DenyReason(acctName, _simWhitelist);
+            if (whitelistDeny != null)
             {
-                Log("Reject place on non-paper account '" + acctName + "' mode='" + mode + "'");
-                return new[] { Reject(command, "only_sim_accounts_allowed") };
+                Log("Reject place on account '" + acctName + "' mode='" + mode + "' reason='" + whitelistDeny + "'");
+                return new[] { Reject(command, whitelistDeny) };
             }
 
             Instrument? instrument;
@@ -1164,35 +1182,6 @@ namespace NinjaTrader.NinjaScript.AddOns
             }
         }
 #endif
-
-        private static bool IsSimAccountName(string name)
-        {
-            if (string.IsNullOrWhiteSpace(name))
-                return false;
-            return name.StartsWith("Sim", StringComparison.OrdinalIgnoreCase)
-                || name.IndexOf("Sim101", StringComparison.OrdinalIgnoreCase) >= 0
-                || name.IndexOf("Playback", StringComparison.OrdinalIgnoreCase) >= 0
-                || name.IndexOf("Backtest", StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        private static bool IsBrokerDemoAccountName(string name)
-        {
-            return !string.IsNullOrWhiteSpace(name)
-                && name.StartsWith("DEMO", StringComparison.OrdinalIgnoreCase);
-        }
-
-        /// <summary>
-        /// Local Sim/Playback/Backtest in every mode that already passed the REAL gate.
-        /// Brokerage DEMO* only when the order mode is an explicit paper mode.
-        /// </summary>
-        private static bool AllowsPaperOrders(string name, string mode)
-        {
-            if (IsSimAccountName(name))
-                return true;
-            if (mode != "sim" && mode != "paper" && mode != "sim_real_guard")
-                return false;
-            return IsBrokerDemoAccountName(name);
-        }
 
         private static int StableClientId(string clientOrderId)
         {

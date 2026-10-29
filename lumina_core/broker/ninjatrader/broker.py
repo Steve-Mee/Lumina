@@ -12,7 +12,7 @@ from lumina_core.broker.broker_bridge.admission import run_final_arbitration
 from lumina_core.broker.broker_bridge.base import BrokerBridge
 from lumina_core.broker.broker_bridge.schemas import AccountInfo, Fill, Order, OrderResult, Position
 from lumina_core.broker.ninjatrader.bridge_service import NinjaTraderBridgeService, get_ninjatrader_bridge_service
-from lumina_core.broker.ninjatrader.guards import assert_nt_bridge_capability
+from lumina_core.broker.ninjatrader.guards import assert_nt_bridge_capability, s1_guard_kwargs
 from lumina_core.broker.ninjatrader.promotion_gate import NtBridgeAction, normalize_trade_mode
 from lumina_core.order_gatekeeper.ungated_place_block import blocked_order_result, gate_order
 
@@ -55,6 +55,11 @@ class NinjaTraderBroker(BrokerBridge):
         bridge = self._resolve_bridge()
         bridge.set_trade_mode(self._resolve_trade_mode())
         bridge.set_configured_account(self.configured_account)
+        s1 = s1_guard_kwargs(self.engine)
+        bridge.set_s1_guards(
+            sim_account_whitelist=s1["sim_account_whitelist"],  # type: ignore[arg-type]
+            live_release=s1["live_release"],  # type: ignore[arg-type]
+        )
         state = bridge.get_connection_state()
         if state.is_connected:
             return True
@@ -119,6 +124,11 @@ class NinjaTraderBroker(BrokerBridge):
 
         bridge = self._resolve_bridge()
         bridge.set_trade_mode(self._resolve_trade_mode())
+        s1 = s1_guard_kwargs(self.engine)
+        bridge.set_s1_guards(
+            sim_account_whitelist=s1["sim_account_whitelist"],  # type: ignore[arg-type]
+            live_release=s1["live_release"],  # type: ignore[arg-type]
+        )
         connection = bridge.get_connection_state()
         guard_ok, guard_reason = assert_nt_bridge_capability(
             action=NtBridgeAction.SUBMIT_ORDER,
@@ -126,6 +136,8 @@ class NinjaTraderBroker(BrokerBridge):
             connection=connection,
             configured_account=self.configured_account,
             ninjatrader_enabled=self.ninjatrader_enabled,
+            sim_account_whitelist=s1["sim_account_whitelist"],  # type: ignore[arg-type]
+            live_release=s1["live_release"],  # type: ignore[arg-type]
         )
         if not guard_ok:
             res = OrderResult(
@@ -201,6 +213,11 @@ class NinjaTraderBroker(BrokerBridge):
 
     def cancel_all_orders(self) -> dict[str, object]:
         bridge = self._resolve_bridge()
+        s1 = s1_guard_kwargs(self.engine)
+        bridge.set_s1_guards(
+            sim_account_whitelist=s1["sim_account_whitelist"],  # type: ignore[arg-type]
+            live_release=s1["live_release"],  # type: ignore[arg-type]
+        )
         connection = bridge.get_connection_state()
         guard_ok, guard_reason = assert_nt_bridge_capability(
             action=NtBridgeAction.CANCEL,
@@ -208,6 +225,8 @@ class NinjaTraderBroker(BrokerBridge):
             connection=connection,
             configured_account=self.configured_account,
             ninjatrader_enabled=self.ninjatrader_enabled,
+            sim_account_whitelist=s1["sim_account_whitelist"],  # type: ignore[arg-type]
+            live_release=s1["live_release"],  # type: ignore[arg-type]
         )
         if not guard_ok:
             return {"ok": False, "reason": guard_reason}

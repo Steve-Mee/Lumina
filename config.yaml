@@ -2,6 +2,17 @@ mode: sim
 # Observability only (D1/D8). The S0 ungated-place freeze is a code tripwire.
 # Legal values: off | shadow | sim. Missing key = off. This key cannot reopen places.
 research_execution_mode: shadow
+live_release:
+  enabled: false
+  adr_path: ""
+  adr_sha256: ""
+  approved_by: ""
+  approved_at_utc: ""
+  expires_at_utc: ""
+  nonce: ""
+  mac: ""
+  purpose: live_enablement
+  schema_version: live_release.v1
 telegram:
   token: ${TELEGRAM_BOT_TOKEN}
   chat_id: ${TELEGRAM_CHAT_ID}
@@ -66,6 +77,8 @@ broker:
     enabled: true
     websocket_path: /ws/ninjatrader/v1
     account_name: Sim101
+    sim_account_whitelist:
+    - Sim101
     instruments: []
     fabric:
       host: 127.0.0.1

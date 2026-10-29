@@ -9,6 +9,8 @@ ADMISSION_STEP_RISK_POLICY = "risk_policy"
 ADMISSION_STEP_SESSION_EQUITY_SYNC = "session_equity_sync"
 ADMISSION_STEP_FINAL_ARBITRATION = "final_arbitration"
 ADMISSION_STEP_AUDIT_WRITE = "audit_write"
+ADMISSION_STEP_SIM_ACCOUNT_WHITELIST = "sim_account_whitelist"
+ADMISSION_STEP_LIVE_RELEASE = "live_release"
 
 # Backward-compatible aliases for legacy imports/tests.
 ADMISSION_STEP_EQUITY_SNAPSHOT = ADMISSION_STEP_SESSION_EQUITY_SYNC
@@ -16,8 +18,16 @@ ADMISSION_STEP_SESSION_GUARD = ADMISSION_STEP_SESSION_EQUITY_SYNC
 
 _EXPERIMENTAL_BYPASS_ENV = "LUMINA_ADMISSION_BYPASS_STEPS"
 _REAL_MODE = "real"
+UNBYPASSABLE_ADMISSION_STEPS = frozenset(
+    {
+        ADMISSION_STEP_SIM_ACCOUNT_WHITELIST,
+        ADMISSION_STEP_LIVE_RELEASE,
+    }
+)
 CANONICAL_ADMISSION_STEPS = (
     ADMISSION_STEP_SESSION_EQUITY_SYNC,
+    ADMISSION_STEP_SIM_ACCOUNT_WHITELIST,
+    ADMISSION_STEP_LIVE_RELEASE,
     ADMISSION_STEP_RISK_POLICY,
     ADMISSION_STEP_FINAL_ARBITRATION,
     ADMISSION_STEP_CONSTITUTION,
@@ -88,10 +98,14 @@ class AdmissionChain:
 
         for step_id in self.steps:
             if step_id in bypass_step_ids:
-                if mode == _REAL_MODE or bool(ctx.forbid_bypass):
+                if (
+                    mode == _REAL_MODE
+                    or bool(ctx.forbid_bypass)
+                    or step_id in UNBYPASSABLE_ADMISSION_STEPS
+                ):
                     reason = (
                         f"experimental_bypass_forbidden:{step_id}"
-                        if bool(ctx.forbid_bypass)
+                        if bool(ctx.forbid_bypass) or step_id in UNBYPASSABLE_ADMISSION_STEPS
                         else f"experimental_bypass_forbidden_in_real:{step_id}"
                     )
                     trace.add_result(

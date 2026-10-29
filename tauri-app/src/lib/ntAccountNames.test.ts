@@ -7,6 +7,8 @@ describe("ntAccountNames", () => {
     expect(DEMO_HELP).toMatch(/Control Center/);
     expect(DEMO_HELP).toMatch(/DEMO5042070/);
     expect(DEMO_HELP).toMatch(/AccountName/);
+    expect(DEMO_HELP).toMatch(/sim_account_whitelist/);
+    expect(DEMO_HELP).toMatch(/prefix/i);
     expect(REAL_HELP).toMatch(/RealAccountName/);
     expect(REAL_HELP).toMatch(/Control Center/);
     expect(REAL_HELP).toMatch(/demo-rekening/);

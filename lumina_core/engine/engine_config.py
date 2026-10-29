@@ -19,6 +19,9 @@ from lumina_core.engine.engine_config_helpers import (
     _env_or_yaml_float,
     _parse_swarm_symbols,
     _safe_dict,
+    _yaml_live_release_payload,
+    _yaml_research_execution_mode,
+    _yaml_sim_account_whitelist,
 )
 
 
@@ -186,6 +189,11 @@ class EngineConfig(BaseModel):
             or "Sim101"
         ).strip()
     )
+    ninjatrader_sim_account_whitelist: tuple[str, ...] = Field(default_factory=_yaml_sim_account_whitelist)
+    live_release_payload: dict[str, Any] = Field(default_factory=_yaml_live_release_payload)
+    live_release_enabled: bool = Field(default_factory=lambda: bool(_yaml_live_release_payload().get("enabled") is True))
+    live_release_mac: str = Field(default_factory=lambda: str(_yaml_live_release_payload().get("mac") or ""))
+    research_execution_mode: str = Field(default_factory=_yaml_research_execution_mode)
     ninjatrader_websocket_path: str = Field(
         default_factory=lambda: str(
             os.getenv("NINJATRADER_WEBSOCKET_PATH")

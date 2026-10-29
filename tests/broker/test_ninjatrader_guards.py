@@ -26,6 +26,8 @@ def test_paper_mode_blocks_all_actions() -> None:
         assert "blocked" in reason or "disabled" in reason or "not_allowed" in reason
 
 
+@pytest.mark.unit
+@pytest.mark.safety_gate
 def test_sim_allows_submit_when_connected_and_account_matches() -> None:
     ok, reason = assert_nt_bridge_capability(
         action=NtBridgeAction.SUBMIT_ORDER,
@@ -33,6 +35,7 @@ def test_sim_allows_submit_when_connected_and_account_matches() -> None:
         connection=_connected("Sim101"),
         configured_account="Sim101",
         ninjatrader_enabled=True,
+        sim_account_whitelist=("Sim101",),
     )
     assert ok is True
     assert reason == "ok"
@@ -43,6 +46,7 @@ def test_sim_allows_broker_demo_when_names_match() -> None:
         trade_mode="sim",
         configured_account="DEMO5042070",
         connected_account="DEMO5042070",
+        sim_account_whitelist=("DEMO5042070",),
     )
     assert ok is True
     assert reason == "ok"
@@ -53,19 +57,23 @@ def test_sim_rejects_demo_mismatch_against_sim101() -> None:
         trade_mode="sim",
         configured_account="DEMO5042070",
         connected_account="Sim101",
+        sim_account_whitelist=("Sim101",),
     )
     assert ok is False
     assert "mismatch" in reason
 
 
+@pytest.mark.unit
+@pytest.mark.safety_gate
 def test_sim_still_rejects_a_live_account_name() -> None:
     ok, reason = check_account_match(
         trade_mode="sim",
         configured_account="LiveAcct",
         connected_account="LiveAcct",
+        sim_account_whitelist=("LiveAcct",),
     )
     assert ok is False
-    assert reason == "sim_account_not_sim_named:LiveAcct"
+    assert reason == "sim_account_not_whitelisted"
 
 
 def test_real_blocks_broker_demo_even_when_names_match() -> None:
@@ -84,6 +92,7 @@ def test_sim_real_guard_allows_demo_when_enabled(monkeypatch: pytest.MonkeyPatch
         trade_mode="sim_real_guard",
         configured_account="DEMO5042070",
         connected_account="DEMO5042070",
+        sim_account_whitelist=("DEMO5042070",),
     )
     assert ok is True
     assert reason == "ok"
@@ -95,9 +104,10 @@ def test_sim_real_guard_rejects_a_live_account_name(monkeypatch: pytest.MonkeyPa
         trade_mode="sim_real_guard",
         configured_account="LiveAcct",
         connected_account="LiveAcct",
+        sim_account_whitelist=("LiveAcct",),
     )
     assert ok is False
-    assert reason == "sim_account_not_sim_named:LiveAcct"
+    assert reason == "sim_account_not_whitelisted"
 
 
 def test_sim_rejects_account_mismatch() -> None:
@@ -105,18 +115,22 @@ def test_sim_rejects_account_mismatch() -> None:
         trade_mode="sim",
         configured_account="Sim101",
         connected_account="Sim202",
+        sim_account_whitelist=("Sim101", "Sim202"),
     )
     assert ok is False
     assert "mismatch" in reason
 
 
+@pytest.mark.unit
+@pytest.mark.safety_gate
 def test_real_requires_exact_account_match() -> None:
     ok, reason = check_account_match(
         trade_mode="real",
         configured_account="LiveAcct",
         connected_account="LiveAcct",
     )
-    assert ok is True
+    assert ok is False
+    assert reason in {"live_release_required", "live_account_path_closed_s1", "live_release_secret_missing"}
 
     ok, reason = check_account_match(
         trade_mode="real",
@@ -180,6 +194,21 @@ def test_sim_real_guard_requires_feature_flag(monkeypatch: pytest.MonkeyPatch) -
     )
     assert ok is False
     assert "disabled" in reason
+
+
+@pytest.mark.unit
+@pytest.mark.safety_gate
+def test_cancel_skips_sim_whitelist_so_emergency_exits_reach_nt() -> None:
+    ok, reason = assert_nt_bridge_capability(
+        action=NtBridgeAction.CANCEL,
+        trade_mode="sim",
+        connection=_connected("Sim101"),
+        configured_account="Sim101",
+        ninjatrader_enabled=True,
+        sim_account_whitelist=(),
+    )
+    assert ok is True
+    assert reason == "ok"
 
 
 def test_ninjatrader_disabled_blocks_actions() -> None:

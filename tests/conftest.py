@@ -159,6 +159,20 @@ _RUNTIME_MODE_ENV_KEYS: tuple[str, ...] = (
 
 
 @pytest.fixture(autouse=True)
+def _s1_process_locks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fresh SIM whitelist lock and LIVE_RELEASE nonces per test."""
+    from lumina_core.risk import live_release as live_release_mod
+    from lumina_core.risk import sim_account_guard as sim_guard_mod
+    from lumina_core.risk.sim_account_guard import SimWhitelistLock
+
+    lock = SimWhitelistLock()
+    monkeypatch.setattr(sim_guard_mod, "LOCK", lock)
+    monkeypatch.setattr("lumina_core.risk.orchestration.LOCK", lock)
+    live_release_mod.reset_live_release_nonces_for_tests()
+    monkeypatch.delenv("LUMINA_LIVE_RELEASE_SECRET", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _clear_leaked_runtime_mode_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Clear runtime mode env vars before each test.
 

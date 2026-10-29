@@ -51,6 +51,8 @@ class BridgeCommandSyncMixin:
                 connection=connection,
                 configured_account=self.configured_account,
                 ninjatrader_enabled=self.ninjatrader_enabled,
+                sim_account_whitelist=getattr(self, "sim_account_whitelist", ()),
+                live_release=getattr(self, "live_release", None),
             )
             if not allowed:
                 return {
