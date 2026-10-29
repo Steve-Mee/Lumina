@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Sequence
 
 from lumina_research.cycles.four_instrument import run_four_instrument_cycle
+from lumina_research.cycles.null_audit import run_null_audit
 from lumina_research.cycles.runner import run_research_cycles
 from lumina_research.monitoring.cli import run_scan as run_guardian_scan
 from lumina_research.proof.independent import HOLDOUT_INSTRUMENTS, HOLDOUT_SEEDS, assert_holdout_seeds
@@ -35,9 +36,9 @@ def build_parser() -> argparse.ArgumentParser:
     research.add_argument("--data-dir", type=Path, default=None)
     research.add_argument(
         "--cycle",
-        choices=("first", "four-instrument"),
+        choices=("first", "four-instrument", "null-audit"),
         default="first",
-        help="first: locked MES/MNQ 12. four-instrument: cost-fix rerun + ES/NQ.",
+        help="first: locked MES/MNQ 12. four-instrument: cost-fix rerun + ES/NQ. null-audit: D13 multi-seed.",
     )
     research.add_argument(
         "--reuse-mes-mnq",
@@ -74,6 +75,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stderr.write("empirical verification floors failed; detector may be tuned, floors may not\n")
         return 2
     if command == "research":
+        if str(args.cycle) == "null-audit":
+            audit = run_null_audit(
+                work_dir=args.work_dir,
+                report_dir=args.report_dir,
+                data_dir=args.data_dir,
+            )
+            if not audit.method_ready:
+                sys.stderr.write("null-audit fail-closed: MES/MNQ/ES planted miss or null unreliable\n")
+                return 2
+            return 0
         if str(args.cycle) == "four-instrument":
             four = run_four_instrument_cycle(
                 work_dir=args.work_dir,

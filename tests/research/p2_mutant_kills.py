@@ -62,6 +62,13 @@ from lumina_research.cycles.holdout import (
     holdout_ns,
     split_holdout,
 )
+from lumina_research.cycles.null_model import (
+    NULL_A2_MAX_SHARE,
+    NULL_N_SEEDS,
+    default_null_seeds,
+    majority_a2_cap,
+    max_a2_hits,
+)
 from lumina_research.cycles.positive_control import (
     CONTROL_STOP_TICKS,
     CONTROL_TARGET_TICKS,
@@ -574,6 +581,14 @@ def _kill_deeper() -> None:
         _fail("execute_control must use pre-registered control geometry")
     if "CONTROL_TIME_STOP_BARS" not in src:
         _fail("execute_control must use pre-registered control time-stop")
+    if NULL_N_SEEDS != 32 or len(default_null_seeds()) != 32:
+        _fail("null seed count must stay pre-registered 32")
+    if default_null_seeds()[0] != 20261029 or default_null_seeds()[-1] != 20261060:
+        _fail("null seed base drifted")
+    if abs(NULL_A2_MAX_SHARE - 0.10) > 1e-12 or max_a2_hits(32) != 3:
+        _fail("null 10% diagnostic cap must stay floor(0.10*32)=3")
+    if majority_a2_cap(32) != 16:
+        _fail("null fail-closed cap must stay majority-not-A2 (16 of 32)")
     if INTRASESSION_HOLE_NS != 90 * 1_000_000_000:
         _fail("90s hole threshold drifted")
     if DEFAULT_BLOCK != 5 or DEFAULT_PATHS != 48:

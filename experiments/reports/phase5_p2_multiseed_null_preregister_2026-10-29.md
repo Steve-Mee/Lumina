@@ -63,15 +63,21 @@ wanted only one of the two.
 A seed **hits A2** when `_detected(null_eval, null_median=None)` is true:
 finite median OOS > 0, +OOS share ≥ 0.60, no structural decay.
 
+**Addendum (same day, before any PIT run; not tuned on MES/MNQ/ES/NQ):**
+the Validation Gate uses 6–8 non-overlapping OOS windows. For a fair 50/50
+null, `P(≥5/8 windows positive) ≈ 0.36`. Then `floor(0.10 * 32) = 3` is
+tighter than chance, so a correct null would fail-closed almost always.
+That cannot be what “betrouwbaar” means.
+
 | field | value |
 |---|---|
-| reliable | `n_a2 ≤ floor(0.10 * n_seeds)` → at most **3 of 32** |
+| reliable (fail-closed) | `n_a2 ≤ n_seeds // 2` → at most **16 of 32** (strict majority do not hit A2) |
+| ten_pct_diagnostic | `n_a2 ≤ floor(0.10 * n_seeds)` → 3 of 32; **reported, not fail-closed** |
 | planted pass | A2 on the planted tape **and** planted median OOS > median of the 32 null median-OOS values |
 | fail-closed | planted miss **or** null unreliable → stop that instrument; no respec; no seed reroll |
 
-10% is **not** a team number. It is locked here so the run is falsifiable.
-Distribution is reported in full so the team can apply another bar without
-rerolling. Open question Q-NULL-1.
+The 32-seed distribution is the result. Another bar does not need a reroll.
+Open question Q-NULL-1.
 
 ### Week-block extra (advisory optional; report-only)
 
@@ -102,6 +108,6 @@ increments `TrialRegistry`. D13 counts. Report N per root and total.
 
 ## Open questions for the team (do not block this lock)
 
-- Q-NULL-1: Is ≤10% A2 the intended reliability bar, or another threshold?
+- Q-NULL-1: Fail-closed is majority-not-A2 (≤16/32) because ≤3/32 is tighter than 8-window chance. Confirm or name another bar; the distribution is already the sufficient statistic.
 - Q-NULL-2: Confirm both detrend **and** balance vs exactly one of them.
 - Q-NULL-3: Confirm ISO-week block-shuffle (not calendar month) as the extra.

@@ -78,6 +78,7 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0064 | P2 RTH/ETH session slippage (CostModel 1.2.0); session-local ADV, no holdout fit | Proposed | 2026-10-29 | [0064-p2-session-slippage.md](./0064-p2-session-slippage.md) |
 | 0065 | P2 instrument cost bands in $/contract and bp; same-bar commission | Proposed | 2026-10-29 | [0065-p2-instrument-cost-bands.md](./0065-p2-instrument-cost-bands.md) |
 | 0066 | P2 four-instrument cycle after cost fix (MES/MNQ rerun + ES/NQ translation) | Proposed | 2026-10-29 | [0066-p2-four-instrument-cycle.md](./0066-p2-four-instrument-cycle.md) |
+| 0067 | P2 drift-aware multi-seed null (D13); 32 seeds, per-window detrend+balance | Proposed | 2026-10-29 | [0067-p2-drift-aware-multiseed-null.md](./0067-p2-drift-aware-multiseed-null.md) |
 
 ## Legacy notitie
 
