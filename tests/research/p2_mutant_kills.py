@@ -5,9 +5,12 @@ from __future__ import annotations
 import hashlib
 import inspect
 import math
-from datetime import date, datetime, timezone
+import random
+import statistics
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 
 import pytest
 
@@ -20,12 +23,19 @@ from lumina_research.cycles.cost_bands import (
     MES_ONE_WAY_USD,
     MNQ_ONE_WAY_USD,
     NQ_ONE_WAY_USD,
+    REFERENCE_NOTIONAL_USD,
     band_for,
     report_band,
 )
 from lumina_research.cycles.data import LoadedTape, ResearchBar
 from lumina_research.cycles.diagnostics import from_trades
-from lumina_research.cycles.execution import ClosedTrade, ExecutionRefused, bar_volatility_price, run_execution
+from lumina_research.cycles.execution import (
+    ClosedTrade,
+    ExecutionRefused,
+    _session_end_flags,
+    bar_volatility_price,
+    run_execution,
+)
 from lumina_research.cycles.fills import (
     FILL_POLICY,
     FillRefused,
@@ -50,10 +60,20 @@ from lumina_research.cycles.holdout import (
     holdout_ns,
     split_holdout,
 )
-from lumina_research.cycles.positive_control import execute_control, rth_session_direction, shuffle_signals
-from lumina_research.cycles.prepare import prepare_tape
+from lumina_research.cycles.positive_control import (
+    _detected,
+    execute_control,
+    rth_session_direction,
+    shuffle_signals,
+)
+from lumina_research.cycles.prepare import _high_vol_sessions, _quiet_mask, prepare_tape
 from lumina_research.cycles.roll_verify import FRIDAY_ROLL, require_friday_roll, verify_nt8_rolls
-from lumina_research.cycles.rolls import NT8_ROLL_DATES, NT8_ROLL_SET
+from lumina_research.cycles.rolls import NT8_ROLL_DATES, NT8_ROLL_SET, is_roll_session
+from lumina_research.monitoring.acceptance import (
+    HIGH_VOL_REALIZED_WINDOW,
+    HIGH_VOL_TRAILING_PCT,
+    HIGH_VOL_TRAILING_WINDOW,
+)
 from lumina_research.cycles.seal import LEGACY_SEAL_SHA256, file_sha256, load_seal, seal_holdout
 from lumina_research.cycles.sessions import (
     INTRASESSION_HOLE_NS,
@@ -79,8 +99,9 @@ from lumina_research.validation.cost_model import (
     apply_costs,
 )
 from lumina_research.validation.gate import passes_validation_gate
-from lumina_research.validation.pipeline import evaluate_candidate
-from lumina_research.validation.regimes import regime_robustness
+from lumina_research.validation.metrics import annualized_sharpe
+from lumina_research.validation.pipeline import _median, _turnover, evaluate_candidate
+from lumina_research.validation.regimes import _finite_regime_sharpe, _rolling_vol, regime_robustness
 from lumina_research.validation.static_rules import (
     STATIC_DECAY_SPEARMAN,
     STATIC_POSITIVE_SHARE_MIN,
@@ -178,10 +199,324 @@ def _static_bundle(path: Path, **overrides: object) -> ValidationResults:
     return ValidationResults(**payload)  # type: ignore[arg-type]
 
 
+def _ref_high_vol_sessions(closes: dict[date, float]) -> dict[date, bool]:
+    """Unmutated copy of the 20d/75th causal high-vol label. Lives in the kill battery."""
+    dates = tuple(sorted(closes))
+    rets: list[float] = []
+    for index, day in enumerate(dates):
+        if index == 0:
+            rets.append(0.0)
+            continue
+        prev = closes[dates[index - 1]]
+        rets.append(0.0 if prev == 0.0 else (closes[day] - prev) / prev)
+    window = HIGH_VOL_REALIZED_WINDOW
+    trail = HIGH_VOL_TRAILING_WINDOW
+    labels: dict[date, bool] = {}
+    realized: list[float] = []
+    for index, day in enumerate(dates):
+        if index < window:
+            labels[day] = False
+            continue
+        chunk = rets[index - window : index]
+        current = float(statistics.pstdev(chunk)) if len(chunk) >= 2 else 0.0
+        realized.append(current)
+        history = realized[max(0, len(realized) - trail) : -1]
+        if len(history) < 8:
+            labels[day] = False
+            continue
+        ordered = sorted(history)
+        cap_index = min(len(ordered) - 1, max(0, int(HIGH_VOL_TRAILING_PCT * (len(ordered) - 1))))
+        labels[day] = current > ordered[cap_index]
+    return labels
+
+
+def _ref_block_sharpes(series: tuple[float, ...], *, block: int, n_paths: int, seed: int) -> tuple[float, ...]:
+    n = len(series)
+    rng = random.Random(seed)
+    n_blocks = math.ceil(n / block)
+    max_start = n - block
+    sharpes: list[float] = []
+    for _ in range(n_paths):
+        stitched: list[float] = []
+        for _step in range(n_blocks):
+            start = rng.randint(0, max_start)
+            stitched.extend(series[start : start + block])
+        path = tuple(stitched[:n])
+        sharpes.append(annualized_sharpe(path, periods_per_year=252.0))
+    return tuple(sharpes)
+
+
+def _kill_remaining_survivors() -> None:
+    """Assertions that fail on the remaining non-equivalent AST mutants."""
+    bar = ResearchBar(ts_ns=1, open=10.0, high=10.5, low=9.5, close=10.0, volume=100.0)
+    if touch_fill(side=1.0, limit=9.6, bar=bar) is not True:
+        _fail("buy touch must fill when low is strictly below the limit")
+    if touch_fill(side=-1.0, limit=10.4, bar=bar) is not True:
+        _fail("sell touch must fill when high is strictly above the limit")
+    if trade_through_fill(side=0.0, limit=9.6, bar=bar, average_volume=50.0) is not False:
+        _fail("flat trade_through_fill must return False")
+    spec = spec_for("MES")
+    geo = require_geometry(root="MES", target_ticks=16, stop_ticks=8)
+    net_target = float(geo.target_ticks) - geo.roundtrip_cost_ticks
+    net_stop = float(geo.stop_ticks) + geo.roundtrip_cost_ticks
+    denom = net_target + net_stop
+    expected_be = net_stop / denom
+    if abs(geo.break_even_win_rate - expected_be) > 1e-12:
+        _fail("break-even must be net_stop / (net_target + net_stop)")
+    if not 0.0 < geo.break_even_win_rate < 1.0:
+        _fail("normal geometry break-even must sit in (0, 1)")
+    if abs(geo.net_target_usd - net_target * spec.tick_value_usd) > 1e-12:
+        _fail("net_target_usd must be net ticks * tick_value")
+    if abs(geo.net_stop_usd - net_stop * spec.tick_value_usd) > 1e-12:
+        _fail("net_stop_usd must be net ticks * tick_value")
+    mes_band = report_band("MES")
+    if abs(mes_band.modeled_one_way_usd - mes_band.modeled_one_way_ticks * spec.tick_value_usd) > 1e-9:
+        _fail("modeled USD must be ticks * tick_value")
+    expected_bp = 10_000.0 * mes_band.modeled_one_way_usd / REFERENCE_NOTIONAL_USD["MES"]
+    if abs(mes_band.modeled_one_way_bp - expected_bp) > 1e-9:
+        _fail("modeled bp must be 10000 * usd / notional")
+    if mes_band.in_band is not True:
+        _fail("modeled MES one-way USD must sit inside the dollar band")
+    eight = tuple(0.001 * (1.0 if index % 2 == 0 else -0.4) for index in range(8))
+    boot = block_bootstrap_sharpes(eight, block=5, n_paths=8, seed=20261029)
+    expected_boot = _ref_block_sharpes(eight, block=5, n_paths=8, seed=20261029)
+    if boot.values != expected_boot:
+        _fail("block bootstrap must use ceil(n / block) blocks, not n * block")
+    if _turnover((1.0,)) != 0.0:
+        _fail("single-bar turnover must be 0")
+    if abs(_turnover((0.0, 1.0, 0.0)) - 1.0) > 1e-12:
+        _fail("turnover must be mean absolute position change")
+    if abs(_median((1.0, 3.0)) - 2.0) > 1e-12:
+        _fail("even-length median must average the two central values")
+    if abs(_median((1.0, 2.0, 3.0)) - 2.0) > 1e-12:
+        _fail("odd-length median must return the central value")
+    rho_tied = spearman_rho((3.0, 1.0, 1.0, 1.0, 2.0, 2.0))
+    expected_rho = statistics.correlation((1.0, 2.0, 3.0, 4.0, 5.0, 6.0), (6.0, 2.0, 2.0, 2.0, 4.5, 4.5))
+    if abs(rho_tied - expected_rho) > 1e-12:
+        _fail("tied Spearman ranks must use average ranks")
+    fake_nan = SimpleNamespace(
+        report=SimpleNamespace(
+            median_oos_after_costs=math.nan,
+            oos_distribution=SimpleNamespace(pct_positive=0.9, values=(0.2, 0.1, 0.3, 0.05, 0.15, 0.12)),
+        )
+    )
+    if _detected(fake_nan, null_median=None) is not False:  # type: ignore[arg-type]
+        _fail("non-finite planted median must not count as detected")
+    fake_pct = SimpleNamespace(
+        report=SimpleNamespace(
+            median_oos_after_costs=0.2,
+            oos_distribution=SimpleNamespace(pct_positive=math.nan, values=(0.2, 0.1, 0.3, 0.05, 0.15, 0.12)),
+        )
+    )
+    if _detected(fake_pct, null_median=None) is not False:  # type: ignore[arg-type]
+        _fail("non-finite planted share must not count as detected")
+    market_up = tuple(0.01 for _ in range(40))
+    net_up = tuple(0.001 for _ in range(40))
+    empty_down = regime_robustness(net_up, market_returns=market_up)
+    if math.isfinite(empty_down.robustness):
+        _fail("empty trend-down bucket must leave robustness undefined")
+    market_split = tuple(-0.03 if index < 20 else 0.03 for index in range(40))
+    net_split = tuple(0.04 if index < 20 else -0.02 for index in range(40))
+    trend_snap = regime_robustness(net_split, market_returns=market_split)
+    if trend_snap.trend_down_sharpe <= trend_snap.trend_up_sharpe:
+        _fail("profits in the down-market half must show trend_down > trend_up")
+    market_vol = tuple(0.001 if index < 20 else (0.06 if index % 2 == 0 else -0.06) for index in range(40))
+    net_vol = tuple(-0.02 if index < 20 else 0.03 for index in range(40))
+    vol_snap = regime_robustness(net_vol, market_returns=market_vol)
+    if vol_snap.vol_high_sharpe <= vol_snap.vol_low_sharpe:
+        _fail("profits in the high-vol half must show vol_high > vol_low")
+    rolling = _rolling_vol(market_vol, 20)
+    finite_vol = tuple(item for item in rolling if math.isfinite(item))
+    median_vol = statistics.median(finite_vol)
+    high_rets = tuple(
+        net_vol[index]
+        for index in range(len(net_vol))
+        if rolling[index] >= median_vol and math.isfinite(rolling[index])
+    )
+    low_rets = tuple(
+        net_vol[index] for index in range(len(net_vol)) if rolling[index] < median_vol and math.isfinite(rolling[index])
+    )
+    expected_high = _finite_regime_sharpe(annualized_sharpe(high_rets))
+    expected_low = _finite_regime_sharpe(annualized_sharpe(low_rets))
+    if abs(vol_snap.vol_high_sharpe - expected_high) > 1e-12:
+        _fail("high-vol bucket must be vol >= median AND finite, not an OR")
+    if abs(vol_snap.vol_low_sharpe - expected_low) > 1e-12:
+        _fail("low-vol bucket must be vol < median AND finite, not an OR")
+    mixed_market = tuple(0.02 if index % 3 == 0 else -0.01 for index in range(40))
+    mixed_net = tuple(0.01 if index % 2 == 0 else -0.004 for index in range(40))
+    formula_snap = regime_robustness(mixed_net, market_returns=mixed_market)
+    parts = (
+        formula_snap.vol_high_sharpe,
+        formula_snap.vol_low_sharpe,
+        formula_snap.trend_up_sharpe,
+        formula_snap.trend_down_sharpe,
+    )
+    if all(math.isfinite(part) for part in parts):
+        positive = sum(1.0 for part in parts if part > 0.0)
+        worst = min(parts)
+        expected_r = 0.5 * (positive / 4.0) + 0.5 * (1.0 / (1.0 + math.exp(-worst)))
+        if abs(formula_snap.robustness - expected_r) > 1e-12:
+            _fail("regime robustness formula drifted")
+    pin_last = tuple(
+        ResearchBar(ts_ns=index + 1, open=1.0, high=1.1, low=0.9, close=1.0, volume=1.0) for index in range(5)
+    )
+    _must_raise(HoldoutLocked, split_holdout, pin_last, pinned_start_ns=int(pin_last[-1].ts_ns))
+    messy = (
+        ResearchBar(ts_ns=10, open=1.0, high=1.1, low=0.9, close=1.0, volume=1.0),
+        ResearchBar(ts_ns=30, open=1.0, high=1.1, low=0.9, close=1.0, volume=1.0),
+        ResearchBar(ts_ns=20, open=1.0, high=1.1, low=0.9, close=1.0, volume=1.0),
+        ResearchBar(ts_ns=40, open=1.0, high=1.1, low=0.9, close=1.0, volume=1.0),
+    )
+    _must_raise(HoldoutLocked, split_holdout, messy, pinned_start_ns=25)
+    roll_start = datetime(2026, 6, 12, 14, 31, tzinfo=UTC)
+    roll_bars = tuple(
+        ResearchBar(
+            ts_ns=int((roll_start.timestamp() + index * 60) * 1_000_000_000),
+            open=5000.0,
+            high=5000.5,
+            low=4999.5,
+            close=5000.0,
+            volume=5_000.0,
+        )
+        for index in range(4)
+    )
+    if not is_roll_session(annotate(roll_bars).session_dates[0]):
+        _fail("2026-06-12 RTH bars must be the Friday roll session")
+    rolled = prepare_tape("MES", roll_bars)
+    if rolled.breaks[0] is not True:
+        _fail("first bar of a roll session must break")
+    if rolled.breaks[1] is not False:
+        _fail("later bars of the same roll session must not be roll-breaks")
+    globex_ts = datetime(2026, 3, 2, 13, 0, tzinfo=UTC)
+    rth_ts = datetime(2026, 3, 2, 14, 31, tzinfo=UTC)
+    overnight = (
+        ResearchBar(
+            ts_ns=int(globex_ts.timestamp() * 1_000_000_000),
+            open=5000.0,
+            high=5000.5,
+            low=4999.5,
+            close=5000.0,
+            volume=5_000.0,
+        ),
+        ResearchBar(
+            ts_ns=int(rth_ts.timestamp() * 1_000_000_000),
+            open=5001.0,
+            high=5001.5,
+            low=5000.5,
+            close=5001.0,
+            volume=5_000.0,
+        ),
+    ) + tuple(
+        ResearchBar(
+            ts_ns=int((rth_ts.timestamp() + (index + 1) * 60) * 1_000_000_000),
+            open=5001.0,
+            high=5001.5,
+            low=5000.5,
+            close=5001.0,
+            volume=5_000.0,
+        )
+        for index in range(3)
+    )
+    overnight_tape = prepare_tape("MES", overnight)
+    if overnight_tape.breaks[1] is not False:
+        _fail("Globex-to-RTH overnight gap must not count as an RTH intra-session hole")
+    day = datetime(2025, 1, 6, 15, 0, tzinfo=UTC)
+    daily: list[ResearchBar] = []
+    made = 0
+    while made < 40:
+        if day.weekday() < 5:
+            close = 5000.0 + float(made % 4) * 0.25 if made < 25 else 5000.0 + float(made - 24) * 80.0
+            daily.append(
+                ResearchBar(
+                    ts_ns=int(day.timestamp() * 1_000_000_000),
+                    open=close,
+                    high=close + 0.5,
+                    low=close - 0.5,
+                    close=close,
+                    volume=5_000.0,
+                )
+            )
+            made += 1
+        day += timedelta(days=1)
+    daily_bars = tuple(daily)
+    labels = annotate(daily_bars)
+    closes = {session: bar.close for bar, session in zip(daily_bars, labels.session_dates, strict=True)}
+    expected_high = _ref_high_vol_sessions(closes)
+    got_high = _high_vol_sessions(closes)
+    if got_high != expected_high:
+        _fail("causal high-vol session labels drifted")
+    quiet = _quiet_mask(daily_bars, labels.session_dates)
+    for flag, session in zip(quiet, labels.session_dates, strict=True):
+        if flag is expected_high.get(session, False):
+            _fail("quiet mask must be the inverse of high-vol")
+    start = datetime(2026, 3, 2, 14, 31, tzinfo=UTC)
+    exec_bars = tuple(
+        ResearchBar(
+            ts_ns=int((start.timestamp() + index * 60) * 1_000_000_000),
+            open=5000.0 + index * 0.05,
+            high=5000.5 + index * 0.05,
+            low=4999.5 + index * 0.05,
+            close=5000.0 + index * 0.05,
+            volume=5_000.0,
+        )
+        for index in range(8)
+    )
+    allow = annotate(exec_bars).rth
+    if any(_session_end_flags(annotate(exec_bars).session_dates, allow, False)):
+        _fail("session_end_flatten=False must not mark any session-end flags")
+    held = run_execution(
+        bars=exec_bars,
+        signals=(1.0,) + (0.0,) * 7,
+        geometry=require_geometry(root="MES", target_ticks=16, stop_ticks=8),
+        breaks=tuple(False for _ in exec_bars),
+        rth=allow,
+        session_dates=annotate(exec_bars).session_dates,
+        time_stop_bars=100,
+        session_end_flatten=False,
+    )
+    if any(item.reason == "session_end" for item in held.trades):
+        _fail("flatten-off book must not close as session_end")
+    with TemporaryDirectory() as tmp:
+        path = Path(tmp)
+        audit = path / "g.jsonl"
+        registry = TrialRegistry(audit)
+        for index in range(5):
+            registry.record(config_id=f"cfg-{index}", agent_id="p2-mut", metrics={"i": index})
+        thin_wfe, thin_report = passes_validation_gate(
+            _static_bundle(
+                audit,
+                wfe=WFESnapshot(
+                    wfe=math.nan,
+                    mean_is_sharpe=-1.2,
+                    mean_oos_sharpe=0.4,
+                    n_windows=5,
+                    mode="static_rules",
+                    parameter_stability=1.0,
+                ),
+                n_oos_windows=6,
+            ),
+            registry=registry,
+        )
+        if thin_wfe or "walk_forward_windows_below_min" not in thin_report.reject_reasons:
+            _fail("wfe.n_windows below the packaged floor must reject")
+        missing, missing_report = passes_validation_gate(
+            _static_bundle(audit, cost_provenance=None),
+            registry=registry,
+        )
+        if missing or "missing_costs" not in missing_report.reject_reasons:
+            _fail("None cost_provenance must reject as missing_costs")
+        arr = path / "arr"
+        arr.mkdir()
+        (arr / "phase5_p2_holdout_seal.json").write_text("[]", encoding="utf-8")
+        _must_raise(HoldoutLocked, load_seal, arr)
+
+
 def _kill_deeper() -> None:
     """Behavioral assertions aimed at the remaining mutation sites."""
     if ES_NQ_ONE_WAY != (0.5, 1.5) or MES_MNQ_ONE_WAY != (1.0, 2.5):
         _fail("informational tick conversions drifted")
+    if band_for("MNQ") == MES_MNQ_ONE_WAY:
+        _fail("MNQ USD band must not be the legacy tick interval")
     if band_for("ES") != ES_ONE_WAY_USD or band_for("NQ") != NQ_ONE_WAY_USD:
         _fail("ES/NQ USD bands drifted")
     if band_for("MES") != MES_ONE_WAY_USD:
@@ -285,6 +620,24 @@ def _kill_deeper() -> None:
         _fail("hitrate must count pnl_ticks > 0, not losses")
     if diag.n_trades != 2:
         _fail("n_trades drifted")
+    three = (
+        trades[0],
+        trades[0],
+        trades[1],
+    )
+    three_diag = from_trades(
+        trades=three,
+        geometry=geo,
+        costed=dummy_costed,
+        is_sharpes=(0.4,),
+        oos_sharpes=(0.2,),
+        regimes=RegimeSnapshot(0.1, 0.2, 0.3, -0.1, 0.4),
+        n_trials=5,
+        n_days=10,
+        pct_positive_oos=0.5,
+    )
+    if abs(three_diag.hitrate - 2.0 / 3.0) > 1e-12:
+        _fail("unbalanced hitrate must be wins/n_trades")
     start = datetime(2026, 3, 2, 14, 31, tzinfo=UTC)
     stop_entry = 5000.0
     stop_px = stop_entry - 8 * 0.25
@@ -329,6 +682,33 @@ def _kill_deeper() -> None:
         _fail("stop must book when the bar trades through the stop")
     if abs(stopped.trades[0].exit_price - stop_px) > 1e-9:
         _fail("stop exit must be the stop price, not the close")
+    touch_bars = (
+        stop_bars[0],
+        stop_bars[1],
+        ResearchBar(
+            ts_ns=int((start.timestamp() + 120) * 1_000_000_000),
+            open=stop_entry - 0.2,
+            high=stop_entry,
+            low=stop_px,
+            close=stop_px + 0.1,
+            volume=5_000.0,
+        ),
+    )
+    touched = run_execution(
+        bars=touch_bars,
+        signals=(1.0, 0.0, 0.0),
+        geometry=require_geometry(root="MES", target_ticks=16, stop_ticks=8),
+        breaks=(False, False, False),
+        rth=annotate(touch_bars).rth,
+        session_dates=annotate(touch_bars).session_dates,
+        session_filter="rth",
+        time_stop_bars=16,
+        session_end_flatten=False,
+    )
+    if not touched.trades or touched.trades[0].reason != "stop":
+        _fail("stop must fill on an exact touch")
+    if abs(touched.trades[0].exit_price - stop_px) > 1e-9:
+        _fail("touch stop must book at the stop price")
     globex_bars = (
         ResearchBar(
             ts_ns=int(datetime(2026, 3, 2, 23, 0, tzinfo=UTC).timestamp() * 1_000_000_000),
@@ -546,6 +926,28 @@ def _kill_deeper() -> None:
             _fail("static pipeline must skip CPCV")
         if not evaluation.bootstrap_sharpes:
             _fail("static pipeline must store block-bootstrap sharpes")
+        if evaluation.results.embargo_applied is not True:
+            _fail("default embargo must be applied on the static path")
+        if evaluation.results.n_days == n_obs:
+            _fail("n_days must not silently become len(net)")
+        zero_embargo = evaluate_candidate(
+            agent_id="edge",
+            config_id="static-embargo0",
+            gross_returns=gross,
+            positions=positions,
+            markets=markets,
+            spec="MES",
+            registry=registry,
+            peer_net_returns=peers,
+            has_fit_step=False,
+            embargo=0,
+            market_returns=tuple(0.0004 if index % 2 == 0 else -0.0003 for index in range(n_obs)),
+            n_days=80,
+        )
+        if zero_embargo.results.embargo_applied is not False:
+            _fail("embargo=0 must not claim embargo_applied")
+        if "purge_or_embargo_missing" not in zero_embargo.report.reject_reasons:
+            _fail("embargo=0 must fail closed")
         fitted = evaluate_candidate(
             agent_id="edge",
             config_id="fit-0",
@@ -647,6 +1049,8 @@ def run() -> None:
         _fail("market regimes must be complete on a losing strategy")
     if regime_robustness(net, market_returns=market[:-1]).is_complete():
         _fail("length mismatch must be missing regimes")
+    if regime_robustness(net).is_complete():
+        _fail("omitted market_returns must be missing regimes")
     wiggly = tuple(0.001 * (1.0 if index % 2 == 0 else -0.4) for index in range(40))
     if not block_bootstrap_sharpes(wiggly, n_paths=8).is_complete():
         _fail("bootstrap must form a distribution")
@@ -661,6 +1065,34 @@ def run() -> None:
     shuffled = shuffle_signals(planted, seed=3)
     if sorted(shuffled) != sorted(planted):
         _fail("null shuffle must preserve values")
+    strong = (0.2, 0.1, 0.3, 0.05, 0.15, 0.12)
+    fake_ok = SimpleNamespace(
+        report=SimpleNamespace(
+            median_oos_after_costs=0.1,
+            oos_distribution=SimpleNamespace(pct_positive=positive_share(strong), values=strong),
+        )
+    )
+    if _detected(fake_ok, null_median=None) is not True:  # type: ignore[arg-type]
+        _fail("planted edge with positive median and 60%+ windows must detect")
+    fake_loss = SimpleNamespace(
+        report=SimpleNamespace(
+            median_oos_after_costs=-0.1,
+            oos_distribution=SimpleNamespace(pct_positive=positive_share(strong), values=strong),
+        )
+    )
+    if _detected(fake_loss, null_median=None) is not False:  # type: ignore[arg-type]
+        _fail("negative median must not count as a detected edge")
+    if _detected(fake_ok, null_median=0.2) is not False:  # type: ignore[arg-type]
+        _fail("planted median must beat the null")
+    weak = (-0.1, -0.2, 0.1, -0.05, 0.02, -0.03)
+    fake_weak = SimpleNamespace(
+        report=SimpleNamespace(
+            median_oos_after_costs=0.1,
+            oos_distribution=SimpleNamespace(pct_positive=positive_share(weak), values=weak),
+        )
+    )
+    if _detected(fake_weak, null_median=None) is not False:  # type: ignore[arg-type]
+        _fail("share below 60% must not detect")
     labels = annotate(bars)
     if len(labels.session_dates) != 6:
         _fail("session annotate length")
@@ -832,6 +1264,7 @@ def run() -> None:
     if math.isfinite(positive_share(())):
         _fail("empty positive_share must be nan")
     _kill_deeper()
+    _kill_remaining_survivors()
     code = pytest.main(
         [
             "-q",
@@ -839,6 +1272,17 @@ def run() -> None:
             "--timeout=20",
             "tests/research/test_phase5_p2_fixes.py",
             "tests/research/test_gate.py",
+            "tests/research/test_phase5_p2_attacks.py::test_stop_touch_and_gap_through_book_conservative_exits",
+            "tests/research/test_phase5_p2_attacks.py::test_unbalanced_hitrate_counts_only_winning_trades",
+            "tests/research/test_phase5_p2_attacks.py::test_n_days_sizes_from_session_count_not_bar_count",
+            "tests/research/test_phase5_p2_attacks.py::test_static_embargo_zero_is_not_claimed_applied",
+            "tests/research/test_phase5_p2_attacks.py::test_locked_purposes_cannot_read_bars_at_or_after_holdout_pin",
+            "tests/research/test_phase5_p2_attacks.py::test_mnq_usd_band_is_not_the_legacy_tick_interval",
+            "tests/research/test_phase5_p2_attacks.py::test_regime_labels_are_causal_in_past_windows",
+            "tests/research/test_phase5_p2_attacks.py::test_overnight_globex_gap_is_not_an_rth_hole",
+            "tests/research/test_phase5_p2_attacks.py::test_first_roll_session_bar_breaks_later_bars_do_not",
+            "tests/research/test_phase5_p2_attacks.py::test_holdout_pin_on_last_timestamp_is_refused",
+            "tests/research/test_phase5_p2_attacks.py::test_flatten_off_does_not_emit_session_end",
         ]
     )
     if code != 0:

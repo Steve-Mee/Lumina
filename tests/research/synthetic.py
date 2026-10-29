@@ -31,7 +31,7 @@ def noise_returns(*, n: int, sigma: float, seed: int) -> tuple[float, ...]:
 
 
 def constant_markets(n: int) -> tuple[MarketSnapshot, ...]:
-    snap = MarketSnapshot(volume=10_000.0, average_volume=10_000.0, volatility_price=2.0)
+    snap = MarketSnapshot(volume=10_000.0, average_volume=10_000.0, volatility_price=1.0)
     return tuple(snap for _ in range(n))
 
 
@@ -82,7 +82,7 @@ def assemble_results(
     dsr = deflated_sharpe_ratio(net_returns, registry=registry)
     matrix = [slice_series(row, 8) for row in configs_net]
     pbo = probability_of_backtest_overfitting(matrix)
-    regimes = regime_robustness(net_returns)
+    regimes = regime_robustness(net_returns, market_returns=net_returns)
     if not isinstance(provenance, CostProvenance):
         raise TypeError("cost provenance required")
     return ValidationResults(

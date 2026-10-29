@@ -29,13 +29,8 @@ from lumina_research.cycles.holdout import (
     access_bars,
     holdout_ns,
 )
-from lumina_research.cycles.p2_cycle import window_note
-from lumina_research.cycles.positive_control import (
-    PositiveControlFailed,
-    run_controls,
-    rth_session_direction,
-    shuffle_signals,
-)
+from lumina_research.cycles.p2_cycle import session_day_count, window_note
+from lumina_research.cycles.positive_control import run_controls, rth_session_direction, shuffle_signals
 from lumina_research.cycles.prepare import PreparedTape, prepare_tape
 from lumina_research.cycles.roll_verify import FRIDAY_ROLL, require_friday_roll, verify_nt8_rolls
 from lumina_research.cycles.rolls import NT8_ROLL_SET
@@ -49,6 +44,7 @@ from lumina_research.cycles.sessions import (
 )
 from lumina_research.cycles.slippage_calibration import ASSUMPTION, SLIPPAGE_COEFFICIENT, load_slippage_calibration
 from lumina_research.cycles.strategies import simulate, simulate_full
+from lumina_research.cycles.wf_sizes import walk_forward_sizes
 from lumina_research.validation.block_bootstrap import block_bootstrap_sharpes
 from lumina_research.validation.contracts import spec_for
 from lumina_research.validation.cost_model import COST_MODEL_VERSION, CostModel, MarketSnapshot, apply_costs
@@ -260,33 +256,74 @@ def test_overnight_gap_uses_prior_rth_close_to_today_rth_open() -> None:
     labels = annotate(bars)
     open_index = next(i for i, item in enumerate(bars) if item.ts_ns == day2_open.ts_ns)
     assert labels.rth[open_index] is True
-    assert labels.rth[open_index] is True
     assert -1.0 in executed.positions
     gap_ticks = (5020.0 - 5010.0) / 0.25
     assert gap_ticks >= 8.0
+    globex_last = _bar(datetime(2026, 3, 3, 4, 0, tzinfo=UTC), open_=5100.0, high=5100.5, low=5099.5, close=5100.0)
+    mixed = day1 + (last, globex_last, day2_open) + rest
+    mixed_exec = simulate_full(
+        family="overnight_gap",
+        bars=mixed,
+        geometry=geo,
+        lookback=1,
+        threshold=8.0,
+        mode="fade",
+    )
+    mixed_open = next(i for i, item in enumerate(mixed) if item.ts_ns == day2_open.ts_ns)
+    assert -1.0 in mixed_exec.positions[mixed_open:]
+    assert 1.0 not in mixed_exec.positions[mixed_open:]
 
 
 @pytest.mark.unit
 def test_volatility_expansion_catalog_is_75th_percentile() -> None:
     vx = next(item for item in catalog() if item.config_id == "vx-mes-20")
     assert vx.threshold == 0.75
-    ranges = [1.0] * 20 + [10.0]
     bars = tuple(
         ResearchBar(
             ts_ns=1_700_000_000_000_000_000 + index * 60_000_000_000,
             open=100.0,
-            high=100.0 + ranges[index] if index < len(ranges) else 100.5,
+            high=100.0 + (1.0 if index < 239 else 10.0),
             low=100.0,
-            close=100.2,
+            close=100.2 if index < 239 else 109.0,
             volume=1_000.0,
         )
         for index in range(241)
     )
     geo = require_geometry(root="MES", target_ticks=16, stop_ticks=8)
     executed = simulate_full(
-        family="volatility_expansion", bars=bars, geometry=geo, lookback=20, threshold=0.75, mode="breakout"
+        family="volatility_expansion",
+        bars=bars,
+        geometry=geo,
+        lookback=20,
+        threshold=0.75,
+        mode="breakout",
+        session_filter="globex",
+        session_end_flatten=False,
     )
     assert len(executed.gross) == 241
+    quiet = tuple(
+        ResearchBar(
+            ts_ns=1_700_000_000_000_000_000 + index * 60_000_000_000,
+            open=100.0,
+            high=100.5,
+            low=100.0,
+            close=100.2,
+            volume=1_000.0,
+        )
+        for index in range(241)
+    )
+    quiet_exec = simulate_full(
+        family="volatility_expansion",
+        bars=quiet,
+        geometry=geo,
+        lookback=20,
+        threshold=0.75,
+        mode="breakout",
+        session_filter="globex",
+        session_end_flatten=False,
+    )
+    assert executed.trades
+    assert not quiet_exec.trades
 
 
 @pytest.mark.unit
@@ -310,7 +347,10 @@ def test_market_regimes_use_instrument_returns_not_strategy_pnl() -> None:
         for index in range(40)
     )
     fallback = regime_robustness(two_regime)
-    assert fallback.is_complete()
+    assert fallback.is_complete() is False
+    labeled = regime_robustness(net, market_returns=two_regime)
+    unlabeled = regime_robustness(two_regime, market_returns=two_regime)
+    assert labeled.trend_up_sharpe != unlabeled.trend_up_sharpe or labeled.vol_high_sharpe != unlabeled.vol_high_sharpe
 
 
 @pytest.mark.unit
@@ -336,9 +376,12 @@ def test_slippage_uses_bar_true_range_never_fixed_two() -> None:
 def test_mnq_cost_band_is_usd_not_ticks() -> None:
     lo, hi = band_for("MNQ")
     assert (lo, hi) == MNQ_ONE_WAY_USD
+    assert (lo, hi) != (1.0, 2.5)
     band = report_band("MNQ")
     assert band.band_min_usd == lo
     assert band.modeled_one_way_usd > 0.0
+    assert band.modeled_one_way_usd != pytest.approx(band.modeled_one_way_ticks)
+    assert spec_for("MNQ").commission_usd_per_side == pytest.approx(0.94)
     assert "USD" in band.note or "dollar" in band.note
     assert ES_NQ_ONE_WAY == (0.5, 1.5)
 
@@ -521,8 +564,6 @@ def test_positive_and_null_control_direction_helpers() -> None:
     assert -1.0 in planted
     null = shuffle_signals(planted, seed=1)
     assert sorted(null) == sorted(planted)
-    with pytest.raises(PositiveControlFailed):
-        raise PositiveControlFailed("positive control was not detected")
 
 
 @pytest.mark.unit
@@ -594,6 +635,15 @@ def test_n_days_is_documented_on_first_cycle_specs() -> None:
     note = window_note(specs, 43)
     assert "n_days=43" in note
     assert "walk-forward" in note
+    is_size, oos_size, formed = walk_forward_sizes(43)
+    assert formed >= 6
+    assert oos_size == max(2, (43 - 40) // 8)
+    assert is_size != 43
+    days = _rth_minutes(datetime(2026, 3, 2, 14, 31, tzinfo=UTC), 40, 5000.0)
+    days += _rth_minutes(datetime(2026, 3, 3, 14, 31, tzinfo=UTC), 40, 5000.0)
+    prepared = prepare_tape("MES", days)
+    assert session_day_count({"MES": prepared}) == 2
+    assert session_day_count({"MES": prepared}) != len(prepared.bars)
 
 
 def _control_tape() -> PreparedTape:

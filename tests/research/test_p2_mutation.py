@@ -19,7 +19,7 @@ from tests.research.p2_mutants import (
 
 REPO_REPORTS = Path("experiments/reports")
 MUTATION_MIN_MUTANTS = 300
-MUTATION_KILL_RATE_MIN = 0.80
+MUTATION_KILL_RATE_MIN = 0.90
 
 
 @pytest.mark.unit
