@@ -28,6 +28,33 @@ def test_order_to_place_command_maps_core_fields() -> None:
     assert cmd.stop_price == pytest.approx(21000.0)
     assert cmd.client_order_id == "cid-1"
     assert cmd.mode_context == "sim"
+    assert cmd.atm_strategy_template == ""
+
+
+def test_order_to_place_command_maps_atm_template() -> None:
+    order = Order(symbol="MES", side="BUY", quantity=1, order_type="MARKET", stop_loss=4950.0)
+    order.metadata["atm_strategy_template"] = "LuminaProtectiveMES"
+    order.metadata["stop_price"] = 4950.0
+    cmd = mapper.order_to_place_command(
+        order,
+        client_order_id="cid-atm",
+        correlation_id="corr-atm",
+        mode_context="sim_real_guard",
+    )
+    assert cmd.atm_strategy_template == "LuminaProtectiveMES"
+    assert cmd.instrument == "MES"
+
+
+def test_order_event_exposes_protective_attach() -> None:
+    event = fabric_pb2.OrderEvent(
+        client_order_id="c1",
+        nt_order_id="nt-9",
+        state=fabric_pb2.ORDER_STATE_WORKING,
+        correlation_id="corr",
+        protective_attach="atm",
+    )
+    resp = mapper.order_event_to_response_dict(event)
+    assert resp["protective_attach"] == "atm"
 
 
 def test_order_event_to_response_ack_and_reject() -> None:

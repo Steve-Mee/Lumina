@@ -162,7 +162,9 @@ namespace NinjaTrader.NinjaScript.AddOns
                             config.AccountName,
                             Log,
                             config.SimAccountWhitelist,
-                            config.LiveReleaseEnabled);
+                            config.LiveReleaseEnabled,
+                            config.AtmStrategyTemplateByAccount,
+                            config.AtmStrategyTemplate);
                         if (!ntGw.TryBindFromNtAccounts())
                         {
                             Log("FATAL: could not bind NT Account '" + config.AccountName

@@ -28,6 +28,10 @@ DEFAULT_FABRIC_JSON: dict[str, Any] = {
     "MaxPositionSize": 2,
     "MaxOrdersPerMinute": 30,
     "DailyLossLimit": 0,
+    "AtmStrategyTemplate": "",
+    "AtmStrategyTemplateByAccount": {},
+    "AtmStrategyTemplateByConnection": {},
+    "AtmFallbackCompanion": True,
 }
 
 
@@ -77,6 +81,10 @@ def write_fabric_json_defaults(
                     "AccountName",
                     "RealAccountName",
                     "AuthTokenEnv",
+                    "AtmStrategyTemplate",
+                    "AtmStrategyTemplateByAccount",
+                    "AtmStrategyTemplateByConnection",
+                    "AtmFallbackCompanion",
                 ):
                     if key in existing and existing[key] is not None:
                         payload[key] = existing[key]

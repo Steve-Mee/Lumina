@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.Linq;
+using Lumina.Execution.Fabric;
 using Lumina.Execution.Fabric.Execution;
 using Lumina.Execution.V1;
 using Xunit;
@@ -98,6 +100,59 @@ namespace Lumina.Execution.Fabric.Tests
         public void IsFlattenOrCloseId_recognizes_risk_reducing_names(string id, bool expected)
         {
             Assert.Equal(expected, SimOrderGateway.IsFlattenOrCloseId(id));
+        }
+
+        [Fact]
+        public void AtmTemplate_attaches_and_leaves_protected_child_stop()
+        {
+            var gw = new SimOrderGateway();
+            var events = gw.PlaceOrder(new PlaceOrderCommand
+            {
+                ClientOrderId = "atm-entry",
+                Instrument = "MES",
+                Action = OrderAction.Buy,
+                Quantity = 1,
+                OrderType = OrderType.Market,
+                StopPrice = 4950,
+                ModeContext = "sim_real_guard",
+                AtmStrategyTemplate = "LuminaProtectiveMES",
+            });
+            Assert.Contains(events, e => e.ProtectiveAttach == "atm" && e.State == OrderState.Filled);
+            Assert.Contains(gw.GetWorkingOrders(), o => o.ClientOrderId == "atm-entry-atm-stop" && o.Protected);
+        }
+
+        [Fact]
+        public void AtmTemplate_unknown_rejects_without_fill()
+        {
+            var gw = new SimOrderGateway();
+            gw.KnownAtmTemplates = new System.Collections.Generic.HashSet<string> { "OnlyThis" };
+            var events = gw.PlaceOrder(new PlaceOrderCommand
+            {
+                ClientOrderId = "atm-miss",
+                Instrument = "MES",
+                Action = OrderAction.Buy,
+                Quantity = 1,
+                OrderType = OrderType.Market,
+                StopPrice = 4950,
+                ModeContext = "sim_real_guard",
+                AtmStrategyTemplate = "MissingTemplate",
+            });
+            Assert.Contains(events, e => e.State == OrderState.Rejected && e.RejectionReason == "atm_unavailable");
+            Assert.Empty(gw.GetPositions());
+        }
+
+        [Fact]
+        public void ResolveAtmTemplate_empty_connection_disables_account_template()
+        {
+            var cfg = new FabricConfig
+            {
+                AtmStrategyTemplate = "DefaultTpl",
+                AtmStrategyTemplateByAccount = new Dictionary<string, string> { { "Sim101", "AcctTpl" } },
+                AtmStrategyTemplateByConnection = new Dictionary<string, string> { { "playback", "" } },
+            };
+            Assert.Equal("", cfg.ResolveAtmTemplate("Sim101", "", "playback"));
+            Assert.Equal("AcctTpl", cfg.ResolveAtmTemplate("Sim101", "", "continuum"));
+            Assert.Equal("FromCmd", cfg.ResolveAtmTemplate("Sim101", "FromCmd", "playback"));
         }
 
         private static PlaceOrderCommand Limit(string clientId, OrderAction action, int qty)

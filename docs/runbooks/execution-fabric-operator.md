@@ -299,7 +299,10 @@ Recommended `fabric.json` (created by onboarding / `install_fabric_token.ps1`):
   "BindLocalhostOnly": true,
   "MaxPositionSize": 2,
   "MaxOrdersPerMinute": 30,
-  "DailyLossLimit": 0
+  "DailyLossLimit": 0,
+  "AtmStrategyTemplate": "",
+  "AtmStrategyTemplateByAccount": {},
+  "AtmFallbackCompanion": true
 }
 ```
 

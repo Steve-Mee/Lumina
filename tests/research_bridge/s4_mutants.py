@@ -24,10 +24,12 @@ TARGET_PATHS = (
     "lumina_core/research_bridge/continuity_meter.py",
     "lumina_core/research_bridge/sim_gate.py",
     "lumina_core/research_bridge/protective_stop.py",
+    "lumina_core/research_bridge/protective_attach.py",
+    "lumina_core/research_bridge/sim_protected.py",
     "lumina_core/research_bridge/alerts.py",
     "lumina_core/risk/alarm_executor.py",
 )
-_INT_CONST = frozenset(range(0, 33)) | {45, 50, 64, 80, 100, 241, 300, 600, 601}
+_INT_CONST = frozenset(range(0, 33)) | {45, 50, 64, 80, 100, 241, 300, 600, 601, 5000, 5001}
 _FLOAT_CONST = frozenset(
     {
         0.0,
@@ -368,6 +370,24 @@ _EQUIVALENT: dict[str, str] = {
     ),
     "alarm_executor.py:kw-bool#73": (
         "escalate is deleted unused in _execute; True vs False is a no-op."
+    ),
+    "sim_protected.py:raise-to-pass#0": (
+        "Mixin _refuse is a type-stub; SimRuntime overrides it, so the raise is unreachable."
+    ),
+    "sim_protected.py:const-int#1": (
+        "ProtectiveAttachPlan always carries companion_confirm_timeout_ms; getattr default 5000 is unused."
+    ),
+    "protective_attach.py:continue-to-pass#5": (
+        "Empty mapping keys are stripped to ''; named account/connection lookup never matches them."
+    ),
+    "sim_protected.py:return-none#46": (
+        "SimRuntime refuses before _place_protected when submitter is None; mixin return None is dead."
+    ),
+    "sim_protected.py:const-int#49": (
+        "_place_protected always passes timeout_ms into _submit_companion_stop; the 5000 default is unused."
+    ),
+    "sim_protected.py:return-bool#50": (
+        "require_protective_stop already refuses empty stop_price; companion ValueError return is dead."
     ),
 }
 

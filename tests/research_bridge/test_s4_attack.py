@@ -34,6 +34,13 @@ def test_config_yaml_not_sim_and_flatten_grace() -> None:
     assert "research_execution_mode: shadow" in text
     assert "flatten_grace_ms: 30000" in text
     assert "flatten_grace_ms: 15000" not in text
+    assert "fallback_companion: true" in text
+    assert 'default_template: ""' in text
+    adr = Path("docs/adr/0064-s4-sim-entry-hardening.md").read_text(encoding="utf-8")
+    assert "Not B" in adr or "not b" in adr.lower()
+    assert "not d" in adr.lower()
+    assert "atm_strategy_template" in adr
+    assert "LuminaProtectiveMES" in Path("docs/runbooks/nt8-atm-template.md").read_text(encoding="utf-8")
 
 
 @pytest.mark.unit

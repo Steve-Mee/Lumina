@@ -28,7 +28,13 @@ class RecordingSubmitter:
         self.orders.append(order)
         if self.accept is not True:
             return OrderResult(accepted=False, order_id="", status="rejected", message="admission_blocked")
-        return OrderResult(accepted=True, order_id="sim-1", status="accepted", message="ok")
+        raw: dict[str, object] = {}
+        meta = order.metadata if isinstance(order.metadata, dict) else {}
+        template = str(meta.get("atm_strategy_template") or "").strip()
+        if template:
+            raw["protective_attach"] = "atm"
+            raw["nt_child"] = "atm-stop"
+        return OrderResult(accepted=True, order_id="sim-1", status="accepted", message="ok", raw=raw)
 
 
 def _returns(seed: int, n: int = 16) -> tuple[float, ...]:

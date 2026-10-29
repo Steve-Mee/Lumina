@@ -36,6 +36,10 @@ namespace Lumina.Execution.Fabric.Execution
 
         /// <summary>When true, limit orders also fill immediately (legacy Phase 0 behaviour).</summary>
         public bool FillAllImmediately { get; set; }
+        /// <summary>When non-empty, only these ATM template names attach (CI). Null = any name succeeds.</summary>
+        public System.Collections.Generic.HashSet<string>? KnownAtmTemplates { get; set; }
+        /// <summary>Force ATM attach failure (CI). Entry is not filled.</summary>
+        public bool AtmAttachDisabled { get; set; }
 
         public AccountMetrics GetAccountMetrics()
         {
@@ -88,6 +92,19 @@ namespace Lumina.Execution.Fabric.Execution
 
             NoteSessionTouched(command.Instrument);
 
+            var atmTemplate = (command.AtmStrategyTemplate ?? "").Trim();
+            var wantsAtm = atmTemplate.Length > 0 && !command.ReduceOnly;
+            var atmOk = false;
+            if (wantsAtm)
+            {
+                var knownOk = KnownAtmTemplates == null
+                    || KnownAtmTemplates.Count == 0
+                    || KnownAtmTemplates.Contains(atmTemplate);
+                if (AtmAttachDisabled || !knownOk)
+                    return new[] { RejectEvent(command, ntId, "atm_unavailable", now) };
+                atmOk = true;
+            }
+
             var isMarket = command.OrderType == OrderType.Market ||
                            command.OrderType == OrderType.Unspecified ||
                            FillAllImmediately;
@@ -123,12 +140,33 @@ namespace Lumina.Execution.Fabric.Execution
                         LeavesQty = command.Quantity,
                         CorrelationId = command.CorrelationId ?? "",
                         TimestampUnixMs = now,
+                        ProtectiveAttach = atmOk ? "atm" : (command.OrderType == OrderType.Stop ? "companion" : ""),
                     },
                 };
             }
 
             var fillPrice = command.Price > 0 ? command.Price : 21000.0 + (_seq % 50) * 0.25;
             ApplyFill(command.Instrument, command.Action, command.Quantity, fillPrice, now);
+            var attach = atmOk ? "atm" : "";
+            if (atmOk && command.StopPrice > 0)
+            {
+                var stopId = (command.ClientOrderId ?? "") + "-atm-stop";
+                var stopSide = command.Action == OrderAction.Buy ? OrderAction.Sell : OrderAction.Buy;
+                _working[stopId] = new WorkingOrder
+                {
+                    ClientOrderId = stopId,
+                    NtOrderId = ntId + "-atm-stop",
+                    Instrument = command.Instrument,
+                    Action = stopSide,
+                    Quantity = command.Quantity,
+                    FilledQty = 0,
+                    OrderType = OrderType.Stop,
+                    StopPrice = command.StopPrice,
+                    State = OrderState.Working,
+                    Protected = true,
+                    ReduceOnly = true,
+                };
+            }
 
             return new[]
             {
@@ -142,6 +180,7 @@ namespace Lumina.Execution.Fabric.Execution
                     LeavesQty = command.Quantity,
                     CorrelationId = command.CorrelationId ?? "",
                     TimestampUnixMs = now,
+                    ProtectiveAttach = attach,
                 },
                 new OrderEvent
                 {
@@ -155,6 +194,7 @@ namespace Lumina.Execution.Fabric.Execution
                     LeavesQty = 0,
                     CorrelationId = command.CorrelationId ?? "",
                     TimestampUnixMs = now,
+                    ProtectiveAttach = attach,
                 },
             };
         }

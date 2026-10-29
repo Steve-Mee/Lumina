@@ -134,6 +134,41 @@ class AlarmExecutor:
                 details={"strategy_id": str(strategy_id), "qty": int(qty), "instrument": root},
             )
 
+    def flatten_unconfirmed_protective_stop(
+        self, *, instrument: str, strategy_id: str, qty: int
+    ) -> None:
+        """NEEDS HUMAN REVIEW (ADR-0064 Proposed).
+
+        Research team decision (relayed by Steve 2026-10-29): companion STOP
+        (option C) that is not confirmed within the hard timeout → Risk Core
+        flatten. Residual: MARKET may already be filled.
+        """
+        sink = self.alert_sink if self.alert_sink is not None else LoggingAlertSink()
+        key = str(strategy_id or "").strip() or "broker_sot"
+        size = int(qty)
+        if size < 1:
+            size = int(self.positions.strategy_qty(key)) or int(self.positions.get_live_qty())
+        if size < 1:
+            return
+        if int(self.positions.strategy_qty(key)) == 0:
+            self.positions.set_strategy_qty(key, size)
+        root = str(instrument or "MES").strip().upper()
+        if root not in S3_INSTRUMENTS:
+            root = "MES"
+        job = AlarmJob(
+            strategy_id=key,
+            stage="unconfirmed_protective_stop",
+            instrument=root,
+            proposed_at=self.clock(),
+        )
+        self.jobs.append(job)
+        self._execute(job, now=job.proposed_at, escalate=True)
+        sink.alert(
+            code="unconfirmed_protective_stop_flatten",
+            message="unconfirmed companion STOP: flatten via Risk Core",
+            details={"strategy_id": key, "qty": size, "instrument": root},
+        )
+
     def _on_deweight(self, event: DomainEvent) -> None:
         self._propose(event, stage="deweighted")
 

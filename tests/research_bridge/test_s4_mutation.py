@@ -37,6 +37,8 @@ def test_mutant_iterator_finds_sites() -> None:
     assert "continuity_meter.py" in files
     assert "sim_gate.py" in files
     assert "protective_stop.py" in files
+    assert "protective_attach.py" in files
+    assert "sim_protected.py" in files
     assert "alarm_executor.py" in files
 
 

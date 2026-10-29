@@ -1,6 +1,24 @@
 {
   "excluded": [
     {
+      "description": "sim_protected.py:raise-to-pass#0",
+      "detail": "survived kill battery",
+      "justification": "Mixin _refuse is a type-stub; SimRuntime overrides it, so the raise is unreachable.",
+      "path": "lumina_core/research_bridge/sim_protected.py"
+    },
+    {
+      "description": "sim_protected.py:const-int#1",
+      "detail": "survived kill battery",
+      "justification": "ProtectiveAttachPlan always carries companion_confirm_timeout_ms; getattr default 5000 is unused.",
+      "path": "lumina_core/research_bridge/sim_protected.py"
+    },
+    {
+      "description": "protective_attach.py:continue-to-pass#5",
+      "detail": "survived kill battery",
+      "justification": "Empty mapping keys are stripped to ''; named account/connection lookup never matches them.",
+      "path": "lumina_core/research_bridge/protective_attach.py"
+    },
+    {
       "description": "continuity_meter.py:const-int#18",
       "detail": "survived kill battery",
       "justification": "Default fixture start hour 21 vs 00 is the same UTC weekday; bar sequence unchanged.",
@@ -37,24 +55,30 @@
       "path": "lumina_core/risk/alarm_executor.py"
     },
     {
-      "description": "continuity_meter.py:binop#54",
+      "description": "sim_protected.py:return-none#46",
       "detail": "survived kill battery",
-      "justification": "(n+1)%2 and (n-1)%2 have the same parity, so open polarity is unchanged.",
-      "path": "lumina_core/research_bridge/continuity_meter.py"
+      "justification": "SimRuntime refuses before _place_protected when submitter is None; mixin return None is dead.",
+      "path": "lumina_core/research_bridge/sim_protected.py"
     },
     {
-      "description": "alarm_executor.py:kw-bool#73",
+      "description": "sim_protected.py:const-int#49",
       "detail": "survived kill battery",
-      "justification": "escalate is deleted unused in _execute; True vs False is a no-op.",
-      "path": "lumina_core/risk/alarm_executor.py"
+      "justification": "_place_protected always passes timeout_ms into _submit_companion_stop; the 5000 default is unused.",
+      "path": "lumina_core/research_bridge/sim_protected.py"
+    },
+    {
+      "description": "sim_protected.py:return-bool#50",
+      "detail": "survived kill battery",
+      "justification": "require_protective_stop already refuses empty stop_price; companion ValueError return is dead.",
+      "path": "lumina_core/research_bridge/sim_protected.py"
     }
   ],
   "kill_rate": 1.0,
-  "n_excluded": 8,
-  "n_killed": 312,
+  "n_excluded": 12,
+  "n_killed": 308,
   "n_mutants": 320,
-  "n_non_equivalent": 312,
+  "n_non_equivalent": 308,
   "n_survived": 0,
-  "raw_kill_rate": 0.975,
+  "raw_kill_rate": 0.9625,
   "survivors": []
 }

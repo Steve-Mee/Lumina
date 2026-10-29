@@ -1,8 +1,8 @@
-"""Brain-side protective stop. NT native ATM/OCO is not wired (see ADR-0064).
+"""Brain-side protective stop. Option A ATM is default; C is fallback.
 
 Research team decision (relayed by Steve 2026-10-29): risk-increasing places
 require a stop; reduce-only / emergency may flatten without one. Companion STOP
-is the enforceable backup while CreateOrder MARKET may ignore StopPrice.
+(option C) is the fallback when NT ATM is missing or unconfirmed. Not B or D.
 """
 
 from __future__ import annotations
@@ -34,7 +34,13 @@ def is_reduce_or_emergency(order: Order) -> bool:
     if meta.get("emergency") is True:
         return True
     reason = str(meta.get("reason") or "").strip().lower()
-    return reason in {"alarm_executor", "flatten", "eod_force_close", "prolonged_disconnect"}
+    return reason in {
+        "alarm_executor",
+        "flatten",
+        "eod_force_close",
+        "prolonged_disconnect",
+        "unconfirmed_protective_stop",
+    }
 
 
 def require_protective_stop(order: Order) -> tuple[bool, str]:
@@ -69,6 +75,7 @@ def companion_stop_order(entry: Order, *, client_order_id: str) -> Order:
         raise ValueError(UNPROTECTED_ENTRY)
     side = "SELL" if str(entry.side).strip().upper() == "BUY" else "BUY"
     meta = dict(entry.metadata) if isinstance(entry.metadata, dict) else {}
+    meta.pop("atm_strategy_template", None)
     meta = {
         **meta,
         "clientOrderId": client_order_id,
@@ -76,6 +83,7 @@ def companion_stop_order(entry: Order, *, client_order_id: str) -> Order:
         "protected": True,
         "stop_price": stop,
         "reason": "companion_protective_stop",
+        "protective_attach": "companion",
     }
     return Order(
         symbol=entry.symbol,

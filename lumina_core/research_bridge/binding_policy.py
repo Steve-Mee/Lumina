@@ -27,7 +27,16 @@ class BindingPolicyRefused(ValueError):
 
 _REDUCE_STAGES: frozenset[str] = frozenset({"deweighted", "suspended"})
 _FLATTEN_STAGES: frozenset[str] = frozenset(
-    {"retired", "disabled", "disable", "critical", "hard_limit", "hard_dd", "prolonged_disconnect"}
+    {
+        "retired",
+        "disabled",
+        "disable",
+        "critical",
+        "hard_limit",
+        "hard_dd",
+        "prolonged_disconnect",
+        "unconfirmed_protective_stop",
+    }
 )
 
 

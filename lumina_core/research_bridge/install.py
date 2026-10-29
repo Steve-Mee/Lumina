@@ -11,7 +11,9 @@ from lumina_core.research_bridge.market_health import MarketHealth, unhealthy_ma
 from lumina_core.research_bridge.fill_index import FillIndex
 from lumina_core.research_bridge.shadow_runtime import ObserveSink, ShadowRuntime, TapeKind
 from lumina_core.research_bridge.sim_gate import SimGateContext, bind_sim_gate
+from lumina_core.research_bridge.protective_attach import ProtectiveAttachConfig
 from lumina_core.research_bridge.sim_runtime import SimRuntime, SimSubmitter
+from lumina_core.risk.alarm_executor import AlarmExecutor
 from lumina_research.agents.provenance import ProvenanceAuthority
 
 
@@ -55,6 +57,8 @@ def attach_sim_runtime(
     engine: object | None = None,
     submitter: SimSubmitter | None = None,
     alert_sink: AlertSink | None = None,
+    protective: ProtectiveAttachConfig | None = None,
+    alarm_executor: AlarmExecutor | None = None,
 ) -> SimRuntime:
     """S3 gated SIM runtime. Binds boot-time sim_gate evidence (not hot-reload yaml)."""
     bind_sim_gate(gate_ctx)
@@ -74,4 +78,6 @@ def attach_sim_runtime(
         engine=engine,
         submitter=submitter,
         alert_sink=sink,
+        protective=protective,
+        alarm_executor=alarm_executor,
     )
