@@ -204,13 +204,13 @@ def _lh01_signals(prepared: PreparedTape) -> tuple[tuple[float, ...], tuple[floa
                 continue
             if broke_high:
                 signals[bar_i] = 1.0
-                atr_points[bar_i] = nr7_range
                 fired = True
             elif broke_low:
                 signals[bar_i] = -1.0
-                atr_points[bar_i] = nr7_range
                 fired = True
             if fired:
+                for hold_i in range(bar_i, end + 1):
+                    atr_points[hold_i] = nr7_range
                 break
     return tuple(signals), tuple(atr_points)
 
@@ -241,7 +241,9 @@ def _lh03_signals(
         if spike <= LH03_ATR_MULT * atr:
             continue
         signals[post_i] = -1.0 if post.close > pre.close else 1.0
-        atr_points[post_i] = spike
+        hold_end = min(n, post_i + LH03_TIME_STOP_BARS + 2)
+        for hold_i in range(post_i, hold_end):
+            atr_points[hold_i] = spike
     return tuple(signals), tuple(atr_points)
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -344,7 +345,10 @@ def _n_positive_oos(row: CycleRow) -> int | None:
     pct = row.pct_positive_oos
     if windows is None or pct is None:
         return None
-    return int(round(float(pct) * int(windows)))
+    share = float(pct)
+    if not math.isfinite(share):
+        return None
+    return int(round(share * int(windows)))
 
 
 def _count_trial_events(path: Path) -> int:

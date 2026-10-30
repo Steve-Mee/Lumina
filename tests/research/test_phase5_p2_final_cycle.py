@@ -453,6 +453,9 @@ def test_team_kill_rejects_weak_oos_or_nonpositive_net() -> None:
     weak_net = apply_team_kill(_report(_row(passed=True, dsr=0.99, pct=1.0, net=-0.01)))
     assert weak_net.n_survivors == 0
     assert "team_kill_net" in weak_net.rows[0].reject_reasons
+    nan_oos = apply_team_kill(_report(_row(passed=True, dsr=0.99, pct=float("nan"), net=0.01)))
+    assert nan_oos.n_survivors == 0
+    assert "team_kill_oos" in nan_oos.rows[0].reject_reasons
 
 
 @pytest.mark.unit
@@ -471,5 +474,33 @@ def test_lh01_signals_fire_on_nr7_break() -> None:
             bars.extend(_rth_day(day, open_=100.0, high=110.0, low=100.0, close=105.0))
     prepared = prepare_tape("ES", bars)
     signals, atr = _lh01_signals(prepared)
+    signal_i = next(index for index, item in enumerate(signals) if item != 0.0)
     assert sum(1 for item in signals if item != 0.0) == 1
-    assert any(item > 0.0 for item in atr)
+    assert atr[signal_i] > 0.0
+    if signal_i + 1 < len(atr):
+        assert atr[signal_i + 1] > 0.0
+
+
+@pytest.mark.unit
+def test_lh03_signals_write_atr_onto_fill_bar() -> None:
+    from lumina_research.cycles.final_cycle_sim import _lh03_signals
+    from lumina_research.cycles.prepare import prepare_tape
+
+    event_day = date(2024, 1, 22)
+    quiet = _consecutive_minutes(
+        event_day, 7, 10, 80, open_=100.0, high=100.4, low=100.0, close=100.2
+    )
+    post = _bar(event_day, 8, 35, 102.0, 102.5, 101.5, 102.0)
+    fill = _bar(event_day, 8, 36, 102.0, 102.2, 101.8, 101.9)
+    rth = _rth_day(event_day, open_=102.0, high=120.0, low=90.0, close=110.0)
+    prepared = prepare_tape("ES", [*quiet, post, fill, *rth])
+    event_ns = int(
+        datetime(event_day.year, event_day.month, event_day.day, 8, 30, tzinfo=ET).timestamp()
+        * 1_000_000_000
+    )
+    events = (MacroEvent(event="CPI", event_ns=event_ns, session=event_day),)
+    signals, atr = _lh03_signals(prepared, events)
+    signal_i = next(index for index, item in enumerate(signals) if item != 0.0)
+    assert signals[signal_i] == -1.0
+    assert atr[signal_i] > 0.0
+    assert atr[signal_i + 1] > 0.0

@@ -349,6 +349,63 @@ def test_second_cycle_is_refused_even_with_leftover_hypothesis_budget(tmp_path: 
 
 
 @pytest.mark.unit
+def test_record_final_cycle_ledger_keeps_rv02_low_power_and_stops_on_zero(tmp_path: Path) -> None:
+    from lumina_research.cycles.data import DataStatus
+    from lumina_research.cycles.final_cycle import RV02_LOW_POWER_NOTE
+    from lumina_research.cycles.final_cycle_run import record_final_cycle_ledger
+    from lumina_research.cycles.report import CycleReport
+    from lumina_research.cycles.runner import ResearchCycleResult
+
+    ledger_path = tmp_path / "ledger.json"
+    ledger_path.write_text(DEFAULT_LEDGER_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+    data = DataStatus(usable=True, tapes=(), searched=(), missing=(), required={})
+    result = ResearchCycleResult(
+        report=CycleReport(
+            n_hypotheses=4,
+            n_tested=4,
+            n_killed=4,
+            n_survivors=0,
+            kill_rate=1.0,
+            kill_rate_flag="all_kill",
+            cost_bands=(),
+            data=data,
+            rows=(),
+            geometry_by_root=(),
+            stopped=False,
+            stop_reason="",
+        ),
+        json_path=tmp_path / "cycle.json",
+        md_path=tmp_path / "cycle.md",
+        data=data,
+        kill_rate=1.0,
+        kill_rate_flag="all_kill",
+    )
+    record_final_cycle_ledger(result=result, n_trials=71, ledger_path=ledger_path)
+    loaded = load_trial_ledger(ledger_path)
+    assert loaded.active_open is False
+    assert loaded.active_status == LINE_STATE_STOPPED
+    assert loaded.research_line_stopped is True
+    assert loaded.n_cycles_completed == 1
+    assert loaded.dsr_pbo_n == 71
+    payload = json.loads(ledger_path.read_text(encoding="utf-8"))
+    active = payload["active_book"]
+    assert isinstance(active, dict)
+    rv02 = active["rv02_low_power"]
+    assert isinstance(rv02, dict)
+    assert rv02["n_trades"] == RV02_POWER_N_TRADES == 59
+    assert rv02["low_power_risk_accepted"] is True
+    assert RV02_LOW_POWER_NOTE in str(rv02["note"])
+    lh03 = active["lh03_atr"]
+    assert isinstance(lh03, dict)
+    assert lh03["clarification_not_hypothesis_change"] is True
+    note = str(active["note"])
+    assert "59" in note
+    assert "low-power" in note
+    with pytest.raises(LedgerBlocksRun, match="research_line_stopped"):
+        assert_ledger_allows_run(ledger_path)
+
+
+@pytest.mark.unit
 def test_research_line_stopped_refuses_further_runs(tmp_path: Path) -> None:
     stopped = _write(
         tmp_path / "stopped.json",
