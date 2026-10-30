@@ -1,11 +1,18 @@
 {
-  "schema": "lumina.research.final_cycle_power.v1",
+  "schema": "lumina.research.final_cycle_power.v2",
   "finale_prereg": "ONDERZOEKERS-PREREG-FINALE-CYCLUS-20261030T0913.md",
-  "finale_prereg_sha256": "106af5b23d2eeb24454a2174e8c59ae24fb69e78c9729bb6e2accf3452aedade",
+  "finale_prereg_sha256": "971bd2ef3ca798fdd0df976349420efd9915bf6f74734d5c1f6b50de51db743e",
+  "data_answers": "ONDERZOEKERS-ANTWOORDEN-DATA-20261030T0936.md",
+  "data_answers_sha256": "e37cd59ead7db0779c2c8a61be0f59bce4a1e6b37281433480e9d6652741c8fb",
   "n_hypotheses": 6,
   "n_hypotheses_cap": 25,
+  "dropped_config_ids": [
+    "p2s-lh-02",
+    "p2s-lh-04"
+  ],
   "lh01_target_range_mult": 1.5,
   "rv02_sizing": "dollar_neutral",
+  "vix_filter_rule": "previous_day_close",
   "kill": {
     "dsr_min": 0.95,
     "oos_positive_min": 7,
@@ -16,70 +23,80 @@
   "holdout_pin": "2026-01-28T23:00:00Z",
   "trials_run": false,
   "dsr_pbo_n": 0,
+  "data_pins": {
+    "holdout_pin": "2026-01-28T23:00:00Z",
+    "es_pre_holdout_sha256": "6100588d2f3e519bd815b8f952dc15f01d434cc2a2b70e6453d0c3a7477bbca6",
+    "nq_pre_holdout_sha256": "d60dd0c203ef31382def4278f4524a671bc7b4a050ab1334948ba693e269eed8",
+    "nq_gz_sha256": "4f5f7d4ef94e5dbecf3afea5021ad6d693eb7050ade439dd74d076d114e5c855",
+    "vix_sha256": "481dc031c6d2b51b9150718c21c01b7f3706c99678ebf12b0edba19d0c8d2d1d",
+    "macro_sha256": "104018d21552544a6c60ef52de0bbb6c82447c6afcb685e3059a14edd1c19aa7",
+    "vix_filter_rule": "previous_day_close",
+    "cash_index": null
+  },
   "data": {
     "es_pre_holdout": true,
-    "nq_pre_holdout": false,
-    "vix": false,
-    "macro_calendar": false,
+    "nq_pre_holdout": true,
+    "vix": true,
+    "macro_calendar": true,
     "cash_index": false,
     "es_path": "/tmp/lumina-es/ES_pre_holdout.csv",
-    "nq_path": null,
-    "vix_path": null,
-    "macro_path": null,
+    "nq_path": "/tmp/lumina-nq/NQ_pre_holdout.csv",
+    "vix_path": "/tmp/lumina-vix/VIX_daily_pre_holdout.csv",
+    "macro_path": "/tmp/lumina-macro/macro_events_pre_holdout.csv",
     "cash_path": null,
-    "es_sha256": "6100588d2f3e519bd815b8f952dc15f01d434cc2a2b70e6453d0c3a7477bbca6"
+    "es_sha256": "6100588d2f3e519bd815b8f952dc15f01d434cc2a2b70e6453d0c3a7477bbca6",
+    "nq_sha256": "d60dd0c203ef31382def4278f4524a671bc7b4a050ab1334948ba693e269eed8",
+    "vix_sha256": "481dc031c6d2b51b9150718c21c01b7f3706c99678ebf12b0edba19d0c8d2d1d",
+    "macro_sha256": "104018d21552544a6c60ef52de0bbb6c82447c6afcb685e3059a14edd1c19aa7"
   },
   "hypotheses": [
     {
       "research_id": "RV-01",
       "config_id": "p2s-rv-01",
-      "status": "blocked_missing_data",
-      "n_trades": null,
-      "missing": [
-        "nq_pre_holdout",
-        "vix"
-      ]
+      "status": "ready",
+      "n_trades": 309,
+      "missing": [],
+      "dropped_reason": ""
     },
     {
       "research_id": "RV-02",
       "config_id": "p2s-rv-02",
-      "status": "blocked_missing_data",
-      "n_trades": null,
-      "missing": [
-        "nq_pre_holdout"
-      ]
+      "status": "ready",
+      "n_trades": 59,
+      "missing": [],
+      "dropped_reason": ""
     },
     {
       "research_id": "LH-01",
       "config_id": "p2s-lh-01",
       "status": "ready",
       "n_trades": 102,
-      "missing": []
+      "missing": [],
+      "dropped_reason": ""
     },
     {
       "research_id": "LH-02",
       "config_id": "p2s-lh-02",
-      "status": "ready",
+      "status": "dropped",
       "n_trades": 5,
-      "missing": []
+      "missing": [],
+      "dropped_reason": "power n_trades=5"
     },
     {
       "research_id": "LH-03",
       "config_id": "p2s-lh-03",
-      "status": "blocked_missing_data",
-      "n_trades": null,
-      "missing": [
-        "macro_calendar"
-      ]
+      "status": "ready",
+      "n_trades": 1,
+      "missing": [],
+      "dropped_reason": ""
     },
     {
       "research_id": "LH-04",
       "config_id": "p2s-lh-04",
-      "status": "blocked_missing_data",
+      "status": "dropped",
       "n_trades": null,
-      "missing": [
-        "cash_index"
-      ]
+      "missing": [],
+      "dropped_reason": "no free 1-minute SPX cash data"
     }
   ]
 }

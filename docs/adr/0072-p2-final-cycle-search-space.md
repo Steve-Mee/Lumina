@@ -10,7 +10,10 @@ the 7/8 null gate, holdout pin `2026-01-28T23:00:00Z`, or Risk Core. Does not
 reset the hard-stop counter.
 
 Binding input: `docs/research/ONDERZOEKERS-PREREG-FINALE-CYCLUS-20261030T0913.md`
-content sha256 `106af5b23d2eeb24454a2174e8c59ae24fb69e78c9729bb6e2accf3452aedade`.
+content sha256 `971bd2ef3ca798fdd0df976349420efd9915bf6f74734d5c1f6b50de51db743e`.
+
+Data answers: `docs/research/ONDERZOEKERS-ANTWOORDEN-DATA-20261030T0936.md`
+content sha256 `e37cd59ead7db0779c2c8a61be0f59bce4a1e6b37281433480e9d6652741c8fb`.
 
 ## Context
 
@@ -34,9 +37,12 @@ sealed, Risk Core untouched).
 2. **Kill uniform:** DSR ≥ 0.95 AND ≥7/8 OOS windows net-positive AND net > 0.
 3. **One value, no grid.** NR7 target **1.5×** range (not 2.0×). RV-02 sizing
    **dollar-neutral** (1 ES vs notional-matched NQ, min 1 NQ).
-4. **Missing data blocks the hypothesis.** NQ tape, VIX, macro calendar, and
-   cash index are required where listed. Blocked ids stay on the list.
-5. **Forbidden.** Trials, SIM/promotion, opening holdout, Risk Core edits,
+4. **Missing data blocks the hypothesis.** NQ tape, VIX, and macro calendar
+   are required where listed. Blocked ids stay on the list.
+5. **09:36 data prep.** Pre-holdout NQ, CBOE VIX, and BLS/Fed macro events
+   are pinned. RV-01 VIX<25 uses the **previous day's close**. LH-02 and
+   LH-04 are dropped and still count in `n_hypotheses=6`.
+6. **Forbidden.** Trials, SIM/promotion, opening holdout, Risk Core edits,
    a 2nd cycle, extra variants, raising min-DSR, resetting the stop counter.
 
 ## Consequences
@@ -45,21 +51,23 @@ sealed, Risk Core untouched).
 
 - The new book can no longer sit in `awaiting_search_space_prereg`.
 - Ambiguous bands cannot become a post-hoc grid.
+- RV-01, RV-02, and LH-03 are unblocked for power (not for trials).
 
 ### Negative
 
-- RV-01/RV-02/LH-03/LH-04 cannot produce power counts until their data exists.
+- LH-02 (5 trades) and LH-04 (no free 1m SPX) stay in N but will not be trialled.
 - Opening the book allows a later CLI cycle; that cycle is still not run here.
 
 ## Alternatives considered
 
 1. Grid 1.5 and 2.0 NR7 targets — rejected: 09:13 plus STOPTELLING cap; pick one.
 2. Run Validation Gate trials now — rejected: explicit "DO NOT run trials".
-3. Drop blocked hypotheses from `n_hypotheses` — rejected: the lock is 6.
+3. Drop blocked/dropped hypotheses from `n_hypotheses` — rejected: the lock is 6.
 
 ## Links
 
 - Team prereg: `docs/research/ONDERZOEKERS-PREREG-FINALE-CYCLUS-20261030T0913.md`
+- Data answers: `docs/research/ONDERZOEKERS-ANTWOORDEN-DATA-20261030T0936.md`
 - Operational lock: `experiments/reports/phase5_p2_search_space_preregister_2026-10-30.md`
 - Code: `lumina_research/cycles/final_cycle.py`
 - Related: ADR-0071

@@ -10,7 +10,9 @@
     "stoptelling": "ONDERZOEKERS-ANTWOORDEN-STOPTELLING-20261030T0850.md",
     "stoptelling_sha256": "547f30476afe10f4cdc6a4918a48b0e2719964e9251d6f8c1ac7e40dc6787f11",
     "finale_cyclus": "ONDERZOEKERS-PREREG-FINALE-CYCLUS-20261030T0913.md",
-    "finale_cyclus_sha256": "106af5b23d2eeb24454a2174e8c59ae24fb69e78c9729bb6e2accf3452aedade"
+    "finale_cyclus_sha256": "971bd2ef3ca798fdd0df976349420efd9915bf6f74734d5c1f6b50de51db743e",
+    "data": "ONDERZOEKERS-ANTWOORDEN-DATA-20261030T0936.md",
+    "data_sha256": "e37cd59ead7db0779c2c8a61be0f59bce4a1e6b37281433480e9d6652741c8fb"
   },
   "stop_criterion": {
     "tripped": true,
@@ -116,6 +118,17 @@
     },
     "n_total": 0,
     "dsr_pbo_n": 0,
-    "note": "09:13 lock: 6 hypotheses, 1 cycle, cap 25. DSR/PBO N=0. No trials in this change. Blocked ids stay on the list."
+    "dropped_config_ids": ["p2s-lh-02", "p2s-lh-04"],
+    "data_pins": {
+      "holdout_pin": "2026-01-28T23:00:00Z",
+      "es_pre_holdout_sha256": "6100588d2f3e519bd815b8f952dc15f01d434cc2a2b70e6453d0c3a7477bbca6",
+      "nq_pre_holdout_sha256": "d60dd0c203ef31382def4278f4524a671bc7b4a050ab1334948ba693e269eed8",
+      "nq_gz_sha256": "4f5f7d4ef94e5dbecf3afea5021ad6d693eb7050ade439dd74d076d114e5c855",
+      "vix_sha256": "481dc031c6d2b51b9150718c21c01b7f3706c99678ebf12b0edba19d0c8d2d1d",
+      "macro_sha256": "104018d21552544a6c60ef52de0bbb6c82447c6afcb685e3059a14edd1c19aa7",
+      "vix_filter_rule": "previous_day_close",
+      "cash_index": null
+    },
+    "note": "09:13 lock + 09:36 data: n_hypotheses=6 with LH-02 and LH-04 dropped (still counted). Data pins locked. DSR/PBO N=0. No trials."
   }
 }

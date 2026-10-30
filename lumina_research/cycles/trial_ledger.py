@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
+from lumina_research.cycles.final_cycle import DATA_ANSWERS_SHA256, FINALE_PREREG_SHA256
 from lumina_research.cycles.search_space import (
     NEW_BOOK_HYPOTHESIS_CAP,
     NEW_BOOK_MAX_CYCLES,
@@ -290,6 +291,10 @@ def _validate_optional_stop_lock(payload: Mapping[str, object]) -> None:
         block = _as_object(answers, field="answers")
         if block.get("stoptelling_sha256") != STOPTELLING_ANSWERS_SHA256:
             raise LedgerRefused("stoptelling answers sha mismatch")
+        if block.get("finale_cyclus_sha256") != FINALE_PREREG_SHA256:
+            raise LedgerRefused("finale cyclus sha mismatch")
+        if block.get("data_sha256") != DATA_ANSWERS_SHA256:
+            raise LedgerRefused("data answers sha mismatch")
     raw = payload.get("stop_criterion")
     if raw is None:
         return

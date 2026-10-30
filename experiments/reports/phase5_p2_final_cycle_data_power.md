@@ -1,37 +1,46 @@
-# P2 final-cycle data availability + power (2026-10-30 09:13)
+# P2 final-cycle data availability + power (2026-10-30 09:36)
 
 Binding: `docs/research/ONDERZOEKERS-PREREG-FINALE-CYCLUS-20261030T0913.md`
-content sha256 `106af5b23d2eeb24454a2174e8c59ae24fb69e78c9729bb6e2accf3452aedade`.
-Operational lock: `phase5_p2_search_space_preregister_2026-10-30.md`.
+content sha256 `971bd2ef3ca798fdd0df976349420efd9915bf6f74734d5c1f6b50de51db743e`.
+
+Data answers: `docs/research/ONDERZOEKERS-ANTWOORDEN-DATA-20261030T0936.md`
+content sha256 `e37cd59ead7db0779c2c8a61be0f59bce4a1e6b37281433480e9d6652741c8fb`.
 
 **No trials.** DSR/PBO N stays 0. Holdout pin `2026-01-28T23:00:00Z` unopened.
-No SIM/promotion. Risk Core untouched.
+No SIM/promotion. Risk Core untouched. n_hypotheses stays **6**.
 
-## Data availability
+## Data availability (pinned)
 
-| source | present | path / note |
-|---|---|---|
-| ES pre-holdout | yes | `/tmp/lumina-es/ES_pre_holdout.csv` sha256 `6100588d…` |
-| NQ pre-holdout | **no** | searched `/tmp/lumina-nq`, `$LUMINA_RESEARCH_DATA_DIR/NQ/1m`, `data/research/NQ/1m` |
-| VIX series | **no** | searched `$LUMINA_RESEARCH_DATA_DIR/VIX/1d`, `data/research/VIX/1d`, `/tmp/lumina-vix` |
-| macro calendar (CPI/NFP/FOMC) | **no** | searched `macro/releases.csv` under data dir / repo / `/tmp/lumina-macro` |
-| cash index | **no** | searched `SPX/1d/spx.csv` under data dir / repo / `/tmp/lumina-cash` |
+| source | present | sha256 prefix | range |
+|---|---|---|---|
+| ES pre-holdout | yes | `6100588d…` | 2023-10-01T22:01Z → 2026-01-28T22:00Z (818,851) |
+| NQ pre-holdout | yes | `d60dd0c2…` | 2023-10-01T22:01Z → 2026-01-28T22:00Z (821,334) |
+| VIX daily (CBOE) | yes | `481dc031…` | 1990-01-02 → 2026-01-28 (9,110) |
+| macro CPI/NFP/FOMC | yes | `104018d2…` | 73 events (27/27/19) |
+| cash index 1m SPX | **no** | — | LH-04 dropped |
 
-## Locked single values (no grid)
+No row at or after `2026-01-28T23:00:00Z`.
 
-- LH-01 NR7 target = **1.5×** NR7 range (not 2.0×)
-- RV-02 sizing = **dollar-neutral** (1 ES vs notional-matched NQ, min 1 NQ)
+## Locked single values (09:36 approved; no grid)
+
+- LH-01 NR7 target = **1.5×** NR7 range
+- RV-02 sizing = **dollar-neutral**
+- RV-01 z = **\|z\| > 2.5** both tails; exit \|z\| < 0.5; stop \|z\| ≥ 4.0
+- RV-02 gap = **\|ES% − NQ%\| > 0.4** at RTH open
+- RV-01 VIX<25 = **previous day's close** (VIX session close is 16:15 ET; same-day close is lookahead during RTH)
 
 ## Trade counts (pre-holdout power, entries only)
 
-| research | config_id | status | n_trades | missing |
-|---|---|---|---|---|
-| RV-01 | `p2s-rv-01` | blocked_missing_data | — | NQ, VIX |
-| RV-02 | `p2s-rv-02` | blocked_missing_data | — | NQ |
-| LH-01 | `p2s-lh-01` | ready | **102** | |
-| LH-02 | `p2s-lh-02` | ready | **5** | |
-| LH-03 | `p2s-lh-03` | blocked_missing_data | — | macro calendar |
-| LH-04 | `p2s-lh-04` | blocked_missing_data | — | cash index |
+| research | config_id | status | n_trades |
+|---|---|---|---|
+| RV-01 | `p2s-rv-01` | ready | **309** |
+| RV-02 | `p2s-rv-02` | ready | **59** |
+| LH-01 | `p2s-lh-01` | ready | **102** |
+| LH-02 | `p2s-lh-02` | **dropped** | 5 (reason) |
+| LH-03 | `p2s-lh-03` | ready | **1** |
+| LH-04 | `p2s-lh-04` | **dropped** | — (no free 1m SPX) |
+
+LH-03: all 73 events have a +5min bar; 2 lack ATR lookback at the tape start; 70 five-minute spikes are ≤ 1.2× daily ATR14; **1** exceeds it (CPI 2024-04-10). The locked 1.2× daily ATR threshold is a high bar versus a 5-minute window. Not altered.
 
 Kill still: DSR ≥ 0.95 AND ≥7/8 OOS+ AND net > 0. Not evaluated; no trial.
 

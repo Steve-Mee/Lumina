@@ -1,18 +1,23 @@
 """Locked 09:13 final-cycle search space for book p2-next-search-space.
 
-Six pre-registered hypotheses. No Validation Gate trial. DSR/PBO N stays 0.
-Ambiguous bands are resolved to one value. Missing data blocks a hypothesis.
+Six pre-registered hypotheses. LH-02 and LH-04 are dropped but still count
+in n_hypotheses=6. No Validation Gate trial. DSR/PBO N stays 0.
+VIX<25 uses the previous day's close (no lookahead).
 """
 
 from __future__ import annotations
 
+import bisect
+import csv
 import hashlib
+import math
 import os
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Mapping, Sequence
 
+from lumina_core.market.globex_hours import ET, globex_session_date
 from lumina_research.cycles.data import ResearchBar, read_csv_bars
 from lumina_research.cycles.holdout import P2_HOLDOUT_START_NS, assert_no_holdout_timestamps
 from lumina_research.cycles.nq_research import HOLDOUT_PIN_Z, KIND_RELATIVE_VALUE
@@ -22,26 +27,47 @@ from lumina_research.cycles.sessions import annotate
 from lumina_research.validation.thresholds import FLOOR_DSR_PROBABILITY_MIN
 
 FINALE_PREREG_NAME = "ONDERZOEKERS-PREREG-FINALE-CYCLUS-20261030T0913.md"
-FINALE_PREREG_SHA256 = "106af5b23d2eeb24454a2174e8c59ae24fb69e78c9729bb6e2accf3452aedade"
+FINALE_PREREG_SHA256 = "971bd2ef3ca798fdd0df976349420efd9915bf6f74734d5c1f6b50de51db743e"
+DATA_ANSWERS_NAME = "ONDERZOEKERS-ANTWOORDEN-DATA-20261030T0936.md"
+DATA_ANSWERS_SHA256 = "e37cd59ead7db0779c2c8a61be0f59bce4a1e6b37281433480e9d6652741c8fb"
 SEARCH_SPACE_PREREG_NAME = "phase5_p2_search_space_preregister_2026-10-30.md"
 N_HYPOTHESES = 6
 LH01_TARGET_RANGE_MULT = 1.5
 RV02_SIZING = "dollar_neutral"
 RV02_ES_MULTIPLIER = 50.0
 RV02_NQ_MULTIPLIER = 20.0
+RV01_Z_ENTRY = 2.5
+RV01_Z_EXIT = 0.5
+RV01_Z_STOP = 4.0
+RV01_LOOKBACK_SESSIONS = 20
+RV01_MAX_HOLD_NS = 6 * 3600 * 1_000_000_000
+RV02_REL_GAP_PCT = 0.4
+LH03_ATR_MULT = 1.2
+LH03_ATR_LEN = 14
+LH03_LAG_NS = 5 * 60 * 1_000_000_000
+VIX_FILTER_MAX = 25.0
+VIX_FILTER_RULE = "previous_day_close"
 KILL_DSR_MIN = FLOOR_DSR_PROBABILITY_MIN
 KILL_OOS_POSITIVE_MIN = 7
 KILL_OOS_WINDOWS = 8
 STATUS_READY = "ready"
 STATUS_BLOCKED = "blocked_missing_data"
+STATUS_DROPPED = "dropped"
 DATA_ES = "es_pre_holdout"
 DATA_NQ = "nq_pre_holdout"
 DATA_VIX = "vix"
 DATA_MACRO = "macro_calendar"
 DATA_CASH = "cash_index"
+PIN_ES_SHA256 = "6100588d2f3e519bd815b8f952dc15f01d434cc2a2b70e6453d0c3a7477bbca6"
+PIN_NQ_SHA256 = "d60dd0c203ef31382def4278f4524a671bc7b4a050ab1334948ba693e269eed8"
+PIN_NQ_GZ_SHA256 = "4f5f7d4ef94e5dbecf3afea5021ad6d693eb7050ade439dd74d076d114e5c855"
+PIN_VIX_SHA256 = "481dc031c6d2b51b9150718c21c01b7f3706c99678ebf12b0edba19d0c8d2d1d"
+PIN_MACRO_SHA256 = "104018d21552544a6c60ef52de0bbb6c82447c6afcb685e3059a14edd1c19aa7"
+MACRO_EVENT_NAMES: frozenset[str] = frozenset({"CPI", "NFP", "FOMC_STATEMENT"})
 
 _REPO = Path(__file__).resolve().parents[2]
 FINALE_PREREG_PATH = _REPO / "docs" / "research" / FINALE_PREREG_NAME
+DATA_ANSWERS_PATH = _REPO / "docs" / "research" / DATA_ANSWERS_NAME
 SEARCH_SPACE_PREREG_PATH = _REPO / "experiments" / "reports" / SEARCH_SPACE_PREREG_NAME
 DEFAULT_POWER_JSON = _REPO / "experiments" / "reports" / "phase5_p2_final_cycle_data_power.json"
 
@@ -56,20 +82,26 @@ NQ_TAPE_SEARCHED: tuple[str, ...] = (
     "data/research/NQ/1m/*.csv",
 )
 VIX_SEARCHED: tuple[str, ...] = (
+    "/tmp/lumina-vix/VIX_daily_pre_holdout.csv",
+    "/tmp/lumina-vix/vix.csv",
     "$LUMINA_RESEARCH_DATA_DIR/VIX/1d/vix.csv",
     "data/research/VIX/1d/vix.csv",
-    "/tmp/lumina-vix/vix.csv",
 )
 MACRO_SEARCHED: tuple[str, ...] = (
+    "/tmp/lumina-macro/macro_events_pre_holdout.csv",
+    "/tmp/lumina-macro/releases.csv",
     "$LUMINA_RESEARCH_DATA_DIR/macro/releases.csv",
     "data/research/macro/releases.csv",
-    "/tmp/lumina-macro/releases.csv",
 )
 CASH_SEARCHED: tuple[str, ...] = (
     "$LUMINA_RESEARCH_DATA_DIR/SPX/1d/spx.csv",
     "data/research/SPX/1d/spx.csv",
     "/tmp/lumina-cash/spx.csv",
 )
+
+
+class DataPinRefused(RuntimeError):
+    """A pre-holdout file exists but does not match the locked sha256 pin."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +113,8 @@ class FinalHypothesis:
     required_data: tuple[str, ...]
     entry: str
     exit_stop: str
+    dropped: bool = False
+    dropped_reason: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +130,9 @@ class DataAvailability:
     macro_path: str | None
     cash_path: str | None
     es_sha256: str | None
+    nq_sha256: str | None = None
+    vix_sha256: str | None = None
+    macro_sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +142,14 @@ class PowerRow:
     status: str
     n_trades: int | None
     missing: tuple[str, ...]
+    dropped_reason: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class MacroEvent:
+    event: str
+    event_ns: int
+    session: date
 
 
 LOCKED_HYPOTHESES: tuple[FinalHypothesis, ...] = (
@@ -114,8 +159,8 @@ LOCKED_HYPOTHESES: tuple[FinalHypothesis, ...] = (
         kind=KIND_RELATIVE_VALUE,
         instruments=("ES", "NQ"),
         required_data=(DATA_ES, DATA_NQ, DATA_VIX),
-        entry="RTH ES/NQ close-ratio z>2.5 lookback 20 sessions; VIX<25",
-        exit_stop="exit z<0.5 or 6h; stop |z|>=4.0",
+        entry="RTH ES/NQ close-ratio |z|>2.5 lookback 20 sessions; previous-day VIX<25",
+        exit_stop="exit |z|<0.5 or 6h; stop |z|>=4.0",
     ),
     FinalHypothesis(
         research_id="RV-02",
@@ -123,7 +168,7 @@ LOCKED_HYPOTHESES: tuple[FinalHypothesis, ...] = (
         kind=KIND_RELATIVE_VALUE,
         instruments=("ES", "NQ"),
         required_data=(DATA_ES, DATA_NQ),
-        entry="RTH open relative overnight gap (ES%-NQ%)>0.4%; dollar-neutral fade",
+        entry="RTH open |ES%−NQ% overnight gap|>0.4%; dollar-neutral fade",
         exit_stop="exit 50% fill or 90min; stop 1.5x relative gap",
     ),
     FinalHypothesis(
@@ -143,6 +188,8 @@ LOCKED_HYPOTHESES: tuple[FinalHypothesis, ...] = (
         required_data=(DATA_ES,),
         entry="Monday RTH open fade if Friday |OC|>1.5x ATR14",
         exit_stop="exit 40% retrace or 2h; stop 1.0x Friday RTH range",
+        dropped=True,
+        dropped_reason="power n_trades=5",
     ),
     FinalHypothesis(
         research_id="LH-03",
@@ -161,6 +208,8 @@ LOCKED_HYPOTHESES: tuple[FinalHypothesis, ...] = (
         required_data=(DATA_ES, DATA_CASH),
         entry="cash-futures basis z>2.0 fade to mean",
         exit_stop="exit z->0; stop |z|>=3.5",
+        dropped=True,
+        dropped_reason="no free 1-minute SPX cash data",
     ),
 )
 
@@ -173,6 +222,10 @@ def all_config_ids() -> tuple[str, ...]:
     return tuple(item.config_id for item in LOCKED_HYPOTHESES)
 
 
+def dropped_config_ids() -> tuple[str, ...]:
+    return tuple(item.config_id for item in LOCKED_HYPOTHESES if item.dropped)
+
+
 def kill_rule() -> Mapping[str, object]:
     return {
         "dsr_min": KILL_DSR_MIN,
@@ -180,6 +233,19 @@ def kill_rule() -> Mapping[str, object]:
         "oos_windows": KILL_OOS_WINDOWS,
         "net_positive": True,
         "text": "DSR>=0.95 AND >=7/8 OOS+ AND net>0",
+    }
+
+
+def data_pins() -> Mapping[str, object]:
+    return {
+        "holdout_pin": HOLDOUT_PIN_Z,
+        "es_pre_holdout_sha256": PIN_ES_SHA256,
+        "nq_pre_holdout_sha256": PIN_NQ_SHA256,
+        "nq_gz_sha256": PIN_NQ_GZ_SHA256,
+        "vix_sha256": PIN_VIX_SHA256,
+        "macro_sha256": PIN_MACRO_SHA256,
+        "vix_filter_rule": VIX_FILTER_RULE,
+        "cash_index": None,
     }
 
 
@@ -210,27 +276,36 @@ def _first_existing(patterns: Sequence[str]) -> Path | None:
     return None
 
 
+def _pinned(path: Path | None, expected: str, label: str) -> tuple[str | None, str | None]:
+    if path is None:
+        return None, None
+    digest = _sha256(path)
+    if digest != expected:
+        raise DataPinRefused(f"{label} pin mismatch: got {digest}, expected {expected}")
+    return str(path), digest
+
+
 def check_data_availability() -> DataAvailability:
-    es_path = _first_existing(ES_TAPE_SEARCHED)
-    nq_path = _first_existing(NQ_TAPE_SEARCHED)
-    vix_path = _first_existing(VIX_SEARCHED)
-    macro_path = _first_existing(MACRO_SEARCHED)
+    es_path, es_sha = _pinned(_first_existing(ES_TAPE_SEARCHED), PIN_ES_SHA256, "ES")
+    nq_path, nq_sha = _pinned(_first_existing(NQ_TAPE_SEARCHED), PIN_NQ_SHA256, "NQ")
+    vix_path, vix_sha = _pinned(_first_existing(VIX_SEARCHED), PIN_VIX_SHA256, "VIX")
+    macro_path, macro_sha = _pinned(_first_existing(MACRO_SEARCHED), PIN_MACRO_SHA256, "macro")
     cash_path = _first_existing(CASH_SEARCHED)
-    es_sha: str | None = None
-    if es_path is not None:
-        es_sha = _sha256(es_path)
     return DataAvailability(
         es_pre_holdout=es_path is not None,
         nq_pre_holdout=nq_path is not None,
         vix=vix_path is not None,
         macro_calendar=macro_path is not None,
         cash_index=cash_path is not None,
-        es_path=None if es_path is None else str(es_path),
-        nq_path=None if nq_path is None else str(nq_path),
-        vix_path=None if vix_path is None else str(vix_path),
-        macro_path=None if macro_path is None else str(macro_path),
+        es_path=es_path,
+        nq_path=nq_path,
+        vix_path=vix_path,
+        macro_path=macro_path,
         cash_path=None if cash_path is None else str(cash_path),
         es_sha256=es_sha,
+        nq_sha256=nq_sha,
+        vix_sha256=vix_sha,
+        macro_sha256=macro_sha,
     )
 
 
@@ -282,13 +357,198 @@ def count_weekend_mr(bars: Sequence[ResearchBar]) -> int:
     return n_trades
 
 
+def count_ratio_mr(
+    es_bars: Sequence[ResearchBar],
+    nq_bars: Sequence[ResearchBar],
+    vix: Sequence[tuple[date, float]],
+) -> int:
+    """RV-01 entries: |z|>2.5 vs 20 prior session-close ratios, previous-day VIX<25.
+
+    Both tails. One position at a time. Same-bar re-entry is refused.
+    """
+    nq_close = {item.ts_ns: item.close for item in nq_bars}
+    es_sessions = _rth_sessions(es_bars)
+    nq_sessions = _rth_sessions(nq_bars)
+    es_close = {item.session: item.close for item in es_sessions}
+    nq_sess_close = {item.session: item.close for item in nq_sessions}
+    common = sorted(set(es_close) & set(nq_sess_close))
+    ratios = [es_close[day] / nq_sess_close[day] for day in common]
+    stats_by_day: dict[date, tuple[float, float]] = {}
+    for index, day in enumerate(common):
+        if index < RV01_LOOKBACK_SESSIONS:
+            continue
+        fitted = _mean_std(ratios[index - RV01_LOOKBACK_SESSIONS : index])
+        if fitted is not None:
+            stats_by_day[day] = fitted
+    labels = annotate(es_bars)
+    in_trade = False
+    exit_ns = 0
+    n_trades = 0
+    for bar, session, is_rth in zip(es_bars, labels.session_dates, labels.rth, strict=True):
+        if not is_rth:
+            continue
+        nq_px = nq_close.get(bar.ts_ns)
+        if nq_px is None or nq_px == 0.0:
+            continue
+        fitted = stats_by_day.get(session)
+        if fitted is None:
+            continue
+        mean, std = fitted
+        z_score = (bar.close / nq_px - mean) / std
+        abs_z = abs(z_score)
+        if in_trade:
+            if bar.ts_ns >= exit_ns or abs_z < RV01_Z_EXIT or abs_z >= RV01_Z_STOP:
+                in_trade = False
+            continue
+        vix_prev = previous_vix_close(vix, session)
+        if vix_prev is None or vix_prev >= VIX_FILTER_MAX:
+            continue
+        if abs_z > RV01_Z_ENTRY:
+            n_trades += 1
+            in_trade = True
+            exit_ns = bar.ts_ns + RV01_MAX_HOLD_NS
+    return n_trades
+
+
+def count_relative_gap_fade(
+    es_bars: Sequence[ResearchBar],
+    nq_bars: Sequence[ResearchBar],
+) -> int:
+    """RV-02 entries: |ES overnight % − NQ overnight %| > 0.4 at RTH open."""
+    es_sessions = _rth_sessions(es_bars)
+    nq_sessions = {item.session: item for item in _rth_sessions(nq_bars)}
+    n_trades = 0
+    previous: _RthSession | None = None
+    for day in es_sessions:
+        nq_day = nq_sessions.get(day.session)
+        if nq_day is None:
+            continue
+        if previous is not None:
+            nq_prev = nq_sessions[previous.session]
+            if previous.close > 0.0 and nq_prev.close > 0.0:
+                es_gap = (day.open / previous.close - 1.0) * 100.0
+                nq_gap = (nq_day.open / nq_prev.close - 1.0) * 100.0
+                if abs(es_gap - nq_gap) > RV02_REL_GAP_PCT:
+                    n_trades += 1
+        previous = day
+    return n_trades
+
+
+def count_macro_fade(es_bars: Sequence[ResearchBar], events: Sequence[MacroEvent]) -> int:
+    """LH-03 entries: |close(+5min) − last close before event| > 1.2 × ATR14."""
+    sessions = _rth_sessions(es_bars)
+    ranges = [item.high - item.low for item in sessions]
+    session_index = {item.session: index for index, item in enumerate(sessions)}
+    ts_list = [item.ts_ns for item in es_bars]
+    by_ts = {item.ts_ns: item for item in es_bars}
+    n_trades = 0
+    for event in events:
+        post = by_ts.get(event.event_ns + LH03_LAG_NS)
+        if post is None:
+            continue
+        pre_index = bisect.bisect_left(ts_list, event.event_ns) - 1
+        if pre_index < 0:
+            continue
+        pre = es_bars[pre_index]
+        day_index = session_index.get(event.session)
+        if day_index is None:
+            prior_sessions = [item for item in sessions if item.session < event.session]
+            day_index = len(prior_sessions)
+        if day_index < LH03_ATR_LEN:
+            continue
+        atr = sum(ranges[day_index - LH03_ATR_LEN : day_index]) / float(LH03_ATR_LEN)
+        if atr <= 0.0:
+            continue
+        if abs(post.close - pre.close) > LH03_ATR_MULT * atr:
+            n_trades += 1
+    return n_trades
+
+
+def previous_vix_close(vix: Sequence[tuple[date, float]], session: date) -> float | None:
+    """Last VIX daily close with date strictly before the RTH session date."""
+    if not vix:
+        return None
+    dates = [item[0] for item in vix]
+    index = bisect.bisect_left(dates, session) - 1
+    if index < 0:
+        return None
+    return vix[index][1]
+
+
+def load_vix(path: Path) -> tuple[tuple[date, float], ...]:
+    rows: list[tuple[date, float]] = []
+    with path.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            raw_date = row.get("date")
+            raw_close = row.get("close")
+            if not raw_date or raw_close is None:
+                continue
+            day = date.fromisoformat(raw_date)
+            close = float(raw_close)
+            rows.append((day, close))
+    rows.sort(key=lambda item: item[0])
+    last = rows[-1][0] if rows else None
+    if last is not None and last >= date(2026, 1, 29):
+        raise DataPinRefused("VIX series reaches the holdout")
+    return tuple(rows)
+
+
+def load_macro_events(path: Path) -> tuple[MacroEvent, ...]:
+    events: list[MacroEvent] = []
+    with path.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            name = str(row.get("event", "")).strip()
+            if name not in MACRO_EVENT_NAMES:
+                continue
+            raw_date = str(row.get("date", "")).strip()
+            raw_time = str(row.get("time_et", "")).strip()
+            hour_s, minute_s = raw_time.split(":", 1)
+            local = datetime(
+                int(raw_date[0:4]),
+                int(raw_date[5:7]),
+                int(raw_date[8:10]),
+                int(hour_s),
+                int(minute_s),
+                tzinfo=ET,
+            )
+            event_ns = int(local.astimezone(timezone.utc).timestamp() * 1_000_000_000)
+            if event_ns >= P2_HOLDOUT_START_NS:
+                raise DataPinRefused("macro event on or after the holdout pin")
+            events.append(
+                MacroEvent(
+                    event=name,
+                    event_ns=event_ns,
+                    session=globex_session_date(local),
+                )
+            )
+    return tuple(events)
+
+
 def power_rows(
     avail: DataAvailability,
     *,
     es_bars: Sequence[ResearchBar] | None,
+    nq_bars: Sequence[ResearchBar] | None = None,
+    vix: Sequence[tuple[date, float]] | None = None,
+    events: Sequence[MacroEvent] | None = None,
 ) -> tuple[PowerRow, ...]:
     rows: list[PowerRow] = []
     for hyp in LOCKED_HYPOTHESES:
+        if hyp.dropped:
+            n_trades: int | None = None
+            if hyp.research_id == "LH-02" and es_bars is not None:
+                n_trades = count_weekend_mr(es_bars)
+            rows.append(
+                PowerRow(
+                    research_id=hyp.research_id,
+                    config_id=hyp.config_id,
+                    status=STATUS_DROPPED,
+                    n_trades=n_trades,
+                    missing=(),
+                    dropped_reason=hyp.dropped_reason,
+                )
+            )
+            continue
         missing = missing_data_for(hyp, avail)
         if missing:
             rows.append(
@@ -301,30 +561,50 @@ def power_rows(
                 )
             )
             continue
-        n_trades: int
-        if hyp.research_id == "LH-01":
-            if es_bars is None:
-                raise ValueError("LH-01 power requires ES bars")
-            n_trades = count_nr7_breakouts(es_bars)
-        elif hyp.research_id == "LH-02":
-            if es_bars is None:
-                raise ValueError("LH-02 power requires ES bars")
-            n_trades = count_weekend_mr(es_bars)
-        else:
-            raise ValueError(f"{hyp.research_id} is ready but has no power counter")
+        counted = _count_ready(hyp.research_id, es_bars, nq_bars, vix, events)
         rows.append(
             PowerRow(
                 research_id=hyp.research_id,
                 config_id=hyp.config_id,
                 status=STATUS_READY,
-                n_trades=n_trades,
+                n_trades=counted,
                 missing=(),
             )
         )
     return tuple(rows)
 
 
+def _count_ready(
+    research_id: str,
+    es_bars: Sequence[ResearchBar] | None,
+    nq_bars: Sequence[ResearchBar] | None,
+    vix: Sequence[tuple[date, float]] | None,
+    events: Sequence[MacroEvent] | None,
+) -> int:
+    if research_id == "LH-01":
+        if es_bars is None:
+            raise ValueError("LH-01 power requires ES bars")
+        return count_nr7_breakouts(es_bars)
+    if research_id == "RV-01":
+        if es_bars is None or nq_bars is None or vix is None:
+            raise ValueError("RV-01 power requires ES, NQ, and VIX")
+        return count_ratio_mr(es_bars, nq_bars, vix)
+    if research_id == "RV-02":
+        if es_bars is None or nq_bars is None:
+            raise ValueError("RV-02 power requires ES and NQ")
+        return count_relative_gap_fade(es_bars, nq_bars)
+    if research_id == "LH-03":
+        if es_bars is None or events is None:
+            raise ValueError("LH-03 power requires ES and macro events")
+        return count_macro_fade(es_bars, events)
+    raise ValueError(f"{research_id} is ready but has no power counter")
+
+
 def load_pre_holdout_es(path: Path) -> tuple[ResearchBar, ...]:
+    return load_pre_holdout_bars(path)
+
+
+def load_pre_holdout_bars(path: Path) -> tuple[ResearchBar, ...]:
     bars = read_csv_bars(path)
     assert_no_holdout_timestamps(bars, pin_ns=P2_HOLDOUT_START_NS)
     return bars
@@ -334,24 +614,41 @@ def build_power_report(
     *,
     avail: DataAvailability | None = None,
     es_bars: Sequence[ResearchBar] | None = None,
+    nq_bars: Sequence[ResearchBar] | None = None,
+    vix: Sequence[tuple[date, float]] | None = None,
+    events: Sequence[MacroEvent] | None = None,
 ) -> dict[str, object]:
     found = check_data_availability() if avail is None else avail
     bars = es_bars
+    nq = nq_bars
+    vix_rows = vix
+    macro_rows = events
     if bars is None and found.es_path is not None:
-        bars = load_pre_holdout_es(Path(found.es_path))
-    rows = power_rows(found, es_bars=bars)
+        bars = load_pre_holdout_bars(Path(found.es_path))
+    if nq is None and found.nq_path is not None:
+        nq = load_pre_holdout_bars(Path(found.nq_path))
+    if vix_rows is None and found.vix_path is not None:
+        vix_rows = load_vix(Path(found.vix_path))
+    if macro_rows is None and found.macro_path is not None:
+        macro_rows = load_macro_events(Path(found.macro_path))
+    rows = power_rows(found, es_bars=bars, nq_bars=nq, vix=vix_rows, events=macro_rows)
     return {
-        "schema": "lumina.research.final_cycle_power.v1",
+        "schema": "lumina.research.final_cycle_power.v2",
         "finale_prereg": FINALE_PREREG_NAME,
         "finale_prereg_sha256": FINALE_PREREG_SHA256,
+        "data_answers": DATA_ANSWERS_NAME,
+        "data_answers_sha256": DATA_ANSWERS_SHA256,
         "n_hypotheses": N_HYPOTHESES,
         "n_hypotheses_cap": NEW_BOOK_HYPOTHESIS_CAP,
+        "dropped_config_ids": list(dropped_config_ids()),
         "lh01_target_range_mult": LH01_TARGET_RANGE_MULT,
         "rv02_sizing": RV02_SIZING,
+        "vix_filter_rule": VIX_FILTER_RULE,
         "kill": dict(kill_rule()),
-        "holdout_pin": "2026-01-28T23:00:00Z",
+        "holdout_pin": HOLDOUT_PIN_Z,
         "trials_run": False,
         "dsr_pbo_n": 0,
+        "data_pins": dict(data_pins()),
         "data": {
             "es_pre_holdout": found.es_pre_holdout,
             "nq_pre_holdout": found.nq_pre_holdout,
@@ -364,6 +661,9 @@ def build_power_report(
             "macro_path": found.macro_path,
             "cash_path": found.cash_path,
             "es_sha256": found.es_sha256,
+            "nq_sha256": found.nq_sha256,
+            "vix_sha256": found.vix_sha256,
+            "macro_sha256": found.macro_sha256,
         },
         "hypotheses": [
             {
@@ -372,6 +672,7 @@ def build_power_report(
                 "status": row.status,
                 "n_trades": row.n_trades,
                 "missing": list(row.missing),
+                "dropped_reason": row.dropped_reason,
             }
             for row in rows
         ],
@@ -411,6 +712,17 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _mean_std(values: Sequence[float]) -> tuple[float, float] | None:
+    count = len(values)
+    if count < 2:
+        return None
+    mean = sum(values) / float(count)
+    var = sum((item - mean) ** 2 for item in values) / float(count - 1)
+    if var <= 0.0:
+        return None
+    return mean, math.sqrt(var)
 
 
 @dataclass(frozen=True, slots=True)
@@ -462,6 +774,10 @@ def _assert_lock_invariants() -> None:
         raise RuntimeError("LH-01 target must be the single locked 1.5x")
     if RV02_SIZING != "dollar_neutral":
         raise RuntimeError("RV-02 sizing must be dollar_neutral")
+    if VIX_FILTER_RULE != "previous_day_close":
+        raise RuntimeError("RV-01 VIX filter must use previous_day_close")
+    if dropped_config_ids() != ("p2s-lh-02", "p2s-lh-04"):
+        raise RuntimeError("LH-02 and LH-04 must stay dropped inside n=6")
     ids = [item.config_id for item in LOCKED_HYPOTHESES]
     if len(set(ids)) != len(ids):
         raise RuntimeError("final-cycle config ids must be unique")

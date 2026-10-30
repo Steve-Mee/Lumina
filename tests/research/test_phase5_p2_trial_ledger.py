@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from lumina_research.cycles.final_cycle import DATA_ANSWERS_SHA256, FINALE_PREREG_SHA256
 from lumina_research.cycles.nq_research import KIND_RELATIVE_VALUE
 from lumina_research.cycles.null_model import NULL_BUILDER
 from lumina_research.cycles.search_space import NEW_BOOK_HYPOTHESIS_CAP, NEW_BOOK_MAX_CYCLES
@@ -205,6 +206,14 @@ def test_canonical_ledger_closes_old_book_and_holds_new_book_at_zero() -> None:
     answers = payload["answers"]
     assert isinstance(answers, dict)
     assert answers["stoptelling_sha256"] == STOPTELLING_ANSWERS_SHA256
+    assert answers["finale_cyclus_sha256"] == FINALE_PREREG_SHA256
+    assert answers["data_sha256"] == DATA_ANSWERS_SHA256
+    assert payload["active_book"]["dropped_config_ids"] == ["p2s-lh-02", "p2s-lh-04"]
+    assert payload["active_book"]["n_hypotheses_stated"] == 6
+    pins = payload["active_book"]["data_pins"]
+    assert isinstance(pins, dict)
+    assert pins["vix_filter_rule"] == "previous_day_close"
+    assert pins["nq_pre_holdout_sha256"].startswith("d60dd0c2")
     assert payload["fundamental_change_approval"] is None
     assert payload["active_book"]["n_cycles_allowed"] == 1
     assert payload["active_book"]["n_hypotheses_cap"] == 25
