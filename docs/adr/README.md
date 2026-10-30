@@ -81,6 +81,7 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0067 | P2 drift-aware multi-seed null (D13); 32 seeds, per-window detrend+balance | Proposed | 2026-10-29 | [0067-p2-drift-aware-multiseed-null.md](./0067-p2-drift-aware-multiseed-null.md) |
 | 0068 | P2 per-family ATR/points geometry; 16/8 archived as lab | Proposed | 2026-10-29 | [0068-p2-atr-geometry.md](./0068-p2-atr-geometry.md) |
 | 0069 | P2 team answers: calibrated 7/8 null gate, midpoints, NQ lock, per-family BE | Proposed | 2026-10-29 | [0069-p2-team-answers-null-geo-nq.md](./0069-p2-team-answers-null-geo-nq.md) |
+| 0070 | P2 post-kill follow-up: 2.4 ATR breakouts + TOD lookback-45 | Proposed | 2026-10-30 | [0070-p2-postkill-breakout-tod-followup.md](./0070-p2-postkill-breakout-tod-followup.md) |
 
 ## Legacy notitie
 

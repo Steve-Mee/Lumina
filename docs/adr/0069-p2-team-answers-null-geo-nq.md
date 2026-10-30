@@ -2,7 +2,7 @@
 
 **Status:** Proposed
 **Date:** 2026-10-29
-**Deciders:** Onderzoeksteam answers 2026-10-29 17:34, 18:17, 19:24, 21:29, 22:08, and 23:07 (forwarded by Steve; not Steve's opinion) + LUMINA Engineering
+**Deciders:** Onderzoeksteam answers 2026-10-29 17:34, 18:17, 19:24, 21:29, 22:08, 23:07, and 2026-10-30 06:38 (forwarded by Steve; not Steve's opinion) + LUMINA Engineering
 
 Addendum to ADR-0067 / 0068. Does not rewrite CostModel 1.2.0, DSR 0.95, PBO 0.50,
 A2 planted detection, holdout pin `2026-01-28T23:00:00Z`, or Risk Core.
@@ -119,6 +119,10 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
     seeing results. Full Charter gate plus the 7/8 null gate. Optional
     lower-hitrate / no-lookahead plants stay later diagnostics, not this
     run.
+17. **Post-kill follow-up (06:38).** Diagnose the two breakouts from the
+    limited-es PIT, then at most two extra trials at target 2.4 ATR and one
+    TOD lookback-45. See ADR-0070. Missing ES tape → stop, do not invent
+    bars. Plants still later.
 
 ## Consequences
 
@@ -213,6 +217,8 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
     rejected.
 19. Run optional lower-hitrate / no-lookahead plants in this change —
     rejected (non-blocking, later).
+20. Stretch breakout target or refine TOD without a new pre-register —
+    rejected (06:38). ADR-0070.
 
 ## Links
 
@@ -222,14 +228,17 @@ capital preservation (no orders, holdout sealed, Risk Core untouched).
 - Answers freeze (21:29): `docs/research/ONDERZOEKERS-ANTWOORDEN-MIDPOINT-20261029T2129.md`
 - Answers freeze (22:08): `docs/research/ONDERZOEKERS-ANTWOORDEN-POWER-S4-20261029T2208.md`
 - Answers freeze (23:07): `docs/research/ONDERZOEKERS-ANTWOORDEN-LIMITEDGO-20261029T2307.md`
+- Answers freeze (06:38): `docs/research/ONDERZOEKERS-ANTWOORDEN-POSTKILL-20261030T0638.md`
 - Pre-register (null v2): `experiments/reports/phase5_p2_null_v2_preregister_addendum_2026-10-29.md`
 - Pre-register (midpoint D13): `experiments/reports/phase5_p2_midpoint_d13_preregister_2026-10-29.md`
 - Pre-register (midpoint power): `experiments/reports/phase5_p2_midpoint_power_preregister_2026-10-29.md`
 - Pre-register (midpoint power floor): `experiments/reports/phase5_p2_midpoint_power_floor_preregister_2026-10-29.md`
 - Pre-register (limited ES): `experiments/reports/phase5_p2_limited_es_preregister_2026-10-29.md`
+- Pre-register (postkill): `experiments/reports/phase5_p2_postkill_preregister_2026-10-30.md`
 - PIT (limited ES): `experiments/reports/phase5_p2_limited_es_end.json`,
   `phase5_p2_limited_es_end_report_2026-10-29.md`
 - Code: `lumina_research/cycles/null_model.py`, `null_only.py`, `null_lock.py`,
   `nq_lock.py`, `geometry.py`, `diagnostics.py`, `atr_cycle.py`,
-  `positive_control.py`, `midpoint_d13.py`, `limited_es.py`, `runner.py`
-- Related: ADR-0067, ADR-0068
+  `positive_control.py`, `midpoint_d13.py`, `limited_es.py`, `postkill_es.py`,
+  `runner.py`
+- Related: ADR-0067, ADR-0068, ADR-0070
