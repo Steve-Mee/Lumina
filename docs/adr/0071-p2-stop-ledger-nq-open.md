@@ -111,3 +111,4 @@ SIM/promotion, holdout sealed, Risk Core untouched).
   `lumina_research/cycles/search_space.py`,
   `lumina_research/cycles/nq_research.py`
 - Related: ADR-0069, ADR-0070
+- Follow-up: ADR-0072 (09:13 six-hypothesis search-space lock)

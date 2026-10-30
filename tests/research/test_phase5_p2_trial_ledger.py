@@ -178,14 +178,14 @@ def test_canonical_ledger_closes_old_book_and_holds_new_book_at_zero() -> None:
     assert n_full_cycles() == 3
     assert n_prereg_hypotheses() == 19
     assert n_survivors() == 0
-    assert ledger.active_open is False
-    assert ledger.active_status == NEW_BOOK_STATUS
+    assert ledger.active_open is True
+    assert ledger.active_status == "open"
     assert ledger.n_cycles_allowed == 1
     assert ledger.n_cycles_completed == 0
     assert ledger.n_hypotheses_cap == 25
-    assert ledger.n_hypotheses_stated is None
+    assert ledger.n_hypotheses_stated == 6
     assert ledger.research_line_stopped is False
-    assert ledger.blocks_run is True
+    assert ledger.blocks_run is False
     assert NEW_BOOK_MAX_CYCLES == 1
     assert NEW_BOOK_HYPOTHESIS_CAP == 25
     assert STOP_CRITERION_TRIPPED is True
@@ -210,8 +210,9 @@ def test_canonical_ledger_closes_old_book_and_holds_new_book_at_zero() -> None:
     assert payload["active_book"]["n_hypotheses_cap"] == 25
     with pytest.raises(LedgerBlocksRun, match="closed"):
         assert_ledger_allows_run(cycle="postkill-es")
-    with pytest.raises(LedgerBlocksRun, match="search-space prereg"):
-        assert_ledger_allows_run()
+    allowed = assert_ledger_allows_run()
+    assert allowed.dsr_pbo_n == 0
+    assert allowed.n_hypotheses_stated == 6
 
 
 @pytest.mark.unit

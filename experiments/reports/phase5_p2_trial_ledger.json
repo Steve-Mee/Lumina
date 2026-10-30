@@ -8,7 +8,9 @@
     "boeksplit": "ONDERZOEKERS-ANTWOORDEN-BOEKSPLIT-20261030T0833.md",
     "boeksplit_sha256": "a970bf171b9e38a0bdc69b919c7cc0484c711e99068bfcd765e9f6d5d6c21474",
     "stoptelling": "ONDERZOEKERS-ANTWOORDEN-STOPTELLING-20261030T0850.md",
-    "stoptelling_sha256": "547f30476afe10f4cdc6a4918a48b0e2719964e9251d6f8c1ac7e40dc6787f11"
+    "stoptelling_sha256": "547f30476afe10f4cdc6a4918a48b0e2719964e9251d6f8c1ac7e40dc6787f11",
+    "finale_cyclus": "ONDERZOEKERS-PREREG-FINALE-CYCLUS-20261030T0913.md",
+    "finale_cyclus_sha256": "106af5b23d2eeb24454a2174e8c59ae24fb69e78c9729bb6e2accf3452aedade"
   },
   "stop_criterion": {
     "tripped": true,
@@ -67,13 +69,44 @@
   ],
   "active_book": {
     "id": "p2-next-search-space",
-    "status": "awaiting_search_space_prereg",
-    "open": false,
-    "search_space_prereg": null,
+    "status": "open",
+    "open": true,
+    "search_space_prereg": {
+      "lower_turnover": true,
+      "longer_horizon": true,
+      "relative_value_config_ids": [
+        "p2s-rv-01",
+        "p2s-rv-02"
+      ],
+      "n_hypotheses": 6,
+      "null_builder": "linear_magnitude",
+      "positive_control_included": true,
+      "committed_path": "experiments/reports/phase5_p2_search_space_preregister_2026-10-30.md",
+      "same_space_short_horizon": false,
+      "nq_request": {
+        "hypothesis_kind": "relative_value",
+        "instruments": [
+          "ES",
+          "NQ"
+        ],
+        "tape_window": "pre_holdout",
+        "holdout_opened": false,
+        "holdout_pin": "2026-01-28T23:00:00Z",
+        "null_builder": "linear_magnitude",
+        "positive_control_included": true,
+        "config_ids": [
+          "p2s-rv-01",
+          "p2s-rv-02"
+        ],
+        "reuses_prereg_ids": [],
+        "sim_requested": false,
+        "promotion_requested": false
+      }
+    },
     "n_cycles_allowed": 1,
     "n_cycles_completed": 0,
     "n_hypotheses_cap": 25,
-    "n_hypotheses_stated": null,
+    "n_hypotheses_stated": 6,
     "research_line_stopped": false,
     "n_by_market": {
       "ES": 0,
@@ -83,6 +116,6 @@
     },
     "n_total": 0,
     "dsr_pbo_n": 0,
-    "note": "Exactly 1 cycle or at most 20-25 hypotheses, whichever comes first. Absolute cap 25. A 2nd cycle is refused. 0 survivors -> research_line_stopped. DSR/PBO N=0. No search-space prereg in this change."
+    "note": "09:13 lock: 6 hypotheses, 1 cycle, cap 25. DSR/PBO N=0. No trials in this change. Blocked ids stay on the list."
   }
 }

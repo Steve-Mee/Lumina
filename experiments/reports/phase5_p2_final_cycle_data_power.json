@@ -1,0 +1,85 @@
+{
+  "schema": "lumina.research.final_cycle_power.v1",
+  "finale_prereg": "ONDERZOEKERS-PREREG-FINALE-CYCLUS-20261030T0913.md",
+  "finale_prereg_sha256": "106af5b23d2eeb24454a2174e8c59ae24fb69e78c9729bb6e2accf3452aedade",
+  "n_hypotheses": 6,
+  "n_hypotheses_cap": 25,
+  "lh01_target_range_mult": 1.5,
+  "rv02_sizing": "dollar_neutral",
+  "kill": {
+    "dsr_min": 0.95,
+    "oos_positive_min": 7,
+    "oos_windows": 8,
+    "net_positive": true,
+    "text": "DSR>=0.95 AND >=7/8 OOS+ AND net>0"
+  },
+  "holdout_pin": "2026-01-28T23:00:00Z",
+  "trials_run": false,
+  "dsr_pbo_n": 0,
+  "data": {
+    "es_pre_holdout": true,
+    "nq_pre_holdout": false,
+    "vix": false,
+    "macro_calendar": false,
+    "cash_index": false,
+    "es_path": "/tmp/lumina-es/ES_pre_holdout.csv",
+    "nq_path": null,
+    "vix_path": null,
+    "macro_path": null,
+    "cash_path": null,
+    "es_sha256": "6100588d2f3e519bd815b8f952dc15f01d434cc2a2b70e6453d0c3a7477bbca6"
+  },
+  "hypotheses": [
+    {
+      "research_id": "RV-01",
+      "config_id": "p2s-rv-01",
+      "status": "blocked_missing_data",
+      "n_trades": null,
+      "missing": [
+        "nq_pre_holdout",
+        "vix"
+      ]
+    },
+    {
+      "research_id": "RV-02",
+      "config_id": "p2s-rv-02",
+      "status": "blocked_missing_data",
+      "n_trades": null,
+      "missing": [
+        "nq_pre_holdout"
+      ]
+    },
+    {
+      "research_id": "LH-01",
+      "config_id": "p2s-lh-01",
+      "status": "ready",
+      "n_trades": 102,
+      "missing": []
+    },
+    {
+      "research_id": "LH-02",
+      "config_id": "p2s-lh-02",
+      "status": "ready",
+      "n_trades": 5,
+      "missing": []
+    },
+    {
+      "research_id": "LH-03",
+      "config_id": "p2s-lh-03",
+      "status": "blocked_missing_data",
+      "n_trades": null,
+      "missing": [
+        "macro_calendar"
+      ]
+    },
+    {
+      "research_id": "LH-04",
+      "config_id": "p2s-lh-04",
+      "status": "blocked_missing_data",
+      "n_trades": null,
+      "missing": [
+        "cash_index"
+      ]
+    }
+  ]
+}
