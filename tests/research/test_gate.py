@@ -267,6 +267,40 @@ def test_missing_regimes_and_nan_metrics_reject(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_pbo_configs_above_trial_count_is_doubt(tmp_path: Path) -> None:
+    """Control-wiring invariant: PBO n_configs > n_trials is doubt, not a pass."""
+    path = tmp_path / "pbo-n.jsonl"
+    registry = _registry(path, n=1)
+    pbo = PBOSnapshot(
+        pbo=0.10,
+        n_slices=8,
+        n_combinations=70,
+        n_configs=33,
+        n_below_median=7,
+        formulation="cscv_logit_bailey_2014",
+        logit_mean=0.4,
+    )
+    dsr = DSRSnapshot(
+        probability=1.0,
+        observed_sr=0.4,
+        expected_max_sr=0.05,
+        sr_standard_error=0.04,
+        n_trials=1,
+        n_observations=300,
+        skew=0.0,
+        kurtosis=3.0,
+        formulation="bailey_lopez_de_prado_2014",
+    )
+    passed, report = passes_validation_gate(
+        _good(path, pbo=pbo, dsr=dsr, n_trials_registry=1),
+        registry=registry,
+    )
+    assert passed is False
+    assert "trial_count_below_pbo_configs" in report.reject_reasons
+    assert "doubt" in report.reject_reasons
+
+
+@pytest.mark.unit
 def test_missing_registry_rejects(tmp_path: Path) -> None:
     passed, report = passes_validation_gate(_good(tmp_path / "noreg.jsonl"))
     assert passed is False

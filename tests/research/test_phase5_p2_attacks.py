@@ -300,11 +300,14 @@ def test_identity_null_is_not_accepted_as_an_edge(tmp_path: Path, monkeypatch: p
     prepared = _control_tape()
     market = daily_market_returns(prepared.bars, prepared.session_dates)
 
-    def _identity(signals: tuple[float, ...] | list[float], *, seed: int) -> tuple[float, ...]:
-        del seed
-        return tuple(float(item) for item in signals)
+    def _identity(
+        planted: tuple[float, ...] | list[float],
+        **kwargs: object,
+    ) -> tuple[float, ...]:
+        del kwargs
+        return tuple(float(item) for item in planted)
 
-    monkeypatch.setattr("lumina_research.cycles.positive_control.shuffle_signals", _identity)
+    monkeypatch.setattr("lumina_research.cycles.positive_control.build_null_signals", _identity)
     with pytest.raises(PositiveControlFailed, match="null control|not detected"):
         run_controls(
             prepared={"MES": prepared},

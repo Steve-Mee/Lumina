@@ -24,7 +24,7 @@ from lumina_research.cycles.data import (
 from lumina_research.cycles.data_spec import write_data_spec
 from lumina_research.cycles.diagnostics import ConfigDiagnostics, empty_diagnostics
 from lumina_research.cycles.first_cycle import first_cycle_specs, write_first_cycle_preregister
-from lumina_research.cycles.geometry import Geometry, require_geometry
+from lumina_research.cycles.geometry import Geometry, family_break_even_win_rate, require_geometry
 from lumina_research.cycles.holdout import HoldoutLocked, P2_HOLDOUT_START_NS, P2_PIN_MIN_BARS, access_bars
 from lumina_research.cycles.independence import IndependenceRow, select_independent
 from lumina_research.cycles.kill_rate import diagnose_kill_rate
@@ -96,6 +96,13 @@ def run_research_cycles(
     write_sidecars: bool = True,
     seal_filename: str = SEAL_NAME,
     require_known_files: bool = True,
+    control_geometry_mode: str = "unclipped",
+    required_control_roots: frozenset[str] | None = None,
+    control_block_seeds: tuple[int, ...] | None = None,
+    prepared_tapes: dict[str, PreparedTape] | None = None,
+    status_override: DataStatus | None = None,
+    seal_sha_override: str | None = None,
+    required_control_geometries: tuple[tuple[str, float, float], ...] | None = None,
 ) -> ResearchCycleResult:
     """Pre-register template variants, then gate them on real data. No live/SIM orders."""
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -107,7 +114,7 @@ def run_research_cycles(
     specs = specs if specs is not None else first_cycle_specs()
     requested = specs
     root = repo_root if repo_root is not None else _REPO
-    status = discover_data(repo_root=root, data_dir=data_dir)
+    status = status_override if status_override is not None else discover_data(repo_root=root, data_dir=data_dir)
     seal_sha = ""
     prepared: dict[str, PreparedTape] = {}
     holdout_prepared: dict[str, PreparedTape] = {}
@@ -115,7 +122,14 @@ def run_research_cycles(
     skipped: tuple[HypothesisSpec, ...] = ()
     skip_reason = "not_tested_no_real_data"
     control_note = ""
-    if allowed_instruments is None and _is_real_p2(status):
+    if prepared_tapes is not None:
+        real_p2 = True
+        prepared = dict(prepared_tapes)
+        holdout_prepared = {}
+        seal_sha = seal_sha_override or ""
+        specs, skipped, skip_reason = _active_specs(specs, prepared)
+        specs = with_walk_forward_sizes(specs, prepared)
+    elif allowed_instruments is None and _is_real_p2(status):
         real_p2 = True
         p2_tapes = tuple(pin_tape(item) for item in status.tapes if item.instrument in {"MES", "MNQ"})
         sealed = reuse_holdout_seal(p2_tapes, report_dir=report_dir, filename=seal_filename)
@@ -185,25 +199,137 @@ def run_research_cycles(
     geometries = _geometries(tuple(specs) + skipped)
     bus = EventBus()
     registry = TrialRegistry(audit)
-    if specs and prepared and real_p2 and min(len(item.bars) for item in prepared.values()) >= DAILY_RESAMPLE_MIN_BARS:
-        if control_per_instrument:
+    tape_ready = bool(
+        specs and prepared and real_p2 and min(len(item.bars) for item in prepared.values()) >= DAILY_RESAMPLE_MIN_BARS
+    )
+    if required_control_geometries and not tape_ready:
+        report = CycleReport(
+            n_hypotheses=len(specs) + len(skipped),
+            n_tested=0,
+            n_killed=0,
+            n_survivors=0,
+            kill_rate=None,
+            kill_rate_flag="not_tested",
+            cost_bands=tuple(report_band(root) for root in ("ES", "NQ", "MES", "MNQ")),
+            data=status,
+            rows=(),
+            geometry_by_root=geometries,
+            stopped=True,
+            stop_reason="positive_control_failed",
+            holdout_seal_sha256=seal_sha,
+            wf_note=window_note(specs, n_days),
+            n_days=n_days,
+            previous_holdout_seal_sha256=LEGACY_SEAL_SHA256,
+            control_note="required control geometries need a real P2-length tape",
+            planted_detected=False,
+            null_detected=None,
+        )
+        json_path, md_path = _write_reports(
+            report,
+            report_dir,
+            cycles_stem=cycles_stem,
+            results_name=results_name,
+            write_sidecars=write_sidecars,
+        )
+        return ResearchCycleResult(
+            report=report,
+            json_path=json_path,
+            md_path=md_path,
+            data=status,
+            kill_rate=None,
+            kill_rate_flag="not_tested",
+        )
+    if tape_ready:
+        if required_control_geometries:
+            mes = prepared.get("MES") or next(iter(prepared.values()))
+            notes: list[str] = []
+            try:
+                for name, target, stop in required_control_geometries:
+                    control = run_controls(
+                        prepared=prepared,
+                        registry=registry,
+                        audit_path=audit,
+                        is_size=specs[0].is_size,
+                        oos_size=specs[0].oos_size,
+                        market_returns=market_series(mes),
+                        n_days=n_days,
+                        geometry_mode=control_geometry_mode,
+                        block_seeds=control_block_seeds,
+                        fail_closed=True,
+                        target_atr=target,
+                        stop_atr=stop,
+                    )
+                    if not control.positive.passed_gate:
+                        reasons = ",".join(control.positive.reject_reasons) or "unknown"
+                        raise PositiveControlFailed(
+                            f"{name} {target:g}/{stop:g}: passed_gate false ({reasons})",
+                            report=control,
+                        )
+                    audit_row = control.null_audit
+                    edge = "n/a" if audit_row is None else audit_row.exact_edge
+                    notes.append(f"{name} {target:g}/{stop:g}: planted detected, passed_gate, null 7/8 {edge}")
+                if control is None:
+                    raise PositiveControlFailed("required control geometries produced no report")
+            except PositiveControlFailed as exc:
+                report = CycleReport(
+                    n_hypotheses=len(specs) + len(skipped),
+                    n_tested=0,
+                    n_killed=0,
+                    n_survivors=0,
+                    kill_rate=None,
+                    kill_rate_flag="not_tested",
+                    cost_bands=tuple(report_band(root) for root in ("ES", "NQ", "MES", "MNQ")),
+                    data=status,
+                    rows=(),
+                    geometry_by_root=geometries,
+                    stopped=True,
+                    stop_reason="positive_control_failed",
+                    holdout_seal_sha256=seal_sha,
+                    wf_note=window_note(specs, n_days),
+                    n_days=n_days,
+                    previous_holdout_seal_sha256=LEGACY_SEAL_SHA256,
+                    control_note=str(exc),
+                    planted_detected=False,
+                    null_detected=None,
+                )
+                json_path, md_path = _write_reports(
+                    report,
+                    report_dir,
+                    cycles_stem=cycles_stem,
+                    results_name=results_name,
+                    write_sidecars=write_sidecars,
+                )
+                return ResearchCycleResult(
+                    report=report,
+                    json_path=json_path,
+                    md_path=md_path,
+                    data=status,
+                    kill_rate=None,
+                    kill_rate_flag="not_tested",
+                )
+            control_note = "; ".join(notes)
+        elif control_per_instrument:
             accepted, failed = run_controls_per_instrument(
                 prepared=prepared,
                 registry=registry,
                 audit_path=audit,
                 is_size=specs[0].is_size,
                 oos_size=specs[0].oos_size,
+                geometry_mode=control_geometry_mode,
+                block_seeds=control_block_seeds,
             )
             notes = [f"{root}: planted detected, null rejected" for root in sorted(accepted)]
             notes.extend(f"{root}: FAILED {reason}" for root, reason in sorted(failed.items()))
             control_note = "; ".join(notes)
-            if failed:
+            required = required_control_roots or frozenset()
+            required_failed = {root: failed[root] for root in required if root in failed}
+            if failed and not required_failed:
                 dropped_specs = tuple(item for item in specs if item.instrument in failed)
                 skipped = skipped + dropped_specs
                 skip_reason = "not_tested_control_failed"
                 prepared = {key: value for key, value in prepared.items() if key in accepted}
                 specs = tuple(item for item in specs if item.instrument in prepared)
-            if not accepted:
+            if (not accepted) or required_failed:
                 report = CycleReport(
                     n_hypotheses=len(specs) + len(skipped),
                     n_tested=0,
@@ -255,6 +381,8 @@ def run_research_cycles(
                     oos_size=specs[0].oos_size,
                     market_returns=market_series(mes),
                     n_days=n_days,
+                    geometry_mode=control_geometry_mode,
+                    block_seeds=control_block_seeds,
                 )
             except PositiveControlFailed as exc:
                 report = CycleReport(
@@ -549,6 +677,10 @@ def _skipped_row(spec: HypothesisSpec, *, reason: str) -> CycleRow:
         median_oos=None,
         geometry=geometry,
         death_reason=reason,
+        target_atr=spec.target_atr,
+        stop_atr=spec.stop_atr,
+        disable_brackets=spec.disable_brackets,
+        time_stop_bars=spec.time_stop_bars,
     )
 
 
@@ -771,7 +903,14 @@ def _overlay_diagnostics(
         seed = base
     else:
         geometry = require_geometry(root=spec.instrument, target_ticks=spec.target_ticks, stop_ticks=spec.stop_ticks)
-        seed = empty_diagnostics(be=geometry.break_even_win_rate)
+        seed = empty_diagnostics(
+            be=family_break_even_win_rate(
+                target_atr=spec.target_atr,
+                stop_atr=spec.stop_atr,
+                disable_brackets=spec.disable_brackets,
+                tick_geometry=geometry,
+            )
+        )
     net = float(sum(evaluation.net_returns)) if evaluation.net_returns else seed.net_pnl
     return replace(
         seed,
@@ -825,8 +964,8 @@ def _row(
         death_reason=death_reason(tested=tested, passed=passed, reasons=reasons, stopped=stopped),
         n_trades=None if diag is None else diag.n_trades,
         hitrate=None if diag is None else diag.hitrate,
-        break_even_win_rate=None if diag is None else diag.break_even_win_rate,
-        hitrate_minus_be=None if diag is None else diag.hitrate_minus_be,
+        break_even_win_rate=_finite_or_none(None if diag is None else diag.break_even_win_rate),
+        hitrate_minus_be=_finite_or_none(None if diag is None else diag.hitrate_minus_be),
         gross_pnl=None if diag is None else diag.gross_pnl,
         net_pnl=None if diag is None else diag.net_pnl,
         commission_usd=None if diag is None else diag.commission_usd,
@@ -843,4 +982,31 @@ def _row(
         n_days=None if diag is None else diag.n_days,
         pct_positive_oos=None if diag is None else diag.pct_positive_oos,
         bootstrap_sharpes=() if diag is None else diag.bootstrap_sharpes,
+        exit_stop=None if diag is None else diag.exit_stop,
+        exit_target=None if diag is None else diag.exit_target,
+        exit_time_stop=None if diag is None else diag.exit_time_stop,
+        exit_session_end=None if diag is None else diag.exit_session_end,
+        mean_mfe_ticks=None if diag is None else diag.mean_mfe_ticks,
+        mean_mae_ticks=None if diag is None else diag.mean_mae_ticks,
+        hitrate_unbracket_n=_finite_or_none(None if diag is None else diag.hitrate_unbracket_n),
+        hitrate_1r1r=_finite_or_none(None if diag is None else diag.hitrate_1r1r),
+        hitrate_unbracket_16=_finite_or_none(None if diag is None else diag.hitrate_unbracket_16),
+        hitrate_unbracket_60=_finite_or_none(None if diag is None else diag.hitrate_unbracket_60),
+        hitrate_unbracket_120=_finite_or_none(None if diag is None else diag.hitrate_unbracket_120),
+        gross_ticks=None if diag is None else diag.gross_ticks,
+        net_ticks=None if diag is None else diag.net_ticks,
+        gross_points=None if diag is None else diag.gross_points,
+        net_points=None if diag is None else diag.net_points,
+        target_atr=spec.target_atr,
+        stop_atr=spec.stop_atr,
+        disable_brackets=spec.disable_brackets,
+        time_stop_bars=spec.time_stop_bars,
     )
+
+
+def _finite_or_none(value: float | None) -> float | None:
+    if value is None:
+        return None
+    if value != value:
+        return None
+    return float(value)

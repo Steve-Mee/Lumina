@@ -1,0 +1,209 @@
+{
+  "schema": "lumina.research.trial_ledger.v3",
+  "answers": {
+    "fabriek": "ONDERZOEKERS-ANTWOORDEN-FABRIEK-20261030T0812.md",
+    "fabriek_sha256": "de73d38ccc30912a439b226f4248d5581f46d3253995dbbd6760fe1943c592f6",
+    "nqopen": "ONDERZOEKERS-ANTWOORDEN-NQOPEN-20261030T0815.md",
+    "nqopen_sha256": "844843564c0a4f5c8b3e6fa56aaff1ff0a696107a2020de5de9534431ab18c92",
+    "boeksplit": "ONDERZOEKERS-ANTWOORDEN-BOEKSPLIT-20261030T0833.md",
+    "boeksplit_sha256": "a970bf171b9e38a0bdc69b919c7cc0484c711e99068bfcd765e9f6d5d6c21474",
+    "stoptelling": "ONDERZOEKERS-ANTWOORDEN-STOPTELLING-20261030T0850.md",
+    "stoptelling_sha256": "547f30476afe10f4cdc6a4918a48b0e2719964e9251d6f8c1ac7e40dc6787f11",
+    "finale_cyclus": "ONDERZOEKERS-PREREG-FINALE-CYCLUS-20261030T0913.md",
+    "finale_cyclus_sha256": "971bd2ef3ca798fdd0df976349420efd9915bf6f74734d5c1f6b50de51db743e",
+    "data": "ONDERZOEKERS-ANTWOORDEN-DATA-20261030T0936.md",
+    "data_sha256": "e37cd59ead7db0779c2c8a61be0f59bce4a1e6b37281433480e9d6652741c8fb",
+    "lh03": "ONDERZOEKERS-ANTWOORDEN-LH03-20261030T1000.md",
+    "lh03_sha256": "0c549ee1a1ba901f1bc6620b2ace5b0c0b5e6736d869b863a33e10a931320c4f",
+    "bestaanstoetsen": "ONDERZOEKERS-ANTWOORDEN-BESTAANSTOETSEN-20261030T1106.md",
+    "bestaanstoetsen_sha256": "6b9dc2a894b1f10d37e6a96745377627682de7b758ee1a9cd2b70b127a5f8ab4"
+  },
+  "stop_criterion": {
+    "tripped": true,
+    "n_full_cycles": 3,
+    "n_prereg_hypotheses": 19,
+    "n_survivors": 0,
+    "counts_across_books": true,
+    "reset_by_split": false
+  },
+  "fundamental_change_approval": null,
+  "holdout_pin": "2026-01-28T23:00:00Z",
+  "chosen_rule": "split_books",
+  "min_dsr_raised": false,
+  "dsr_probability_min": 0.95,
+  "closed_books": [
+    {
+      "id": "p2-es-limited-postkill",
+      "status": "closed",
+      "n_by_market": {
+        "ES": 150,
+        "MES": 0,
+        "MNQ": 0,
+        "NQ": 0
+      },
+      "n_total": 150,
+      "dsr_pbo_n": 150,
+      "cycles": [
+        {
+          "id": "limited-es",
+          "report": "phase5_p2_limited_es_end.json",
+          "n_end": 78,
+          "instrument": "ES"
+        },
+        {
+          "id": "postkill-es",
+          "report": "phase5_p2_postkill_end.json",
+          "n_end": 150,
+          "instrument": "ES",
+          "note": "continues DSR N from limited-es 78; midpoint controls counted"
+        }
+      ]
+    },
+    {
+      "id": "p2-advisory-d13-atr-20261029",
+      "status": "closed",
+      "included_in_active_dsr_pbo": false,
+      "n_by_market": {
+        "ES": 94,
+        "MES": 74,
+        "MNQ": 41,
+        "NQ": 41
+      },
+      "n_total": 250,
+      "note": "Action-1 D13 + action-5 ATR advisory registries. Not the limited-es/postkill DSR continuation book."
+    }
+  ],
+  "active_book": {
+    "id": "p2-next-search-space",
+    "status": "research_line_stopped",
+    "open": false,
+    "search_space_prereg": {
+      "lower_turnover": true,
+      "longer_horizon": true,
+      "relative_value_config_ids": [
+        "p2s-rv-01",
+        "p2s-rv-02"
+      ],
+      "n_hypotheses": 6,
+      "null_builder": "linear_magnitude",
+      "positive_control_included": true,
+      "committed_path": "experiments/reports/phase5_p2_search_space_preregister_2026-10-30.md",
+      "same_space_short_horizon": false,
+      "nq_request": {
+        "hypothesis_kind": "relative_value",
+        "instruments": [
+          "ES",
+          "NQ"
+        ],
+        "tape_window": "pre_holdout",
+        "holdout_opened": false,
+        "holdout_pin": "2026-01-28T23:00:00Z",
+        "null_builder": "linear_magnitude",
+        "positive_control_included": true,
+        "config_ids": [
+          "p2s-rv-01",
+          "p2s-rv-02"
+        ],
+        "reuses_prereg_ids": [],
+        "sim_requested": false,
+        "promotion_requested": false
+      }
+    },
+    "n_cycles_allowed": 1,
+    "n_cycles_completed": 1,
+    "n_hypotheses_cap": 25,
+    "n_hypotheses_stated": 6,
+    "research_line_stopped": true,
+    "n_by_market": {
+      "ES": 74,
+      "MES": 0,
+      "MNQ": 0,
+      "NQ": 0
+    },
+    "n_total": 74,
+    "dsr_pbo_n": 74,
+    "dropped_config_ids": [
+      "p2s-lh-02",
+      "p2s-lh-04"
+    ],
+    "data_pins": {
+      "holdout_pin": "2026-01-28T23:00:00Z",
+      "es_pre_holdout_sha256": "6100588d2f3e519bd815b8f952dc15f01d434cc2a2b70e6453d0c3a7477bbca6",
+      "nq_pre_holdout_sha256": "d60dd0c203ef31382def4278f4524a671bc7b4a050ab1334948ba693e269eed8",
+      "nq_gz_sha256": "4f5f7d4ef94e5dbecf3afea5021ad6d693eb7050ade439dd74d076d114e5c855",
+      "vix_sha256": "481dc031c6d2b51b9150718c21c01b7f3706c99678ebf12b0edba19d0c8d2d1d",
+      "macro_sha256": "104018d21552544a6c60ef52de0bbb6c82447c6afcb685e3059a14edd1c19aa7",
+      "vix_filter_rule": "previous_day_close",
+      "cash_index": null,
+      "lh03_atr_source": "intraday_5m_atr14_strictly_before_event",
+      "lh03_atr_clarification_not_hypothesis_change": true
+    },
+    "rv02_low_power": {
+      "config_id": "p2s-rv-02",
+      "n_trades": 59,
+      "low_power_risk_accepted": true,
+      "note": "RV-02 power is 59 trades. The research team accepts the low-power risk and still runs the trial. This is not a parameter change."
+    },
+    "lh03_atr": {
+      "source": "intraday_5m_atr14_strictly_before_event",
+      "length": 14,
+      "multiple": 1.2,
+      "clarification_not_hypothesis_change": true,
+      "note": "The 1.2\u00d7 ATR14 threshold uses INTRADAY ATR(14) on 5-minute bars (SMA of the last 14 true ranges from bars whose close is strictly before the release, no lookahead), NOT daily ATR14. Clarification of the pre-registered parameter, not a change to the hypothesis."
+    },
+    "note": "10:00 GO cycle complete. n_hypotheses=6 with LH-02/LH-04 dropped. RV-02 power is 59 trades. The research team accepts the low-power risk and still runs the trial. This is not a parameter change. The 1.2\u00d7 ATR14 threshold uses INTRADAY ATR(14) on 5-minute bars (SMA of the last 14 true ranges from bars whose close is strictly before the release, no lookahead), NOT daily ATR14. Clarification of the pre-registered parameter, not a change to the hypothesis. line_state=research_line_stopped.",
+    "cycle": {
+      "id": "final-cycle",
+      "report": "phase5_p2_final_cycle_end.json",
+      "n_survivors": 0,
+      "n_tested": 4,
+      "n_trials": 74,
+      "line_state": "research_line_stopped"
+    }
+  },
+  "existence_book": {
+    "id": "p2-existence-20261030",
+    "status": "preregistered_not_run",
+    "open": false,
+    "counts_in_dsr_n": false,
+    "trials_run": false,
+    "instrument": "ES",
+    "tape_window": "pre_holdout",
+    "holdout_opened": false,
+    "holdout_pin": "2026-01-28T23:00:00Z",
+    "nq_trading": false,
+    "sim_requested": false,
+    "promotion_requested": false,
+    "optimization": false,
+    "atr_es_retest": false,
+    "looser_threshold_accepted": false,
+    "test_ids": [
+      "ex-01-calendar-rebalance",
+      "ex-02-overnight-trend-20d"
+    ],
+    "not_in_this_lock": [
+      "ex-03-options-gamma"
+    ],
+    "committed_path": "experiments/reports/phase5_p2_existence_preregister_2026-10-30.md",
+    "answers_name": "ONDERZOEKERS-ANTWOORDEN-BESTAANSTOETSEN-20261030T1106.md",
+    "answers_sha256": "6b9dc2a894b1f10d37e6a96745377627682de7b758ee1a9cd2b70b127a5f8ab4",
+    "spec_sha256": "5a3a54f429c768d2181a037ba99f029f47a6ffcc4d53cb79a7b16672deebec41",
+    "ambiguity_ids": [
+      "reconstitution_dates_source",
+      "roll_week_definition",
+      "cost_of_one_trade",
+      "t_test_vs_bootstrap",
+      "event_window_1_to_3_days_vs_close_to_close_rule",
+      "event_after_close",
+      "matched_control_definition",
+      "test2_control_flat_vs_random",
+      "trend_20d_unit",
+      "trend_60_120_not_in_rule",
+      "overnight_unfiltered_vs_trend_filtered",
+      "p_value_one_vs_two_sided",
+      "excess_return_units",
+      "event_day_session_calendar_rth_vs_globex",
+      "month_end_also_quarter_end_double_count"
+    ]
+  }
+}

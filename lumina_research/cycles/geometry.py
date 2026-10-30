@@ -7,6 +7,7 @@ pre-registered, never tuned on holdout. There is no fixed 16/8 tick floor.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from lumina_research.cycles.slippage_calibration import reference_market
@@ -48,6 +49,31 @@ def floors_for(root: str) -> tuple[int, int]:
     if pair is None:
         raise GeometryRefused(f"no tick floors for {root!r}")
     return pair
+
+
+def family_break_even_win_rate(
+    *,
+    target_atr: float | None = None,
+    stop_atr: float | None = None,
+    disable_brackets: bool = False,
+    tick_geometry: Geometry | None = None,
+) -> float:
+    """Per-family gross break-even. ATR path uses stop/(target+stop), never 1/1 ticks.
+
+    Gap/opening with no 1m bracket returns NaN (column is n/a). Tick geometry
+    keeps the cost-adjusted formula. Cost-adjusted ATR BE needs a representative
+    ATR from a PIT tape and is not invented here.
+    """
+    if disable_brackets:
+        return math.nan
+    if target_atr is not None and stop_atr is not None:
+        denom = float(target_atr) + float(stop_atr)
+        if denom <= 0.0:
+            return math.nan
+        return float(stop_atr) / denom
+    if tick_geometry is None:
+        return math.nan
+    return float(tick_geometry.break_even_win_rate)
 
 
 def require_geometry(*, root: str, target_ticks: int, stop_ticks: int) -> Geometry:

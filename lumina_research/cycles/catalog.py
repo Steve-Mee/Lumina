@@ -34,6 +34,10 @@ class HypothesisSpec:
     time_stop_bars: int = CATALOG_EXPECTED_HORIZON_BARS
     session_end_flatten: bool = True
     has_fit_step: bool = False
+    target_atr: float | None = None
+    stop_atr: float | None = None
+    atr_n_sessions: int = 14
+    disable_brackets: bool = False
 
 
 def catalog() -> tuple[HypothesisSpec, ...]:

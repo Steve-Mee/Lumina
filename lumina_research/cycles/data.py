@@ -86,6 +86,10 @@ def discover_data(*, repo_root: Path, data_dir: Path | None = None) -> DataStatu
     return DataStatus(usable=usable, tapes=tuple(tapes), searched=searched, missing=tuple(missing), required=required)
 
 
+def read_csv_bars(path: Path) -> tuple[ResearchBar, ...]:
+    return _read_csv(path)
+
+
 def tape_for(status: DataStatus, instrument: str) -> LoadedTape:
     for item in status.tapes:
         if item.instrument == instrument and len(item.bars) >= MIN_BARS:

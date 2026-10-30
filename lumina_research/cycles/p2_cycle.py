@@ -5,10 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Mapping
 
+from lumina_research.cycles.atr import causal_session_atr
 from lumina_research.cycles.catalog import HypothesisSpec
 from lumina_research.cycles.daily import bar_market_returns, daily_market_returns, daily_net_tape, unique_sessions
 from lumina_research.cycles.data import LoadedTape, MIN_BARS
-from lumina_research.cycles.diagnostics import ConfigDiagnostics, from_trades
+from lumina_research.cycles.diagnostics import UNBRACKET_HORIZONS, ConfigDiagnostics, from_trades
+from lumina_research.cycles.execution import ClosedTrade, run_execution
+from lumina_research.cycles.final_cycle_sim import FINAL_CYCLE_RUN_IDS, simulate_final_cycle
 from lumina_research.cycles.geometry import require_geometry
 from lumina_research.cycles.holdout import P2_HOLDOUT_START_NS, P2_PIN_MIN_BARS, access_bars
 from lumina_research.cycles.prepare import PreparedTape, prepare_tape
@@ -104,11 +107,29 @@ def materialize_spec(spec: HypothesisSpec, prepared: PreparedTape) -> Tape:
         spec.time_stop_bars,
         spec.threshold,
         spec.lookback,
+        spec.target_atr,
+        spec.stop_atr,
+        spec.disable_brackets,
+        spec.atr_n_sessions,
     )
     hit = _MATERIALIZE_CACHE.get(key)
     if hit is not None:
         return hit
+    if spec.config_id in FINAL_CYCLE_RUN_IDS:
+        built, diag = simulate_final_cycle(spec, prepared)
+        _DIAG_CACHE[spec.config_id] = diag
+        _MARKET_CACHE[prepared.instrument] = market_series(prepared)
+        _MATERIALIZE_CACHE[key] = built
+        return built
     geometry = require_geometry(root=spec.instrument, target_ticks=spec.target_ticks, stop_ticks=spec.stop_ticks)
+    atr_points = None
+    if spec.target_atr is not None or spec.disable_brackets:
+        atr_points = causal_session_atr(
+            prepared.bars,
+            prepared.session_dates,
+            prepared.rth,
+            n_sessions=spec.atr_n_sessions,
+        )
     executed = simulate_full(
         family=spec.family,
         bars=prepared.bars,
@@ -124,6 +145,10 @@ def materialize_spec(spec: HypothesisSpec, prepared: PreparedTape) -> Tape:
         session_filter=spec.session_filter,
         time_stop_bars=spec.time_stop_bars,
         session_end_flatten=spec.session_end_flatten,
+        atr_points=atr_points,
+        target_atr=spec.target_atr,
+        stop_atr=spec.stop_atr,
+        disable_brackets=spec.disable_brackets,
     )
     costed = apply_costs(
         gross_returns=executed.gross,
@@ -132,6 +157,40 @@ def materialize_spec(spec: HypothesisSpec, prepared: PreparedTape) -> Tape:
         spec=spec.instrument,
         markets=executed.markets,
     )
+    unbracket_by_horizon: dict[int, tuple[ClosedTrade, ...]] = {}
+    one_r_trades: tuple[ClosedTrade, ...] = ()
+    if spec.target_atr is not None or spec.disable_brackets:
+        for horizon in UNBRACKET_HORIZONS:
+            unb = run_execution(
+                bars=prepared.bars,
+                signals=executed.signals,
+                geometry=geometry,
+                breaks=prepared.breaks,
+                rth=prepared.rth,
+                session_dates=prepared.session_dates,
+                session_filter=spec.session_filter,
+                time_stop_bars=horizon,
+                session_end_flatten=True,
+                atr_points=atr_points,
+                disable_brackets=True,
+            )
+            unbracket_by_horizon[horizon] = unb.trades
+        if spec.stop_atr is not None and not spec.disable_brackets:
+            one = run_execution(
+                bars=prepared.bars,
+                signals=executed.signals,
+                geometry=geometry,
+                breaks=prepared.breaks,
+                rth=prepared.rth,
+                session_dates=prepared.session_dates,
+                session_filter=spec.session_filter,
+                time_stop_bars=spec.time_stop_bars,
+                session_end_flatten=spec.session_end_flatten,
+                atr_points=atr_points,
+                target_atr=spec.stop_atr,
+                stop_atr=spec.stop_atr,
+            )
+            one_r_trades = one.trades
     _DIAG_CACHE[spec.config_id] = from_trades(
         trades=executed.trades,
         geometry=geometry,
@@ -142,6 +201,13 @@ def materialize_spec(spec: HypothesisSpec, prepared: PreparedTape) -> Tape:
         n_trials=0,
         n_days=len(unique_sessions(prepared.session_dates)),
         pct_positive_oos=float("nan"),
+        unbracket_trades=unbracket_by_horizon.get(60, ()),
+        one_r_trades=one_r_trades,
+        unbracket_n_bars=60,
+        unbracket_by_horizon=unbracket_by_horizon,
+        target_atr=spec.target_atr,
+        stop_atr=spec.stop_atr,
+        disable_brackets=spec.disable_brackets,
     )
     _MARKET_CACHE[prepared.instrument] = market_series(prepared)
     if len(prepared.bars) < DAILY_RESAMPLE_MIN_BARS:

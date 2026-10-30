@@ -28,7 +28,9 @@ from lumina_research.cycles.cost_bands import (
     report_band,
 )
 from lumina_research.cycles.data import LoadedTape, ResearchBar
-from lumina_research.cycles.diagnostics import from_trades
+from lumina_research.cycles.atr import ATR_N_SESSIONS, causal_session_atr, points_to_ticks
+from lumina_research.cycles.atr_cycle import ATR_SEAL_NAME, DSR_ONLY_KILLS, atr_es_specs
+from lumina_research.cycles.diagnostics import UNBRACKET_HORIZONS, from_trades
 from lumina_research.cycles.execution import (
     ClosedTrade,
     ExecutionRefused,
@@ -46,7 +48,9 @@ from lumina_research.cycles.fills import (
     trade_through_fill,
     traded_through,
 )
-from lumina_research.cycles.geometry import GeometryRefused, floors_for, require_geometry
+from lumina_research.cycles.gaps import in_known_gap
+from lumina_research.cycles.geometry import GeometryRefused, family_break_even_win_rate, floors_for, require_geometry
+from lumina_research.cycles.nq_lock import NQTemplatesClosed, assert_nq_templates_closed
 from lumina_research.cycles.holdout import (
     DAYS_PER_MONTH,
     HOLDOUT_MONTHS,
@@ -62,13 +66,36 @@ from lumina_research.cycles.holdout import (
     holdout_ns,
     split_holdout,
 )
+from lumina_research.cycles.null_model import (
+    NULL_A2_MAX_SHARE,
+    NULL_BUILDER,
+    NULL_BUILDER_V2,
+    NULL_CALIBRATED_POSITIVE_SHARE,
+    NULL_N_SEEDS,
+    classify_null_a2,
+    default_null_seeds,
+    fail_closed_a2_cap,
+    fail_closed_hit_count,
+    majority_a2_cap,
+    max_a2_hits,
+    null_seed_is_false_edge,
+)
+from lumina_research.cycles.daily import daily_market_returns
 from lumina_research.cycles.positive_control import (
+    BREAKOUT_MIDPOINT_ATR,
+    CONTROL_ATR_MULTIPLE,
     CONTROL_STOP_TICKS,
     CONTROL_TARGET_TICKS,
     CONTROL_TIME_STOP_BARS,
+    FADE_MIDPOINT_ATR,
+    PLANTED_POWER_FLOOR_MAGNITUDES,
+    PLANTED_POWER_MAGNITUDES,
     _detected,
     execute_control,
+    horizon_note,
+    required_midpoint_controls,
     rth_session_direction,
+    run_controls,
     shuffle_signals,
 )
 from lumina_research.cycles.prepare import _high_vol_sessions, _quiet_mask, prepare_tape
@@ -134,6 +161,7 @@ from lumina_research.validation.types import (
     ValidationResults,
     WFESnapshot,
 )
+from tests.research.test_phase5_p2_fixes import _control_tape
 
 UTC = timezone.utc
 
@@ -574,6 +602,40 @@ def _kill_deeper() -> None:
         _fail("execute_control must use pre-registered control geometry")
     if "CONTROL_TIME_STOP_BARS" not in src:
         _fail("execute_control must use pre-registered control time-stop")
+    if CONTROL_ATR_MULTIPLE != 1.5:
+        _fail("ATR control multiple must stay 1.5")
+    if "CONTROL_ATR_MULTIPLE" not in src:
+        _fail("execute_control must keep the ATR geometry path")
+    if ATR_N_SESSIONS != 14:
+        _fail("causal ATR window must stay 14 sessions")
+    if NULL_N_SEEDS != 32 or len(default_null_seeds()) != 32:
+        _fail("null seed count must stay pre-registered 32")
+    if default_null_seeds()[0] != 20261029 or default_null_seeds()[-1] != 20261060:
+        _fail("null seed base drifted")
+    if abs(NULL_A2_MAX_SHARE - 0.10) > 1e-12 or max_a2_hits(32) != 3:
+        _fail("null 10% diagnostic cap must stay floor(0.10*32)=3")
+    if fail_closed_a2_cap(32) != 3:
+        _fail("null fail-closed cap must stay 3 of 32")
+    if abs(NULL_CALIBRATED_POSITIVE_SHARE - 0.875) > 1e-12:
+        _fail("calibrated null-edge share must stay 7/8")
+    if null_seed_is_false_edge(detected=True, pct_positive=0.625) is not False:
+        _fail("5/8 A2 must not count as a calibrated false edge")
+    if null_seed_is_false_edge(detected=True, pct_positive=0.875) is not True:
+        _fail("7/8 A2 must count as a calibrated false edge")
+    if fail_closed_hit_count(32) != 4:
+        _fail("fail-at must stay 4 of 32")
+    if NULL_BUILDER != NULL_BUILDER_V2 or NULL_BUILDER != "linear_magnitude":
+        _fail("production null builder must stay linear_magnitude")
+    if classify_null_a2(4, 32).status != "unreliable":
+        _fail("4/32 is fail, not monitor")
+    if classify_null_a2(4, 32).reliable is not False:
+        _fail("4/32 must not be reliable")
+    if classify_null_a2(3, 32).reliable is not True:
+        _fail("3/32 must stay reliable")
+    if classify_null_a2(5, 32).reliable is not False:
+        _fail(">=5/32 A2 must stay fail-closed unreliable")
+    if majority_a2_cap(32) != 16:
+        _fail("historical majority helper must stay 16 and must not be the gate")
     if INTRASESSION_HOLE_NS != 90 * 1_000_000_000:
         _fail("90s hole threshold drifted")
     if DEFAULT_BLOCK != 5 or DEFAULT_PATHS != 48:
@@ -646,6 +708,12 @@ def _kill_deeper() -> None:
         _fail("hitrate must count pnl_ticks > 0, not losses")
     if diag.n_trades != 2:
         _fail("n_trades drifted")
+    if diag.exit_target != 1 or diag.exit_stop != 1:
+        _fail("exit-reason counts must follow ClosedTrade.reason")
+    if abs(diag.gross_ticks - 8.0) > 1e-12:
+        _fail("gross_ticks must sum pnl_ticks")
+    if abs(diag.gross_points - 8.0 * geo.tick_size) > 1e-12:
+        _fail("gross_points must be gross_ticks * tick_size")
     three = (
         trades[0],
         trades[0],
@@ -999,6 +1067,222 @@ def _kill_deeper() -> None:
         _must_raise(HoldoutLocked, access_bars, tape, purpose="nope", pinned_start_ns=P2_HOLDOUT_START_NS)
 
 
+def _kill_atr_geometry() -> None:
+    """Action-2/3/4/6 locks: ATR points, ES-only July hole, no 1m high-turnover templates."""
+    specs = atr_es_specs()
+    if len(specs) != 10:
+        _fail("ATR ES grid must stay 10 pre-registered configs")
+    if any(item.instrument != "ES" for item in specs):
+        _fail("ATR grid is ES only")
+    templates = {item.template_id for item in specs}
+    if "close_reversal" in templates or "volume_imbalance" in templates:
+        _fail("no new 1m high-turnover templates")
+    if any(item.time_stop_bars != 2000 or not item.session_end_flatten for item in specs):
+        _fail("ATR grid must session-flatten with time_stop_bars=2000")
+    if any(item.instrument == "NQ" for item in specs):
+        _fail("NQ templates must stay closed")
+    if FADE_MIDPOINT_ATR != (1.0, 1.2) or BREAKOUT_MIDPOINT_ATR != (1.8, 0.9):
+        _fail("pre-registered midpoints must stay fade 1.0/1.2 and breakout 1.8/0.9")
+    if required_midpoint_controls()[0][1:] != FADE_MIDPOINT_ATR:
+        _fail("positive control must keep fade midpoint params")
+    control_params = inspect.signature(run_controls).parameters
+    if "target_atr" not in control_params or "stop_atr" not in control_params:
+        _fail("run_controls must accept pre-registered midpoint ATR params")
+    if "planted_magnitude" not in control_params:
+        _fail("run_controls must accept planted_magnitude for the 21:29 power rerun")
+    if PLANTED_POWER_MAGNITUDES != (1.0, 0.5, 0.25):
+        _fail("power magnitudes must stay 1.0, 0.5, 0.25")
+    if PLANTED_POWER_FLOOR_MAGNITUDES != (0.125, 0.0625):
+        _fail("power-floor magnitudes must stay 0.125, 0.0625")
+    if DSR_ONLY_KILLS != frozenset({"p2a-or-bo-es", "p2a-rm-es", "p2a-pb-es", "p2a-gap-es"}):
+        _fail("four DSR-only kills must stay frozen")
+    if UNBRACKET_HORIZONS != (16, 60, 120):
+        _fail("unbracket hitrate horizons must stay 16/60/120")
+    fade_be = family_break_even_win_rate(target_atr=1.0, stop_atr=1.2)
+    if abs(fade_be - (1.2 / 2.2)) > 1e-12:
+        _fail("fade break-even must be stop/(target+stop) ATR multiples")
+    gap_be = family_break_even_win_rate(disable_brackets=True)
+    if gap_be == gap_be:
+        _fail("gap/no-bracket break-even must be NaN")
+    try:
+        assert_nq_templates_closed(("NQ",))
+    except NQTemplatesClosed:
+        pass
+    else:
+        _fail("NQ template lock must refuse NQ")
+    if ATR_SEAL_NAME == "phase5_p2_es_nq_holdout_seal.json":
+        _fail("ATR cycle must not reuse the ES/NQ seal filename")
+    gap = next(item for item in specs if item.config_id == "p2a-gap-es")
+    if gap.disable_brackets is not True or gap.target_atr is not None:
+        _fail("gap family must have no 1m bracket")
+    atr_note = horizon_note("atr")
+    if "1.5" not in atr_note or "ATR" not in atr_note:
+        _fail("ATR D13 note must state 1.5×ATR")
+    if "20000/20000" in atr_note:
+        _fail("ATR D13 note must not quote unclipped 20000/20000")
+    if "20000/20000" not in horizon_note("unclipped"):
+        _fail("unclipped D13 note must keep 20000/20000")
+    july = int(datetime(2025, 7, 14, 18, 0, tzinfo=UTC).timestamp() * 1_000_000_000)
+    if in_known_gap("ES", july) is not True or in_known_gap("NQ", july) is not False:
+        _fail("July TRAIN hole is ES-specific, not NQ")
+    if in_known_gap("MES", july) is not False or in_known_gap("MNQ", july) is not True:
+        _fail("July TRAIN hole is MNQ-missing, MES present")
+    if points_to_ticks(1.0, tick_size=spec_for("ES").tick_size) != 4:
+        _fail("1 point must be 4 ticks on ES")
+    if points_to_ticks(1.0, tick_size=spec_for("MES").tick_size) != 4:
+        _fail("1 point must be 4 ticks on MES (equal geometry)")
+    start = datetime(2026, 3, 2, 14, 31, tzinfo=UTC)
+    entry = 5000.0
+    atr = 2.0
+    target = entry + atr
+    bars = (
+        ResearchBar(
+            ts_ns=int(start.timestamp() * 1_000_000_000),
+            open=entry,
+            high=entry + 0.25,
+            low=entry - 0.25,
+            close=entry,
+            volume=5_000.0,
+        ),
+        ResearchBar(
+            ts_ns=int((start.timestamp() + 60) * 1_000_000_000),
+            open=entry + 0.1,
+            high=entry + 0.2,
+            low=entry - 0.4,
+            close=entry + 0.1,
+            volume=5_000.0,
+        ),
+        ResearchBar(
+            ts_ns=int((start.timestamp() + 120) * 1_000_000_000),
+            open=entry + 0.2,
+            high=target + 0.5,
+            low=entry,
+            close=target + 0.2,
+            volume=5_000.0,
+        ),
+    )
+    labels = annotate(bars)
+    executed = run_execution(
+        bars=bars,
+        signals=(1.0, 0.0, 0.0),
+        geometry=require_geometry(root="ES", target_ticks=16, stop_ticks=8),
+        breaks=(False, False, False),
+        rth=labels.rth,
+        session_dates=labels.session_dates,
+        session_filter="rth",
+        time_stop_bars=2000,
+        session_end_flatten=False,
+        atr_points=(atr, atr, atr),
+        target_atr=1.0,
+        stop_atr=1.0,
+    )
+    if not executed.trades or executed.trades[0].reason != "target":
+        _fail("1.0×ATR target must fire before the 16-tick catalog floor")
+    if abs(executed.trades[0].exit_price - target) > 1e-9:
+        _fail("ATR target must exit at entry + ATR points")
+    unbr = run_execution(
+        bars=bars,
+        signals=(1.0, 0.0, 0.0),
+        geometry=require_geometry(root="ES", target_ticks=1, stop_ticks=1),
+        breaks=(False, False, False),
+        rth=labels.rth,
+        session_dates=labels.session_dates,
+        time_stop_bars=2000,
+        session_end_flatten=True,
+        disable_brackets=True,
+    )
+    if not unbr.trades or any(item.reason != "session_end" for item in unbr.trades):
+        _fail("disable_brackets must flatten at session end")
+    _must_raise(
+        ExecutionRefused,
+        run_execution,
+        bars=bars,
+        signals=(1.0, 0.0, 0.0),
+        geometry=require_geometry(root="ES", target_ticks=1, stop_ticks=1),
+        breaks=(False, False, False),
+        rth=labels.rth,
+        session_dates=labels.session_dates,
+        target_atr=1.0,
+    )
+    day = datetime(2026, 3, 2, 14, 31, tzinfo=UTC)
+    rows: list[ResearchBar] = []
+    session_index = 0
+    while session_index < 4:
+        if day.weekday() < 5:
+            price = 100.0 + 10.0 * float(session_index)
+            for index in range(8):
+                ts = day + timedelta(minutes=index)
+                rows.append(
+                    ResearchBar(
+                        ts_ns=int(ts.timestamp() * 1_000_000_000),
+                        open=price,
+                        high=price + 1.0 + float(session_index),
+                        low=price - 0.25,
+                        close=price + 0.5,
+                        volume=5_000.0,
+                    )
+                )
+            session_index += 1
+        day += timedelta(days=1)
+    prepared = prepare_tape("ES", tuple(rows))
+    series = causal_session_atr(prepared.bars, prepared.session_dates, prepared.rth, n_sessions=14)
+    first = prepared.session_dates[0]
+    if any(series[index] != 0.0 for index, session in enumerate(prepared.session_dates) if session == first):
+        _fail("causal ATR must be 0 on the first completed-prior-less session")
+    with TemporaryDirectory() as tmp:
+        path = Path(tmp)
+        registry_one = TrialRegistry(path / "one.jsonl")
+        registry_one.record(config_id="only", agent_id="p2-mut", metrics={"i": 0})
+        tripped, trip_report = passes_validation_gate(
+            _static_bundle(
+                path / "one.jsonl",
+                pbo=PBOSnapshot(
+                    pbo=0.10,
+                    n_slices=8,
+                    n_combinations=70,
+                    n_configs=33,
+                    n_below_median=7,
+                    formulation="cscv_logit_bailey_2014",
+                    logit_mean=0.4,
+                ),
+                dsr=DSRSnapshot(
+                    probability=1.0,
+                    observed_sr=0.4,
+                    expected_max_sr=0.05,
+                    sr_standard_error=0.04,
+                    n_trials=1,
+                    n_observations=300,
+                    skew=0.0,
+                    kurtosis=3.0,
+                    formulation="bailey_lopez_de_prado_2014",
+                ),
+                n_trials_registry=1,
+            ),
+            registry=registry_one,
+        )
+        if tripped or "trial_count_below_pbo_configs" not in trip_report.reject_reasons:
+            _fail("PBO n_configs > n_trials must remain a gate reject")
+        control_tape = _control_tape()
+        market = daily_market_returns(control_tape.bars, control_tape.session_dates)
+        seeds = (20261029, 20261030, 20261031, 20261032)
+        wired = run_controls(
+            prepared={"MES": control_tape},
+            registry=TrialRegistry(path / "wired.jsonl"),
+            audit_path=path / "wired.jsonl",
+            is_size=6,
+            oos_size=2,
+            market_returns=market,
+            n_days=22,
+            null_seeds=seeds,
+            block_seeds=(),
+            fail_closed=False,
+        )
+        if "trial_count_below_pbo_configs" in wired.positive.reject_reasons:
+            _fail("planted gate must register PBO peers as trials first")
+        if wired.positive.pbo_n_configs != 5 or wired.positive.n_trials != 5:
+            _fail("planted PBO/DSR N must be 1 plant + 4 nulls")
+
+
 def run() -> None:
     if FILL_POLICY != "trade_through_strict":
         _fail("fill policy drifted")
@@ -1317,6 +1601,7 @@ def run() -> None:
         _fail("empty positive_share must be nan")
     _kill_deeper()
     _kill_remaining_survivors()
+    _kill_atr_geometry()
     code = pytest.main(
         [
             "-q",

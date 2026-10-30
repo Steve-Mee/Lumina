@@ -7,11 +7,40 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
+from lumina_research.cycles.atr_cycle import run_atr_es_cycle
+from lumina_research.cycles.existence import EXISTENCE_RUN_REFUSED
+from lumina_research.cycles.final_cycle_run import run_final_cycle
 from lumina_research.cycles.four_instrument import run_four_instrument_cycle
+from lumina_research.cycles.limited_es import run_limited_es_cycle
+from lumina_research.cycles.midpoint_d13 import (
+    POWER_CLEAN,
+    run_midpoint_d13,
+    run_midpoint_power,
+    run_midpoint_power_floor,
+)
+from lumina_research.cycles.null_audit import run_null_audit
+from lumina_research.cycles.null_lock import NullLeaks, assert_research_allowed
+from lumina_research.cycles.null_only import run_null_only, synthetic_drift_tape
+from lumina_research.cycles.postkill_es import run_postkill_es_cycle
 from lumina_research.cycles.runner import run_research_cycles
+from lumina_research.cycles.trial_ledger import (
+    LedgerBlocksRun,
+    LedgerRefused,
+    assert_ledger_allows_run,
+)
 from lumina_research.monitoring.cli import run_scan as run_guardian_scan
 from lumina_research.proof.independent import HOLDOUT_INSTRUMENTS, HOLDOUT_SEEDS, assert_holdout_seeds
 from lumina_research.proof.runner import DEFAULT_EVOLUTION_LOG, DEFAULT_REPORTS, run_empirical_verification
+
+_CONTROL_ONLY_CYCLES = frozenset(
+    {
+        "null-only",
+        "null-audit",
+        "midpoint-d13",
+        "midpoint-power",
+        "midpoint-power-floor",
+    }
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -35,9 +64,41 @@ def build_parser() -> argparse.ArgumentParser:
     research.add_argument("--data-dir", type=Path, default=None)
     research.add_argument(
         "--cycle",
-        choices=("first", "four-instrument"),
+        choices=(
+            "first",
+            "four-instrument",
+            "null-audit",
+            "atr-es",
+            "null-only",
+            "midpoint-d13",
+            "midpoint-power",
+            "midpoint-power-floor",
+            "limited-es",
+            "postkill-es",
+            "final-cycle",
+            "existence",
+        ),
         default="first",
-        help="first: locked MES/MNQ 12. four-instrument: cost-fix rerun + ES/NQ.",
+        help=(
+            "first: MES/MNQ 12. four-instrument: cost-fix+ES/NQ. null-audit: D13 multi-seed. "
+            "atr-es: ES ATR grid. null-only: FPR validation, no templates. "
+            "midpoint-d13: planted+null under fade/breakout midpoints, no templates. "
+            "midpoint-power: 100/50/25% planted magnitude, no templates. "
+            "midpoint-power-floor: 12.5%/6.25% planted magnitude, no templates. "
+            "limited-es: six pre-registered p2l-* configs on pre-holdout ES. "
+            "postkill-es: two 2.4 ATR breakouts + one TOD lookback-45. "
+            "final-cycle: RV-01/RV-02/LH-01/LH-03 on pinned pre-holdout ES+NQ. "
+            "existence: locked non-DSR book; refuses the run."
+        ),
+    )
+    research.add_argument(
+        "--es-csv",
+        type=Path,
+        default=None,
+        help=(
+            "null-only / midpoint-d13 / midpoint-power / midpoint-power-floor / "
+            "limited-es / postkill-es: local pre-holdout ES CSV. Not committed."
+        ),
     )
     research.add_argument(
         "--reuse-mes-mnq",
@@ -74,6 +135,157 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stderr.write("empirical verification floors failed; detector may be tuned, floors may not\n")
         return 2
     if command == "research":
+        if str(args.cycle) == "existence":
+            sys.stderr.write(f"{EXISTENCE_RUN_REFUSED}\n")
+            return 2
+        if str(args.cycle) == "null-only":
+            null_cycle = run_null_only(
+                work_dir=args.work_dir,
+                report_dir=args.report_dir,
+                es_csv=args.es_csv,
+                synthetic=synthetic_drift_tape(),
+            )
+            if not null_cycle.strict_gate_pass:
+                sys.stderr.write("null-only: strict 7/8 FPR is above 3/32; research-run stays locked\n")
+                return 2
+            return 0
+        if str(args.cycle) == "midpoint-d13":
+            try:
+                midpoint = run_midpoint_d13(
+                    work_dir=args.work_dir,
+                    report_dir=args.report_dir,
+                    es_csv=args.es_csv,
+                )
+            except ValueError as exc:
+                sys.stderr.write(f"midpoint-d13: {exc}\n")
+                return 2
+            if midpoint.overall_verdict != POWER_CLEAN:
+                sys.stderr.write(f"midpoint-d13: {midpoint.overall_verdict}; no strategy-run\n")
+                return 2
+            return 0
+        if str(args.cycle) == "midpoint-power":
+            try:
+                power = run_midpoint_power(
+                    work_dir=args.work_dir,
+                    report_dir=args.report_dir,
+                    es_csv=args.es_csv,
+                )
+            except ValueError as exc:
+                sys.stderr.write(f"midpoint-power: {exc}\n")
+                return 2
+            if not power.full_magnitude_clean:
+                sys.stderr.write("midpoint-power: 100% magnitude is not clean; no strategy-run\n")
+                return 2
+            return 0
+        if str(args.cycle) == "midpoint-power-floor":
+            try:
+                floor = run_midpoint_power_floor(
+                    work_dir=args.work_dir,
+                    report_dir=args.report_dir,
+                    es_csv=args.es_csv,
+                )
+            except ValueError as exc:
+                sys.stderr.write(f"midpoint-power-floor: {exc}\n")
+                return 2
+            if floor.null_leaked:
+                sys.stderr.write("midpoint-power-floor: null leaked; no strategy-run\n")
+                return 2
+            return 0
+        if str(args.cycle) == "limited-es" and args.es_csv is None:
+            sys.stderr.write("limited-es: --es-csv is required\n")
+            return 2
+        if str(args.cycle) == "postkill-es" and args.es_csv is None:
+            sys.stderr.write("postkill-es: --es-csv is required\n")
+            return 2
+        if str(args.cycle) not in _CONTROL_ONLY_CYCLES:
+            try:
+                assert_research_allowed(Path(args.report_dir))
+                assert_ledger_allows_run(cycle=str(args.cycle))
+            except NullLeaks as exc:
+                sys.stderr.write(f"{exc}\n")
+                return 2
+            except (LedgerRefused, LedgerBlocksRun) as exc:
+                sys.stderr.write(f"{exc}\n")
+                return 2
+        if str(args.cycle) == "null-audit":
+            audit = run_null_audit(
+                work_dir=args.work_dir,
+                report_dir=args.report_dir,
+                data_dir=args.data_dir,
+            )
+            if not audit.method_ready:
+                sys.stderr.write("null-audit fail-closed: MES/MNQ/ES planted miss or null unreliable\n")
+                return 2
+            return 0
+        if str(args.cycle) == "limited-es":
+            if args.es_csv is None:
+                sys.stderr.write("limited-es: --es-csv is required\n")
+                return 2
+            try:
+                limited = run_limited_es_cycle(
+                    work_dir=args.work_dir,
+                    report_dir=args.report_dir,
+                    es_csv=args.es_csv,
+                )
+            except ValueError as exc:
+                sys.stderr.write(f"limited-es: {exc}\n")
+                return 2
+            if limited.report.stop_reason == "positive_control_failed":
+                sys.stderr.write(f"limited-es control failed: {limited.report.control_note}\n")
+                return 2
+            if limited.report.stopped:
+                sys.stderr.write(f"limited-es stopped: {limited.report.stop_reason}\n")
+                return 2
+            return 0
+        if str(args.cycle) == "postkill-es":
+            if args.es_csv is None:
+                sys.stderr.write("postkill-es: --es-csv is required\n")
+                return 2
+            try:
+                postkill = run_postkill_es_cycle(
+                    work_dir=args.work_dir,
+                    report_dir=args.report_dir,
+                    es_csv=args.es_csv,
+                )
+            except ValueError as exc:
+                sys.stderr.write(f"postkill-es: {exc}\n")
+                return 2
+            if postkill.report.stop_reason == "positive_control_failed":
+                sys.stderr.write(f"postkill-es control failed: {postkill.report.control_note}\n")
+                return 2
+            if postkill.report.stopped:
+                sys.stderr.write(f"postkill-es stopped: {postkill.report.stop_reason}\n")
+                return 2
+            return 0
+        if str(args.cycle) == "final-cycle":
+            try:
+                final = run_final_cycle(
+                    work_dir=args.work_dir,
+                    report_dir=args.report_dir,
+                )
+            except ValueError as exc:
+                sys.stderr.write(f"final-cycle: {exc}\n")
+                return 2
+            if final.report.stop_reason == "positive_control_failed":
+                sys.stderr.write(f"final-cycle control failed: {final.report.control_note}\n")
+                return 2
+            if final.report.stopped:
+                sys.stderr.write(f"final-cycle stopped: {final.report.stop_reason}\n")
+                return 2
+            return 0
+        if str(args.cycle) == "atr-es":
+            atr = run_atr_es_cycle(
+                work_dir=args.work_dir,
+                report_dir=args.report_dir,
+                data_dir=args.data_dir,
+            )
+            if atr.report.stop_reason == "positive_control_failed":
+                sys.stderr.write(f"ATR ES control failed: {atr.report.control_note}\n")
+                return 2
+            if atr.data.usable:
+                return 0
+            sys.stderr.write("P2 stopped: no usable real market data\n")
+            return 3
         if str(args.cycle) == "four-instrument":
             four = run_four_instrument_cycle(
                 work_dir=args.work_dir,

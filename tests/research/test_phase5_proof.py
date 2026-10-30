@@ -34,6 +34,7 @@ from lumina_research.proof.independent import (
 )
 from lumina_research.proof.report import write_empirical_reports
 from lumina_research.proof.runner import run_empirical_verification
+from tests.research.null_only_stub import write_passing_null_only_json
 
 
 def _kind(
@@ -130,9 +131,7 @@ def test_short_holds_rejects_twelve_percent_high_vol_far() -> None:
     assert _short_holds(stress_ignored, n_signals_floor=60) is True
     slow_ok = _report((_kind("slow_gradual_45", detection=0.9, ttd=40.0),))
     assert _medium_holds(slow_ok, n_signals_floor=30) is True
-    slow_late = _report(
-        (_kind("slow_gradual_45", detection=0.9, ttd=float(TTD_MEDIUM_MAX_TRADING_DAYS) + 1),)
-    )
+    slow_late = _report((_kind("slow_gradual_45", detection=0.9, ttd=float(TTD_MEDIUM_MAX_TRADING_DAYS) + 1),))
     assert _medium_holds(slow_late, n_signals_floor=30) is False
     assert kind_rows(passing)[0].kind == "healthy_laplace"
 
@@ -292,13 +291,15 @@ def test_proof_cli_research_stops_without_data(tmp_path: Path) -> None:
     parser = build_parser()
     args = parser.parse_args(["research", "--work-dir", str(tmp_path / "w"), "--report-dir", str(tmp_path / "r")])
     assert args.command == "research"
+    reports = tmp_path / "reports"
+    write_passing_null_only_json(reports)
     code = main(
         [
             "research",
             "--work-dir",
             str(tmp_path / "work"),
             "--report-dir",
-            str(tmp_path / "reports"),
+            str(reports),
             "--evolution-log-dir",
             str(tmp_path / "evo"),
             "--data-dir",

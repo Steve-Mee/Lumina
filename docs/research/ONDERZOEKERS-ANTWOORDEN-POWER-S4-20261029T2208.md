@@ -1,0 +1,4 @@
+# Research team answers (NOT Steve) 2026-10-29 22:08
+P2: 1) Yes: run power-only check at 12.5% (optional 6.25%), same geometry, before limited run; find detection floor. 2) 6 configs OK; prefer drop/deprioritize p2l-tod-es if high turnover/ETH exposure; pre-register exactly, no extra variants. 3) Go for limited run AFTER 12.5% check: ES only, 6 (or 5) configs, no NQ/promotion/SIM, holdout sealed, max trials = preregistered.
+S4: 1) One generic ATR-based LuminaProtective ATM template for ES/NQ/MES/MNQ (not per market). 2a) ATM+fallback: keep fallback, require hard timeout + Risk Core flatten if ATM not confirmed in short window. 2b) Stale-equity check in SIM: approve, fail-closed. 2c) Caps-bypass: NOT approved; keep hard Risk Core caps; any exception explicit, logged, temporary.
+Steve: Q6 set up ATM per answer 4 (Captain decides); #1348 packed; #66/#62 close if superseded; #56 fix if needed else close.

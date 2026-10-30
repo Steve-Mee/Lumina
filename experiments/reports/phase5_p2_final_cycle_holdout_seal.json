@@ -1,0 +1,30 @@
+{
+  "holdout_months": 9,
+  "holdout_opened": false,
+  "holdout_start_ns": 1769641200000000000,
+  "holdout_start_utc": "2026-01-28T23:00:00+00:00",
+  "instruments": {
+    "ES": {
+      "bar_size": "1m",
+      "file_sha256": "6100588d2f3e519bd815b8f952dc15f01d434cc2a2b70e6453d0c3a7477bbca6",
+      "first_utc": "2023-10-01T22:01:00Z",
+      "last_utc": "2026-01-28T22:00:00Z",
+      "n_bars": 818851,
+      "n_holdout": 0,
+      "n_train": 818851,
+      "path": "ES_pre_holdout.csv"
+    },
+    "NQ": {
+      "bar_size": "1m",
+      "file_sha256": "d60dd0c203ef31382def4278f4524a671bc7b4a050ab1334948ba693e269eed8",
+      "n_bars": 821334,
+      "n_holdout": 0,
+      "n_train": 821334,
+      "path": "NQ_pre_holdout.csv"
+    }
+  },
+  "note": "Pre-holdout ES+NQ tapes: last bar is before the pin. Holdout bars are absent and stay sealed. This sidecar is not the live MES/MNQ seal.",
+  "seal_sha256": "c17138994a7fa198d27f829a618bdd459552cd3571382c95a8f64f54c88b8c07",
+  "sealed_at": "2026-10-30T09:31:25.512463+00:00",
+  "tape_kind": "pre_holdout_es_nq"
+}

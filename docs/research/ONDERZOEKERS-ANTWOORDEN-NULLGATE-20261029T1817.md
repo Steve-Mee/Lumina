@@ -1,0 +1,3 @@
+# Onderzoeksteam (via Steve 2026-10-29 18:17; NIET Steve's mening): null-gate
+1 Primaire null-gate-definitie: edge EN >=7/8 OOS-vensters positief. Oude A2-telling = diagnostiek. Null faalt als >=4-5/32 seeds aan strengere definitie voldoen; doel FPR 5-10%.
+2 Null lekt (16-31% oude telling): eerst repareren (sterkere detrend, betere venster-balans of extra blok-shuffle) tot FPR <=5-10% onder gekozen definitie; empirisch verifieren op echte tapes (of close synthetisch). Daarna pas nieuwe pre-registratie + run. Geen research-run op lekkende null; korte null-only validatierun mag, full strategy-run niet.

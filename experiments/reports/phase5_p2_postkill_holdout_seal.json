@@ -1,0 +1,26 @@
+{
+  "holdout_months": 9,
+  "holdout_opened": false,
+  "holdout_start_ns": 1769641200000000000,
+  "holdout_start_utc": "2026-01-28T23:00:00+00:00",
+  "instruments": {
+    "ES": {
+      "bar_size": "1m",
+      "file_sha256": "6100588d2f3e519bd815b8f952dc15f01d434cc2a2b70e6453d0c3a7477bbca6",
+      "first_utc": "2023-10-01T22:01:00Z",
+      "holdout_first_utc": null,
+      "holdout_last_utc": null,
+      "last_utc": "2026-01-28T22:00:00Z",
+      "n_bars": 818851,
+      "n_holdout": 0,
+      "n_train": 818851,
+      "path": "ES_pre_holdout.csv",
+      "train_last_utc": "2026-01-28T22:00:00Z",
+      "zip_sha256": ""
+    }
+  },
+  "note": "Postkill follow-up on the pre-holdout ES tape. Holdout bars stay sealed. This sidecar is not the live MES/MNQ or ES/NQ seal.",
+  "seal_sha256": "91b75a39f2e11e4c8835a348b06471f54289a4152342fdaa71ca8c3ea22f3a47",
+  "sealed_at": "2026-10-30T07:12:30.175164+00:00",
+  "tape_kind": "pre_holdout_es"
+}
