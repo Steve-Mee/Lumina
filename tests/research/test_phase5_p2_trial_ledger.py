@@ -8,7 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from lumina_research.cycles.final_cycle import DATA_ANSWERS_SHA256, FINALE_PREREG_SHA256
+from lumina_research.cycles.final_cycle import (
+    DATA_ANSWERS_SHA256,
+    FINALE_PREREG_SHA256,
+    LH03_ANSWERS_SHA256,
+    RV02_POWER_N_TRADES,
+)
 from lumina_research.cycles.nq_research import KIND_RELATIVE_VALUE
 from lumina_research.cycles.null_model import NULL_BUILDER
 from lumina_research.cycles.search_space import NEW_BOOK_HYPOTHESIS_CAP, NEW_BOOK_MAX_CYCLES
@@ -208,7 +213,16 @@ def test_canonical_ledger_closes_old_book_and_holds_new_book_at_zero() -> None:
     assert answers["stoptelling_sha256"] == STOPTELLING_ANSWERS_SHA256
     assert answers["finale_cyclus_sha256"] == FINALE_PREREG_SHA256
     assert answers["data_sha256"] == DATA_ANSWERS_SHA256
+    assert answers["lh03_sha256"] == LH03_ANSWERS_SHA256
     assert payload["active_book"]["dropped_config_ids"] == ["p2s-lh-02", "p2s-lh-04"]
+    rv02 = payload["active_book"]["rv02_low_power"]
+    assert isinstance(rv02, dict)
+    assert rv02["n_trades"] == RV02_POWER_N_TRADES == 59
+    assert rv02["low_power_risk_accepted"] is True
+    lh03_atr = payload["active_book"]["lh03_atr"]
+    assert isinstance(lh03_atr, dict)
+    assert lh03_atr["clarification_not_hypothesis_change"] is True
+    assert lh03_atr["source"] == "intraday_5m_atr14_strictly_before_event"
     assert payload["active_book"]["n_hypotheses_stated"] == 6
     pins = payload["active_book"]["data_pins"]
     assert isinstance(pins, dict)

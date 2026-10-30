@@ -1,17 +1,38 @@
 {
-  "schema": "lumina.research.final_cycle_power.v2",
+  "schema": "lumina.research.final_cycle_power.v3",
   "finale_prereg": "ONDERZOEKERS-PREREG-FINALE-CYCLUS-20261030T0913.md",
   "finale_prereg_sha256": "971bd2ef3ca798fdd0df976349420efd9915bf6f74734d5c1f6b50de51db743e",
   "data_answers": "ONDERZOEKERS-ANTWOORDEN-DATA-20261030T0936.md",
   "data_answers_sha256": "e37cd59ead7db0779c2c8a61be0f59bce4a1e6b37281433480e9d6652741c8fb",
+  "lh03_answers": "ONDERZOEKERS-ANTWOORDEN-LH03-20261030T1000.md",
+  "lh03_answers_sha256": "0c549ee1a1ba901f1bc6620b2ace5b0c0b5e6736d869b863a33e10a931320c4f",
   "n_hypotheses": 6,
   "n_hypotheses_cap": 25,
   "dropped_config_ids": [
     "p2s-lh-02",
     "p2s-lh-04"
   ],
+  "runnable_config_ids": [
+    "p2s-rv-01",
+    "p2s-rv-02",
+    "p2s-lh-01",
+    "p2s-lh-03"
+  ],
   "lh01_target_range_mult": 1.5,
   "rv02_sizing": "dollar_neutral",
+  "rv02_low_power": {
+    "config_id": "p2s-rv-02",
+    "n_trades": 59,
+    "low_power_risk_accepted": true,
+    "note": "RV-02 power is 59 trades. The research team accepts the low-power risk and still runs the trial. This is not a parameter change."
+  },
+  "lh03_atr": {
+    "source": "intraday_5m_atr14_strictly_before_event",
+    "length": 14,
+    "multiple": 1.2,
+    "clarification_not_hypothesis_change": true,
+    "note": "The 1.2\u00d7 ATR14 threshold uses INTRADAY ATR(14) on 5-minute bars (SMA of the last 14 true ranges from bars whose close is strictly before the release, no lookahead), NOT daily ATR14. Clarification of the pre-registered parameter, not a change to the hypothesis."
+  },
   "vix_filter_rule": "previous_day_close",
   "kill": {
     "dsr_min": 0.95,
@@ -23,6 +44,14 @@
   "holdout_pin": "2026-01-28T23:00:00Z",
   "trials_run": false,
   "dsr_pbo_n": 0,
+  "lh03_power": {
+    "n_events": 73,
+    "n_with_post_bar": 73,
+    "n_short_atr": 0,
+    "n_trades": 62,
+    "atr_source": "intraday_5m_atr14_strictly_before_event",
+    "clarification_not_hypothesis_change": true
+  },
   "data_pins": {
     "holdout_pin": "2026-01-28T23:00:00Z",
     "es_pre_holdout_sha256": "6100588d2f3e519bd815b8f952dc15f01d434cc2a2b70e6453d0c3a7477bbca6",
@@ -31,7 +60,9 @@
     "vix_sha256": "481dc031c6d2b51b9150718c21c01b7f3706c99678ebf12b0edba19d0c8d2d1d",
     "macro_sha256": "104018d21552544a6c60ef52de0bbb6c82447c6afcb685e3059a14edd1c19aa7",
     "vix_filter_rule": "previous_day_close",
-    "cash_index": null
+    "cash_index": null,
+    "lh03_atr_source": "intraday_5m_atr14_strictly_before_event",
+    "lh03_atr_clarification_not_hypothesis_change": true
   },
   "data": {
     "es_pre_holdout": true,
@@ -86,7 +117,7 @@
       "research_id": "LH-03",
       "config_id": "p2s-lh-03",
       "status": "ready",
-      "n_trades": 1,
+      "n_trades": 62,
       "missing": [],
       "dropped_reason": ""
     },

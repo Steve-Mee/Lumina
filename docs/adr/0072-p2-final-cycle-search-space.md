@@ -64,10 +64,26 @@ sealed, Risk Core untouched).
 2. Run Validation Gate trials now — rejected: explicit "DO NOT run trials".
 3. Drop blocked/dropped hypotheses from `n_hypotheses` — rejected: the lock is 6.
 
+## 10:00 addendum (research team, NOT Steve)
+
+Binding: `docs/research/ONDERZOEKERS-ANTWOORDEN-LH03-20261030T1000.md`
+content sha256 `0c549ee1a1ba901f1bc6620b2ace5b0c0b5e6736d869b863a33e10a931320c4f`.
+
+1. **LH-03 ATR clarification, not a hypothesis change.** The pre-registered
+   1.2× ATR14 threshold is INTRADAY ATR(14) on 5-minute bars computed from
+   bars strictly before the release (no lookahead). It is not daily ATR14.
+   No other parameter changes. The hypothesis id stays `p2s-lh-03`.
+2. **RV-02 limited power is accepted.** 59 trades. The team still runs the
+   trial and records the low-power risk in the power report and the ledger.
+3. **GO.** Run exactly RV-01, RV-02, LH-01, LH-03 (one cycle). Report the
+   new LH-03 power first, then run all four. Dropped LH-02/LH-04 stay in
+   `n_hypotheses=6`. 0 survivors → `research_line_stopped`.
+
 ## Links
 
 - Team prereg: `docs/research/ONDERZOEKERS-PREREG-FINALE-CYCLUS-20261030T0913.md`
 - Data answers: `docs/research/ONDERZOEKERS-ANTWOORDEN-DATA-20261030T0936.md`
+- LH-03 answers: `docs/research/ONDERZOEKERS-ANTWOORDEN-LH03-20261030T1000.md`
 - Operational lock: `experiments/reports/phase5_p2_search_space_preregister_2026-10-30.md`
 - Code: `lumina_research/cycles/final_cycle.py`
 - Related: ADR-0071

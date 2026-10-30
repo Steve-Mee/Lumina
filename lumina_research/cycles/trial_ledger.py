@@ -16,7 +16,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
-from lumina_research.cycles.final_cycle import DATA_ANSWERS_SHA256, FINALE_PREREG_SHA256
+from lumina_research.cycles.final_cycle import (
+    DATA_ANSWERS_SHA256,
+    FINALE_PREREG_SHA256,
+    LH03_ANSWERS_SHA256,
+    RV02_LOW_POWER_NOTE,
+    RV02_POWER_N_TRADES,
+)
 from lumina_research.cycles.search_space import (
     NEW_BOOK_HYPOTHESIS_CAP,
     NEW_BOOK_MAX_CYCLES,
@@ -243,6 +249,8 @@ def load_trial_ledger(path: Path | None = None) -> TrialLedger:
             raise LedgerRefused("awaiting book has completed 0 cycles")
         if n_hypotheses_stated is not None:
             raise LedgerRefused("awaiting book has no stated hypothesis count")
+    _validate_rv02_low_power(active.get("rv02_low_power"))
+    _validate_lh03_atr(active.get("lh03_atr"))
     return TrialLedger(
         path=ledger_path,
         schema=LEDGER_SCHEMA,
@@ -295,6 +303,8 @@ def _validate_optional_stop_lock(payload: Mapping[str, object]) -> None:
             raise LedgerRefused("finale cyclus sha mismatch")
         if block.get("data_sha256") != DATA_ANSWERS_SHA256:
             raise LedgerRefused("data answers sha mismatch")
+        if block.get("lh03_sha256") != LH03_ANSWERS_SHA256:
+            raise LedgerRefused("lh03 answers sha mismatch")
     raw = payload.get("stop_criterion")
     if raw is None:
         return
@@ -348,6 +358,30 @@ def _closed_limited_postkill(value: object) -> tuple[dict[str, int], int]:
     if found is None:
         raise LedgerRefused("closed_books must include p2-es-limited-postkill")
     return found, total
+
+
+def _validate_rv02_low_power(value: object) -> None:
+    if value is None:
+        return
+    block = _as_object(value, field="rv02_low_power")
+    if block.get("n_trades") != RV02_POWER_N_TRADES:
+        raise LedgerRefused("RV-02 low-power n_trades must be 59")
+    if block.get("low_power_risk_accepted") is not True:
+        raise LedgerRefused("RV-02 low-power risk must be accepted")
+    note = block.get("note")
+    if not isinstance(note, str) or RV02_LOW_POWER_NOTE not in note:
+        raise LedgerRefused("RV-02 low-power note must record the accepted 59-trade risk")
+
+
+def _validate_lh03_atr(value: object) -> None:
+    if value is None:
+        return
+    block = _as_object(value, field="lh03_atr")
+    if block.get("clarification_not_hypothesis_change") is not True:
+        raise LedgerRefused("LH-03 5m ATR is a clarification, not a hypothesis change")
+    source = block.get("source")
+    if source != "intraday_5m_atr14_strictly_before_event":
+        raise LedgerRefused("LH-03 ATR source must be 5-minute ATR14 before the release")
 
 
 def _as_object(value: object, *, field: str) -> dict[str, object]:

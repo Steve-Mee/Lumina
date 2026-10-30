@@ -12,7 +12,9 @@
     "finale_cyclus": "ONDERZOEKERS-PREREG-FINALE-CYCLUS-20261030T0913.md",
     "finale_cyclus_sha256": "971bd2ef3ca798fdd0df976349420efd9915bf6f74734d5c1f6b50de51db743e",
     "data": "ONDERZOEKERS-ANTWOORDEN-DATA-20261030T0936.md",
-    "data_sha256": "e37cd59ead7db0779c2c8a61be0f59bce4a1e6b37281433480e9d6652741c8fb"
+    "data_sha256": "e37cd59ead7db0779c2c8a61be0f59bce4a1e6b37281433480e9d6652741c8fb",
+    "lh03": "ONDERZOEKERS-ANTWOORDEN-LH03-20261030T1000.md",
+    "lh03_sha256": "0c549ee1a1ba901f1bc6620b2ace5b0c0b5e6736d869b863a33e10a931320c4f"
   },
   "stop_criterion": {
     "tripped": true,
@@ -127,8 +129,23 @@
       "vix_sha256": "481dc031c6d2b51b9150718c21c01b7f3706c99678ebf12b0edba19d0c8d2d1d",
       "macro_sha256": "104018d21552544a6c60ef52de0bbb6c82447c6afcb685e3059a14edd1c19aa7",
       "vix_filter_rule": "previous_day_close",
-      "cash_index": null
+      "cash_index": null,
+      "lh03_atr_source": "intraday_5m_atr14_strictly_before_event",
+      "lh03_atr_clarification_not_hypothesis_change": true
     },
-    "note": "09:13 lock + 09:36 data: n_hypotheses=6 with LH-02 and LH-04 dropped (still counted). Data pins locked. DSR/PBO N=0. No trials."
+    "rv02_low_power": {
+      "config_id": "p2s-rv-02",
+      "n_trades": 59,
+      "low_power_risk_accepted": true,
+      "note": "RV-02 power is 59 trades. The research team accepts the low-power risk and still runs the trial. This is not a parameter change."
+    },
+    "lh03_atr": {
+      "source": "intraday_5m_atr14_strictly_before_event",
+      "length": 14,
+      "multiple": 1.2,
+      "clarification_not_hypothesis_change": true,
+      "note": "The 1.2× ATR14 threshold uses INTRADAY ATR(14) on 5-minute bars (SMA of the last 14 true ranges from bars whose close is strictly before the release, no lookahead), NOT daily ATR14. Clarification of the pre-registered parameter, not a change to the hypothesis."
+    },
+    "note": "09:13 lock + 09:36 data + 10:00 LH-03 answers: n_hypotheses=6 with LH-02 and LH-04 dropped (still counted). LH-03 5-minute ATR(14) is a parameter clarification, not a hypothesis change. RV-02 59-trade low-power risk is accepted. DSR/PBO N=0 until the 10:00 GO cycle runs."
   }
 }

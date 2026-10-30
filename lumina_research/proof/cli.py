@@ -19,6 +19,7 @@ from lumina_research.cycles.midpoint_d13 import (
 from lumina_research.cycles.null_audit import run_null_audit
 from lumina_research.cycles.null_lock import NullLeaks, assert_research_allowed
 from lumina_research.cycles.null_only import run_null_only, synthetic_drift_tape
+from lumina_research.cycles.final_cycle_run import run_final_cycle
 from lumina_research.cycles.postkill_es import run_postkill_es_cycle
 from lumina_research.cycles.runner import run_research_cycles
 from lumina_research.cycles.trial_ledger import (
@@ -73,6 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
             "midpoint-power-floor",
             "limited-es",
             "postkill-es",
+            "final-cycle",
         ),
         default="first",
         help=(
@@ -82,7 +84,8 @@ def build_parser() -> argparse.ArgumentParser:
             "midpoint-power: 100/50/25% planted magnitude, no templates. "
             "midpoint-power-floor: 12.5%/6.25% planted magnitude, no templates. "
             "limited-es: six pre-registered p2l-* configs on pre-holdout ES. "
-            "postkill-es: two 2.4 ATR breakouts + one TOD lookback-45."
+            "postkill-es: two 2.4 ATR breakouts + one TOD lookback-45. "
+            "final-cycle: RV-01/RV-02/LH-01/LH-03 on pinned pre-holdout ES+NQ."
         ),
     )
     research.add_argument(
@@ -246,6 +249,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 2
             if postkill.report.stopped:
                 sys.stderr.write(f"postkill-es stopped: {postkill.report.stop_reason}\n")
+                return 2
+            return 0
+        if str(args.cycle) == "final-cycle":
+            try:
+                final = run_final_cycle(
+                    work_dir=args.work_dir,
+                    report_dir=args.report_dir,
+                )
+            except ValueError as exc:
+                sys.stderr.write(f"final-cycle: {exc}\n")
+                return 2
+            if final.report.stop_reason == "positive_control_failed":
+                sys.stderr.write(f"final-cycle control failed: {final.report.control_note}\n")
+                return 2
+            if final.report.stopped:
+                sys.stderr.write(f"final-cycle stopped: {final.report.stop_reason}\n")
                 return 2
             return 0
         if str(args.cycle) == "atr-es":

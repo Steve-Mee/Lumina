@@ -1,8 +1,15 @@
 """Locked 09:13 final-cycle search space for book p2-next-search-space.
 
 Six pre-registered hypotheses. LH-02 and LH-04 are dropped but still count
-in n_hypotheses=6. No Validation Gate trial. DSR/PBO N stays 0.
-VIX<25 uses the previous day's close (no lookahead).
+in n_hypotheses=6. VIX<25 uses the previous day's close (no lookahead).
+
+LH-03 1.2× ATR14 is the pre-registered parameter. The 10:00 answers clarify
+that ATR(14) is the SMA of the last 14 true ranges on 5-minute bars whose
+close is strictly before the release (no lookahead) — not daily ATR14.
+That is a clarification, not a hypothesis change.
+
+RV-02 power is 59 trades. The research team accepts the low-power risk and
+still runs the trial.
 """
 
 from __future__ import annotations
@@ -10,6 +17,7 @@ from __future__ import annotations
 import bisect
 import csv
 import hashlib
+import json
 import math
 import os
 from dataclasses import dataclass
@@ -30,6 +38,8 @@ FINALE_PREREG_NAME = "ONDERZOEKERS-PREREG-FINALE-CYCLUS-20261030T0913.md"
 FINALE_PREREG_SHA256 = "971bd2ef3ca798fdd0df976349420efd9915bf6f74734d5c1f6b50de51db743e"
 DATA_ANSWERS_NAME = "ONDERZOEKERS-ANTWOORDEN-DATA-20261030T0936.md"
 DATA_ANSWERS_SHA256 = "e37cd59ead7db0779c2c8a61be0f59bce4a1e6b37281433480e9d6652741c8fb"
+LH03_ANSWERS_NAME = "ONDERZOEKERS-ANTWOORDEN-LH03-20261030T1000.md"
+LH03_ANSWERS_SHA256 = "0c549ee1a1ba901f1bc6620b2ace5b0c0b5e6736d869b863a33e10a931320c4f"
 SEARCH_SPACE_PREREG_NAME = "phase5_p2_search_space_preregister_2026-10-30.md"
 N_HYPOTHESES = 6
 LH01_TARGET_RANGE_MULT = 1.5
@@ -42,9 +52,24 @@ RV01_Z_STOP = 4.0
 RV01_LOOKBACK_SESSIONS = 20
 RV01_MAX_HOLD_NS = 6 * 3600 * 1_000_000_000
 RV02_REL_GAP_PCT = 0.4
+RV02_POWER_N_TRADES = 59
+RV02_LOW_POWER_ACCEPTED = True
+RV02_LOW_POWER_NOTE = (
+    "RV-02 power is 59 trades. The research team accepts the low-power risk "
+    "and still runs the trial. This is not a parameter change."
+)
 LH03_ATR_MULT = 1.2
 LH03_ATR_LEN = 14
 LH03_LAG_NS = 5 * 60 * 1_000_000_000
+LH03_FIVE_MIN_NS = 5 * 60 * 1_000_000_000
+LH03_ATR_SOURCE = "intraday_5m_atr14_strictly_before_event"
+LH03_ATR_CLARIFICATION = True
+LH03_ATR_NOTE = (
+    "The 1.2× ATR14 threshold uses INTRADAY ATR(14) on 5-minute bars "
+    "(SMA of the last 14 true ranges from bars whose close is strictly "
+    "before the release, no lookahead), NOT daily ATR14. Clarification of "
+    "the pre-registered parameter, not a change to the hypothesis."
+)
 VIX_FILTER_MAX = 25.0
 VIX_FILTER_RULE = "previous_day_close"
 KILL_DSR_MIN = FLOOR_DSR_PROBABILITY_MIN
@@ -68,8 +93,10 @@ MACRO_EVENT_NAMES: frozenset[str] = frozenset({"CPI", "NFP", "FOMC_STATEMENT"})
 _REPO = Path(__file__).resolve().parents[2]
 FINALE_PREREG_PATH = _REPO / "docs" / "research" / FINALE_PREREG_NAME
 DATA_ANSWERS_PATH = _REPO / "docs" / "research" / DATA_ANSWERS_NAME
+LH03_ANSWERS_PATH = _REPO / "docs" / "research" / LH03_ANSWERS_NAME
 SEARCH_SPACE_PREREG_PATH = _REPO / "experiments" / "reports" / SEARCH_SPACE_PREREG_NAME
 DEFAULT_POWER_JSON = _REPO / "experiments" / "reports" / "phase5_p2_final_cycle_data_power.json"
+DEFAULT_POWER_MD = _REPO / "experiments" / "reports" / "phase5_p2_final_cycle_data_power.md"
 
 ES_TAPE_SEARCHED: tuple[str, ...] = (
     "/tmp/lumina-es/ES_pre_holdout.csv",
@@ -152,6 +179,14 @@ class MacroEvent:
     session: date
 
 
+@dataclass(frozen=True, slots=True)
+class MacroFadePower:
+    n_events: int
+    n_with_post_bar: int
+    n_short_atr: int
+    n_trades: int
+
+
 LOCKED_HYPOTHESES: tuple[FinalHypothesis, ...] = (
     FinalHypothesis(
         research_id="RV-01",
@@ -226,6 +261,29 @@ def dropped_config_ids() -> tuple[str, ...]:
     return tuple(item.config_id for item in LOCKED_HYPOTHESES if item.dropped)
 
 
+def runnable_config_ids() -> tuple[str, ...]:
+    return tuple(item.config_id for item in LOCKED_HYPOTHESES if not item.dropped)
+
+
+def rv02_low_power() -> Mapping[str, object]:
+    return {
+        "config_id": "p2s-rv-02",
+        "n_trades": RV02_POWER_N_TRADES,
+        "low_power_risk_accepted": RV02_LOW_POWER_ACCEPTED,
+        "note": RV02_LOW_POWER_NOTE,
+    }
+
+
+def lh03_atr_lock() -> Mapping[str, object]:
+    return {
+        "source": LH03_ATR_SOURCE,
+        "length": LH03_ATR_LEN,
+        "multiple": LH03_ATR_MULT,
+        "clarification_not_hypothesis_change": LH03_ATR_CLARIFICATION,
+        "note": LH03_ATR_NOTE,
+    }
+
+
 def kill_rule() -> Mapping[str, object]:
     return {
         "dsr_min": KILL_DSR_MIN,
@@ -246,6 +304,8 @@ def data_pins() -> Mapping[str, object]:
         "macro_sha256": PIN_MACRO_SHA256,
         "vix_filter_rule": VIX_FILTER_RULE,
         "cash_index": None,
+        "lh03_atr_source": LH03_ATR_SOURCE,
+        "lh03_atr_clarification_not_hypothesis_change": LH03_ATR_CLARIFICATION,
     }
 
 
@@ -434,34 +494,114 @@ def count_relative_gap_fade(
     return n_trades
 
 
-def count_macro_fade(es_bars: Sequence[ResearchBar], events: Sequence[MacroEvent]) -> int:
-    """LH-03 entries: |close(+5min) − last close before event| > 1.2 × ATR14."""
-    sessions = _rth_sessions(es_bars)
-    ranges = [item.high - item.low for item in sessions]
-    session_index = {item.session: index for index, item in enumerate(sessions)}
+def resample_five_minute(bars: Sequence[ResearchBar]) -> tuple[ResearchBar, ...]:
+    """Clock-aligned 5-minute OHLC. Close timestamp is the last 1m bar in the bucket."""
+    if not bars:
+        return ()
+    grouped: list[ResearchBar] = []
+    bucket = bars[0].ts_ns // LH03_FIVE_MIN_NS
+    open_px = bars[0].open
+    high_px = bars[0].high
+    low_px = bars[0].low
+    close_px = bars[0].close
+    volume = bars[0].volume
+    last_ts = bars[0].ts_ns
+    for bar in bars[1:]:
+        current = bar.ts_ns // LH03_FIVE_MIN_NS
+        if current != bucket:
+            grouped.append(
+                ResearchBar(
+                    ts_ns=last_ts,
+                    open=open_px,
+                    high=high_px,
+                    low=low_px,
+                    close=close_px,
+                    volume=volume,
+                )
+            )
+            bucket = current
+            open_px = bar.open
+            high_px = bar.high
+            low_px = bar.low
+            close_px = bar.close
+            volume = bar.volume
+        else:
+            high_px = max(high_px, bar.high)
+            low_px = min(low_px, bar.low)
+            close_px = bar.close
+            volume += bar.volume
+        last_ts = bar.ts_ns
+    grouped.append(
+        ResearchBar(
+            ts_ns=last_ts,
+            open=open_px,
+            high=high_px,
+            low=low_px,
+            close=close_px,
+            volume=volume,
+        )
+    )
+    return tuple(grouped)
+
+
+def five_minute_atr14_before(five_min: Sequence[ResearchBar], event_ns: int) -> float | None:
+    """SMA of the last 14 true ranges on 5m bars with close strictly before event_ns."""
+    if not five_min:
+        return None
+    stamps = [item.ts_ns for item in five_min]
+    end = bisect.bisect_left(stamps, event_ns)
+    start = end - (LH03_ATR_LEN + 1)
+    if start < 0:
+        return None
+    window = five_min[start:end]
+    if len(window) < LH03_ATR_LEN + 1:
+        return None
+    total = 0.0
+    for index in range(1, len(window)):
+        prev_close = window[index - 1].close
+        bar = window[index]
+        true_range = max(bar.high - bar.low, abs(bar.high - prev_close), abs(bar.low - prev_close))
+        total += true_range
+    atr = total / float(LH03_ATR_LEN)
+    if atr <= 0.0:
+        return None
+    return atr
+
+
+def macro_fade_power(es_bars: Sequence[ResearchBar], events: Sequence[MacroEvent]) -> MacroFadePower:
+    """LH-03 entries vs 5-minute ATR(14) strictly before the release."""
+    five_min = resample_five_minute(es_bars)
     ts_list = [item.ts_ns for item in es_bars]
     by_ts = {item.ts_ns: item for item in es_bars}
+    n_with_post = 0
+    n_short_atr = 0
     n_trades = 0
     for event in events:
         post = by_ts.get(event.event_ns + LH03_LAG_NS)
         if post is None:
             continue
+        n_with_post += 1
         pre_index = bisect.bisect_left(ts_list, event.event_ns) - 1
         if pre_index < 0:
             continue
         pre = es_bars[pre_index]
-        day_index = session_index.get(event.session)
-        if day_index is None:
-            prior_sessions = [item for item in sessions if item.session < event.session]
-            day_index = len(prior_sessions)
-        if day_index < LH03_ATR_LEN:
-            continue
-        atr = sum(ranges[day_index - LH03_ATR_LEN : day_index]) / float(LH03_ATR_LEN)
-        if atr <= 0.0:
+        atr = five_minute_atr14_before(five_min, event.event_ns)
+        if atr is None:
+            n_short_atr += 1
             continue
         if abs(post.close - pre.close) > LH03_ATR_MULT * atr:
             n_trades += 1
-    return n_trades
+    return MacroFadePower(
+        n_events=len(events),
+        n_with_post_bar=n_with_post,
+        n_short_atr=n_short_atr,
+        n_trades=n_trades,
+    )
+
+
+def count_macro_fade(es_bars: Sequence[ResearchBar], events: Sequence[MacroEvent]) -> int:
+    """LH-03 entries: |close(+5min) − last close before event| > 1.2 × 5m ATR14."""
+    return macro_fade_power(es_bars, events).n_trades
 
 
 def previous_vix_close(vix: Sequence[tuple[date, float]], session: date) -> float | None:
@@ -632,22 +772,39 @@ def build_power_report(
     if macro_rows is None and found.macro_path is not None:
         macro_rows = load_macro_events(Path(found.macro_path))
     rows = power_rows(found, es_bars=bars, nq_bars=nq, vix=vix_rows, events=macro_rows)
+    lh03_diag: dict[str, object] | None = None
+    if bars is not None and macro_rows is not None:
+        fade = macro_fade_power(bars, macro_rows)
+        lh03_diag = {
+            "n_events": fade.n_events,
+            "n_with_post_bar": fade.n_with_post_bar,
+            "n_short_atr": fade.n_short_atr,
+            "n_trades": fade.n_trades,
+            "atr_source": LH03_ATR_SOURCE,
+            "clarification_not_hypothesis_change": LH03_ATR_CLARIFICATION,
+        }
     return {
-        "schema": "lumina.research.final_cycle_power.v2",
+        "schema": "lumina.research.final_cycle_power.v3",
         "finale_prereg": FINALE_PREREG_NAME,
         "finale_prereg_sha256": FINALE_PREREG_SHA256,
         "data_answers": DATA_ANSWERS_NAME,
         "data_answers_sha256": DATA_ANSWERS_SHA256,
+        "lh03_answers": LH03_ANSWERS_NAME,
+        "lh03_answers_sha256": LH03_ANSWERS_SHA256,
         "n_hypotheses": N_HYPOTHESES,
         "n_hypotheses_cap": NEW_BOOK_HYPOTHESIS_CAP,
         "dropped_config_ids": list(dropped_config_ids()),
+        "runnable_config_ids": list(runnable_config_ids()),
         "lh01_target_range_mult": LH01_TARGET_RANGE_MULT,
         "rv02_sizing": RV02_SIZING,
+        "rv02_low_power": dict(rv02_low_power()),
+        "lh03_atr": dict(lh03_atr_lock()),
         "vix_filter_rule": VIX_FILTER_RULE,
         "kill": dict(kill_rule()),
         "holdout_pin": HOLDOUT_PIN_Z,
         "trials_run": False,
         "dsr_pbo_n": 0,
+        "lh03_power": lh03_diag,
         "data_pins": dict(data_pins()),
         "data": {
             "es_pre_holdout": found.es_pre_holdout,
@@ -734,6 +891,10 @@ class _RthSession:
     close: float
 
 
+def rth_sessions(bars: Sequence[ResearchBar]) -> tuple[_RthSession, ...]:
+    return _rth_sessions(bars)
+
+
 def _rth_sessions(bars: Sequence[ResearchBar]) -> tuple[_RthSession, ...]:
     labels = annotate(bars)
     first_open: dict[date, float] = {}
@@ -778,9 +939,101 @@ def _assert_lock_invariants() -> None:
         raise RuntimeError("RV-01 VIX filter must use previous_day_close")
     if dropped_config_ids() != ("p2s-lh-02", "p2s-lh-04"):
         raise RuntimeError("LH-02 and LH-04 must stay dropped inside n=6")
+    if runnable_config_ids() != ("p2s-rv-01", "p2s-rv-02", "p2s-lh-01", "p2s-lh-03"):
+        raise RuntimeError("runnable final-cycle ids must be RV-01, RV-02, LH-01, LH-03")
+    if LH03_ATR_SOURCE != "intraday_5m_atr14_strictly_before_event":
+        raise RuntimeError("LH-03 ATR must stay the 5-minute pre-event clarification")
+    if RV02_LOW_POWER_ACCEPTED is not True or RV02_POWER_N_TRADES != 59:
+        raise RuntimeError("RV-02 59-trade low-power risk must stay accepted")
     ids = [item.config_id for item in LOCKED_HYPOTHESES]
     if len(set(ids)) != len(ids):
         raise RuntimeError("final-cycle config ids must be unique")
+
+
+def render_power_markdown(payload: Mapping[str, object]) -> str:
+    hyps = payload.get("hypotheses")
+    rows = hyps if isinstance(hyps, list) else []
+    lines = [
+        "# P2 final-cycle data availability + power (2026-10-30 10:00)",
+        "",
+        "Binding: `docs/research/ONDERZOEKERS-PREREG-FINALE-CYCLUS-20261030T0913.md`",
+        f"content sha256 `{FINALE_PREREG_SHA256}`.",
+        "",
+        "Data answers: `docs/research/ONDERZOEKERS-ANTWOORDEN-DATA-20261030T0936.md`",
+        f"content sha256 `{DATA_ANSWERS_SHA256}`.",
+        "",
+        f"LH-03 answers: `docs/research/{LH03_ANSWERS_NAME}`",
+        f"content sha256 `{LH03_ANSWERS_SHA256}` (prefix `0c549ee1`).",
+        "",
+        "Holdout pin `2026-01-28T23:00:00Z` unopened. No SIM/promotion. Risk Core untouched.",
+        "n_hypotheses stays **6**. Dropped LH-02 and LH-04 stay in N.",
+        "",
+        "## Addendum (research team, NOT Steve)",
+        "",
+        f"- {LH03_ATR_NOTE}",
+        f"- {RV02_LOW_POWER_NOTE}",
+        "",
+        "## Locked single values (no grid)",
+        "",
+        "- LH-01 NR7 target = **1.5×** NR7 range",
+        "- RV-02 sizing = **dollar-neutral**",
+        "- RV-01 z = **|z| > 2.5** both tails; exit |z| < 0.5; stop |z| ≥ 4.0",
+        "- RV-02 gap = **|ES% − NQ%| > 0.4** at RTH open",
+        "- RV-01 VIX<25 = **previous day's close**",
+        "- LH-03 ATR = **5-minute ATR(14) strictly before release** (clarification)",
+        "",
+        "## Trade counts (pre-holdout power, entries only)",
+        "",
+        "| research | config_id | status | n_trades |",
+        "|---|---|---|---|",
+    ]
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        rid = str(row.get("research_id", ""))
+        cid = str(row.get("config_id", ""))
+        status = str(row.get("status", ""))
+        n_trades = row.get("n_trades")
+        extra = ""
+        if rid == "RV-02":
+            extra = " (low-power risk accepted)"
+        if rid == "LH-02":
+            extra = " (reason)"
+        if rid == "LH-04":
+            extra = " (no free 1m SPX)"
+        shown = "—" if n_trades is None else f"**{n_trades}**"
+        lines.append(f"| {rid} | `{cid}` | {status} | {shown}{extra} |")
+    lh03 = payload.get("lh03_power")
+    lines.extend(["", "LH-03 diagnostic (5-minute ATR14, no lookahead):"])
+    if isinstance(lh03, dict):
+        lines.append(
+            f"{lh03.get('n_events')} events; {lh03.get('n_with_post_bar')} have a +5min bar; "
+            f"{lh03.get('n_short_atr')} lack 14 five-minute true ranges before the release; "
+            f"**{lh03.get('n_trades')}** exceed 1.2× 5-minute ATR14."
+        )
+    lines.extend(
+        [
+            "",
+            "Kill still: DSR ≥ 0.95 AND ≥7/8 OOS+ AND net > 0.",
+            "",
+            "JSON: `phase5_p2_final_cycle_data_power.json`.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def write_power_artifacts(
+    payload: Mapping[str, object],
+    *,
+    json_path: Path | None = None,
+    md_path: Path | None = None,
+) -> tuple[Path, Path]:
+    target_json = json_path if json_path is not None else DEFAULT_POWER_JSON
+    target_md = md_path if md_path is not None else DEFAULT_POWER_MD
+    target_json.write_text(json.dumps(payload, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+    target_md.write_text(render_power_markdown(payload), encoding="utf-8")
+    return target_json, target_md
 
 
 _assert_lock_invariants()

@@ -21,11 +21,17 @@ from lumina_research.cycles.final_cycle import (
     KILL_OOS_POSITIVE_MIN,
     KILL_OOS_WINDOWS,
     LH01_TARGET_RANGE_MULT,
+    LH03_ANSWERS_PATH,
+    LH03_ANSWERS_SHA256,
+    LH03_ATR_CLARIFICATION,
+    LH03_ATR_SOURCE,
     LOCKED_HYPOTHESES,
     N_HYPOTHESES,
     PIN_MACRO_SHA256,
     PIN_NQ_SHA256,
     PIN_VIX_SHA256,
+    RV02_LOW_POWER_ACCEPTED,
+    RV02_POWER_N_TRADES,
     RV02_SIZING,
     SEARCH_SPACE_PREREG_PATH,
     STATUS_BLOCKED,
@@ -42,11 +48,14 @@ from lumina_research.cycles.final_cycle import (
     count_relative_gap_fade,
     count_weekend_mr,
     dropped_config_ids,
+    five_minute_atr14_before,
     kill_rule,
     missing_data_for,
     power_rows,
     previous_vix_close,
     relative_value_config_ids,
+    resample_five_minute,
+    runnable_config_ids,
     search_space_mapping,
 )
 from lumina_research.cycles.nq_research import KIND_RELATIVE_VALUE
@@ -121,12 +130,23 @@ def test_finale_prereg_and_data_answers_sha_are_frozen() -> None:
     data_text = DATA_ANSWERS_PATH.read_text(encoding="utf-8")
     assert "LH-04" in data_text
     assert "LH-02" in data_text
+    lh03_digest = hashlib.sha256(LH03_ANSWERS_PATH.read_bytes()).hexdigest()
+    assert lh03_digest == LH03_ANSWERS_SHA256
+    assert lh03_digest.startswith("0c549ee1")
+    lh03_text = LH03_ANSWERS_PATH.read_text(encoding="utf-8")
+    assert "5-minutenbars" in lh03_text
+    assert "Hypothese blijft" in lh03_text
     payload = json.loads(DEFAULT_POWER_JSON.read_text(encoding="utf-8"))
     assert payload["trials_run"] is False
     assert payload["dsr_pbo_n"] == 0
     assert payload["n_hypotheses"] == 6
     assert payload["vix_filter_rule"] == "previous_day_close"
     assert payload["dropped_config_ids"] == ["p2s-lh-02", "p2s-lh-04"]
+    assert payload["lh03_answers_sha256"] == LH03_ANSWERS_SHA256
+    assert payload["lh03_atr"]["clarification_not_hypothesis_change"] is True
+    assert payload["lh03_atr"]["source"] == LH03_ATR_SOURCE
+    assert payload["rv02_low_power"]["n_trades"] == RV02_POWER_N_TRADES
+    assert payload["rv02_low_power"]["low_power_risk_accepted"] is True
 
 
 @pytest.mark.unit
@@ -144,9 +164,14 @@ def test_six_hypotheses_one_cycle_cap_and_kill_rule() -> None:
         "p2s-lh-04",
     )
     assert dropped_config_ids() == ("p2s-lh-02", "p2s-lh-04")
+    assert runnable_config_ids() == ("p2s-rv-01", "p2s-rv-02", "p2s-lh-01", "p2s-lh-03")
     assert LH01_TARGET_RANGE_MULT == 1.5
     assert RV02_SIZING == "dollar_neutral"
     assert VIX_FILTER_RULE == "previous_day_close"
+    assert LH03_ATR_CLARIFICATION is True
+    assert LH03_ATR_SOURCE == "intraday_5m_atr14_strictly_before_event"
+    assert RV02_LOW_POWER_ACCEPTED is True
+    assert RV02_POWER_N_TRADES == 59
     rule = kill_rule()
     assert rule["dsr_min"] == KILL_DSR_MIN == 0.95
     assert rule["oos_positive_min"] == KILL_OOS_POSITIVE_MIN == 7
@@ -254,27 +279,54 @@ def test_relative_gap_fade_counts_abs_gap_over_threshold() -> None:
     assert count_relative_gap_fade(es, nq_matched) == 0
 
 
+def _consecutive_minutes(
+    day: date,
+    hour: int,
+    minute: int,
+    n: int,
+    *,
+    open_: float,
+    high: float,
+    low: float,
+    close: float,
+) -> list[ResearchBar]:
+    out: list[ResearchBar] = []
+    cursor = datetime(day.year, day.month, day.day, hour, minute, tzinfo=ET)
+    for _ in range(n):
+        out.append(
+            ResearchBar(
+                ts_ns=int(cursor.timestamp() * 1_000_000_000),
+                open=open_,
+                high=high,
+                low=low,
+                close=close,
+                volume=1.0,
+            )
+        )
+        cursor += timedelta(minutes=1)
+    return out
+
+
 @pytest.mark.unit
-def test_macro_fade_counts_five_minute_spike_vs_atr() -> None:
-    days = _weekdays(date(2024, 1, 2), 15)
-    bars: list[ResearchBar] = []
-    for day in days[:-1]:
-        bars.extend(_rth_day(day, open_=100.0, high=101.0, low=100.0, close=100.5))
-    event_day = days[-1]
-    bars.append(_bar(event_day, 8, 29, 100.0, 100.2, 99.8, 100.0))
-    bars.append(_bar(event_day, 8, 35, 102.0, 102.5, 101.5, 102.0))
-    bars.extend(_rth_day(event_day, open_=102.0, high=103.0, low=101.0, close=102.0))
+def test_macro_fade_uses_five_minute_atr_not_daily() -> None:
+    event_day = date(2024, 1, 22)
+    # 80 quiet 1m bars (7:10–8:29) → 16 five-minute TRs before 8:30.
+    quiet = _consecutive_minutes(
+        event_day, 7, 10, 80, open_=100.0, high=100.4, low=100.0, close=100.2
+    )
+    post = _bar(event_day, 8, 35, 102.0, 102.5, 101.5, 102.0)
+    rth = _rth_day(event_day, open_=102.0, high=120.0, low=90.0, close=110.0)
+    bars = [*quiet, post, *rth]
     event_ns = int(datetime(event_day.year, event_day.month, event_day.day, 8, 30, tzinfo=ET).timestamp() * 1_000_000_000)
     events = (MacroEvent(event="CPI", event_ns=event_ns, session=event_day),)
+    five = resample_five_minute(quiet)
+    atr = five_minute_atr14_before(five, event_ns)
+    assert atr is not None
+    assert atr < 1.0
     assert count_macro_fade(bars, events) == 1
-    tiny = (MacroEvent(event="CPI", event_ns=event_ns, session=event_day),)
-    bars_tiny: list[ResearchBar] = []
-    for day in days[:-1]:
-        bars_tiny.extend(_rth_day(day, open_=100.0, high=101.0, low=100.0, close=100.5))
-    bars_tiny.append(_bar(event_day, 8, 29, 100.0, 100.2, 99.8, 100.0))
-    bars_tiny.append(_bar(event_day, 8, 35, 100.5, 100.6, 100.4, 100.5))
-    bars_tiny.extend(_rth_day(event_day, open_=100.5, high=101.0, low=100.0, close=100.5))
-    assert count_macro_fade(bars_tiny, tiny) == 0
+    tiny_post = _bar(event_day, 8, 35, 100.3, 100.35, 100.25, 100.3)
+    tiny_bars = [*quiet, tiny_post, *rth]
+    assert count_macro_fade(tiny_bars, events) == 0
 
 
 @pytest.mark.unit
@@ -323,3 +375,101 @@ def test_committed_power_json_keeps_n_six_and_no_trials() -> None:
         assert statuses["LH-01"] == STATUS_READY
         assert statuses["LH-03"] == STATUS_READY
         assert isinstance(payload["hypotheses"][0]["n_trades"], int)
+        by_row = {row["research_id"]: row for row in payload["hypotheses"]}
+        assert by_row["RV-02"]["n_trades"] == RV02_POWER_N_TRADES == 59
+        assert by_row["LH-03"]["n_trades"] == 62
+        assert payload["lh03_atr"]["clarification_not_hypothesis_change"] is True
+        assert payload["rv02_low_power"]["low_power_risk_accepted"] is True
+        assert payload["lh03_power"]["n_trades"] == 62
+
+
+@pytest.mark.unit
+def test_final_cycle_specs_are_the_four_runnable_ids() -> None:
+    from lumina_research.cycles.final_cycle_run import final_cycle_specs
+    from lumina_research.proof.cli import build_parser
+
+    specs = final_cycle_specs()
+    assert tuple(item.config_id for item in specs) == runnable_config_ids()
+    assert all(item.instrument == "ES" for item in specs)
+    parser = build_parser()
+    args = parser.parse_args(["research", "--cycle", "final-cycle"])
+    assert args.cycle == "final-cycle"
+
+
+@pytest.mark.unit
+def test_team_kill_rejects_weak_oos_or_nonpositive_net() -> None:
+    from lumina_research.cycles.data import DataStatus
+    from lumina_research.cycles.final_cycle_run import apply_team_kill
+    from lumina_research.cycles.geometry import require_geometry
+    from lumina_research.cycles.report import CycleReport, CycleRow
+
+    geometry = require_geometry(root="ES", target_ticks=1, stop_ticks=1)
+    data = DataStatus(usable=True, tapes=(), searched=(), missing=(), required={})
+
+    def _row(*, passed: bool, dsr: float, pct: float, net: float) -> CycleRow:
+        return CycleRow(
+            hypothesis_id="h1",
+            config_id="p2s-rv-02",
+            template_id="overnight_gap",
+            family="es_nq_rel_gap",
+            instrument="ES",
+            pre_registered=True,
+            tested=True,
+            passed=passed,
+            reject_reasons=(),
+            pbo=0.1,
+            dsr=dsr,
+            wfe=0.5,
+            n_oos_windows=8,
+            median_oos=0.01,
+            geometry=geometry,
+            death_reason="survived",
+            n_trades=59,
+            net_pnl=net,
+            pct_positive_oos=pct,
+        )
+
+    def _report(row: CycleRow) -> CycleReport:
+        return CycleReport(
+            n_hypotheses=1,
+            n_tested=1,
+            n_killed=0,
+            n_survivors=1,
+            kill_rate=0.0,
+            kill_rate_flag="ok",
+            cost_bands=(),
+            data=data,
+            rows=(row,),
+            geometry_by_root=(geometry,),
+            stopped=False,
+            stop_reason="",
+        )
+
+    keep = apply_team_kill(_report(_row(passed=True, dsr=0.99, pct=0.875, net=0.01)))
+    assert keep.n_survivors == 1
+    weak_oos = apply_team_kill(_report(_row(passed=True, dsr=0.99, pct=0.625, net=0.01)))
+    assert weak_oos.n_survivors == 0
+    assert "team_kill_oos" in weak_oos.rows[0].reject_reasons
+    weak_net = apply_team_kill(_report(_row(passed=True, dsr=0.99, pct=1.0, net=-0.01)))
+    assert weak_net.n_survivors == 0
+    assert "team_kill_net" in weak_net.rows[0].reject_reasons
+
+
+@pytest.mark.unit
+def test_lh01_signals_fire_on_nr7_break() -> None:
+    from lumina_research.cycles.final_cycle_sim import _lh01_signals
+    from lumina_research.cycles.prepare import prepare_tape
+
+    nr7_days = _weekdays(date(2024, 1, 2), 8)
+    bars: list[ResearchBar] = []
+    for index, day in enumerate(nr7_days):
+        if index == 6:
+            bars.extend(_rth_day(day, open_=100.0, high=101.0, low=100.0, close=100.5))
+        elif index == 7:
+            bars.extend(_rth_day(day, open_=101.0, high=103.0, low=100.5, close=102.0))
+        else:
+            bars.extend(_rth_day(day, open_=100.0, high=110.0, low=100.0, close=105.0))
+    prepared = prepare_tape("ES", bars)
+    signals, atr = _lh01_signals(prepared)
+    assert sum(1 for item in signals if item != 0.0) == 1
+    assert any(item > 0.0 for item in atr)

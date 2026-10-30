@@ -11,6 +11,7 @@ from lumina_research.cycles.daily import bar_market_returns, daily_market_return
 from lumina_research.cycles.data import LoadedTape, MIN_BARS
 from lumina_research.cycles.diagnostics import UNBRACKET_HORIZONS, ConfigDiagnostics, from_trades
 from lumina_research.cycles.execution import ClosedTrade, run_execution
+from lumina_research.cycles.final_cycle_sim import FINAL_CYCLE_RUN_IDS, simulate_final_cycle
 from lumina_research.cycles.geometry import require_geometry
 from lumina_research.cycles.holdout import P2_HOLDOUT_START_NS, P2_PIN_MIN_BARS, access_bars
 from lumina_research.cycles.prepare import PreparedTape, prepare_tape
@@ -114,6 +115,12 @@ def materialize_spec(spec: HypothesisSpec, prepared: PreparedTape) -> Tape:
     hit = _MATERIALIZE_CACHE.get(key)
     if hit is not None:
         return hit
+    if spec.config_id in FINAL_CYCLE_RUN_IDS:
+        built, diag = simulate_final_cycle(spec, prepared)
+        _DIAG_CACHE[spec.config_id] = diag
+        _MARKET_CACHE[prepared.instrument] = market_series(prepared)
+        _MATERIALIZE_CACHE[key] = built
+        return built
     geometry = require_geometry(root=spec.instrument, target_ticks=spec.target_ticks, stop_ticks=spec.stop_ticks)
     atr_points = None
     if spec.target_atr is not None or spec.disable_brackets:
