@@ -276,6 +276,10 @@ def test_cli_four_instrument_cycle_flag(tmp_path: Path, monkeypatch: pytest.Monk
         _run,
     )
     write_passing_null_only_json(tmp_path)
+    monkeypatch.setattr(
+        "lumina_research.proof.cli.assert_ledger_allows_run",
+        lambda **_kwargs: None,
+    )
     assert (
         proof_main(
             [

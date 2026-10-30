@@ -1,0 +1,72 @@
+{
+  "schema": "lumina.research.trial_ledger.v2",
+  "answers": {
+    "fabriek": "ONDERZOEKERS-ANTWOORDEN-FABRIEK-20261030T0812.md",
+    "fabriek_sha256": "de73d38ccc30912a439b226f4248d5581f46d3253995dbbd6760fe1943c592f6",
+    "nqopen": "ONDERZOEKERS-ANTWOORDEN-NQOPEN-20261030T0815.md",
+    "nqopen_sha256": "844843564c0a4f5c8b3e6fa56aaff1ff0a696107a2020de5de9534431ab18c92",
+    "boeksplit": "ONDERZOEKERS-ANTWOORDEN-BOEKSPLIT-20261030T0833.md",
+    "boeksplit_sha256": "a970bf171b9e38a0bdc69b919c7cc0484c711e99068bfcd765e9f6d5d6c21474"
+  },
+  "holdout_pin": "2026-01-28T23:00:00Z",
+  "chosen_rule": "split_books",
+  "min_dsr_raised": false,
+  "dsr_probability_min": 0.95,
+  "closed_books": [
+    {
+      "id": "p2-es-limited-postkill",
+      "status": "closed",
+      "n_by_market": {
+        "ES": 150,
+        "MES": 0,
+        "MNQ": 0,
+        "NQ": 0
+      },
+      "n_total": 150,
+      "dsr_pbo_n": 150,
+      "cycles": [
+        {
+          "id": "limited-es",
+          "report": "phase5_p2_limited_es_end.json",
+          "n_end": 78,
+          "instrument": "ES"
+        },
+        {
+          "id": "postkill-es",
+          "report": "phase5_p2_postkill_end.json",
+          "n_end": 150,
+          "instrument": "ES",
+          "note": "continues DSR N from limited-es 78; midpoint controls counted"
+        }
+      ]
+    },
+    {
+      "id": "p2-advisory-d13-atr-20261029",
+      "status": "closed",
+      "included_in_active_dsr_pbo": false,
+      "n_by_market": {
+        "ES": 94,
+        "MES": 74,
+        "MNQ": 41,
+        "NQ": 41
+      },
+      "n_total": 250,
+      "note": "Action-1 D13 + action-5 ATR advisory registries. Not the limited-es/postkill DSR continuation book."
+    }
+  ],
+  "active_book": {
+    "id": "p2-next-search-space",
+    "status": "awaiting_search_space_prereg",
+    "open": false,
+    "search_space_prereg": null,
+    "n_by_market": {
+      "ES": 0,
+      "MES": 0,
+      "MNQ": 0,
+      "NQ": 0
+    },
+    "n_total": 0,
+    "dsr_pbo_n": 0,
+    "note": "New cycle gets this book. DSR/PBO use this N only. Book opens only after an explicit search-space prereg (lower turnover, longer horizon, at least 1 relative-value idea). No hypothesis prereg in this change."
+  }
+}

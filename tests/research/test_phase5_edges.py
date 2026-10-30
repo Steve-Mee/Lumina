@@ -200,6 +200,7 @@ def test_proof_cli_verify_weekly_and_unknown(tmp_path: Path, monkeypatch: pytest
         kill_rate_flag = "flag_all_dead_check_known_good_synthetics"
 
     monkeypatch.setattr(cli_mod, "run_research_cycles", lambda **_kwargs: _Cycle())
+    monkeypatch.setattr(cli_mod, "assert_ledger_allows_run", lambda **_kwargs: None)
     write_passing_null_only_json(tmp_path)
     assert proof_main(["research", "--report-dir", str(tmp_path)]) == 0
 

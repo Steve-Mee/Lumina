@@ -21,6 +21,11 @@ from lumina_research.cycles.null_lock import NullLeaks, assert_research_allowed
 from lumina_research.cycles.null_only import run_null_only, synthetic_drift_tape
 from lumina_research.cycles.postkill_es import run_postkill_es_cycle
 from lumina_research.cycles.runner import run_research_cycles
+from lumina_research.cycles.trial_ledger import (
+    LedgerBlocksRun,
+    LedgerRefused,
+    assert_ledger_allows_run,
+)
 from lumina_research.monitoring.cli import run_scan as run_guardian_scan
 from lumina_research.proof.independent import HOLDOUT_INSTRUMENTS, HOLDOUT_SEEDS, assert_holdout_seeds
 from lumina_research.proof.runner import DEFAULT_EVOLUTION_LOG, DEFAULT_REPORTS, run_empirical_verification
@@ -176,7 +181,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         if str(args.cycle) in {"first", "four-instrument", "atr-es", "limited-es", "postkill-es"}:
             try:
                 assert_research_allowed(Path(args.report_dir))
+                assert_ledger_allows_run(cycle=str(args.cycle))
             except NullLeaks as exc:
+                sys.stderr.write(f"{exc}\n")
+                return 2
+            except (LedgerRefused, LedgerBlocksRun) as exc:
                 sys.stderr.write(f"{exc}\n")
                 return 2
         if str(args.cycle) == "null-audit":

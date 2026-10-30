@@ -176,6 +176,10 @@ def test_cli_postkill_es_is_a_strategy_cycle(tmp_path: Path, monkeypatch: pytest
     assert args.cycle == "postkill-es"
     assert args.es_csv == Path("local.csv")
     monkeypatch.setattr("lumina_research.proof.cli.assert_research_allowed", lambda _path: None)
+    monkeypatch.setattr(
+        "lumina_research.proof.cli.assert_ledger_allows_run",
+        lambda **_kwargs: None,
+    )
 
     class _Stopped:
         report = SimpleNamespace(stop_reason="positive_control_failed", control_note="fail", stopped=True)
