@@ -56,9 +56,11 @@ untouched).
 ### Negative
 
 - Stretching target to 2.4 ATR is a low-probability rescue given MFE≈MAE.
-  That is the test the team allowed, not a reason to skip the lock.
-- This environment does not mount `/tmp/lumina-es/ES_pre_holdout.csv`.
-  Execution is blocked until that sha256 is attached.
+  PIT (2026-10-30): 3/3 kill, 0 survivors. Breakout family
+  `closed_net_negative`. TOD `closed_failed_gates`. `p2p-vx-es` gross +0.230
+  / net −0.129 — never promote on gross. Target fills fell to 6 and 9.
+- DSR N = 148–150 (78 limited-es seed + midpoint controls + three configs).
+  PBO 0.686 also hard-rejects; DSR and +OOS fail independently.
 
 ## Alternatives considered
 

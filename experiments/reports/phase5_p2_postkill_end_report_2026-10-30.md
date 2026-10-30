@@ -14,8 +14,8 @@ DSR N continues from limited-es high-water 78.
 
 - CostModel `1.2.0`, DSR floor `0.95`, PBO hard `0.5`
 - holdout_opened: `false`; nq_closed: `true`; promotion: `false`; plants: `false`
-- **overall_verdict: `tape_missing_no_new_trials`**
-- breakout family: `pending_tape`; TOD: `pending_tape`
+- **overall_verdict: `all_kill_no_promotion`**
+- breakout family: `closed_net_negative`; TOD: `closed_failed_gates`
 
 ## Breakout diagnostics (limited-es PIT, not extra trials)
 
@@ -39,18 +39,26 @@ Both siblings already beat gross BE 0.333 and are still net negative.
 
 ## New trials vs gates
 
-No new `p2p-*` trials were executed. The attached pre-holdout ES tape is
-not on this VM. Searched:
+| config | trades | hitrate | BE | gross | net | +OOS | DSR | PBO | n_trials | passed_gate | reject_reasons |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `p2p-rc-es` | 676 | 0.510 | 0.273 | -0.0303585 | -0.35033 | 2/8 | 0.000 | 0.686 | 148 | false | pbo_hard_reject,dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 |
+| `p2p-vx-es` | 719 | 0.499 | 0.273 | 0.230361 | -0.129169 | 4/8 | 0.002 | 0.686 | 149 | false | pbo_hard_reject,dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60 |
+| `p2p-tod-es` | 594 | 0.492 | 0.545 | 0.0383571 | -0.274804 | 3/8 | 0.000 | 0.686 | 150 | false | pbo_hard_reject,dsr_below_threshold,negative_median_oos_after_costs,static_median_oos_not_positive,static_positive_share_below_60,static_structural_decay |
 
-- `/tmp/lumina-es/ES_pre_holdout.csv`
-- `$LUMINA_RESEARCH_DATA_DIR/ES/1m/*.csv`
-- `data/research/ES/1m/*.csv`
+tested `3` killed `3` survivors `0`
+tape sha256 `6100588d…`, `818851` bars, `2023-10-01T22:01:00Z`–`2026-01-28T22:00:00Z`
+control: Planted edge: at the first RTH bar of each session, the control knows the sign of that session's last-RTH-close minus first-RTH-open (unadjusted). It holds that direction until RTH close (session flatten, C10). Brackets are 1.8×ATR14 target / 0.9×ATR14 stop in index points (midpoint D13; not 16/8 and not the unclipped limit-move ceiling) so a shuffled 50% null is not a 2R artefact. time_stop_bars=2000 cannot fire inside one RTH session. Four-leg costs unchanged. Known size is the session RTH open-to-close move clipped at those ATR multiples minus costs. | fade 1/1.2: planted detected, passed_gate, null 7/8 0/32; breakout 1.8/0.9: planted detected, passed_gate, null 7/8 0/32
 
-Required: local CSV sha256 `6100588d2f3e519bd815b8f952dc15f01d434cc2a2b70e6453d0c3a7477bbca6`,
-818851 bars, `2023-10-01T22:01:00Z`–`2026-01-28T22:00:00Z` (previous path
-`/tmp/lumina-es/ES_pre_holdout.csv`). `$LUMINA_RESEARCH_DATA_DIR` unset.
-Google Drive had no `ES_pre_holdout` / `ES_continuous_unadj` CSV.
-Families stay `pending_tape` (not closed without a run). DSR N stays 78.
+## Honest verdict
+
+Breakout family: `closed_net_negative`. TOD: `closed_failed_gates`.
+PBO 0.686 is above the 0.50 hard reject (CSCV on DSR N=148–150, which
+includes the 78 limited-es seed plus midpoint controls). Independent of
+PBO, every row fails DSR ≪ 0.95, median OOS after costs, and +OOS < 0.60.
+`p2p-vx-es` and `p2p-tod-es` are gross-positive and net-negative — never
+promote on gross. Stretching the breakout target to 2.4 ATR did not
+rescue net PnL (target fills fell to 6 and 9). No promotion, no SIM,
+holdout unopened.
 
 ## Hygiene
 

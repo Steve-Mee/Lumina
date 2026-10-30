@@ -719,6 +719,18 @@ def _markdown_report(
                     f"tape sha256 `{csv_sha[:8]}…`, `{n_bars}` bars, `{first_ts}`–`{last_ts}`",
                     f"control: {report.control_note or '(none)'}",
                     "",
+                    "## Honest verdict",
+                    "",
+                    (
+                        f"Breakout family: `{families['breakout']}`. TOD: `{families['tod']}`. "
+                        "PBO 0.686 is above the 0.50 hard reject (CSCV on DSR N=148–150, which "
+                        "includes the 78 limited-es seed plus midpoint controls). Independent of "
+                        "PBO, every row fails DSR ≪ 0.95, median OOS after costs, and +OOS < 0.60. "
+                        "`p2p-vx-es` and `p2p-tod-es` are gross-positive and net-negative — never "
+                        "promote on gross. Stretching the breakout target to 2.4 ATR did not "
+                        "rescue net PnL. No promotion, no SIM, holdout unopened."
+                    ),
+                    "",
                 ]
             )
     lines.extend(

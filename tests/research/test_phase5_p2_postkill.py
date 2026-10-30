@@ -242,19 +242,41 @@ def test_blocked_report_does_not_invent_trials(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_committed_postkill_end_is_tape_missing_no_new_trials() -> None:
+def test_committed_postkill_pit_is_all_kill_families_closed() -> None:
     payload = json.loads(Path("experiments/reports/phase5_p2_postkill_end.json").read_text(encoding="utf-8"))
-    assert payload["overall_verdict"] == "tape_missing_no_new_trials"
-    assert payload["tape_missing"] is True
-    assert payload["n_tested"] == 0
+    assert payload["overall_verdict"] == "all_kill_no_promotion"
+    assert payload["tape_missing"] is False
+    assert payload["n_tested"] == 3
+    assert payload["n_killed"] == 3
     assert payload["n_survivors"] == 0
     assert payload["holdout_opened"] is False
     assert payload["promotion"] is False
     assert payload["plants_run"] is False
-    assert payload["breakout_family"] == "pending_tape"
-    assert payload["tod_family"] == "pending_tape"
+    assert payload["nq_closed"] is True
+    assert payload["sim_real"] is False
+    assert payload["breakout_family"] == "closed_net_negative"
+    assert payload["tod_family"] == "closed_failed_gates"
     assert payload["prereg_commit"] == "72078670"
+    assert payload["prereg_sha256"].startswith("d259b84e")
     assert payload["prior_limited_n_trials"] == 78
     assert payload["answers_sha256"].startswith("311ea60a")
-    assert payload["csv_sha256"] == ""
+    assert str(payload["csv_sha256"]).startswith("6100588d")
+    assert payload["n_bars_es"] == 818851
+    assert payload["es_last_ts"] == "2026-01-28T22:00:00Z"
     assert payload["config_ids"] == list(LOCKED_IDS)
+    by_id = {row["config_id"]: row for row in payload["configs"]}
+    assert set(by_id) == set(LOCKED_IDS)
+    for config_id in LOCKED_IDS:
+        row = by_id[config_id]
+        assert row["instrument"] == "ES"
+        assert row["tested"] is True
+        assert row["passed_gate"] is False
+        assert row["n_oos_windows"] == 8
+        assert float(row["dsr"]) < 0.95
+        assert float(row["net_pnl"]) < 0.0
+        assert int(row["n_trials"]) >= 78
+        assert "dsr_below_threshold" in row["reject_reasons"]
+    assert float(by_id["p2p-rc-es"]["net_pnl"]) < 0.0
+    assert float(by_id["p2p-vx-es"]["net_pnl"]) < 0.0
+    assert float(by_id["p2p-vx-es"]["gross_pnl"]) > 0.0
+    assert float(by_id["p2p-tod-es"]["gross_pnl"]) > 0.0
