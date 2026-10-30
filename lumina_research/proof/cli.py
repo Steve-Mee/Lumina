@@ -19,6 +19,7 @@ from lumina_research.cycles.midpoint_d13 import (
 from lumina_research.cycles.null_audit import run_null_audit
 from lumina_research.cycles.null_lock import NullLeaks, assert_research_allowed
 from lumina_research.cycles.null_only import run_null_only, synthetic_drift_tape
+from lumina_research.cycles.postkill_es import run_postkill_es_cycle
 from lumina_research.cycles.runner import run_research_cycles
 from lumina_research.monitoring.cli import run_scan as run_guardian_scan
 from lumina_research.proof.independent import HOLDOUT_INSTRUMENTS, HOLDOUT_SEEDS, assert_holdout_seeds
@@ -56,6 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
             "midpoint-power",
             "midpoint-power-floor",
             "limited-es",
+            "postkill-es",
         ),
         default="first",
         help=(
@@ -64,7 +66,8 @@ def build_parser() -> argparse.ArgumentParser:
             "midpoint-d13: planted+null under fade/breakout midpoints, no templates. "
             "midpoint-power: 100/50/25% planted magnitude, no templates. "
             "midpoint-power-floor: 12.5%/6.25% planted magnitude, no templates. "
-            "limited-es: six pre-registered p2l-* configs on pre-holdout ES."
+            "limited-es: six pre-registered p2l-* configs on pre-holdout ES. "
+            "postkill-es: two 2.4 ATR breakouts + one TOD lookback-45."
         ),
     )
     research.add_argument(
@@ -73,7 +76,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "null-only / midpoint-d13 / midpoint-power / midpoint-power-floor / "
-            "limited-es: local pre-holdout ES CSV. Not committed."
+            "limited-es / postkill-es: local pre-holdout ES CSV. Not committed."
         ),
     )
     research.add_argument(
@@ -167,7 +170,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         if str(args.cycle) == "limited-es" and args.es_csv is None:
             sys.stderr.write("limited-es: --es-csv is required\n")
             return 2
-        if str(args.cycle) in {"first", "four-instrument", "atr-es", "limited-es"}:
+        if str(args.cycle) == "postkill-es" and args.es_csv is None:
+            sys.stderr.write("postkill-es: --es-csv is required\n")
+            return 2
+        if str(args.cycle) in {"first", "four-instrument", "atr-es", "limited-es", "postkill-es"}:
             try:
                 assert_research_allowed(Path(args.report_dir))
             except NullLeaks as exc:
@@ -201,6 +207,26 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 2
             if limited.report.stopped:
                 sys.stderr.write(f"limited-es stopped: {limited.report.stop_reason}\n")
+                return 2
+            return 0
+        if str(args.cycle) == "postkill-es":
+            if args.es_csv is None:
+                sys.stderr.write("postkill-es: --es-csv is required\n")
+                return 2
+            try:
+                postkill = run_postkill_es_cycle(
+                    work_dir=args.work_dir,
+                    report_dir=args.report_dir,
+                    es_csv=args.es_csv,
+                )
+            except ValueError as exc:
+                sys.stderr.write(f"postkill-es: {exc}\n")
+                return 2
+            if postkill.report.stop_reason == "positive_control_failed":
+                sys.stderr.write(f"postkill-es control failed: {postkill.report.control_note}\n")
+                return 2
+            if postkill.report.stopped:
+                sys.stderr.write(f"postkill-es stopped: {postkill.report.stop_reason}\n")
                 return 2
             return 0
         if str(args.cycle) == "atr-es":
