@@ -1,4 +1,4 @@
-"""09:13 final-cycle search-space lock plus 09:36 data pins. No Validation Gate trials."""
+"""09:13 final-cycle search-space lock, 10:00 GO cycle, line stopped."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from lumina_core.market.globex_hours import ET
-from lumina_research.cycles.data import ResearchBar
+from lumina_research.cycles.data import DataStatus, ResearchBar
 from lumina_research.cycles.final_cycle import (
     DATA_ANSWERS_PATH,
     DATA_ANSWERS_SHA256,
@@ -64,7 +64,24 @@ from lumina_research.cycles.search_space import (
     assert_search_space_prereg_opens_book,
     search_space_prereg_from_mapping,
 )
-from lumina_research.cycles.trial_ledger import assert_ledger_allows_run, load_trial_ledger
+from lumina_research.cycles.final_cycle_run import (
+    END_JSON_NAME,
+    END_REPORT_NAME,
+    apply_team_kill,
+    final_cycle_specs,
+)
+from lumina_research.cycles.final_cycle_sim import _lh01_signals, _lh03_signals
+from lumina_research.cycles.geometry import require_geometry
+from lumina_research.cycles.prepare import prepare_tape
+from lumina_research.cycles.report import CycleReport, CycleRow
+from lumina_research.cycles.trial_ledger import (
+    LINE_STATE_STOPPED,
+    LedgerBlocksRun,
+    assert_ledger_allows_run,
+    load_trial_ledger,
+)
+from lumina_research.proof.cli import build_parser
+from lumina_research.proof.runner import DEFAULT_REPORTS
 
 
 def _bar(day: date, hour_et: int, minute_et: int, open_: float, high: float, low: float, close: float) -> ResearchBar:
@@ -189,14 +206,34 @@ def test_search_space_mapping_opens_the_new_book() -> None:
 
 
 @pytest.mark.unit
-def test_canonical_ledger_is_open_at_n_zero_with_six_stated() -> None:
+def test_canonical_ledger_is_stopped_after_final_cycle() -> None:
     ledger = load_trial_ledger()
-    assert ledger.active_open is True
+    assert ledger.active_open is False
+    assert ledger.active_status == LINE_STATE_STOPPED
     assert ledger.n_hypotheses_stated == 6
-    assert ledger.dsr_pbo_n == 0
-    assert ledger.n_cycles_completed == 0
-    allowed = assert_ledger_allows_run()
-    assert allowed.active_book_id == "p2-next-search-space"
+    assert ledger.n_cycles_completed == 1
+    assert ledger.research_line_stopped is True
+    assert ledger.dsr_pbo_n == 74
+    with pytest.raises(LedgerBlocksRun, match="research_line_stopped"):
+        assert_ledger_allows_run()
+    end_md = (DEFAULT_REPORTS / END_REPORT_NAME).read_text(encoding="utf-8")
+    assert "59 trades" in end_md
+    assert "low-power risk" in end_md
+    assert "clarification of the pre-registered parameter" in end_md.lower()
+    assert "`research_line_stopped=true`" in end_md
+    end_json = json.loads((DEFAULT_REPORTS / END_JSON_NAME).read_text(encoding="utf-8"))
+    assert end_json["research_line_stopped"] is True
+    assert end_json["n_survivors"] == 0
+    assert end_json["n_tested"] == 4
+    assert end_json["rv02_low_power"]["n_trades"] == RV02_POWER_N_TRADES == 59
+    assert end_json["rv02_low_power"]["low_power_risk_accepted"] is True
+    assert end_json["lh03_atr"]["clarification_not_hypothesis_change"] is True
+    by_id = {row["config_id"]: row for row in end_json["configs"]}
+    assert by_id["p2s-rv-01"]["n_trades"] == 286
+    assert by_id["p2s-rv-02"]["n_trades"] == 52
+    assert by_id["p2s-lh-01"]["n_trades"] == 90
+    assert by_id["p2s-lh-03"]["n_trades"] == 59
+    assert all(row["passed_team_kill"] is False for row in end_json["configs"])
 
 
 @pytest.mark.unit
@@ -385,9 +422,6 @@ def test_committed_power_json_keeps_n_six_and_no_trials() -> None:
 
 @pytest.mark.unit
 def test_final_cycle_specs_are_the_four_runnable_ids() -> None:
-    from lumina_research.cycles.final_cycle_run import final_cycle_specs
-    from lumina_research.proof.cli import build_parser
-
     specs = final_cycle_specs()
     assert tuple(item.config_id for item in specs) == runnable_config_ids()
     assert all(item.instrument == "ES" for item in specs)
@@ -398,11 +432,6 @@ def test_final_cycle_specs_are_the_four_runnable_ids() -> None:
 
 @pytest.mark.unit
 def test_team_kill_rejects_weak_oos_or_nonpositive_net() -> None:
-    from lumina_research.cycles.data import DataStatus
-    from lumina_research.cycles.final_cycle_run import apply_team_kill
-    from lumina_research.cycles.geometry import require_geometry
-    from lumina_research.cycles.report import CycleReport, CycleRow
-
     geometry = require_geometry(root="ES", target_ticks=1, stop_ticks=1)
     data = DataStatus(usable=True, tapes=(), searched=(), missing=(), required={})
 
@@ -460,9 +489,6 @@ def test_team_kill_rejects_weak_oos_or_nonpositive_net() -> None:
 
 @pytest.mark.unit
 def test_lh01_signals_fire_on_nr7_break() -> None:
-    from lumina_research.cycles.final_cycle_sim import _lh01_signals
-    from lumina_research.cycles.prepare import prepare_tape
-
     nr7_days = _weekdays(date(2024, 1, 2), 8)
     bars: list[ResearchBar] = []
     for index, day in enumerate(nr7_days):
@@ -483,9 +509,6 @@ def test_lh01_signals_fire_on_nr7_break() -> None:
 
 @pytest.mark.unit
 def test_lh03_signals_write_atr_onto_fill_bar() -> None:
-    from lumina_research.cycles.final_cycle_sim import _lh03_signals
-    from lumina_research.cycles.prepare import prepare_tape
-
     event_day = date(2024, 1, 22)
     quiet = _consecutive_minutes(
         event_day, 7, 10, 80, open_=100.0, high=100.4, low=100.0, close=100.2

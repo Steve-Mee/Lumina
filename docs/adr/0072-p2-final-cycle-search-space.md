@@ -79,6 +79,18 @@ content sha256 `0c549ee1a1ba901f1bc6620b2ace5b0c0b5e6736d869b863a33e10a931320c4f
    new LH-03 power first, then run all four. Dropped LH-02/LH-04 stay in
    `n_hypotheses=6`. 0 survivors → `research_line_stopped`.
 
+## 10:00 GO result (research team, NOT Steve)
+
+One cycle on book `p2-next-search-space`. Work dir was fresh
+(`state/phase5-p2-next-search-space-v2`) so DSR N did not inherit a crashed
+audit. Controls: planted detected, null 7/8 `0/32` on fade 1.0/1.2 and
+breakout 1.8/0.9. n_tested=4, n_survivors=0, DSR/PBO N=74.
+
+RV-02 executed 52 trades against the accepted 59-trade low-power lock.
+LH-03 executed 59 trades on the 5-minute ATR(14) clarification (power 62).
+All four fail DSR ≥ 0.95 and ≥7/8 OOS+. `research_line_stopped=true`.
+No SIM/promotion. Holdout sealed. Risk Core untouched.
+
 ## Links
 
 - Team prereg: `docs/research/ONDERZOEKERS-PREREG-FINALE-CYCLUS-20261030T0913.md`

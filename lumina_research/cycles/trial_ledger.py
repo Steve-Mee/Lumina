@@ -1,12 +1,12 @@
-"""Rolling trial ledger after the 08:33 book split and the 08:50 cap.
+"""Rolling trial ledger after the 08:33 book split, 08:50 cap, and 10:00 GO.
 
-The limited-es/postkill book is closed at its final N. A new book starts at
-N=0. DSR/PBO use that book's N only. Min-DSR is not raised. The hard stop
-still counts cycles and hypotheses across books and is already tripped. The
-new book allows exactly 1 cycle or at most 25 hypotheses, whichever comes
-first. A 2nd cycle is refused. 0 survivors after that cycle sets
-research_line_stopped. The new book does not open until an explicit
-search-space pre-register exists.
+The limited-es/postkill book is closed at its final N. Book
+p2-next-search-space ran its one allowed cycle (RV-01, RV-02, LH-01,
+LH-03) with 0 survivors and is research_line_stopped. DSR/PBO N is this
+book's count only (74). Min-DSR is not raised. The hard stop still counts
+cycles and hypotheses across books. A 2nd cycle is refused. RV-02's
+59-trade low-power risk is recorded as accepted. LH-03 5-minute ATR(14)
+is a parameter clarification, not a hypothesis change.
 """
 
 from __future__ import annotations

@@ -73,8 +73,8 @@
   ],
   "active_book": {
     "id": "p2-next-search-space",
-    "status": "open",
-    "open": true,
+    "status": "research_line_stopped",
+    "open": false,
     "search_space_prereg": {
       "lower_turnover": true,
       "longer_horizon": true,
@@ -108,19 +108,22 @@
       }
     },
     "n_cycles_allowed": 1,
-    "n_cycles_completed": 0,
+    "n_cycles_completed": 1,
     "n_hypotheses_cap": 25,
     "n_hypotheses_stated": 6,
-    "research_line_stopped": false,
+    "research_line_stopped": true,
     "n_by_market": {
-      "ES": 0,
+      "ES": 74,
       "MES": 0,
       "MNQ": 0,
       "NQ": 0
     },
-    "n_total": 0,
-    "dsr_pbo_n": 0,
-    "dropped_config_ids": ["p2s-lh-02", "p2s-lh-04"],
+    "n_total": 74,
+    "dsr_pbo_n": 74,
+    "dropped_config_ids": [
+      "p2s-lh-02",
+      "p2s-lh-04"
+    ],
     "data_pins": {
       "holdout_pin": "2026-01-28T23:00:00Z",
       "es_pre_holdout_sha256": "6100588d2f3e519bd815b8f952dc15f01d434cc2a2b70e6453d0c3a7477bbca6",
@@ -144,8 +147,16 @@
       "length": 14,
       "multiple": 1.2,
       "clarification_not_hypothesis_change": true,
-      "note": "The 1.2× ATR14 threshold uses INTRADAY ATR(14) on 5-minute bars (SMA of the last 14 true ranges from bars whose close is strictly before the release, no lookahead), NOT daily ATR14. Clarification of the pre-registered parameter, not a change to the hypothesis."
+      "note": "The 1.2\u00d7 ATR14 threshold uses INTRADAY ATR(14) on 5-minute bars (SMA of the last 14 true ranges from bars whose close is strictly before the release, no lookahead), NOT daily ATR14. Clarification of the pre-registered parameter, not a change to the hypothesis."
     },
-    "note": "09:13 lock + 09:36 data + 10:00 LH-03 answers: n_hypotheses=6 with LH-02 and LH-04 dropped (still counted). LH-03 5-minute ATR(14) is a parameter clarification, not a hypothesis change. RV-02 59-trade low-power risk is accepted. DSR/PBO N=0 until the 10:00 GO cycle runs."
+    "note": "10:00 GO cycle complete. n_hypotheses=6 with LH-02/LH-04 dropped. RV-02 power is 59 trades. The research team accepts the low-power risk and still runs the trial. This is not a parameter change. The 1.2\u00d7 ATR14 threshold uses INTRADAY ATR(14) on 5-minute bars (SMA of the last 14 true ranges from bars whose close is strictly before the release, no lookahead), NOT daily ATR14. Clarification of the pre-registered parameter, not a change to the hypothesis. line_state=research_line_stopped.",
+    "cycle": {
+      "id": "final-cycle",
+      "report": "phase5_p2_final_cycle_end.json",
+      "n_survivors": 0,
+      "n_tested": 4,
+      "n_trials": 74,
+      "line_state": "research_line_stopped"
+    }
   }
 }

@@ -1,4 +1,4 @@
-"""Rolling trial ledger after the book split: closed N=150, new book N=0."""
+"""Rolling trial ledger after the book split and the 10:00 GO all-kill."""
 
 from __future__ import annotations
 
@@ -8,12 +8,17 @@ from pathlib import Path
 
 import pytest
 
+from lumina_research.cycles.data import DataStatus
 from lumina_research.cycles.final_cycle import (
     DATA_ANSWERS_SHA256,
     FINALE_PREREG_SHA256,
     LH03_ANSWERS_SHA256,
+    RV02_LOW_POWER_NOTE,
     RV02_POWER_N_TRADES,
 )
+from lumina_research.cycles.final_cycle_run import record_final_cycle_ledger
+from lumina_research.cycles.report import CycleReport
+from lumina_research.cycles.runner import ResearchCycleResult
 from lumina_research.cycles.nq_research import KIND_RELATIVE_VALUE
 from lumina_research.cycles.null_model import NULL_BUILDER
 from lumina_research.cycles.search_space import NEW_BOOK_HYPOTHESIS_CAP, NEW_BOOK_MAX_CYCLES
@@ -157,7 +162,7 @@ def test_stoptelling_answers_sha_is_frozen() -> None:
 
 
 @pytest.mark.unit
-def test_canonical_ledger_closes_old_book_and_holds_new_book_at_zero() -> None:
+def test_canonical_ledger_closes_old_book_and_stops_after_final_cycle() -> None:
     ledger = load_trial_ledger()
     assert ledger.path == DEFAULT_LEDGER_PATH
     assert ledger.chosen_rule == RULE_SPLIT_BOOKS
@@ -171,27 +176,27 @@ def test_canonical_ledger_closes_old_book_and_holds_new_book_at_zero() -> None:
     assert ledger.closed_n_total == CLOSED_BOOK_FINAL_N
     assert ledger.active_book_id == NEW_BOOK_ID
     assert tuple(ledger.active_n_by_market) == MARKETS
-    assert ledger.n_for("ES") == 0
+    assert ledger.n_for("ES") == 74
     assert ledger.n_for("MES") == 0
     assert ledger.n_for("MNQ") == 0
     assert ledger.n_for("NQ") == 0
-    assert ledger.active_n_total == 0
-    assert ledger.dsr_pbo_n == 0
-    assert dsr_pbo_n_for_run(ledger) == 0
+    assert ledger.active_n_total == 74
+    assert ledger.dsr_pbo_n == 74
+    assert dsr_pbo_n_for_run(ledger) == 74
     assert dsr_pbo_n_for_run(ledger) != ledger.closed_n_total
     assert ledger.closed_book_id == STOP_CLOSED_BOOK_ID
     assert ledger.active_book_id == STOP_NEW_BOOK_ID
     assert n_full_cycles() == 3
     assert n_prereg_hypotheses() == 19
     assert n_survivors() == 0
-    assert ledger.active_open is True
-    assert ledger.active_status == "open"
+    assert ledger.active_open is False
+    assert ledger.active_status == LINE_STATE_STOPPED
     assert ledger.n_cycles_allowed == 1
-    assert ledger.n_cycles_completed == 0
+    assert ledger.n_cycles_completed == 1
     assert ledger.n_hypotheses_cap == 25
     assert ledger.n_hypotheses_stated == 6
-    assert ledger.research_line_stopped is False
-    assert ledger.blocks_run is False
+    assert ledger.research_line_stopped is True
+    assert ledger.blocks_run is True
     assert NEW_BOOK_MAX_CYCLES == 1
     assert NEW_BOOK_HYPOTHESIS_CAP == 25
     assert STOP_CRITERION_TRIPPED is True
@@ -219,6 +224,8 @@ def test_canonical_ledger_closes_old_book_and_holds_new_book_at_zero() -> None:
     assert isinstance(rv02, dict)
     assert rv02["n_trades"] == RV02_POWER_N_TRADES == 59
     assert rv02["low_power_risk_accepted"] is True
+    assert "59 trades" in str(rv02["note"])
+    assert "low-power" in str(rv02["note"])
     lh03_atr = payload["active_book"]["lh03_atr"]
     assert isinstance(lh03_atr, dict)
     assert lh03_atr["clarification_not_hypothesis_change"] is True
@@ -231,11 +238,23 @@ def test_canonical_ledger_closes_old_book_and_holds_new_book_at_zero() -> None:
     assert payload["fundamental_change_approval"] is None
     assert payload["active_book"]["n_cycles_allowed"] == 1
     assert payload["active_book"]["n_hypotheses_cap"] == 25
+    cycle = payload["active_book"]["cycle"]
+    assert isinstance(cycle, dict)
+    assert cycle["id"] == "final-cycle"
+    assert cycle["n_survivors"] == 0
+    assert cycle["n_tested"] == 4
+    assert cycle["n_trials"] == 74
+    assert cycle["line_state"] == LINE_STATE_STOPPED
+    note = str(payload["active_book"]["note"])
+    assert "59 trades" in note
+    assert "low-power" in note
+    assert "clarification" in note.lower()
     with pytest.raises(LedgerBlocksRun, match="closed"):
         assert_ledger_allows_run(cycle="postkill-es")
-    allowed = assert_ledger_allows_run()
-    assert allowed.dsr_pbo_n == 0
-    assert allowed.n_hypotheses_stated == 6
+    with pytest.raises(LedgerBlocksRun, match="research_line_stopped"):
+        assert_ledger_allows_run()
+    with pytest.raises(LedgerBlocksRun, match="research_line_stopped"):
+        assert_ledger_allows_run(cycle="final-cycle")
 
 
 @pytest.mark.unit
@@ -316,6 +335,31 @@ def test_cli_closed_book_cycle_is_blocked(
 
 
 @pytest.mark.unit
+def test_cli_final_cycle_is_blocked_after_line_stop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("lumina_research.proof.cli.assert_research_allowed", lambda _path: None)
+
+    def _must_not_run(**_kwargs: object) -> None:
+        raise AssertionError("final-cycle must not run after research_line_stopped")
+
+    monkeypatch.setattr("lumina_research.proof.cli.run_final_cycle", _must_not_run)
+    code = proof_main(
+        [
+            "research",
+            "--cycle",
+            "final-cycle",
+            "--work-dir",
+            str(tmp_path),
+            "--report-dir",
+            str(tmp_path),
+        ]
+    )
+    assert code == 2
+
+
+@pytest.mark.unit
 def test_line_state_after_cycle_zero_survivors_stops_the_line() -> None:
     assert line_state_after_cycle(n_survivors=0, n_cycles_completed_before=0) == LINE_STATE_STOPPED
     assert line_state_after_cycle(n_survivors=1, n_cycles_completed_before=0) == LINE_STATE_CYCLE_COMPLETE
@@ -350,14 +394,10 @@ def test_second_cycle_is_refused_even_with_leftover_hypothesis_budget(tmp_path: 
 
 @pytest.mark.unit
 def test_record_final_cycle_ledger_keeps_rv02_low_power_and_stops_on_zero(tmp_path: Path) -> None:
-    from lumina_research.cycles.data import DataStatus
-    from lumina_research.cycles.final_cycle import RV02_LOW_POWER_NOTE
-    from lumina_research.cycles.final_cycle_run import record_final_cycle_ledger
-    from lumina_research.cycles.report import CycleReport
-    from lumina_research.cycles.runner import ResearchCycleResult
-
-    ledger_path = tmp_path / "ledger.json"
-    ledger_path.write_text(DEFAULT_LEDGER_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+    ledger_path = _write(
+        tmp_path / "ledger.json",
+        _payload(open_book=True, prereg=_open_prereg(tmp_path / "space.md")),
+    )
     data = DataStatus(usable=True, tapes=(), searched=(), missing=(), required={})
     result = ResearchCycleResult(
         report=CycleReport(
