@@ -14,7 +14,9 @@
     "data": "ONDERZOEKERS-ANTWOORDEN-DATA-20261030T0936.md",
     "data_sha256": "e37cd59ead7db0779c2c8a61be0f59bce4a1e6b37281433480e9d6652741c8fb",
     "lh03": "ONDERZOEKERS-ANTWOORDEN-LH03-20261030T1000.md",
-    "lh03_sha256": "0c549ee1a1ba901f1bc6620b2ace5b0c0b5e6736d869b863a33e10a931320c4f"
+    "lh03_sha256": "0c549ee1a1ba901f1bc6620b2ace5b0c0b5e6736d869b863a33e10a931320c4f",
+    "bestaanstoetsen": "ONDERZOEKERS-ANTWOORDEN-BESTAANSTOETSEN-20261030T1106.md",
+    "bestaanstoetsen_sha256": "6b9dc2a894b1f10d37e6a96745377627682de7b758ee1a9cd2b70b127a5f8ab4"
   },
   "stop_criterion": {
     "tripped": true,
@@ -158,5 +160,50 @@
       "n_trials": 74,
       "line_state": "research_line_stopped"
     }
+  },
+  "existence_book": {
+    "id": "p2-existence-20261030",
+    "status": "preregistered_not_run",
+    "open": false,
+    "counts_in_dsr_n": false,
+    "trials_run": false,
+    "instrument": "ES",
+    "tape_window": "pre_holdout",
+    "holdout_opened": false,
+    "holdout_pin": "2026-01-28T23:00:00Z",
+    "nq_trading": false,
+    "sim_requested": false,
+    "promotion_requested": false,
+    "optimization": false,
+    "atr_es_retest": false,
+    "looser_threshold_accepted": false,
+    "test_ids": [
+      "ex-01-calendar-rebalance",
+      "ex-02-overnight-trend-20d"
+    ],
+    "not_in_this_lock": [
+      "ex-03-options-gamma"
+    ],
+    "committed_path": "experiments/reports/phase5_p2_existence_preregister_2026-10-30.md",
+    "answers_name": "ONDERZOEKERS-ANTWOORDEN-BESTAANSTOETSEN-20261030T1106.md",
+    "answers_sha256": "6b9dc2a894b1f10d37e6a96745377627682de7b758ee1a9cd2b70b127a5f8ab4",
+    "spec_sha256": "5a3a54f429c768d2181a037ba99f029f47a6ffcc4d53cb79a7b16672deebec41",
+    "ambiguity_ids": [
+      "reconstitution_dates_source",
+      "roll_week_definition",
+      "cost_of_one_trade",
+      "t_test_vs_bootstrap",
+      "event_window_1_to_3_days_vs_close_to_close_rule",
+      "event_after_close",
+      "matched_control_definition",
+      "test2_control_flat_vs_random",
+      "trend_20d_unit",
+      "trend_60_120_not_in_rule",
+      "overnight_unfiltered_vs_trend_filtered",
+      "p_value_one_vs_two_sided",
+      "excess_return_units",
+      "event_day_session_calendar_rth_vs_globex",
+      "month_end_also_quarter_end_double_count"
+    ]
   }
 }

@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Sequence
 
 from lumina_research.cycles.atr_cycle import run_atr_es_cycle
+from lumina_research.cycles.existence import EXISTENCE_RUN_REFUSED
+from lumina_research.cycles.final_cycle_run import run_final_cycle
 from lumina_research.cycles.four_instrument import run_four_instrument_cycle
 from lumina_research.cycles.limited_es import run_limited_es_cycle
 from lumina_research.cycles.midpoint_d13 import (
@@ -19,7 +21,6 @@ from lumina_research.cycles.midpoint_d13 import (
 from lumina_research.cycles.null_audit import run_null_audit
 from lumina_research.cycles.null_lock import NullLeaks, assert_research_allowed
 from lumina_research.cycles.null_only import run_null_only, synthetic_drift_tape
-from lumina_research.cycles.final_cycle_run import run_final_cycle
 from lumina_research.cycles.postkill_es import run_postkill_es_cycle
 from lumina_research.cycles.runner import run_research_cycles
 from lumina_research.cycles.trial_ledger import (
@@ -75,6 +76,7 @@ def build_parser() -> argparse.ArgumentParser:
             "limited-es",
             "postkill-es",
             "final-cycle",
+            "existence",
         ),
         default="first",
         help=(
@@ -85,7 +87,8 @@ def build_parser() -> argparse.ArgumentParser:
             "midpoint-power-floor: 12.5%/6.25% planted magnitude, no templates. "
             "limited-es: six pre-registered p2l-* configs on pre-holdout ES. "
             "postkill-es: two 2.4 ATR breakouts + one TOD lookback-45. "
-            "final-cycle: RV-01/RV-02/LH-01/LH-03 on pinned pre-holdout ES+NQ."
+            "final-cycle: RV-01/RV-02/LH-01/LH-03 on pinned pre-holdout ES+NQ. "
+            "existence: locked non-DSR book; refuses the run."
         ),
     )
     research.add_argument(
@@ -132,6 +135,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stderr.write("empirical verification floors failed; detector may be tuned, floors may not\n")
         return 2
     if command == "research":
+        if str(args.cycle) == "existence":
+            sys.stderr.write(f"{EXISTENCE_RUN_REFUSED}\n")
+            return 2
         if str(args.cycle) == "null-only":
             null_cycle = run_null_only(
                 work_dir=args.work_dir,

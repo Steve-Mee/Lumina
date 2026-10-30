@@ -7,6 +7,9 @@ book's count only (74). Min-DSR is not raised. The hard stop still counts
 cycles and hypotheses across books. A 2nd cycle is refused. RV-02's
 59-trade low-power risk is recorded as accepted. LH-03 5-minute ATR(14)
 is a parameter clarification, not a hypothesis change.
+
+Sibling book p2-existence-20261030 holds the 11:06 existence-test lock. It
+does not count in DSR/PBO N, does not replace active_book, and is not run.
 """
 
 from __future__ import annotations
@@ -16,6 +19,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
+from lumina_research.cycles.existence import (
+    BESTAANSTOETSEN_ANSWERS_SHA256,
+    ExistenceBookState,
+    ExistenceRefused,
+    existence_book_from_mapping,
+)
 from lumina_research.cycles.final_cycle import (
     DATA_ANSWERS_SHA256,
     FINALE_PREREG_SHA256,
@@ -100,6 +109,7 @@ class TrialLedger:
     n_hypotheses_cap: int
     n_hypotheses_stated: int | None
     research_line_stopped: bool
+    existence_book: ExistenceBookState | None
 
     def n_for(self, market: str) -> int:
         if market not in self.active_n_by_market:
@@ -161,6 +171,7 @@ def load_trial_ledger(path: Path | None = None) -> TrialLedger:
     if payload.get("schema") != LEDGER_SCHEMA:
         raise LedgerRefused("trial ledger schema mismatch")
     _validate_optional_stop_lock(payload)
+    existence_book = _optional_existence_book(payload)
     if payload.get("chosen_rule") != RULE_SPLIT_BOOKS:
         raise LedgerRefused("ledger chosen_rule must be split_books")
     if payload.get("min_dsr_raised") is not False:
@@ -271,6 +282,7 @@ def load_trial_ledger(path: Path | None = None) -> TrialLedger:
         n_hypotheses_cap=NEW_BOOK_HYPOTHESIS_CAP,
         n_hypotheses_stated=n_hypotheses_stated,
         research_line_stopped=stopped_flag,
+        existence_book=existence_book,
     )
 
 
@@ -305,6 +317,9 @@ def _validate_optional_stop_lock(payload: Mapping[str, object]) -> None:
             raise LedgerRefused("data answers sha mismatch")
         if block.get("lh03_sha256") != LH03_ANSWERS_SHA256:
             raise LedgerRefused("lh03 answers sha mismatch")
+        if "bestaanstoetsen_sha256" in block:
+            if block.get("bestaanstoetsen_sha256") != BESTAANSTOETSEN_ANSWERS_SHA256:
+                raise LedgerRefused("bestaanstoetsen answers sha mismatch")
     raw = payload.get("stop_criterion")
     if raw is None:
         return
@@ -358,6 +373,25 @@ def _closed_limited_postkill(value: object) -> tuple[dict[str, int], int]:
     if found is None:
         raise LedgerRefused("closed_books must include p2-es-limited-postkill")
     return found, total
+
+
+def _optional_existence_book(payload: Mapping[str, object]) -> ExistenceBookState | None:
+    raw = payload.get("existence_book")
+    answers = payload.get("answers")
+    answers_block = _as_object(answers, field="answers") if answers is not None else None
+    pinned = answers_block is not None and "bestaanstoetsen_sha256" in answers_block
+    if raw is None:
+        if pinned:
+            raise LedgerRefused("existence_book required when bestaanstoetsen answers are pinned")
+        return None
+    if answers_block is None:
+        raise LedgerRefused("existence_book requires pinned bestaanstoetsen answers")
+    if answers_block.get("bestaanstoetsen_sha256") != BESTAANSTOETSEN_ANSWERS_SHA256:
+        raise LedgerRefused("bestaanstoetsen answers sha mismatch")
+    try:
+        return existence_book_from_mapping(_as_object(raw, field="existence_book"))
+    except ExistenceRefused as exc:
+        raise LedgerRefused(str(exc)) from exc
 
 
 def _validate_rv02_low_power(value: object) -> None:

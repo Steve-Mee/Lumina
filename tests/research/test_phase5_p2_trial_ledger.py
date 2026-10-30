@@ -9,6 +9,11 @@ from pathlib import Path
 import pytest
 
 from lumina_research.cycles.data import DataStatus
+from lumina_research.cycles.existence import (
+    ANSWERS_SHA256 as BESTAANSTOETSEN_SHA256,
+    BOOK_ID as EXISTENCE_BOOK_ID,
+    SPEC_SHA256 as EXISTENCE_SPEC_SHA256,
+)
 from lumina_research.cycles.final_cycle import (
     DATA_ANSWERS_SHA256,
     FINALE_PREREG_SHA256,
@@ -219,6 +224,16 @@ def test_canonical_ledger_closes_old_book_and_stops_after_final_cycle() -> None:
     assert answers["finale_cyclus_sha256"] == FINALE_PREREG_SHA256
     assert answers["data_sha256"] == DATA_ANSWERS_SHA256
     assert answers["lh03_sha256"] == LH03_ANSWERS_SHA256
+    assert answers["bestaanstoetsen_sha256"] == BESTAANSTOETSEN_SHA256
+    existence = payload["existence_book"]
+    assert isinstance(existence, dict)
+    assert existence["id"] == EXISTENCE_BOOK_ID
+    assert existence["counts_in_dsr_n"] is False
+    assert existence["trials_run"] is False
+    assert existence["spec_sha256"] == EXISTENCE_SPEC_SHA256
+    assert ledger.existence_book is not None
+    assert ledger.existence_book.book_id == EXISTENCE_BOOK_ID
+    assert ledger.existence_book.counts_in_dsr_n is False
     assert payload["active_book"]["dropped_config_ids"] == ["p2s-lh-02", "p2s-lh-04"]
     rv02 = payload["active_book"]["rv02_low_power"]
     assert isinstance(rv02, dict)
