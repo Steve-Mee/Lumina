@@ -20,6 +20,10 @@ from lumina_research.cycles.stop_criterion import (
     NEW_BOOK_ID,
     NOT_COUNTED_CYCLE_IDS,
     STOP_CRITERION_PREREG_PATH,
+    STOP_CRITERION_TRIPPED,
+    STOPTELLING_ANSWERS_NAME,
+    STOPTELLING_ANSWERS_PATH,
+    STOPTELLING_ANSWERS_SHA256,
     n_full_cycles,
     n_high_power_fail_after_costs_cycles,
     n_prereg_hypotheses,
@@ -37,6 +41,15 @@ def test_fabriek_answers_sha_is_frozen() -> None:
 
 
 @pytest.mark.unit
+def test_stoptelling_answers_sha_is_frozen() -> None:
+    digest = hashlib.sha256(STOPTELLING_ANSWERS_PATH.read_bytes()).hexdigest()
+    assert digest == STOPTELLING_ANSWERS_SHA256
+    assert digest.startswith("547f3047")
+    assert STOPTELLING_ANSWERS_NAME in str(STOPTELLING_ANSWERS_PATH)
+    assert STOP_CRITERION_TRIPPED is True
+
+
+@pytest.mark.unit
 def test_stop_prereg_contains_verbatim_criterion() -> None:
     text = STOP_CRITERION_PREREG_PATH.read_text(encoding="utf-8")
     assert HARD_STOP_VERBATIM_NL in text
@@ -50,6 +63,10 @@ def test_stop_prereg_contains_verbatim_criterion() -> None:
     assert "split_books" in text
     assert "across books" in text
     assert "a970bf17" in text
+    assert "547f3047" in text
+    assert "research_line_stopped" in text
+    assert "exactly 1 cycle" in text
+    assert STOP_CRITERION_TRIPPED is True
     assert "TODO" not in text
 
 
@@ -74,6 +91,8 @@ def test_counted_cycles_are_three_full_zero_survivors() -> None:
     assert status.search_space_insufficient is True
     assert status.counts_across_books is True
     assert COUNTS_ACROSS_BOOKS is True
+    assert STOP_CRITERION_TRIPPED is True
+    assert status.search_space_insufficient is STOP_CRITERION_TRIPPED
     assert status.n_books == 1
     assert {item.book_id for item in COUNTED_CYCLES} == {CLOSED_BOOK_ID}
     reports = Path("experiments/reports")

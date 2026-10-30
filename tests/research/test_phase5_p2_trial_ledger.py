@@ -10,13 +10,18 @@ import pytest
 
 from lumina_research.cycles.nq_research import KIND_RELATIVE_VALUE
 from lumina_research.cycles.null_model import NULL_BUILDER
+from lumina_research.cycles.search_space import NEW_BOOK_HYPOTHESIS_CAP, NEW_BOOK_MAX_CYCLES
 from lumina_research.cycles.stop_criterion import (
     CLOSED_BOOK_ID as STOP_CLOSED_BOOK_ID,
-)
-from lumina_research.cycles.stop_criterion import (
     NEW_BOOK_ID as STOP_NEW_BOOK_ID,
+    STOP_CRITERION_TRIPPED,
+    STOPTELLING_ANSWERS_PATH,
+    STOPTELLING_ANSWERS_SHA256,
+    n_full_cycles,
+    n_prereg_hypotheses,
+    n_survivors,
+    stop_criterion_status,
 )
-from lumina_research.cycles.stop_criterion import n_full_cycles, n_prereg_hypotheses, n_survivors
 from lumina_research.cycles.trial_ledger import (
     BOEKSPLIT_ANSWERS_PATH,
     BOEKSPLIT_ANSWERS_SHA256,
@@ -24,15 +29,21 @@ from lumina_research.cycles.trial_ledger import (
     CLOSED_BOOK_FINAL_N,
     CLOSED_BOOK_ID,
     DEFAULT_LEDGER_PATH,
+    LEDGER_SCHEMA,
+    LINE_STATE_CYCLE_COMPLETE,
+    LINE_STATE_STOPPED,
+    LINE_STOPPED_REASON,
     MARKETS,
     NEW_BOOK_BLOCKS_REASON,
     NEW_BOOK_ID,
     NEW_BOOK_STATUS,
     RULE_SPLIT_BOOKS,
+    SECOND_CYCLE_REFUSED,
     LedgerBlocksRun,
     LedgerRefused,
     assert_ledger_allows_run,
     dsr_pbo_n_for_run,
+    line_state_after_cycle,
     load_trial_ledger,
 )
 from lumina_research.proof.cli import main as proof_main
@@ -47,21 +58,39 @@ def _closed_markets() -> dict[str, int]:
     return {"ES": 150, "MES": 0, "MNQ": 0, "NQ": 0}
 
 
-def _payload(*, open_book: bool = False, prereg: dict[str, object] | None = None) -> dict[str, object]:
+def _payload(
+    *,
+    open_book: bool = False,
+    prereg: dict[str, object] | None = None,
+    status: str | None = None,
+    n_cycles_completed: int = 0,
+    n_hypotheses_stated: int | None = None,
+    research_line_stopped: bool = False,
+) -> dict[str, object]:
+    stated = n_hypotheses_stated
+    if stated is None and open_book and prereg is not None:
+        raw_count = prereg.get("n_hypotheses")
+        stated = raw_count if isinstance(raw_count, int) else 1
     active: dict[str, object] = {
         "id": NEW_BOOK_ID,
-        "status": "open" if open_book else NEW_BOOK_STATUS,
+        "status": status if status is not None else ("open" if open_book else NEW_BOOK_STATUS),
         "open": open_book,
         "search_space_prereg": prereg,
+        "n_cycles_allowed": NEW_BOOK_MAX_CYCLES,
+        "n_cycles_completed": n_cycles_completed,
+        "n_hypotheses_cap": NEW_BOOK_HYPOTHESIS_CAP,
+        "n_hypotheses_stated": stated,
+        "research_line_stopped": research_line_stopped,
         "n_by_market": _zero_markets(),
         "n_total": 0,
         "dsr_pbo_n": 0,
     }
     return {
-        "schema": "lumina.research.trial_ledger.v2",
+        "schema": LEDGER_SCHEMA,
         "chosen_rule": RULE_SPLIT_BOOKS,
         "min_dsr_raised": False,
         "dsr_probability_min": FLOOR_DSR_PROBABILITY_MIN,
+        "fundamental_change_approval": None,
         "closed_books": [
             {
                 "id": CLOSED_BOOK_ID,
@@ -90,6 +119,7 @@ def _open_prereg(path: Path) -> dict[str, object]:
         "positive_control_included": True,
         "committed_path": str(path),
         "same_space_short_horizon": False,
+        "n_hypotheses": 1,
         "nq_request": {
             "hypothesis_kind": KIND_RELATIVE_VALUE,
             "instruments": ["ES", "NQ"],
@@ -111,6 +141,13 @@ def test_boeksplit_answers_sha_is_frozen() -> None:
     digest = hashlib.sha256(BOEKSPLIT_ANSWERS_PATH.read_bytes()).hexdigest()
     assert digest == BOEKSPLIT_ANSWERS_SHA256
     assert digest.startswith("a970bf17")
+
+
+@pytest.mark.unit
+def test_stoptelling_answers_sha_is_frozen() -> None:
+    digest = hashlib.sha256(STOPTELLING_ANSWERS_PATH.read_bytes()).hexdigest()
+    assert digest == STOPTELLING_ANSWERS_SHA256
+    assert digest.startswith("547f3047")
 
 
 @pytest.mark.unit
@@ -143,10 +180,34 @@ def test_canonical_ledger_closes_old_book_and_holds_new_book_at_zero() -> None:
     assert n_survivors() == 0
     assert ledger.active_open is False
     assert ledger.active_status == NEW_BOOK_STATUS
+    assert ledger.n_cycles_allowed == 1
+    assert ledger.n_cycles_completed == 0
+    assert ledger.n_hypotheses_cap == 25
+    assert ledger.n_hypotheses_stated is None
+    assert ledger.research_line_stopped is False
     assert ledger.blocks_run is True
+    assert NEW_BOOK_MAX_CYCLES == 1
+    assert NEW_BOOK_HYPOTHESIS_CAP == 25
+    assert STOP_CRITERION_TRIPPED is True
     text = DEFAULT_LEDGER_PATH.read_text(encoding="utf-8")
     assert "TODO" not in text
     assert "decision_required" not in text
+    payload = json.loads(text)
+    stop_block = payload["stop_criterion"]
+    live = stop_criterion_status()
+    assert isinstance(stop_block, dict)
+    assert stop_block["tripped"] is True
+    assert stop_block["n_full_cycles"] == live.n_full_cycles == 3
+    assert stop_block["n_prereg_hypotheses"] == live.n_prereg_hypotheses == 19
+    assert stop_block["n_survivors"] == live.n_survivors == 0
+    assert stop_block["counts_across_books"] is True
+    assert stop_block["reset_by_split"] is False
+    answers = payload["answers"]
+    assert isinstance(answers, dict)
+    assert answers["stoptelling_sha256"] == STOPTELLING_ANSWERS_SHA256
+    assert payload["fundamental_change_approval"] is None
+    assert payload["active_book"]["n_cycles_allowed"] == 1
+    assert payload["active_book"]["n_hypotheses_cap"] == 25
     with pytest.raises(LedgerBlocksRun, match="closed"):
         assert_ledger_allows_run(cycle="postkill-es")
     with pytest.raises(LedgerBlocksRun, match="search-space prereg"):
@@ -226,3 +287,107 @@ def test_cli_closed_book_cycle_is_blocked(
     assert code == 2
     assert CLOSED_BOOK_BLOCKS_REASON.startswith("trial ledger blocks")
     assert NEW_BOOK_BLOCKS_REASON.startswith("trial ledger blocks")
+    assert SECOND_CYCLE_REFUSED.startswith("trial ledger blocks")
+    assert LINE_STOPPED_REASON.startswith("trial ledger blocks")
+
+
+@pytest.mark.unit
+def test_line_state_after_cycle_zero_survivors_stops_the_line() -> None:
+    assert line_state_after_cycle(n_survivors=0, n_cycles_completed_before=0) == LINE_STATE_STOPPED
+    assert line_state_after_cycle(n_survivors=1, n_cycles_completed_before=0) == LINE_STATE_CYCLE_COMPLETE
+    with pytest.raises(LedgerBlocksRun, match="2nd cycle"):
+        line_state_after_cycle(n_survivors=0, n_cycles_completed_before=1)
+    with pytest.raises(LedgerBlocksRun, match="2nd cycle"):
+        line_state_after_cycle(n_survivors=3, n_cycles_completed_before=1)
+    with pytest.raises(LedgerRefused, match="n_survivors"):
+        line_state_after_cycle(n_survivors=-1, n_cycles_completed_before=0)
+
+
+@pytest.mark.unit
+def test_second_cycle_is_refused_even_with_leftover_hypothesis_budget(tmp_path: Path) -> None:
+    complete = _write(
+        tmp_path / "complete.json",
+        _payload(
+            status=LINE_STATE_CYCLE_COMPLETE,
+            n_cycles_completed=1,
+            n_hypotheses_stated=20,
+        ),
+    )
+    ledger = load_trial_ledger(complete)
+    assert ledger.active_open is False
+    assert ledger.n_cycles_completed == 1
+    assert ledger.n_hypotheses_stated == 20
+    assert ledger.research_line_stopped is False
+    assert ledger.blocks_run is True
+    assert ledger.dsr_pbo_n == 0
+    with pytest.raises(LedgerBlocksRun, match="2nd cycle"):
+        assert_ledger_allows_run(complete)
+
+
+@pytest.mark.unit
+def test_research_line_stopped_refuses_further_runs(tmp_path: Path) -> None:
+    stopped = _write(
+        tmp_path / "stopped.json",
+        _payload(
+            status=LINE_STATE_STOPPED,
+            n_cycles_completed=1,
+            n_hypotheses_stated=1,
+            research_line_stopped=True,
+        ),
+    )
+    ledger = load_trial_ledger(stopped)
+    assert ledger.active_status == LINE_STATE_STOPPED
+    assert ledger.research_line_stopped is True
+    assert ledger.blocks_run is True
+    assert ledger.dsr_pbo_n == 0
+    with pytest.raises(LedgerBlocksRun, match="research_line_stopped"):
+        assert_ledger_allows_run(stopped)
+
+
+@pytest.mark.unit
+def test_loader_refuses_cap_and_reopen_violations(tmp_path: Path) -> None:
+    two_cycles = _payload()
+    book = two_cycles["active_book"]
+    assert isinstance(book, dict)
+    book["n_cycles_allowed"] = 2
+    with pytest.raises(LedgerRefused, match="exactly 1 cycle"):
+        load_trial_ledger(_write(tmp_path / "two.json", two_cycles))
+    wide_cap = _payload()
+    cap_book = wide_cap["active_book"]
+    assert isinstance(cap_book, dict)
+    cap_book["n_hypotheses_cap"] = 80
+    with pytest.raises(LedgerRefused, match="cap must be 25"):
+        load_trial_ledger(_write(tmp_path / "cap.json", wide_cap))
+    approval = _payload()
+    approval["fundamental_change_approval"] = "new-data-sources"
+    with pytest.raises(LedgerRefused, match="cannot be reopened"):
+        load_trial_ledger(_write(tmp_path / "reopen.json", approval))
+    completed_twice = _payload(status=LINE_STATE_CYCLE_COMPLETE, n_cycles_completed=2)
+    with pytest.raises(LedgerRefused, match="more than 1 cycle"):
+        load_trial_ledger(_write(tmp_path / "twice.json", completed_twice))
+
+
+@pytest.mark.unit
+def test_loader_refuses_untripped_stop_block(tmp_path: Path) -> None:
+    payload = _payload()
+    payload["stop_criterion"] = {
+        "tripped": False,
+        "n_full_cycles": 3,
+        "n_prereg_hypotheses": 19,
+        "n_survivors": 0,
+        "counts_across_books": True,
+        "reset_by_split": False,
+    }
+    with pytest.raises(LedgerRefused, match="tripped"):
+        load_trial_ledger(_write(tmp_path / "untripped.json", payload))
+
+
+@pytest.mark.unit
+def test_open_book_stated_count_must_match_prereg(tmp_path: Path) -> None:
+    prereg = _open_prereg(tmp_path / "space.md")
+    mismatch = _write(
+        tmp_path / "mismatch.json",
+        _payload(open_book=True, prereg=prereg, n_hypotheses_stated=2),
+    )
+    with pytest.raises(LedgerRefused, match="n_hypotheses_stated"):
+        load_trial_ledger(mismatch)

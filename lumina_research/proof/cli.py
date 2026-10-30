@@ -30,6 +30,16 @@ from lumina_research.monitoring.cli import run_scan as run_guardian_scan
 from lumina_research.proof.independent import HOLDOUT_INSTRUMENTS, HOLDOUT_SEEDS, assert_holdout_seeds
 from lumina_research.proof.runner import DEFAULT_EVOLUTION_LOG, DEFAULT_REPORTS, run_empirical_verification
 
+_CONTROL_ONLY_CYCLES = frozenset(
+    {
+        "null-only",
+        "null-audit",
+        "midpoint-d13",
+        "midpoint-power",
+        "midpoint-power-floor",
+    }
+)
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -178,7 +188,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if str(args.cycle) == "postkill-es" and args.es_csv is None:
             sys.stderr.write("postkill-es: --es-csv is required\n")
             return 2
-        if str(args.cycle) in {"first", "four-instrument", "atr-es", "limited-es", "postkill-es"}:
+        if str(args.cycle) not in _CONTROL_ONLY_CYCLES:
             try:
                 assert_research_allowed(Path(args.report_dir))
                 assert_ledger_allows_run(cycle=str(args.cycle))

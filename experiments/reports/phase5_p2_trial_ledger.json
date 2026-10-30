@@ -1,13 +1,24 @@
 {
-  "schema": "lumina.research.trial_ledger.v2",
+  "schema": "lumina.research.trial_ledger.v3",
   "answers": {
     "fabriek": "ONDERZOEKERS-ANTWOORDEN-FABRIEK-20261030T0812.md",
     "fabriek_sha256": "de73d38ccc30912a439b226f4248d5581f46d3253995dbbd6760fe1943c592f6",
     "nqopen": "ONDERZOEKERS-ANTWOORDEN-NQOPEN-20261030T0815.md",
     "nqopen_sha256": "844843564c0a4f5c8b3e6fa56aaff1ff0a696107a2020de5de9534431ab18c92",
     "boeksplit": "ONDERZOEKERS-ANTWOORDEN-BOEKSPLIT-20261030T0833.md",
-    "boeksplit_sha256": "a970bf171b9e38a0bdc69b919c7cc0484c711e99068bfcd765e9f6d5d6c21474"
+    "boeksplit_sha256": "a970bf171b9e38a0bdc69b919c7cc0484c711e99068bfcd765e9f6d5d6c21474",
+    "stoptelling": "ONDERZOEKERS-ANTWOORDEN-STOPTELLING-20261030T0850.md",
+    "stoptelling_sha256": "547f30476afe10f4cdc6a4918a48b0e2719964e9251d6f8c1ac7e40dc6787f11"
   },
+  "stop_criterion": {
+    "tripped": true,
+    "n_full_cycles": 3,
+    "n_prereg_hypotheses": 19,
+    "n_survivors": 0,
+    "counts_across_books": true,
+    "reset_by_split": false
+  },
+  "fundamental_change_approval": null,
   "holdout_pin": "2026-01-28T23:00:00Z",
   "chosen_rule": "split_books",
   "min_dsr_raised": false,
@@ -59,6 +70,11 @@
     "status": "awaiting_search_space_prereg",
     "open": false,
     "search_space_prereg": null,
+    "n_cycles_allowed": 1,
+    "n_cycles_completed": 0,
+    "n_hypotheses_cap": 25,
+    "n_hypotheses_stated": null,
+    "research_line_stopped": false,
     "n_by_market": {
       "ES": 0,
       "MES": 0,
@@ -67,6 +83,6 @@
     },
     "n_total": 0,
     "dsr_pbo_n": 0,
-    "note": "New cycle gets this book. DSR/PBO use this N only. Book opens only after an explicit search-space prereg (lower turnover, longer horizon, at least 1 relative-value idea). No hypothesis prereg in this change."
+    "note": "Exactly 1 cycle or at most 20-25 hypotheses, whichever comes first. Absolute cap 25. A 2nd cycle is refused. 0 survivors -> research_line_stopped. DSR/PBO N=0. No search-space prereg in this change."
   }
 }

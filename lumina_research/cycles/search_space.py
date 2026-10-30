@@ -3,7 +3,9 @@
 A new DSR/PBO book may open only after an explicit search-space pre-register:
 lower turnover, longer horizon, at least one relative-value idea. NQ only
 under NQOPEN guards. Improved null and a positive control are required.
-This module does not pre-register a hypothesis and does not run a trial.
+The prereg must state n_hypotheses; 25 is the absolute cap. The book allows
+exactly one cycle. This module does not pre-register a hypothesis and does
+not run a trial.
 """
 
 from __future__ import annotations
@@ -19,6 +21,8 @@ from lumina_research.cycles.nq_research import (
 )
 from lumina_research.cycles.null_model import NULL_BUILDER
 
+NEW_BOOK_MAX_CYCLES = 1
+NEW_BOOK_HYPOTHESIS_CAP = 25
 SEARCH_SPACE_REFUSED_MISSING = "new book requires a committed search-space prereg"
 SEARCH_SPACE_REFUSED_TURNOVER = "new book requires lower turnover in the search-space prereg"
 SEARCH_SPACE_REFUSED_HORIZON = "new book requires longer horizon in the search-space prereg"
@@ -27,6 +31,7 @@ SEARCH_SPACE_REFUSED_NULL = "new book requires the improved null (linear_magnitu
 SEARCH_SPACE_REFUSED_CONTROL = "new book requires a positive control"
 SEARCH_SPACE_REFUSED_SAME_SPACE = "new book cannot reuse the 1m short-horizon search space"
 SEARCH_SPACE_REFUSED_NQ = "NQ in the new book must pass NQOPEN guards"
+SEARCH_SPACE_REFUSED_COUNT = "search-space prereg must state n_hypotheses; absolute cap is 25"
 
 
 class SearchSpaceRefused(RuntimeError):
@@ -38,6 +43,7 @@ class SearchSpacePrereg:
     lower_turnover: bool
     longer_horizon: bool
     relative_value_config_ids: tuple[str, ...]
+    n_hypotheses: int
     null_builder: str
     positive_control_included: bool
     committed_path: Path
@@ -56,6 +62,10 @@ def assert_search_space_prereg_opens_book(prereg: SearchSpacePrereg) -> None:
         raise SearchSpaceRefused(SEARCH_SPACE_REFUSED_SAME_SPACE)
     if len(prereg.relative_value_config_ids) < 1:
         raise SearchSpaceRefused(SEARCH_SPACE_REFUSED_RV)
+    assert_stated_hypothesis_count(
+        prereg.n_hypotheses,
+        n_relative_value=len(prereg.relative_value_config_ids),
+    )
     if prereg.null_builder != NULL_BUILDER:
         raise SearchSpaceRefused(SEARCH_SPACE_REFUSED_NULL)
     if prereg.positive_control_included is not True:
@@ -90,10 +100,13 @@ def search_space_prereg_from_mapping(
     if not isinstance(ids, list) or not ids:
         raise SearchSpaceRefused(SEARCH_SPACE_REFUSED_RV)
     rv_ids = tuple(str(item) for item in ids)
+    n_hypotheses = _as_hypothesis_count(raw.get("n_hypotheses"))
+    assert_stated_hypothesis_count(n_hypotheses, n_relative_value=len(rv_ids))
     return SearchSpacePrereg(
         lower_turnover=_as_bool(raw.get("lower_turnover"), field="lower_turnover"),
         longer_horizon=_as_bool(raw.get("longer_horizon"), field="longer_horizon"),
         relative_value_config_ids=rv_ids,
+        n_hypotheses=n_hypotheses,
         null_builder=_as_str(raw.get("null_builder"), field="null_builder"),
         positive_control_included=_as_bool(
             raw.get("positive_control_included"),
@@ -140,6 +153,19 @@ def _nq_request_from_mapping(raw: Mapping[str, object]) -> NQResearchRequest:
             field="promotion_requested",
         ),
     )
+
+
+def assert_stated_hypothesis_count(n_hypotheses: int, *, n_relative_value: int) -> None:
+    if n_hypotheses < 1 or n_hypotheses > NEW_BOOK_HYPOTHESIS_CAP:
+        raise SearchSpaceRefused(SEARCH_SPACE_REFUSED_COUNT)
+    if n_hypotheses < n_relative_value:
+        raise SearchSpaceRefused(SEARCH_SPACE_REFUSED_COUNT)
+
+
+def _as_hypothesis_count(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise SearchSpaceRefused(SEARCH_SPACE_REFUSED_COUNT)
+    return value
 
 
 def _as_bool(value: object, *, field: str) -> bool:

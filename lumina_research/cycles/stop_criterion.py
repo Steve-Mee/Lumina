@@ -3,7 +3,9 @@
 Research-team FABRIEK answers 2026-10-30 08:12 (forwarded by Steve; not Steve).
 This module locks the stop text and which cycles already count. The 08:33
 book split resets only the DSR/PBO ledger. Stop counts stay across books.
-It does not pre-register a new hypothesis and does not run a trial.
+The 08:50 STOPTELLING answers confirm the three earlier cycles count and
+that the stop criterion is already tripped. It does not pre-register a new
+hypothesis and does not run a trial.
 """
 
 from __future__ import annotations
@@ -14,9 +16,12 @@ from pathlib import Path
 FABRIEK_ANSWERS_NAME = "ONDERZOEKERS-ANTWOORDEN-FABRIEK-20261030T0812.md"
 FABRIEK_ANSWERS_SHA256 = "de73d38ccc30912a439b226f4248d5581f46d3253995dbbd6760fe1943c592f6"
 STOP_CRITERION_PREREG_NAME = "phase5_p2_stop_criterion_preregister_2026-10-30.md"
+STOPTELLING_ANSWERS_NAME = "ONDERZOEKERS-ANTWOORDEN-STOPTELLING-20261030T0850.md"
+STOPTELLING_ANSWERS_SHA256 = "547f30476afe10f4cdc6a4918a48b0e2719964e9251d6f8c1ac7e40dc6787f11"
 CLOSED_BOOK_ID = "p2-es-limited-postkill"
 NEW_BOOK_ID = "p2-next-search-space"
 COUNTS_ACROSS_BOOKS = True
+STOP_CRITERION_TRIPPED = True
 
 HARD_STOP_VERBATIM_NL = (
     "na 3 volledige cycli of 60-80 prereg hypotheses met 0 survivors, of 2 cycli "
@@ -33,6 +38,7 @@ HARD_STOP_VERBATIM_EN = (
 _REPO = Path(__file__).resolve().parents[2]
 STOP_CRITERION_PREREG_PATH = _REPO / "experiments" / "reports" / STOP_CRITERION_PREREG_NAME
 FABRIEK_ANSWERS_PATH = _REPO / "docs" / "research" / FABRIEK_ANSWERS_NAME
+STOPTELLING_ANSWERS_PATH = _REPO / "docs" / "research" / STOPTELLING_ANSWERS_NAME
 
 
 @dataclass(frozen=True, slots=True)

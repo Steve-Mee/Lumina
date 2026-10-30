@@ -91,3 +91,22 @@ A new book opens only after an explicit search-space pre-register (lower
 turnover, longer horizon, at least 1 relative-value idea). NQ only under
 NQOPEN. Improved null + positive control required. No such hypothesis
 pre-register is in this change.
+
+## 08:50 confirmation (STOPTELLING)
+
+Binding: `docs/research/ONDERZOEKERS-ANTWOORDEN-STOPTELLING-20261030T0850.md`
+content sha256 `547f30476afe10f4cdc6a4918a48b0e2719964e9251d6f8c1ac7e40dc6787f11`
+(prefix `547f3047`).
+
+The three earlier cycles (`atr-es`, `limited-es`, `postkill-es`) **count**.
+The stop criterion is **tripped**. Resetting the counter per new book would
+make the criterion meaningless.
+
+Hard limit for book `p2-next-search-space`: **exactly 1 cycle OR at most
+20–25 hypotheses, whichever comes first**. The search-space prereg must
+state `n_hypotheses`; **25 is the absolute cap**. A 2nd cycle in this book
+is refused. If that cycle ends with 0 survivors, terminal state
+`research_line_stopped`: further runs on this line are refused and need a
+new, more fundamental change (e.g. new data sources) with its own explicit
+approval. DSR/PBO ledger stays at N=0 for the new book; this stop counter
+is not reset. This file still does **not** write that search-space prereg.

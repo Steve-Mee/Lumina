@@ -1,9 +1,12 @@
-"""Rolling trial ledger after the 08:33 book split.
+"""Rolling trial ledger after the 08:33 book split and the 08:50 cap.
 
 The limited-es/postkill book is closed at its final N. A new book starts at
 N=0. DSR/PBO use that book's N only. Min-DSR is not raised. The hard stop
-still counts cycles and hypotheses across books. The new book does not open
-until an explicit search-space pre-register exists.
+still counts cycles and hypotheses across books and is already tripped. The
+new book allows exactly 1 cycle or at most 25 hypotheses, whichever comes
+first. A 2nd cycle is refused. 0 survivors after that cycle sets
+research_line_stopped. The new book does not open until an explicit
+search-space pre-register exists.
 """
 
 from __future__ import annotations
@@ -14,19 +17,28 @@ from pathlib import Path
 from typing import Mapping
 
 from lumina_research.cycles.search_space import (
+    NEW_BOOK_HYPOTHESIS_CAP,
+    NEW_BOOK_MAX_CYCLES,
     SearchSpaceRefused,
     assert_search_space_prereg_opens_book,
     search_space_prereg_from_mapping,
 )
+from lumina_research.cycles.stop_criterion import (
+    STOP_CRITERION_TRIPPED,
+    STOPTELLING_ANSWERS_SHA256,
+    stop_criterion_status,
+)
 from lumina_research.validation.thresholds import FLOOR_DSR_PROBABILITY_MIN
 
-LEDGER_SCHEMA = "lumina.research.trial_ledger.v2"
+LEDGER_SCHEMA = "lumina.research.trial_ledger.v3"
 LEDGER_NAME = "phase5_p2_trial_ledger.json"
 MARKETS: tuple[str, ...] = ("ES", "MES", "MNQ", "NQ")
 CLOSED_BOOK_ID = "p2-es-limited-postkill"
 CLOSED_BOOK_FINAL_N = 150
 NEW_BOOK_ID = "p2-next-search-space"
 NEW_BOOK_STATUS = "awaiting_search_space_prereg"
+LINE_STATE_STOPPED = "research_line_stopped"
+LINE_STATE_CYCLE_COMPLETE = "cycle_complete"
 RULE_SPLIT_BOOKS = "split_books"
 RULE_RAISE_MIN_DSR = "raise_min_dsr"
 CLOSED_BOOK_CYCLES: frozenset[str] = frozenset({"first", "four-instrument", "atr-es", "limited-es", "postkill-es"})
@@ -41,6 +53,14 @@ CLOSED_BOOK_BLOCKS_REASON = "trial ledger blocks this run: book p2-es-limited-po
 NEW_BOOK_BLOCKS_REASON = (
     "trial ledger blocks this run: new book is not open; requires an explicit "
     "search-space prereg (lower turnover, longer horizon, at least 1 relative-value idea)"
+)
+SECOND_CYCLE_REFUSED = (
+    "trial ledger blocks this run: p2-next-search-space allows exactly 1 cycle; a 2nd cycle is refused"
+)
+LINE_STOPPED_REASON = (
+    "trial ledger blocks this run: research_line_stopped; 0 survivors on this "
+    "line; further runs need a more fundamental change (e.g. new data sources) "
+    "with explicit approval"
 )
 
 
@@ -68,6 +88,11 @@ class TrialLedger:
     dsr_pbo_n: int
     active_open: bool
     active_status: str
+    n_cycles_allowed: int
+    n_cycles_completed: int
+    n_hypotheses_cap: int
+    n_hypotheses_stated: int | None
+    research_line_stopped: bool
 
     def n_for(self, market: str) -> int:
         if market not in self.active_n_by_market:
@@ -81,6 +106,10 @@ class TrialLedger:
 
     @property
     def blocks_run(self) -> bool:
+        if self.research_line_stopped:
+            return True
+        if self.n_cycles_completed >= NEW_BOOK_MAX_CYCLES:
+            return True
         return self.active_open is not True
 
 
@@ -95,6 +124,23 @@ def dsr_pbo_n_for_run(ledger: TrialLedger) -> int:
     return int(ledger.dsr_pbo_n)
 
 
+def line_state_after_cycle(*, n_survivors: int, n_cycles_completed_before: int) -> str:
+    """Terminal line state after the one allowed cycle in p2-next-search-space."""
+    if (
+        isinstance(n_cycles_completed_before, bool)
+        or not isinstance(n_cycles_completed_before, int)
+        or n_cycles_completed_before < 0
+    ):
+        raise LedgerRefused("n_cycles_completed_before must be a non-negative integer")
+    if n_cycles_completed_before >= NEW_BOOK_MAX_CYCLES:
+        raise LedgerBlocksRun(SECOND_CYCLE_REFUSED)
+    if isinstance(n_survivors, bool) or not isinstance(n_survivors, int) or n_survivors < 0:
+        raise LedgerRefused("n_survivors must be a non-negative integer")
+    if n_survivors == 0:
+        return LINE_STATE_STOPPED
+    return LINE_STATE_CYCLE_COMPLETE
+
+
 def load_trial_ledger(path: Path | None = None) -> TrialLedger:
     ledger_path = path if path is not None else DEFAULT_LEDGER_PATH
     if not ledger_path.is_file():
@@ -107,6 +153,7 @@ def load_trial_ledger(path: Path | None = None) -> TrialLedger:
         raise LedgerRefused("trial ledger root must be an object")
     if payload.get("schema") != LEDGER_SCHEMA:
         raise LedgerRefused("trial ledger schema mismatch")
+    _validate_optional_stop_lock(payload)
     if payload.get("chosen_rule") != RULE_SPLIT_BOOKS:
         raise LedgerRefused("ledger chosen_rule must be split_books")
     if payload.get("min_dsr_raised") is not False:
@@ -124,12 +171,41 @@ def load_trial_ledger(path: Path | None = None) -> TrialLedger:
     dsr_pbo_n = _as_nonneg_int(active.get("dsr_pbo_n"), field="active_book.dsr_pbo_n")
     if dsr_pbo_n != active_total:
         raise LedgerRefused("DSR/PBO N must equal the active book's N only")
+    if payload.get("fundamental_change_approval") is not None:
+        raise LedgerRefused(
+            "this line cannot be reopened; a more fundamental change needs a new book and explicit approval"
+        )
+    n_cycles_allowed = _as_nonneg_int(active.get("n_cycles_allowed"), field="n_cycles_allowed")
+    if n_cycles_allowed != NEW_BOOK_MAX_CYCLES:
+        raise LedgerRefused("p2-next-search-space allows exactly 1 cycle")
+    n_cycles_completed = _as_nonneg_int(
+        active.get("n_cycles_completed"),
+        field="n_cycles_completed",
+    )
+    if n_cycles_completed > NEW_BOOK_MAX_CYCLES:
+        raise LedgerRefused("p2-next-search-space cannot complete more than 1 cycle")
+    n_hypotheses_cap = _as_nonneg_int(active.get("n_hypotheses_cap"), field="n_hypotheses_cap")
+    if n_hypotheses_cap != NEW_BOOK_HYPOTHESIS_CAP:
+        raise LedgerRefused("p2-next-search-space hypothesis cap must be 25")
+    n_hypotheses_stated = _optional_hypothesis_count(active.get("n_hypotheses_stated"))
+    stopped_flag = active.get("research_line_stopped")
+    if not isinstance(stopped_flag, bool):
+        raise LedgerRefused("research_line_stopped must be a boolean")
     status = active.get("status")
     if not isinstance(status, str) or not status.strip():
         raise LedgerRefused("active_book.status must be a non-empty string")
     prereg = active.get("search_space_prereg")
     opened = active.get("open")
-    if opened is True:
+    if opened is not True and opened is not False:
+        raise LedgerRefused("active_book.open must be boolean")
+    if status == LINE_STATE_STOPPED:
+        if opened is not False:
+            raise LedgerRefused("research_line_stopped book cannot be open")
+        if stopped_flag is not True:
+            raise LedgerRefused("status research_line_stopped requires research_line_stopped=true")
+        if n_cycles_completed != NEW_BOOK_MAX_CYCLES:
+            raise LedgerRefused("research_line_stopped requires the one allowed cycle to have run")
+    elif opened is True:
         if not isinstance(prereg, dict):
             raise LedgerRefused("open book requires a search-space prereg")
         try:
@@ -140,17 +216,32 @@ def load_trial_ledger(path: Path | None = None) -> TrialLedger:
             assert_search_space_prereg_opens_book(parsed)
         except SearchSpaceRefused as exc:
             raise LedgerRefused(str(exc)) from exc
-        if status == NEW_BOOK_STATUS:
-            raise LedgerRefused("open book status cannot be awaiting_search_space_prereg")
+        if status != "open":
+            raise LedgerRefused("open book status must be open")
+        if stopped_flag is not False:
+            raise LedgerRefused("open book cannot be research_line_stopped")
+        if n_cycles_completed != 0:
+            raise LedgerRefused("open book has not completed its one cycle yet")
+        if n_hypotheses_stated != parsed.n_hypotheses:
+            raise LedgerRefused("n_hypotheses_stated must match the search-space prereg")
+    elif opened is False and status == LINE_STATE_CYCLE_COMPLETE:
+        if stopped_flag is not False:
+            raise LedgerRefused("cycle_complete is not research_line_stopped")
+        if n_cycles_completed != NEW_BOOK_MAX_CYCLES:
+            raise LedgerRefused("cycle_complete requires the one allowed cycle to have run")
     elif opened is False:
         if prereg is not None:
             raise LedgerRefused("unopened book must not claim a search-space prereg")
         if status != NEW_BOOK_STATUS:
             raise LedgerRefused(f"active_book.status must be {NEW_BOOK_STATUS}")
+        if stopped_flag is not False:
+            raise LedgerRefused("awaiting book cannot be research_line_stopped")
         if active_total != 0:
             raise LedgerRefused("new book starts at N=0 until a search-space cycle runs")
-    else:
-        raise LedgerRefused("active_book.open must be boolean")
+        if n_cycles_completed != 0:
+            raise LedgerRefused("awaiting book has completed 0 cycles")
+        if n_hypotheses_stated is not None:
+            raise LedgerRefused("awaiting book has no stated hypothesis count")
     return TrialLedger(
         path=ledger_path,
         schema=LEDGER_SCHEMA,
@@ -166,6 +257,11 @@ def load_trial_ledger(path: Path | None = None) -> TrialLedger:
         dsr_pbo_n=dsr_pbo_n,
         active_open=bool(opened),
         active_status=status,
+        n_cycles_allowed=NEW_BOOK_MAX_CYCLES,
+        n_cycles_completed=n_cycles_completed,
+        n_hypotheses_cap=NEW_BOOK_HYPOTHESIS_CAP,
+        n_hypotheses_stated=n_hypotheses_stated,
+        research_line_stopped=stopped_flag,
     )
 
 
@@ -179,9 +275,38 @@ def assert_ledger_allows_run(
         raise LedgerBlocksRun(CLOSED_BOOK_BLOCKS_REASON)
     if ledger.chosen_rule == RULE_RAISE_MIN_DSR or ledger.min_dsr_raised:
         raise LedgerRefused("min-DSR must not be raised")
+    if ledger.research_line_stopped:
+        raise LedgerBlocksRun(LINE_STOPPED_REASON)
+    if ledger.n_cycles_completed >= NEW_BOOK_MAX_CYCLES:
+        raise LedgerBlocksRun(SECOND_CYCLE_REFUSED)
     if ledger.blocks_run:
         raise LedgerBlocksRun(NEW_BOOK_BLOCKS_REASON)
     return ledger
+
+
+def _validate_optional_stop_lock(payload: Mapping[str, object]) -> None:
+    answers = payload.get("answers")
+    if answers is not None:
+        block = _as_object(answers, field="answers")
+        if block.get("stoptelling_sha256") != STOPTELLING_ANSWERS_SHA256:
+            raise LedgerRefused("stoptelling answers sha mismatch")
+    raw = payload.get("stop_criterion")
+    if raw is None:
+        return
+    block = _as_object(raw, field="stop_criterion")
+    status = stop_criterion_status()
+    if block.get("tripped") is not STOP_CRITERION_TRIPPED:
+        raise LedgerRefused("stop criterion tripped flag mismatch")
+    if block.get("counts_across_books") is not True:
+        raise LedgerRefused("stop counter counts across books")
+    if block.get("reset_by_split") is not False:
+        raise LedgerRefused("stop counter is not reset by the book split")
+    if block.get("n_full_cycles") != status.n_full_cycles:
+        raise LedgerRefused("stop criterion n_full_cycles mismatch")
+    if block.get("n_prereg_hypotheses") != status.n_prereg_hypotheses:
+        raise LedgerRefused("stop criterion n_prereg_hypotheses mismatch")
+    if block.get("n_survivors") != status.n_survivors:
+        raise LedgerRefused("stop criterion n_survivors mismatch")
 
 
 def _as_dsr_min(value: object) -> float:
@@ -229,6 +354,16 @@ def _as_object(value: object, *, field: str) -> dict[str, object]:
             raise LedgerRefused(f"{field} keys must be strings")
         typed[key] = item
     return typed
+
+
+def _optional_hypothesis_count(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise LedgerRefused("n_hypotheses_stated must be null or an integer")
+    if value < 1 or value > NEW_BOOK_HYPOTHESIS_CAP:
+        raise LedgerRefused("n_hypotheses_stated must be in 1..25")
+    return value
 
 
 def _as_nonneg_int(value: object, *, field: str) -> int:
